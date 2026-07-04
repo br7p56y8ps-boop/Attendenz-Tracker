@@ -1,0 +1,110 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+
+  /* Required for shadcn */
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--card-foreground);
+  --color-popover-border: var(--border);
+  --color-card-border: var(--border);
+  --color-secondary: var(--muted);
+  --color-secondary-foreground: var(--foreground);
+  --color-accent: var(--muted);
+  --color-accent-foreground: var(--foreground);
+  --color-ring: var(--primary);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Inter, sans-serif;
+  
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+}
+
+:root {
+  --background: #F2F2F7;
+  --foreground: #000000;
+  
+  --card: #FFFFFF;
+  --card-foreground: #000000;
+  
+  --border: #E5E5EA;
+  
+  --primary: #007AFF;
+  --primary-foreground: #FFFFFF;
+  
+  --muted: #E5E5EA;
+  --muted-foreground: #8E8E93;
+  
+  --destructive: #FF3B30;
+  --destructive-foreground: #FFFFFF;
+  
+  --success: #34C759;
+  --warning: #FF9500;
+}
+
+.dark {
+  --background: #000000;
+  --foreground: #FFFFFF;
+  
+  --card: #1C1C1E;
+  --card-foreground: #FFFFFF;
+  
+  --border: #38383A;
+  
+  --primary: #0A84FF;
+  --primary-foreground: #FFFFFF;
+  
+  --muted: #2C2C2E;
+  --muted-foreground: #98989D;
+  
+  --destructive: #FF453A;
+  --destructive-foreground: #FFFFFF;
+  
+  --success: #32D74B;
+  --warning: #FF9F0A;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* iOS smooth scrolling & hidden scrollbars */
+::-webkit-scrollbar {
+  display: none;
+}
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* iOS inputs reset */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}

@@ -1,0 +1,90 @@
+import React from 'react';
+import { TIMETABLE, getCurrentWard } from '@/lib/constants';
+import { HomeCard } from '@/components/HomeCard';
+import { motion } from 'framer-motion';
+import { Layout } from '@/components/Layout';
+
+export default function Home() {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const schedule = TIMETABLE[dayOfWeek] || [];
+  
+  const currentWard = getCurrentWard(today);
+  const isWardHoliday = currentWard === 'Holiday';
+
+  return (
+    <Layout>
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-6 pb-8"
+      >
+        <div className="flex flex-col gap-1">
+          <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+            Today's Schedule
+          </h2>
+          <p className="text-2xl font-bold text-foreground">
+            {today.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+          </p>
+        </div>
+
+        {schedule.length === 0 ? (
+          <div className="bg-card rounded-2xl p-8 border border-border text-center shadow-sm">
+            <p className="text-5xl mb-4">🌴</p>
+            <h3 className="text-xl font-semibold mb-2">Rest Day</h3>
+            <p className="text-muted-foreground text-sm">No scheduled lectures today.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {schedule.map((slot, idx) => {
+              if (slot.type === 'integrated') {
+                return (
+                  <div key={idx} className="bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl p-5 border border-blue-100 dark:border-blue-900/30">
+                    <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">{slot.subjects[0]}</h3>
+                    <p className="text-blue-700/80 dark:text-blue-200/70 text-sm mt-1">{slot.time}</p>
+                  </div>
+                );
+              }
+
+              if (slot.type === 'ward' || slot.type === 'ward_replacement') {
+                if (isWardHoliday || !currentWard) {
+                  return (
+                    <div key={idx} className="bg-card rounded-2xl p-5 border border-border">
+                      <h3 className="text-lg font-semibold text-foreground">
+                        Ward Posting: {isWardHoliday ? 'Holiday' : 'Not scheduled'}
+                      </h3>
+                      <p className="text-muted-foreground text-sm mt-1">{slot.time}</p>
+                    </div>
+                  );
+                }
+
+                const title = slot.type === 'ward_replacement' 
+                  ? `Ward Replacement: ${currentWard}` 
+                  : `Ward Current Posting: ${currentWard}`;
+
+                return (
+                  <HomeCard 
+                    key={idx}
+                    title={title}
+                    subject={currentWard}
+                    time={slot.time}
+                    isWard={true}
+                  />
+                );
+              }
+
+              // Normal lectures — map each subject individually if rotation
+              return slot.subjects.map((subject, subIdx) => (
+                <HomeCard 
+                  key={`${idx}-${subIdx}`}
+                  subject={subject}
+                  time={slot.time}
+                />
+              ));
+            })}
+          </div>
+        )}
+      </motion.div>
+    </Layout>
+  );
+}

@@ -1,0 +1,27 @@
+kind = "video"
+previewPath = "/attendance-tracker-video/"
+title = "Attendance Tracker – Intro Video"
+version = "1.0.0"
+id = "artifacts/attendance-tracker-video"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/attendance-tracker-video/" ]
+localPort = 23435
+
+[services.development]
+run = "pnpm --filter @workspace/attendance-tracker-video run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/attendance-tracker-video", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/attendance-tracker-video/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23435"
+BASE_PATH = "/attendance-tracker-video/"

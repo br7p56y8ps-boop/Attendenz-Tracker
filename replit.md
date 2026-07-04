@@ -1,6 +1,6 @@
-# [Project name]
+# Attendance Tracker
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A medical student attendance tracker with today's timetable on the home page, per-subject editable attendance fields, ward rotation auto-detection, and full offline localStorage persistence.
 
 ## Run & Operate
 
