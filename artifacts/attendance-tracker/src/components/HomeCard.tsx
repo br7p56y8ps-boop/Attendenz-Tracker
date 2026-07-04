@@ -7,9 +7,13 @@ interface HomeCardProps {
   time: string;
   isWard?: boolean;
   title?: string;
+  /** Unique identifier for this timetable slot (e.g. slot index).
+   *  Prevents two slots for the same subject on the same day from sharing
+   *  a selection key — most critical for ward vs ward_replacement sessions. */
+  sessionId?: string;
 }
 
-export const HomeCard = ({ subject, time, isWard = false, title }: HomeCardProps) => {
+export const HomeCard = ({ subject, time, isWard = false, title, sessionId }: HomeCardProps) => {
   const { subjects, wards, homeSelections, updateHomeSelection } = useAttendance();
   const dateStr = getCurrentDateStr();
 
@@ -19,13 +23,25 @@ export const HomeCard = ({ subject, time, isWard = false, title }: HomeCardProps
   const attended = data?.attended || 0;
   const missed = data?.missed || 0;
 
-  const selectionKey = `${dateStr}-${key}`;
+  // Include sessionId so two slots for the same subject on the same day
+  // (especially ward vs ward_replacement) never collide on the same key.
+  const selectionKey = sessionId ? `${dateStr}-${key}-${sessionId}` : `${dateStr}-${key}`;
   const currentSelection = homeSelections[selectionKey];
 
+  // Attendance calculations (Off is excluded — only attended + missed count)
   const total = attended + missed;
   const percentage = total === 0 ? 100 : (attended / total) * 100;
+  const isSafe = percentage >= 75;
 
-  const canMiss = (attended / (attended + missed + 1)) >= 0.75;
+  // How many future classes can still be missed while staying ≥ 75%
+  const canMissCount = isSafe
+    ? Math.max(0, Math.floor((attended - 0.75 * total) / 0.75))
+    : 0;
+
+  // How many classes must be attended to climb back to 75%
+  const needToAttend = !isSafe
+    ? Math.max(0, Math.ceil((0.75 * total - attended) / 0.25))
+    : 0;
 
   const handleSelection = (selection: 'off' | 'missed' | 'attended') => {
     updateHomeSelection(dateStr, key, selection, isWard);
@@ -51,7 +67,19 @@ export const HomeCard = ({ subject, time, isWard = false, title }: HomeCardProps
 
       <div className="mb-5">
         <p className="text-sm font-medium text-muted-foreground">
-          {canMiss ? '✌️ You can miss this lecture.' : "🥺 You can't miss this lecture."}
+          {isSafe ? (
+            <>
+              ✌️ You can bunk{' '}
+              <span className="text-success font-semibold">{canMissCount}</span>
+              {' '}class{canMissCount !== 1 ? 'es' : ''}
+            </>
+          ) : (
+            <>
+              🥺 You can't miss it; Need to attend{' '}
+              <span className="text-destructive font-semibold">{needToAttend}</span>
+              {' '}class{needToAttend !== 1 ? 'es' : ''}
+            </>
+          )}
         </p>
       </div>
 

@@ -85,31 +85,43 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
   const updateHomeSelection = (dateStr: string, subject: string, selection: SelectionType, isWard: boolean) => {
     const key = `${dateStr}-${subject}`;
     const previous = homeSelections[key];
-    
+
     let targetData = isWard ? { ...wards } : { ...subjects };
     const current = targetData[subject] || { attended: 0, missed: 0 };
     let newAttended = current.attended;
     let newMissed = current.missed;
 
-    // Revert previous effect
-    if (previous === 'attended') newAttended = Math.max(0, newAttended - 1);
-    if (previous === 'missed') newMissed = Math.max(0, newMissed - 1);
+    if (previous === selection) {
+      // Toggle OFF — revert the previous count effect and remove the selection
+      if (previous === 'attended') newAttended = Math.max(0, newAttended - 1);
+      if (previous === 'missed')   newMissed   = Math.max(0, newMissed   - 1);
 
-    // Apply new effect
-    if (selection === 'attended') newAttended += 1;
-    if (selection === 'missed') newMissed += 1;
+      if (isWard) {
+        saveWards({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
+      } else {
+        saveSubjects({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
+      }
 
-    // Save
-    if (isWard) {
-      saveWards({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
+      // Remove the selection key entirely
+      const { [key]: _removed, ...rest } = homeSelections;
+      setHomeSelections(rest);
+      localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(rest));
     } else {
-      saveSubjects({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
-    }
+      // Switch — revert previous, apply new
+      if (previous === 'attended') newAttended = Math.max(0, newAttended - 1);
+      if (previous === 'missed')   newMissed   = Math.max(0, newMissed   - 1);
 
-    saveHomeSelections({
-      ...homeSelections,
-      [key]: selection
-    });
+      if (selection === 'attended') newAttended += 1;
+      if (selection === 'missed')   newMissed   += 1;
+
+      if (isWard) {
+        saveWards({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
+      } else {
+        saveSubjects({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
+      }
+
+      saveHomeSelections({ ...homeSelections, [key]: selection });
+    }
   };
 
   return (

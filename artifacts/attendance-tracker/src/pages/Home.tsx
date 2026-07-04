@@ -69,6 +69,7 @@ export default function Home() {
                     subject={currentWard}
                     time={slot.time}
                     isWard={true}
+                    sessionId={String(idx)}
                   />
                 );
               }
@@ -79,6 +80,7 @@ export default function Home() {
                   key={`${idx}-${subIdx}`}
                   subject={subject}
                   time={slot.time}
+                  sessionId={String(idx)}
                 />
               ));
             })}

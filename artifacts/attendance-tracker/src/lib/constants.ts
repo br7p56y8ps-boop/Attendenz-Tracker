@@ -132,7 +132,9 @@ export function getWardTotalPlanned(wardName: string): number {
       cur.setDate(cur.getDate() + 1);
     }
   }
-  return count;
+  // Double the total to reflect both the morning ward slot and the evening
+  // ward-replacement slot that run on every scheduled ward day.
+  return count * 2;
 }
 
 export function getCurrentWard(date: Date = new Date()): string | null {
