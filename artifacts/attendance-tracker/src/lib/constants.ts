@@ -33,6 +33,14 @@ export const CATEGORIES = [
   }
 ];
 
+// Integrated Teaching subjects — tracked separately from academic subjects.
+// Totals based on Sundays (Phase) and Thursdays (Departmental) across the
+// Jan 24 – Nov 6 academic year, excluding holiday periods.
+export const INTEGRATED_SUBJECTS = [
+  { name: 'Phase Integrated Teaching', total: 36 },
+  { name: 'Departmental Integrated Teaching', total: 36 },
+];
+
 export const WARD_SUBJECTS = [
   { name: 'General Surgery', total: 30 },
   { name: 'Pediatrics', total: 30 },

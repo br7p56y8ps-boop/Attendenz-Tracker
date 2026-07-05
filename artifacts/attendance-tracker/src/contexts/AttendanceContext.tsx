@@ -9,7 +9,7 @@ interface AttendanceContextType {
   homeSelections: Record<string, SelectionType>;
   updateSubject: (subject: string, attended: number, missed: number) => void;
   updateWard: (ward: string, attended: number, missed: number) => void;
-  updateHomeSelection: (dateStr: string, subject: string, selection: SelectionType, isWard: boolean) => void;
+  updateHomeSelection: (homeKey: string, subject: string, selection: SelectionType, isWard: boolean) => void;
 }
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
@@ -82,9 +82,10 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  const updateHomeSelection = (dateStr: string, subject: string, selection: SelectionType, isWard: boolean) => {
-    const key = `${dateStr}-${subject}`;
-    const previous = homeSelections[key];
+  // homeKey  — the exact key used in homeSelections (includes sessionId suffix for per-slot uniqueness)
+  // subject  — the attendance-data lookup key (e.g. 'Surgery' or 'ward-General Surgery')
+  const updateHomeSelection = (homeKey: string, subject: string, selection: SelectionType, isWard: boolean) => {
+    const previous = homeSelections[homeKey];
 
     let targetData = isWard ? { ...wards } : { ...subjects };
     const current = targetData[subject] || { attended: 0, missed: 0 };
@@ -103,7 +104,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // Remove the selection key entirely
-      const { [key]: _removed, ...rest } = homeSelections;
+      const { [homeKey]: _removed, ...rest } = homeSelections;
       setHomeSelections(rest);
       localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(rest));
     } else {
@@ -120,7 +121,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         saveSubjects({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
       }
 
-      saveHomeSelections({ ...homeSelections, [key]: selection });
+      saveHomeSelections({ ...homeSelections, [homeKey]: selection });
     }
   };
 

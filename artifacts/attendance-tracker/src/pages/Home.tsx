@@ -8,13 +8,13 @@ export default function Home() {
   const today = new Date();
   const dayOfWeek = today.getDay();
   const schedule = TIMETABLE[dayOfWeek] || [];
-  
+
   const currentWard = getCurrentWard(today);
   const isWardHoliday = currentWard === 'Holiday';
 
   return (
     <Layout>
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="space-y-6 pb-8"
@@ -37,13 +37,16 @@ export default function Home() {
         ) : (
           <div className="space-y-4">
             {schedule.map((slot, idx) => {
+              // Integrated Teaching — fully interactive card, tracked as a subject
               if (slot.type === 'integrated') {
-                return (
-                  <div key={idx} className="bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl p-5 border border-blue-100 dark:border-blue-900/30">
-                    <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">{slot.subjects[0]}</h3>
-                    <p className="text-blue-700/80 dark:text-blue-200/70 text-sm mt-1">{slot.time}</p>
-                  </div>
-                );
+                return slot.subjects.map((subject, subIdx) => (
+                  <HomeCard
+                    key={`${idx}-${subIdx}`}
+                    subject={subject}
+                    time={slot.time}
+                    sessionId={String(idx)}
+                  />
+                ));
               }
 
               if (slot.type === 'ward' || slot.type === 'ward_replacement') {
@@ -58,12 +61,12 @@ export default function Home() {
                   );
                 }
 
-                const title = slot.type === 'ward_replacement' 
-                  ? `Ward Replacement: ${currentWard}` 
+                const title = slot.type === 'ward_replacement'
+                  ? `Ward Replacement: ${currentWard}`
                   : `Ward Current Posting: ${currentWard}`;
 
                 return (
-                  <HomeCard 
+                  <HomeCard
                     key={idx}
                     title={title}
                     subject={currentWard}
@@ -74,9 +77,9 @@ export default function Home() {
                 );
               }
 
-              // Normal lectures — map each subject individually if rotation
+              // Normal lectures
               return slot.subjects.map((subject, subIdx) => (
-                <HomeCard 
+                <HomeCard
                   key={`${idx}-${subIdx}`}
                   subject={subject}
                   time={slot.time}

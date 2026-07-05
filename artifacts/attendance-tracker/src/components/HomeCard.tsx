@@ -43,8 +43,9 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId }: Ho
     ? Math.max(0, Math.ceil((0.75 * total - attended) / 0.25))
     : 0;
 
+  // Pass the exact selectionKey so reads and writes use the same key
   const handleSelection = (selection: 'off' | 'missed' | 'attended') => {
-    updateHomeSelection(dateStr, key, selection, isWard);
+    updateHomeSelection(selectionKey, key, selection, isWard);
   };
 
   const getPercentageColor = (pct: number) => {
@@ -53,8 +54,17 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId }: Ho
     return 'text-destructive';
   };
 
+  // Card-level background tint based on current selection
+  const cardBg = currentSelection === 'attended'
+    ? 'bg-success/10 border-success/30'
+    : currentSelection === 'missed'
+    ? 'bg-destructive/10 border-destructive/30'
+    : currentSelection === 'off'
+    ? 'bg-warning/10 border-warning/30'
+    : 'bg-card border-card-border';
+
   return (
-    <div className="bg-card rounded-2xl p-5 shadow-sm border border-card-border mb-4">
+    <div className={cn("rounded-2xl p-5 shadow-sm border mb-4 transition-colors duration-300", cardBg)}>
       <div className="flex justify-between items-start mb-2">
         <div className="pr-4">
           <h3 className="text-xl font-bold leading-tight text-foreground">{title || subject}</h3>
@@ -89,8 +99,8 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId }: Ho
           className={cn(
             "flex-1 py-3 px-2 rounded-xl text-sm font-semibold transition-all active:scale-95 duration-200 border",
             currentSelection === 'attended'
-              ? "bg-success/15 text-success border-success/30 shadow-sm"
-              : "bg-background text-muted-foreground border-border hover:bg-success/5 hover:text-success hover:border-success/20"
+              ? "bg-success/20 text-success border-success/40 shadow-sm"
+              : "bg-background/70 text-muted-foreground border-border hover:bg-success/5 hover:text-success hover:border-success/20"
           )}
         >
           Attended
@@ -100,8 +110,8 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId }: Ho
           className={cn(
             "flex-1 py-3 px-2 rounded-xl text-sm font-semibold transition-all active:scale-95 duration-200 border",
             currentSelection === 'missed'
-              ? "bg-destructive/15 text-destructive border-destructive/30 shadow-sm"
-              : "bg-background text-muted-foreground border-border hover:bg-destructive/5 hover:text-destructive hover:border-destructive/20"
+              ? "bg-destructive/20 text-destructive border-destructive/40 shadow-sm"
+              : "bg-background/70 text-muted-foreground border-border hover:bg-destructive/5 hover:text-destructive hover:border-destructive/20"
           )}
         >
           Missed
@@ -111,8 +121,8 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId }: Ho
           className={cn(
             "flex-1 py-3 px-2 rounded-xl text-sm font-semibold transition-all active:scale-95 duration-200 border",
             currentSelection === 'off'
-              ? "bg-warning/15 text-warning border-warning/30 shadow-sm"
-              : "bg-background text-muted-foreground border-border hover:bg-warning/5 hover:text-warning hover:border-warning/20"
+              ? "bg-warning/20 text-warning border-warning/40 shadow-sm"
+              : "bg-background/70 text-muted-foreground border-border hover:bg-warning/5 hover:text-warning hover:border-warning/20"
           )}
         >
           Off
