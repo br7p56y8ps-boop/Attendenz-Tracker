@@ -6,9 +6,11 @@ interface SubjectCardProps {
   subject: string;
   totalPlanned: number;
   isWard?: boolean;
+  /** When true, removes the outer card wrapper so this can live inside a parent card */
+  isNested?: boolean;
 }
 
-export const SubjectCard = ({ subject, totalPlanned, isWard = false }: SubjectCardProps) => {
+export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = false }: SubjectCardProps) => {
   const { subjects, wards, updateSubject, updateWard } = useAttendance();
   const dataStore = isWard ? wards : subjects;
   const updateFn = isWard ? updateWard : updateSubject;
@@ -16,7 +18,6 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false }: SubjectCa
 
   const data = dataStore[key] || { attended: 0, missed: 0 };
   
-  // Use local state for immediate input feedback, then debounce to context
   const [localAttended, setLocalAttended] = useState(data.attended.toString());
   const [localMissed, setLocalMissed] = useState(data.missed.toString());
 
@@ -33,14 +34,12 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false }: SubjectCa
   const percentage = totalConducted === 0 ? 100 : (attendedNum / totalConducted) * 100;
   const remaining = Math.max(0, totalPlanned - attendedNum - missedNum);
   
-  // How many more lectures must be attended to reach 75% of conducted lectures
   const neededToReach75 = Math.max(0, Math.ceil((0.75 * totalConducted - attendedNum) / 0.25));
   const canStillMiss = Math.max(0, Math.floor((attendedNum - 0.75 * totalConducted) / 0.75));
 
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   const handleInputChange = (field: 'attended' | 'missed', value: string) => {
-    // Only allow numbers
     if (value !== '' && !/^\d+$/.test(value)) return;
     
     if (field === 'attended') setLocalAttended(value);
@@ -51,7 +50,6 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false }: SubjectCa
     timerRef.current = setTimeout(() => {
       const parsedAttended = field === 'attended' ? (parseInt(value) || 0) : attendedNum;
       const parsedMissed = field === 'missed' ? (parseInt(value) || 0) : missedNum;
-      
       updateFn(key, parsedAttended, parsedMissed);
     }, 300);
   };
@@ -62,15 +60,15 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false }: SubjectCa
     return 'text-destructive';
   };
 
-  return (
-    <div className="bg-card rounded-2xl p-5 shadow-sm border border-border flex flex-col gap-4">
+  const content = (
+    <div className="flex flex-col gap-4">
       <div className="flex justify-between items-start gap-4">
         <div>
-          <h4 className="font-semibold text-foreground text-lg leading-tight">{subject}</h4>
-          <p className="text-muted-foreground text-sm mt-0.5">Total Planned: {totalPlanned}</p>
+          <h4 className="font-semibold text-foreground text-base leading-tight">{subject}</h4>
+          <p className="text-muted-foreground text-xs mt-0.5">Total Planned: {totalPlanned}</p>
         </div>
-        <div className="text-right">
-          <div className={cn("text-xl font-bold", getPercentageColor(percentage))}>
+        <div className="text-right shrink-0">
+          <div className={cn("text-lg font-bold", getPercentageColor(percentage))}>
             {totalConducted === 0 ? '--' : `${percentage.toFixed(0)}%`}
           </div>
         </div>
@@ -84,7 +82,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false }: SubjectCa
             inputMode="numeric"
             value={localAttended}
             onChange={(e) => handleInputChange('attended', e.target.value)}
-            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-lg"
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-base"
           />
         </div>
         <div className="space-y-1.5">
@@ -94,7 +92,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false }: SubjectCa
             inputMode="numeric"
             value={localMissed}
             onChange={(e) => handleInputChange('missed', e.target.value)}
-            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-destructive/50 transition-all text-lg"
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-destructive/50 transition-all text-base"
           />
         </div>
       </div>
@@ -111,7 +109,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false }: SubjectCa
           <span className="text-sm font-semibold">{remaining}</span>
         </div>
         <div className="flex flex-col">
-          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Needed for 75%</span>
+          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Needed 75%</span>
           <span className="text-sm font-semibold text-primary">{neededToReach75}</span>
         </div>
         <div className="flex flex-col">
@@ -119,6 +117,16 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false }: SubjectCa
           <span className="text-sm font-semibold text-success">{canStillMiss}</span>
         </div>
       </div>
+    </div>
+  );
+
+  if (isNested) {
+    return <div className="px-5 py-4">{content}</div>;
+  }
+
+  return (
+    <div className="bg-card rounded-2xl p-5 shadow-sm border border-border">
+      {content}
     </div>
   );
 };

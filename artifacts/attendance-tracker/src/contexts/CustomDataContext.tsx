@@ -18,17 +18,27 @@ export interface CustomWard {
   endDate: string;   // YYYY-MM-DD
 }
 
+export type SubjectMode = 'preloaded' | 'custom';
+
 const CUSTOM_SUBJECTS_KEY = 'att_custom_subjects';
 const CUSTOM_WARDS_KEY = 'att_custom_wards';
+const SUBJECT_MODE_KEY = 'att_subject_mode';
+const SETUP_DONE_KEY = 'att_setup_done';
 
 interface CustomDataContextType {
   customSubjects: CustomSubject[];
   customWards: CustomWard[];
+  subjectMode: SubjectMode;
+  setupDone: boolean;
   addCustomSubject: (s: Omit<CustomSubject, 'id'>) => void;
   removeCustomSubject: (id: string) => void;
   addCustomWard: (w: Omit<CustomWard, 'id'>) => void;
   removeCustomWard: (id: string) => void;
   getCurrentCustomWard: () => CustomWard | null;
+  /** Called after the user makes their setup choice. resetAttendance must be called separately for 'custom'. */
+  completeSetup: (mode: SubjectMode) => void;
+  /** Clears all custom subjects/wards from state+LS and sets mode to 'custom'. */
+  startFresh: () => void;
 }
 
 const CustomDataContext = createContext<CustomDataContextType | undefined>(undefined);
@@ -36,6 +46,8 @@ const CustomDataContext = createContext<CustomDataContextType | undefined>(undef
 export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [customSubjects, setCustomSubjects] = useState<CustomSubject[]>([]);
   const [customWards, setCustomWards] = useState<CustomWard[]>([]);
+  const [subjectMode, setSubjectMode] = useState<SubjectMode>('preloaded');
+  const [setupDone, setSetupDone] = useState(false);
 
   useEffect(() => {
     try {
@@ -43,6 +55,10 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       if (s) setCustomSubjects(JSON.parse(s));
       const w = localStorage.getItem(CUSTOM_WARDS_KEY);
       if (w) setCustomWards(JSON.parse(w));
+      const m = localStorage.getItem(SUBJECT_MODE_KEY) as SubjectMode | null;
+      if (m === 'preloaded' || m === 'custom') setSubjectMode(m);
+      const done = localStorage.getItem(SETUP_DONE_KEY);
+      if (done === 'true') setSetupDone(true);
     } catch { /* ignore */ }
   }, []);
 
@@ -79,12 +95,30 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     return customWards.find(w => today >= w.startDate && today <= w.endDate) ?? null;
   };
 
+  const completeSetup = (mode: SubjectMode) => {
+    localStorage.setItem(SUBJECT_MODE_KEY, mode);
+    localStorage.setItem(SETUP_DONE_KEY, 'true');
+    setSubjectMode(mode);
+    setSetupDone(true);
+  };
+
+  const startFresh = () => {
+    // Clear custom subjects and wards
+    localStorage.removeItem(CUSTOM_SUBJECTS_KEY);
+    localStorage.removeItem(CUSTOM_WARDS_KEY);
+    setCustomSubjects([]);
+    setCustomWards([]);
+    // Mark as custom mode + done
+    completeSetup('custom');
+  };
+
   return (
     <CustomDataContext.Provider value={{
-      customSubjects, customWards,
+      customSubjects, customWards, subjectMode, setupDone,
       addCustomSubject, removeCustomSubject,
       addCustomWard, removeCustomWard,
       getCurrentCustomWard,
+      completeSetup, startFresh,
     }}>
       {children}
     </CustomDataContext.Provider>

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { CustomDataProvider } from '@/contexts/CustomDataContext';
+import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
 import Home from '@/pages/Home';
 import Subjects from '@/pages/Subjects';
@@ -10,15 +10,22 @@ import AddNew from '@/pages/AddNew';
 import CalendarPage from '@/pages/CalendarPage';
 import Account from '@/pages/Account';
 import Login from '@/pages/Login';
+import SetupScreen from '@/pages/SetupScreen';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
 
 function AuthGate() {
   const { isLoggedIn } = useAuth();
+  const { setupDone } = useCustomData();
 
   if (!isLoggedIn) {
     return <Login />;
+  }
+
+  // Show setup/migration screen until the user makes their subject mode choice
+  if (!setupDone) {
+    return <SetupScreen />;
   }
 
   return (

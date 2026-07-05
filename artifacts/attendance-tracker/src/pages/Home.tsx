@@ -4,18 +4,36 @@ import { HomeCard } from '@/components/HomeCard';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { useCustomData } from '@/contexts/CustomDataContext';
+import { useLocation } from 'wouter';
+
+// Day abbreviations matching what AddNew uses in the day-picker
+const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function Home() {
   const today = new Date();
   const dayOfWeek = today.getDay();
-  const schedule = TIMETABLE[dayOfWeek] || [];
+  const todayAbbr = DAY_ABBRS[dayOfWeek];
 
-  // Check custom wards first, then fall back to built-in schedule
-  const { getCurrentCustomWard } = useCustomData();
+  const { getCurrentCustomWard, customSubjects, subjectMode } = useCustomData();
+  const [, setLocation] = useLocation();
+
+  // Custom ward takes priority over built-in schedule
   const customWard = getCurrentCustomWard();
-  const builtInWard = getCurrentWard(today);
+  const builtInWard = subjectMode === 'preloaded' ? getCurrentWard(today) : null;
   const currentWard = customWard ? customWard.name : builtInWard;
   const isWardHoliday = currentWard === 'Holiday';
+
+  // Custom subjects scheduled for today (match against day abbreviation)
+  const todayCustomSubjects = customSubjects.filter(s => {
+    if (!s.days) return false;
+    const assigned = s.days.split(',').map(d => d.trim());
+    return assigned.includes(todayAbbr);
+  });
+
+  // Built-in timetable — only shown in preloaded mode
+  const schedule = subjectMode === 'preloaded' ? (TIMETABLE[dayOfWeek] || []) : [];
+
+  const hasAnything = schedule.length > 0 || todayCustomSubjects.length > 0 || (currentWard && !isWardHoliday);
 
   return (
     <Layout>
@@ -33,16 +51,29 @@ export default function Home() {
           </p>
         </div>
 
-        {schedule.length === 0 ? (
+        {!hasAnything ? (
           <div className="bg-card rounded-2xl p-8 border border-border text-center shadow-sm">
             <p className="text-5xl mb-4">🌴</p>
             <h3 className="text-xl font-semibold mb-2">Rest Day</h3>
-            <p className="text-muted-foreground text-sm">No scheduled lectures today.</p>
+            {subjectMode === 'custom' && customSubjects.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No subjects added yet.{' '}
+                <button
+                  onClick={() => setLocation('/add-new')}
+                  className="text-primary font-semibold underline-offset-2 hover:underline"
+                >
+                  Add subjects
+                </button>{' '}
+                from the Add New tab.
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-sm">No scheduled lectures today.</p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
+            {/* ── Built-in timetable (preloaded mode only) ── */}
             {schedule.map((slot, idx) => {
-              // Integrated Teaching — fully interactive card, tracked as a subject
               if (slot.type === 'integrated') {
                 return slot.subjects.map((subject, subIdx) => (
                   <HomeCard
@@ -65,11 +96,9 @@ export default function Home() {
                     </div>
                   );
                 }
-
                 const title = slot.type === 'ward_replacement'
                   ? `Ward Replacement: ${currentWard}`
                   : `Ward Current Posting: ${currentWard}`;
-
                 return (
                   <HomeCard
                     key={idx}
@@ -82,7 +111,6 @@ export default function Home() {
                 );
               }
 
-              // Normal lectures
               return slot.subjects.map((subject, subIdx) => (
                 <HomeCard
                   key={`${idx}-${subIdx}`}
@@ -92,6 +120,36 @@ export default function Home() {
                 />
               ));
             })}
+
+            {/* ── Custom-mode ward (when no built-in timetable) ── */}
+            {subjectMode === 'custom' && currentWard && !isWardHoliday && (
+              <>
+                <HomeCard
+                  title={`Ward Current Posting: ${currentWard}`}
+                  subject={currentWard}
+                  time="Morning Ward"
+                  isWard={true}
+                  sessionId="custom-ward-am"
+                />
+                <HomeCard
+                  title={`Ward Replacement: ${currentWard}`}
+                  subject={currentWard}
+                  time="Evening Ward"
+                  isWard={true}
+                  sessionId="custom-ward-pm"
+                />
+              </>
+            )}
+
+            {/* ── Custom subjects for today ── */}
+            {todayCustomSubjects.map(s => (
+              <HomeCard
+                key={s.id}
+                subject={s.name}
+                time={s.time || 'Time not set'}
+                sessionId={`custom-${s.id}`}
+              />
+            ))}
           </div>
         )}
       </motion.div>

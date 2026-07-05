@@ -11,6 +11,8 @@ const ALL_APP_KEYS = [
   'att_custom_subjects',
   'att_custom_wards',
   'att_whats_new_version',
+  'att_subject_mode',
+  'att_setup_done',
   'attendance_tracker_subjects',
   'attendance_tracker_ward',
   'attendance_tracker_home_selections',
@@ -35,6 +37,8 @@ interface AuthContextType {
   isLoggedIn: boolean;
   hasAccount: boolean;
   username: string;
+  /** True immediately after createAccount() succeeds; used to show new-user setup vs migration prompt */
+  isNewAccount: boolean;
   createAccount: (username: string, password: string) => boolean;
   login: (username: string, password: string) => boolean;
   logout: () => void;
@@ -47,6 +51,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [hasAccount, setHasAccount] = useState(false);
   const [username, setUsername] = useState('');
+  const [isNewAccount, setIsNewAccount] = useState(false);
 
   useEffect(() => {
     const raw = localStorage.getItem(AUTH_KEY);
@@ -71,6 +76,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem(SESSION_KEY, 'true');
       setHasAccount(true);
       setIsLoggedIn(true);
+      setIsNewAccount(true);
       setUsername(user.trim());
       return true;
     } catch { return false; }
@@ -84,6 +90,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (stored.username === user.trim() && checkPassword(password, stored.passwordEncoded)) {
         localStorage.setItem(SESSION_KEY, 'true');
         setIsLoggedIn(true);
+        setIsNewAccount(false);
         setUsername(stored.username);
         return true;
       }
@@ -94,18 +101,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     localStorage.removeItem(SESSION_KEY);
     setIsLoggedIn(false);
+    setIsNewAccount(false);
   };
 
   const forgotPassword = () => {
-    // Targeted wipe — only delete keys owned by this app.
     ALL_APP_KEYS.forEach(k => localStorage.removeItem(k));
     setIsLoggedIn(false);
     setHasAccount(false);
+    setIsNewAccount(false);
     setUsername('');
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, hasAccount, username, createAccount, login, logout, forgotPassword }}>
+    <AuthContext.Provider value={{ isLoggedIn, hasAccount, username, isNewAccount, createAccount, login, logout, forgotPassword }}>
       {children}
     </AuthContext.Provider>
   );

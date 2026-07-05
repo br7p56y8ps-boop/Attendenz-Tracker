@@ -10,6 +10,7 @@ interface AttendanceContextType {
   updateSubject: (subject: string, attended: number, missed: number) => void;
   updateWard: (ward: string, attended: number, missed: number) => void;
   updateHomeSelection: (homeKey: string, subject: string, selection: SelectionType, isWard: boolean) => void;
+  resetAllData: () => void;
 }
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
@@ -34,14 +35,12 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       const h = localStorage.getItem(HOME_SELECTIONS_KEY);
       if (h) {
         const raw: Record<string, string> = JSON.parse(h);
-        // Migrate legacy 'holiday' → 'off'; drop any other unknown values
         const VALID: ReadonlySet<string> = new Set(['attended', 'missed', 'off']);
         const migrated: Record<string, SelectionType> = {};
         for (const [k, v] of Object.entries(raw)) {
           const mapped = v === 'holiday' ? 'off' : v;
           if (VALID.has(mapped)) migrated[k] = mapped as SelectionType;
         }
-        // Persist back only if anything changed
         if (Object.keys(migrated).length !== Object.keys(raw).length ||
             Object.entries(migrated).some(([k, v]) => raw[k] !== v)) {
           localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(migrated));
@@ -69,21 +68,13 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateSubject = (subject: string, attended: number, missed: number) => {
-    saveSubjects({
-      ...subjects,
-      [subject]: { attended, missed }
-    });
+    saveSubjects({ ...subjects, [subject]: { attended, missed } });
   };
 
   const updateWard = (ward: string, attended: number, missed: number) => {
-    saveWards({
-      ...wards,
-      [ward]: { attended, missed }
-    });
+    saveWards({ ...wards, [ward]: { attended, missed } });
   };
 
-  // homeKey  — the exact key used in homeSelections (includes sessionId suffix for per-slot uniqueness)
-  // subject  — the attendance-data lookup key (e.g. 'Surgery' or 'ward-General Surgery')
   const updateHomeSelection = (homeKey: string, subject: string, selection: SelectionType, isWard: boolean) => {
     const previous = homeSelections[homeKey];
 
@@ -93,7 +84,6 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     let newMissed = current.missed;
 
     if (previous === selection) {
-      // Toggle OFF — revert the previous count effect and remove the selection
       if (previous === 'attended') newAttended = Math.max(0, newAttended - 1);
       if (previous === 'missed')   newMissed   = Math.max(0, newMissed   - 1);
 
@@ -103,12 +93,10 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         saveSubjects({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
       }
 
-      // Remove the selection key entirely
       const { [homeKey]: _removed, ...rest } = homeSelections;
       setHomeSelections(rest);
       localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(rest));
     } else {
-      // Switch — revert previous, apply new
       if (previous === 'attended') newAttended = Math.max(0, newAttended - 1);
       if (previous === 'missed')   newMissed   = Math.max(0, newMissed   - 1);
 
@@ -125,8 +113,18 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  /** Wipes all attendance data from state and localStorage. Called when starting fresh. */
+  const resetAllData = () => {
+    localStorage.removeItem(SUBJECTS_KEY);
+    localStorage.removeItem(WARD_KEY);
+    localStorage.removeItem(HOME_SELECTIONS_KEY);
+    setSubjects({});
+    setWards({});
+    setHomeSelections({});
+  };
+
   return (
-    <AttendanceContext.Provider value={{ subjects, wards, homeSelections, updateSubject, updateWard, updateHomeSelection }}>
+    <AttendanceContext.Provider value={{ subjects, wards, homeSelections, updateSubject, updateWard, updateHomeSelection, resetAllData }}>
       {children}
     </AttendanceContext.Provider>
   );
