@@ -1,0 +1,3 @@
+- [Auth & custom data architecture](auth-custom-data.md) — offline login uses btoa+TextEncoder; forgotPassword does targeted key deletion; custom subjects/wards in separate context.
+- [Attendance tracker LS keys](ls-keys.md) — full list of all localStorage keys used by the app; must stay in sync with AuthContext ALL_APP_KEYS for forgotPassword wipe.
+- [Selection key format](selection-key-format.md) — homeSelections keys are `${dateStr}-${key}-${sessionId}`; date is always first 10 chars; CalendarPage parses this to group by date.

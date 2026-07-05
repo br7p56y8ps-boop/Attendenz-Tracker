@@ -3,13 +3,18 @@ import { TIMETABLE, getCurrentWard } from '@/lib/constants';
 import { HomeCard } from '@/components/HomeCard';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
+import { useCustomData } from '@/contexts/CustomDataContext';
 
 export default function Home() {
   const today = new Date();
   const dayOfWeek = today.getDay();
   const schedule = TIMETABLE[dayOfWeek] || [];
 
-  const currentWard = getCurrentWard(today);
+  // Check custom wards first, then fall back to built-in schedule
+  const { getCurrentCustomWard } = useCustomData();
+  const customWard = getCurrentCustomWard();
+  const builtInWard = getCurrentWard(today);
+  const currentWard = customWard ? customWard.name : builtInWard;
   const isWardHoliday = currentWard === 'Holiday';
 
   return (
