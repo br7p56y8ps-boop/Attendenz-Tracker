@@ -42,18 +42,18 @@ export const INTEGRATED_SUBJECTS = [
 ];
 
 export const WARD_SUBJECTS = [
-  { name: 'General Surgery', total: 30 },
-  { name: 'Pediatrics', total: 30 },
-  { name: 'Internal Medicine', total: 30 },
-  { name: 'Dermatology', total: 30 },
-  { name: 'Urology', total: 30 },
-  { name: 'Pediatric Surgery', total: 30 },
-  { name: 'Burn & Plastic Surgery', total: 30 },
-  { name: 'Orthopaedics', total: 30 },
-  { name: 'Obstetrics & Gynaecology', total: 30 },
-  { name: 'Psychiatry', total: 30 },
-  { name: 'Otolaryngology', total: 30 },
-  { name: 'Ophthalmology', total: 30 },
+  { name: 'General Surgery', total: 60 },
+  { name: 'Pediatrics', total: 60 },
+  { name: 'Internal Medicine', total: 60 },
+  { name: 'Dermatology', total: 60 },
+  { name: 'Urology', total: 60 },
+  { name: 'Pediatric Surgery', total: 60 },
+  { name: 'Burn & Plastic Surgery', total: 60 },
+  { name: 'Orthopaedics', total: 60 },
+  { name: 'Obstetrics & Gynaecology', total: 60 },
+  { name: 'Psychiatry', total: 60 },
+  { name: 'Otolaryngology', total: 60 },
+  { name: 'Ophthalmology', total: 60 },
 ];
 
 export const WARD_SCHEDULE = [
@@ -140,8 +140,8 @@ export function getWardTotalPlanned(wardName: string): number {
       cur.setDate(cur.getDate() + 1);
     }
   }
-  // Double the total to reflect both the morning ward slot and the evening
-  // ward-replacement slot that run on every scheduled ward day.
+  // Double the count to reflect the planned classes
+  // across both the morning ward slot and the evening ward-replacement slot.
   return count * 2;
 }
 

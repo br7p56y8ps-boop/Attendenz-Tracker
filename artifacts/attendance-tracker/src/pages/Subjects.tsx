@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS, getCurrentWard, getWardTotalPlanned } from '@/lib/constants';
+import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { SubjectCard } from '@/components/SubjectCard';
 import { Layout } from '@/components/Layout';
 import { useAttendance } from '@/contexts/AttendanceContext';
@@ -9,15 +9,31 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useLocation } from 'wouter';
 
+function getCustomWardTotalPlanned(startDateStr: string, endDateStr: string): number {
+  let count = 0;
+  try {
+    const start = new Date(startDateStr + 'T12:00:00');
+    const end   = new Date(endDateStr + 'T12:00:00');
+    const cur   = new Date(start);
+    while (cur <= end) {
+      if (cur.getDay() !== 5) count++; // exclude Friday
+      cur.setDate(cur.getDate() + 1);
+    }
+  } catch (e) {
+    // catch invalid dates
+  }
+  return count * 2;
+}
+
 export default function Subjects() {
-  const { subjects, wards } = useAttendance();
-  const { customSubjects, customWards, getCurrentCustomWard, subjectMode } = useCustomData();
+  const { subjects, wards, preferredPercentage } = useAttendance();
+  const { customSubjects, customWards, getCurrentCustomWard, subjectMode, getSubjectPlannedTotal, getCurrentPresetWard, getPresetWardTotalPlanned } = useCustomData();
   const [, setLocation] = useLocation();
 
   const today = new Date();
   const customWard = getCurrentCustomWard();
-  const builtInWard = subjectMode === 'preloaded' ? getCurrentWard(today) : null;
-  const activeWard = customWard ? customWard.name : builtInWard;
+  const presetWardObj = subjectMode === 'preloaded' ? getCurrentPresetWard(today) : null;
+  const activeWard = customWard ? customWard.name : (presetWardObj ? presetWardObj.ward : null);
   const isWardHoliday = activeWard === 'Holiday';
 
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
@@ -30,7 +46,8 @@ export default function Subjects() {
     let att = 0, mis = 0, planned = 0;
     subjectList.forEach(sub => {
       const d = subjects[sub.name] || { attended: 0, missed: 0 };
-      att += d.attended; mis += d.missed; planned += sub.total;
+      att += d.attended; mis += d.missed;
+      planned += getSubjectPlannedTotal(sub.name);
     });
     const conducted = att + mis;
     const pct = conducted === 0 ? 100 : (att / conducted) * 100;
@@ -41,7 +58,8 @@ export default function Subjects() {
     let att = 0, mis = 0, planned = 0;
     INTEGRATED_SUBJECTS.forEach(sub => {
       const d = subjects[sub.name] || { attended: 0, missed: 0 };
-      att += d.attended; mis += d.missed; planned += sub.total;
+      att += d.attended; mis += d.missed;
+      planned += getSubjectPlannedTotal(sub.name);
     });
     const conducted = att + mis;
     const pct = conducted === 0 ? 100 : (att / conducted) * 100;
@@ -49,7 +67,7 @@ export default function Subjects() {
   };
 
   const pctColor = (pct: number) =>
-    pct >= 75 ? 'var(--color-success)' : pct >= 65 ? 'var(--color-warning)' : 'var(--color-destructive)';
+    pct >= preferredPercentage ? 'var(--color-success)' : pct >= preferredPercentage - 10 ? 'var(--color-warning)' : 'var(--color-destructive)';
 
   // ── Single unified expandable card for a category ──────────────────────
   const CategoryCard = ({
@@ -207,7 +225,7 @@ export default function Subjects() {
                 {cat.subjects.map((sub, i) => (
                   <React.Fragment key={sub.name}>
                     <div className="border-t border-border" />
-                    <SubjectCard subject={sub.name} totalPlanned={sub.total} isNested />
+                    <SubjectCard subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
                   </React.Fragment>
                 ))}
               </>
@@ -222,9 +240,6 @@ export default function Subjects() {
             title={catName}
             sectionKey={`allied_${catName}`}
             subjectList={subs.map(s => ({ name: s.name, total: s.plannedClasses }))}
-            badge={
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 shrink-0">Custom</span>
-            }
             renderChildren={() => (
               <>
                 {subs.map((s) => (
@@ -238,64 +253,108 @@ export default function Subjects() {
           />
         ))}
 
-        {/* ── Custom Single Subjects ── */}
-        {singleSubjects.length > 0 && (
-          <CategoryCard
-            title="My Subjects"
-            sectionKey="custom_single"
-            subjectList={singleSubjects.map(s => ({ name: s.name, total: s.plannedClasses }))}
-            badge={
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 shrink-0">Custom</span>
-            }
-            renderChildren={() => (
-              <>
-                {singleSubjects.map((s) => (
-                  <React.Fragment key={s.id}>
-                    <div className="border-t border-border" />
-                    <SubjectCard subject={s.name} totalPlanned={s.plannedClasses} isNested />
-                  </React.Fragment>
-                ))}
-              </>
-            )}
-          />
-        )}
+        {/* ── Custom Single Subjects (Separate Independent Cards) ── */}
+        {singleSubjects.map(s => (
+          <SubjectCard key={s.id} subject={s.name} totalPlanned={s.plannedClasses} />
+        ))}
 
-        {/* ── Ward Postings ── */}
-        {(subjectMode === 'preloaded' || customWards.length > 0) && (
-          <SimpleAccordion
-            sectionKey="Ward Postings"
-            header={
-              <>
-                <div className="flex justify-between items-center mb-2">
-                  <h2 className="text-xl font-bold text-foreground">Ward Postings</h2>
+        {/* ── Ward Rotations (Grouped in ONE Card) ── */}
+        {(subjectMode === 'preloaded' || customWards.length > 0) && (() => {
+          // Calculate overall ward statistics
+          let att = 0, mis = 0, planned = 0;
+          if (subjectMode === 'preloaded') {
+            WARD_SUBJECTS.forEach(sub => {
+              const d = wards[`ward-${sub.name}`] || { attended: 0, missed: 0 };
+              att += d.attended;
+              mis += d.missed;
+              planned += getPresetWardTotalPlanned(sub.name);
+            });
+          } else {
+            customWards.forEach(w => {
+              const d = wards[`ward-${w.name}`] || { attended: 0, missed: 0 };
+              att += d.attended;
+              mis += d.missed;
+              planned += getCustomWardTotalPlanned(w.startDate, w.endDate);
+            });
+          }
+          const conducted = att + mis;
+          const pct = conducted === 0 ? 100 : (att / conducted) * 100;
+          const wardSummary = { att, mis, planned, pct, conducted };
+
+          return (
+            <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+              <button
+                onClick={() => toggleCategory('Ward Postings')}
+                className="w-full p-4 text-left transition-all active:scale-[0.99]"
+              >
+                <div className="flex justify-between items-center mb-3">
+                  <h2 className="text-xl font-bold text-foreground">Clinical Rotations</h2>
                   {openCategories['Ward Postings']
-                    ? <ChevronUp className="text-muted-foreground w-5 h-5" />
-                    : <ChevronDown className="text-muted-foreground w-5 h-5" />}
+                    ? <ChevronUp className="text-muted-foreground w-5 h-5 shrink-0" />
+                    : <ChevronDown className="text-muted-foreground w-5 h-5 shrink-0" />}
                 </div>
-                <p className="text-sm text-primary font-medium">
-                  Current: {isWardHoliday ? 'Holiday' : (activeWard || 'Not scheduled')}
+                <div className="flex gap-4">
+                  <div>
+                    <div className="text-2xl font-bold font-sans" style={{ color: pctColor(wardSummary.pct) }}>
+                      {wardSummary.conducted === 0 ? '--' : `${wardSummary.pct.toFixed(1)}%`}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Overall</div>
+                  </div>
+                  <div className="w-px bg-border my-1" />
+                  <div className="flex-1 grid grid-cols-3 gap-2">
+                    {[
+                      { label: 'Attended', val: wardSummary.att },
+                      { label: 'Missed', val: wardSummary.mis },
+                      { label: 'Planned', val: wardSummary.planned },
+                    ].map(({ label, val }) => (
+                      <div key={label} className="flex flex-col">
+                        <span className="text-xs text-muted-foreground">{label}</span>
+                        <span className="font-semibold text-sm">{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-primary font-medium mt-3">
+                  Current Posting: {isWardHoliday ? 'Holiday' : (activeWard || 'None Scheduled')}
                 </p>
-              </>
-            }
-          >
-            {subjectMode === 'preloaded' && WARD_SUBJECTS.map(ward => (
-              <div key={ward.name} className="relative">
-                {activeWard === ward.name && (
-                  <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-1 h-12 bg-primary rounded-full z-10" />
+              </button>
+              <AnimatePresence initial={false}>
+                {openCategories['Ward Postings'] && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.28, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    {subjectMode === 'preloaded' && WARD_SUBJECTS.map((ward) => (
+                      <React.Fragment key={ward.name}>
+                        <div className="border-t border-border" />
+                        <div className="relative">
+                          {activeWard === ward.name && (
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary z-10" />
+                          )}
+                          <SubjectCard subject={ward.name} totalPlanned={getPresetWardTotalPlanned(ward.name)} isWard={true} isNested={true} />
+                        </div>
+                      </React.Fragment>
+                    ))}
+                    {subjectMode === 'custom' && customWards.map((w) => (
+                      <React.Fragment key={w.id}>
+                        <div className="border-t border-border" />
+                        <div className="relative">
+                          {activeWard === w.name && (
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary z-10" />
+                          )}
+                          <SubjectCard subject={w.name} totalPlanned={getCustomWardTotalPlanned(w.startDate, w.endDate)} isWard={true} isNested={true} />
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </motion.div>
                 )}
-                <SubjectCard subject={ward.name} totalPlanned={getWardTotalPlanned(ward.name)} isWard={true} />
-              </div>
-            ))}
-            {customWards.map(w => (
-              <div key={w.id} className="relative">
-                {activeWard === w.name && (
-                  <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-1 h-12 bg-primary rounded-full z-10" />
-                )}
-                <SubjectCard subject={w.name} totalPlanned={0} isWard={true} />
-              </div>
-            ))}
-          </SimpleAccordion>
-        )}
+              </AnimatePresence>
+            </div>
+          );
+        })()}
 
         {/* ── Integrated Teaching (preloaded mode only) ── */}
         {subjectMode === 'preloaded' && (
@@ -305,17 +364,14 @@ export default function Subjects() {
               className="w-full p-4 text-left transition-all active:scale-[0.99]"
             >
               <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-bold text-foreground">Integrated Teaching</h2>
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Separate</span>
-                </div>
+                <h2 className="text-xl font-bold text-foreground">Integrated Teaching</h2>
                 {openCategories['Integrated Teaching']
                   ? <ChevronUp className="text-muted-foreground w-5 h-5 shrink-0" />
                   : <ChevronDown className="text-muted-foreground w-5 h-5 shrink-0" />}
               </div>
               <div className="flex gap-4">
                 <div>
-                  <div className="text-2xl font-bold" style={{ color: pctColor(integratedSummary.pct) }}>
+                  <div className="text-2xl font-bold font-sans" style={{ color: pctColor(integratedSummary.pct) }}>
                     {integratedSummary.conducted === 0 ? '--' : `${integratedSummary.pct.toFixed(1)}%`}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">Overall</div>
@@ -347,7 +403,7 @@ export default function Subjects() {
                   {INTEGRATED_SUBJECTS.map(sub => (
                     <React.Fragment key={sub.name}>
                       <div className="border-t border-border" />
-                      <SubjectCard subject={sub.name} totalPlanned={sub.total} isNested />
+                      <SubjectCard subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
                     </React.Fragment>
                   ))}
                 </motion.div>

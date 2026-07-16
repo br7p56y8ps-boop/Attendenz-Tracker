@@ -39,20 +39,37 @@ export default function Login() {
     forgotPassword();
   };
 
-  const inputClass = "w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/40 text-base transition-all";
+  const inputClass = "w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white placeholder:text-white/30 focus:outline-none focus:border-primary/50 text-base transition-all";
 
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 px-5 py-10">
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-black px-5 py-10">
       {/* Logo / Title */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="text-center mb-10"
+        className="text-center mb-8 flex flex-col items-center"
       >
-        <div className="text-5xl mb-4">🎓</div>
-        <h1 className="text-3xl font-bold text-white tracking-tight">Benz Attendance</h1>
-        <p className="text-white/50 text-sm mt-1">Medical Student Tracker</p>
+        <img src={`${import.meta.env.BASE_URL || '/'}attendenz_icon.jpg`} alt="Attendenz Icon" className="w-24 h-24 rounded-[28px] object-cover mb-4 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.8)] filter drop-shadow-[0_4px_12px_rgba(10,132,255,0.25)]" />
+        
+        <div className="relative inline-flex flex-col items-center pb-2.5 select-none">
+          <span className="font-extrabold tracking-[-0.03em] flex items-center text-4xl sm:text-5xl">
+            {/* Gold/Amber liquid glass gradient for "Attend" */}
+            <span className="bg-gradient-to-b from-[#FFF5C3] via-[#E29A1F] to-[#734300] bg-clip-text text-transparent filter drop-shadow-[0_2px_12px_rgba(226,154,31,0.5)]">
+              Attend
+            </span>
+            {/* Platinum silver glass gradient for "enz" */}
+            <span className="bg-gradient-to-b from-[#FFFFFF] via-[#D1D9E6] to-[#4A5E75] bg-clip-text text-transparent filter drop-shadow-[0_2px_12px_rgba(209,217,230,0.4)] relative">
+              enz
+              {/* "TRACKER" Subscript aligned under "enz" */}
+              <span className="absolute left-0 -bottom-2 text-[8px] md:text-[9px] text-white/70 tracking-[0.3em] font-light uppercase">
+                TRACKER
+              </span>
+            </span>
+          </span>
+        </div>
+        
+        <p className="text-white/40 text-xs tracking-wider uppercase mt-2">Lecture & Clinical Tracker</p>
       </motion.div>
 
       {/* Card */}
@@ -60,18 +77,18 @@ export default function Login() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.1 }}
-        className="w-full max-w-sm"
+        className="w-full max-w-sm glass-panel rounded-[28px] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.8)]"
       >
         {/* Mode toggle (only if account exists) */}
         {hasAccount && (
-          <div className="flex bg-white/10 rounded-2xl p-1 mb-6">
+          <div className="flex bg-white/5 rounded-2xl p-1 mb-6 border border-white/5">
             {(['login', 'create'] as Mode[]).map(m => (
               <button
                 key={m}
                 onClick={() => { setMode(m); setError(''); }}
                 className={cn(
-                  "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all",
-                  mode === m ? "bg-white text-slate-900" : "text-white/60"
+                  "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300",
+                  mode === m ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-white/50 hover:text-white/80"
                 )}
               >
                 {m === 'login' ? 'Sign In' : 'New Account'}
@@ -136,7 +153,7 @@ export default function Login() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="text-red-400 text-sm font-medium px-1"
+                className="text-destructive text-sm font-medium px-1"
               >
                 {error}
               </motion.p>
@@ -145,7 +162,7 @@ export default function Login() {
 
           <button
             type="submit"
-            className="w-full py-4 rounded-2xl bg-white text-slate-900 font-bold text-base hover:bg-white/90 active:scale-[0.98] transition-all shadow-lg mt-2"
+            className="w-full py-4 rounded-2xl bg-primary text-white font-bold text-base hover:opacity-95 active:scale-[0.98] transition-all shadow-[0_4px_15px_rgba(10,132,255,0.3)] mt-2"
           >
             {mode === 'create' ? 'Create Account' : 'Sign In'}
           </button>
@@ -156,11 +173,11 @@ export default function Login() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="mt-5 bg-amber-500/15 border border-amber-500/30 rounded-2xl p-4 flex gap-3"
+            className="mt-5 bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex gap-3"
           >
-            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-            <p className="text-amber-200/80 text-xs leading-relaxed">
-              <span className="font-semibold text-amber-300">Offline only.</span>{' '}
+            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-amber-200/60 text-xs leading-relaxed">
+              <span className="font-semibold text-amber-500">Offline only.</span>{' '}
               Your credentials and all attendance data are stored locally on this device.
               There is no recovery option — forgetting your password will permanently erase all data.
               Keep your credentials safe.

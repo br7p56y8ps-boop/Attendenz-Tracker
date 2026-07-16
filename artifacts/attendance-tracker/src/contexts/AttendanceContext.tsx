@@ -7,6 +7,8 @@ interface AttendanceContextType {
   subjects: Record<string, AttendanceData>;
   wards: Record<string, AttendanceData>;
   homeSelections: Record<string, SelectionType>;
+  preferredPercentage: number;
+  setPreferredPercentage: (p: number) => void;
   updateSubject: (subject: string, attended: number, missed: number) => void;
   updateWard: (ward: string, attended: number, missed: number) => void;
   updateHomeSelection: (homeKey: string, subject: string, selection: SelectionType, isWard: boolean) => void;
@@ -18,11 +20,13 @@ const AttendanceContext = createContext<AttendanceContextType | undefined>(undef
 const SUBJECTS_KEY = 'attendance_tracker_subjects';
 const WARD_KEY = 'attendance_tracker_ward';
 const HOME_SELECTIONS_KEY = 'attendance_tracker_home_selections';
+const PREFERRED_PERCENTAGE_KEY = 'attendance_tracker_preferred_percentage';
 
 export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
   const [subjects, setSubjects] = useState<Record<string, AttendanceData>>({});
   const [wards, setWards] = useState<Record<string, AttendanceData>>({});
   const [homeSelections, setHomeSelections] = useState<Record<string, SelectionType>>({});
+  const [preferredPercentage, setPreferredPercentage] = useState<number>(75);
 
   useEffect(() => {
     try {
@@ -32,6 +36,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       const w = localStorage.getItem(WARD_KEY);
       if (w) setWards(JSON.parse(w));
       
+      const p = localStorage.getItem(PREFERRED_PERCENTAGE_KEY);
+      if (p) setPreferredPercentage(JSON.parse(p));
+
       const h = localStorage.getItem(HOME_SELECTIONS_KEY);
       if (h) {
         const raw: Record<string, string> = JSON.parse(h);
@@ -51,6 +58,11 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       console.error('Failed to load attendance data', e);
     }
   }, []);
+
+  const savePreferredPercentage = (p: number) => {
+    setPreferredPercentage(p);
+    localStorage.setItem(PREFERRED_PERCENTAGE_KEY, JSON.stringify(p));
+  };
 
   const saveSubjects = (data: Record<string, AttendanceData>) => {
     setSubjects(data);
@@ -124,7 +136,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AttendanceContext.Provider value={{ subjects, wards, homeSelections, updateSubject, updateWard, updateHomeSelection, resetAllData }}>
+    <AttendanceContext.Provider value={{ subjects, wards, homeSelections, preferredPercentage, setPreferredPercentage: savePreferredPercentage, updateSubject, updateWard, updateHomeSelection, resetAllData }}>
       {children}
     </AttendanceContext.Provider>
   );

@@ -1,87 +1,60 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
-import { Home, BookOpen, PlusCircle, CalendarDays, UserCircle } from 'lucide-react';
+import { Heart, Stethoscope, Syringe, Calendar, Hospital } from 'lucide-react';
 import { motion, useScroll } from 'framer-motion';
 
 const NAV_ITEMS = [
-  { path: '/',          label: 'Home',     Icon: Home },
-  { path: '/subjects',  label: 'Subjects', Icon: BookOpen },
-  { path: '/add-new',   label: 'Add New',  Icon: PlusCircle },
-  { path: '/calendar',  label: 'Calendar', Icon: CalendarDays },
-  { path: '/account',   label: 'Account',  Icon: UserCircle },
+  { path: '/',          label: 'Home',     Icon: Heart },
+  { path: '/subjects',  label: 'Subjects', Icon: Stethoscope },
+  { path: '/add-new',   label: 'Add New',  Icon: Syringe },
+  { path: '/calendar',  label: 'Calendar', Icon: Calendar },
+  { path: '/account',   label: 'Account',  Icon: Hospital },
 ] as const;
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   const [location, setLocation] = useLocation();
   const { scrollY } = useScroll();
-  const [isScrolled, setIsScrolled] = useState(false);
+  const [visible, setVisible] = useState(true);
+  const lastScrollY = useRef(0);
 
   useEffect(() => {
     return scrollY.onChange((latest) => {
-      setIsScrolled(latest > 20);
+      const diff = latest - lastScrollY.current;
+      if (latest < 40) {
+        setVisible(true);
+      } else if (diff > 8) {
+        setVisible(false); // scrolling down
+      } else if (diff < -8) {
+        setVisible(true); // scrolling up
+      }
+      lastScrollY.current = latest;
     });
   }, [scrollY]);
 
+  const currentItem = NAV_ITEMS.find((item) => item.path === location);
+  const activeTabLabel = currentItem ? currentItem.label : 'Home';
+
   return (
-    <div className="min-h-[100dvh] pb-24 md:pb-8 pt-safe bg-background flex flex-col">
-      {/* Header */}
-      <motion.div
-        className={cn(
-          "sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b transition-all duration-300",
-          isScrolled ? "border-border shadow-sm py-3" : "border-transparent py-6"
-        )}
-      >
-        <div className="max-w-3xl mx-auto px-4 w-full flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <motion.div layout className="flex flex-col">
-            <motion.h1
-              layout
-              className={cn(
-                "font-bold tracking-tight text-foreground transition-all duration-300 origin-left",
-                isScrolled ? "text-xl" : "text-3xl"
-              )}
-            >
-              Attendance Tracker
-            </motion.h1>
-            {!isScrolled && (
-              <motion.span
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="text-muted-foreground text-sm italic mt-1"
-              >
-                By – benzavraar
-              </motion.span>
-            )}
-          </motion.div>
-
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex bg-muted/50 p-1 rounded-xl gap-0.5">
-            {NAV_ITEMS.map(({ path, label }) => (
-              <button
-                key={path}
-                onClick={() => setLocation(path)}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
-                  location === path
-                    ? "bg-card shadow-sm text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </motion.div>
-
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 pt-6">
+    <div className="min-h-[100dvh] pb-32 pt-safe bg-background flex flex-col text-foreground transition-all duration-300">
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4 pt-8 md:pt-12">
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground mb-6 md:mb-8">
+          {activeTabLabel}
+        </h1>
         {children}
       </main>
 
-      {/* Mobile Bottom Tab Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-background/90 backdrop-blur-xl border-t border-border pb-safe z-50">
-        <div className="flex justify-around items-center h-16">
+      {/* Floating Glass Bottom Tab Bar */}
+      <motion.div
+        animate={{ y: visible ? 0 : 120, opacity: visible ? 1 : 0 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+        className={cn(
+          "fixed bottom-6 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:right-auto md:w-full md:max-w-md",
+          "bg-card/45 backdrop-blur-2xl border border-white/10 rounded-[28px] py-2 px-3 shadow-[0_12px_40px_rgba(0,0,0,0.5)] z-40",
+          "transition-all duration-300"
+        )}
+      >
+        <div className="flex justify-around items-center h-14">
           {NAV_ITEMS.map(({ path, label, Icon }) => {
             const active = location === path;
             return (
@@ -89,24 +62,19 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                 key={path}
                 onClick={() => setLocation(path)}
                 className={cn(
-                  "flex flex-col items-center justify-center flex-1 h-full space-y-0.5 transition-colors relative",
-                  active ? "text-primary" : "text-muted-foreground"
+                  "flex flex-col items-center justify-center flex-1 h-full space-y-1 transition-all duration-300 relative rounded-2xl active:scale-90",
+                  active ? "text-primary filter drop-shadow-[0_0_8px_rgba(10,132,255,0.4)]" : "text-muted-foreground/60 hover:text-foreground"
                 )}
               >
-                {active && (
-                  <motion.div
-                    layoutId="tab-indicator"
-                    className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full"
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  />
-                )}
-                <Icon className="w-5 h-5" strokeWidth={active ? 2.5 : 2} />
-                <span className="text-[9px] font-semibold tracking-wide">{label}</span>
+                <Icon className={cn("w-6 h-6 transition-transform duration-300", active ? "scale-110" : "scale-100")} strokeWidth={active ? 2.5 : 2} />
+                <span className={cn("text-[10px] font-medium tracking-wide transition-all duration-300", active ? "font-bold text-primary" : "text-muted-foreground/60")}>
+                  {label}
+                </span>
               </button>
             );
           })}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

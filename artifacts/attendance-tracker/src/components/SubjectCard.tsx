@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { cn } from '@/lib/utils';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface SubjectCardProps {
   subject: string;
@@ -21,6 +22,22 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
   const [localAttended, setLocalAttended] = useState(data.attended.toString());
   const [localMissed, setLocalMissed] = useState(data.missed.toString());
 
+  // Persist expansion state during the current session using sessionStorage
+  const expansionKey = `sub_expanded_${key}`;
+  const [isExpanded, setIsExpanded] = useState(() => {
+    return sessionStorage.getItem(expansionKey) === 'true';
+  });
+
+  const toggleExpand = (e: React.MouseEvent) => {
+    // Prevent toggling if user clicks inside inputs or buttons
+    if ((e.target as HTMLElement).closest('input') || (e.target as HTMLElement).closest('button')) {
+      return;
+    }
+    const newVal = !isExpanded;
+    setIsExpanded(newVal);
+    sessionStorage.setItem(expansionKey, String(newVal));
+  };
+
   useEffect(() => {
     setLocalAttended(data.attended.toString());
     setLocalMissed(data.missed.toString());
@@ -34,8 +51,8 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
   const percentage = totalConducted === 0 ? 100 : (attendedNum / totalConducted) * 100;
   const remaining = Math.max(0, totalPlanned - attendedNum - missedNum);
   
-  const neededToReach75 = Math.max(0, Math.ceil((0.75 * totalConducted - attendedNum) / 0.25));
-  const canStillMiss = Math.max(0, Math.floor((attendedNum - 0.75 * totalConducted) / 0.75));
+  const neededToReach75 = Math.max(0, 3 * missedNum - attendedNum);
+  const canStillMiss = Math.max(0, Math.floor((attendedNum - 3 * missedNum) / 3));
 
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
@@ -60,20 +77,30 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
     return 'text-destructive';
   };
 
-  const content = (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-between items-start gap-4">
-        <div>
-          <h4 className="font-semibold text-foreground text-base leading-tight">{subject}</h4>
-          <p className="text-muted-foreground text-xs mt-0.5">Total Planned: {totalPlanned}</p>
+  const headerContent = (
+    <div className="flex justify-between items-start gap-4">
+      <div className="min-w-0 flex-1">
+        <h4 className="font-semibold text-foreground text-base leading-tight truncate">{subject}</h4>
+        <p className="text-muted-foreground text-xs mt-1">
+          {isWard ? 'Clinical Rotation' : 'Lecture'} · Planned: {totalPlanned}
+        </p>
+        <p className="text-muted-foreground text-[11px] mt-0.5">
+          Attended: <span className="text-foreground font-semibold">{attendedNum}</span> · Missed: <span className="text-foreground font-semibold">{missedNum}</span>
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <div className={cn("text-lg font-bold", getPercentageColor(percentage))}>
+          {totalConducted === 0 ? '--' : `${percentage.toFixed(0)}%`}
         </div>
-        <div className="text-right shrink-0">
-          <div className={cn("text-lg font-bold", getPercentageColor(percentage))}>
-            {totalConducted === 0 ? '--' : `${percentage.toFixed(0)}%`}
-          </div>
+        <div className="text-muted-foreground hover:text-foreground p-0.5">
+          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </div>
       </div>
+    </div>
+  );
 
+  const expandedContent = (
+    <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Classes Attended</label>
@@ -99,11 +126,11 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
 
       {isError && (
         <p className="text-destructive text-sm font-medium bg-destructive/10 px-3 py-2 rounded-lg">
-          Total exceeds planned lectures
+          {isWard ? 'Total exceeds planned rotations' : 'Total exceeds planned classes'}
         </p>
       )}
 
-      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/50">
+      <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border/30">
         <div className="flex flex-col">
           <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Remaining</span>
           <span className="text-sm font-semibold">{remaining}</span>
@@ -120,13 +147,20 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
     </div>
   );
 
+  const innerContent = (
+    <div className="flex flex-col cursor-pointer select-none" onClick={toggleExpand}>
+      {headerContent}
+      {isExpanded && expandedContent}
+    </div>
+  );
+
   if (isNested) {
-    return <div className="px-5 py-4">{content}</div>;
+    return <div className="px-5 py-4 hover:bg-muted/10 transition-colors">{innerContent}</div>;
   }
 
   return (
-    <div className="bg-card rounded-2xl p-5 shadow-sm border border-border">
-      {content}
+    <div className="bg-card rounded-2xl p-5 shadow-sm border border-border hover:border-white/10 transition-all">
+      {innerContent}
     </div>
   );
 };
