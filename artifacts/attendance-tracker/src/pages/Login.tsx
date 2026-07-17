@@ -50,7 +50,7 @@ export default function Login() {
         transition={{ duration: 0.5 }}
         className="text-center mb-8 flex flex-col items-center"
       >
-        <img src={`${import.meta.env.BASE_URL || '/'}attendenz_icon.jpg`} alt="Attendenz Icon" className="w-24 h-24 rounded-[28px] object-cover mb-4 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.8)] filter drop-shadow-[0_4px_12px_rgba(10,132,255,0.25)]" />
+        <img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Icon" className="w-24 h-24 rounded-[28px] object-cover mb-4 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.8)] filter drop-shadow-[0_4px_12px_rgba(10,132,255,0.25)]" />
         
         <div className="relative inline-flex flex-col items-center pb-2.5 select-none">
           <span className="font-extrabold tracking-[-0.03em] flex items-center text-4xl sm:text-5xl">

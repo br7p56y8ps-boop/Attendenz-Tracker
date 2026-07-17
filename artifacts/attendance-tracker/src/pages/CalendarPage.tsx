@@ -17,6 +17,18 @@ const DAYS_ORDER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function pad2(n: number) { return String(n).padStart(2, '0'); }
 function toDateStr(y: number, m: number, d: number) { return `${y}-${pad2(m+1)}-${pad2(d)}`; }
 
+function parseTimeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+  if (!match) return 0;
+  let hours = parseInt(match[1]);
+  const minutes = parseInt(match[2]);
+  const period = match[3]?.toUpperCase();
+  if (period === 'PM' && hours < 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+}
+
 function parseSelectionKey(key: string): { date: string; label: string } | null {
   const date = key.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
@@ -165,35 +177,54 @@ export default function CalendarPage() {
     return list;
   };
 
+  const shortenSubject = (name: string) => {
+    const map: Record<string, string> = {
+      'Surgery': 'Surg.',
+      'Obstetrics & Gynaecology': 'Obs & Gyn.',
+      'Pediatrics': 'Peds.',
+      'Orthopedics': 'Ortho.',
+      'Ophthalmology': 'Ophtha.',
+      'Otolaryngology': 'ENT',
+      'Dermatology': 'Derm.',
+      'Psychiatry': 'Psych.',
+      'Physical Medicine': 'PMR',
+      'Radiology': 'Radio.',
+      'Radiotherapy': 'RadioT.',
+      'Nuclear Medicine': 'Nuc Med.',
+      'Neurosurgery': 'NeuroS.',
+      'Pediatric Surgery': 'Peds Surg.',
+      'Burn & Plastic Surgery': 'Plastic S.',
+      'Internal Medicine': 'Medicine',
+      'Phase Integrated Teaching': 'Phase Integrated',
+      'Departmental Integrated Teaching': 'Dept. Integrated'
+    };
+    return map[name] || name;
+  };
+
   // ── 8.1 Weekly Timetable Display Data ──────────────────────────────────────
+  const PRESET_COLUMNS = ['07:00–08:00', '08:30–09:30', '11:30–12:00', '12:00–01:00', '01:00–02:00'];
+
   const uniqueTimes = useMemo(() => {
+    if (subjectMode === 'preloaded') return PRESET_COLUMNS;
+
     const timesSet = new Set<string>();
-    if (subjectMode === 'preloaded') {
-      Object.values(presetTimetable).forEach(slots => {
-        slots.forEach(slot => {
-          if (slot.type !== 'ward' && slot.type !== 'ward_replacement') {
-            timesSet.add(slot.time);
-          }
+    customSubjects.forEach(s => {
+      if (s.schedules && s.schedules.length > 0) {
+        s.schedules.forEach(sch => {
+          if (sch.time && sch.time.trim()) timesSet.add(sch.time.trim());
         });
-      });
-    } else {
-      customSubjects.forEach(s => {
-        if (s.schedules && s.schedules.length > 0) {
-          s.schedules.forEach(sch => {
-            if (sch.time && sch.time.trim()) timesSet.add(sch.time.trim());
-          });
-        } else if (s.days && s.time) {
-          if (s.time.trim()) timesSet.add(s.time.trim());
-        }
-      });
-    }
-    return Array.from(timesSet).sort();
-  }, [subjectMode, customSubjects, presetTimetable]);
+      } else if (s.days && s.time) {
+        if (s.time.trim()) timesSet.add(s.time.trim());
+      }
+    });
+    return Array.from(timesSet).sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
+  }, [subjectMode, customSubjects]);
 
   const timetableGrid = useMemo(() => {
     const grid: Record<string, Record<string, string[]>> = {};
     DAYS_ORDER.forEach(day => {
       grid[day] = {};
+      uniqueTimes.forEach(t => grid[day][t] = []);
     });
 
     if (subjectMode === 'preloaded') {
@@ -201,8 +232,20 @@ export default function CalendarPage() {
         const slots = presetTimetable[dayIdx] || [];
         slots.forEach(slot => {
           if (slot.type !== 'ward' && slot.type !== 'ward_replacement') {
-            if (!grid[day][slot.time]) grid[day][slot.time] = [];
-            grid[day][slot.time].push(...slot.subjects);
+            const time = slot.time.trim();
+            // Map preset times to the forced columns
+            if (time === '07:00–08:00') grid[day]['07:00–08:00'].push(...slot.subjects);
+            else if (time === '08:30–09:30') grid[day]['08:30–09:30'].push(...slot.subjects);
+            else if (time === '11:30 AM–2:30 PM') {
+              grid[day]['11:30–12:00'].push(...slot.subjects);
+              grid[day]['12:00–01:00'].push(...slot.subjects);
+              grid[day]['01:00–02:00'].push(...slot.subjects);
+            }
+            else if (time === '12:00–01:00') grid[day]['12:00–01:00'].push(...slot.subjects);
+            else if (time === '12:00–02:00') {
+              grid[day]['12:00–01:00'].push(...slot.subjects);
+              grid[day]['01:00–02:00'].push(...slot.subjects);
+            }
           }
         });
       });
@@ -211,15 +254,13 @@ export default function CalendarPage() {
         if (s.schedules && s.schedules.length > 0) {
           s.schedules.forEach(sch => {
             const t = sch.time.trim();
-            if (!grid[sch.day][t]) grid[sch.day][t] = [];
-            grid[sch.day][t].push(s.name);
+            if (grid[sch.day] && grid[sch.day][t]) grid[sch.day][t].push(s.name);
           });
         } else if (s.days) {
           const assigned = s.days.split(',').map(d => d.trim());
           const t = s.time ? s.time.trim() : 'Time not set';
           assigned.forEach(day => {
-            if (grid[day]) {
-              if (!grid[day][t]) grid[day][t] = [];
+            if (grid[day] && grid[day][t]) {
               grid[day][t].push(s.name);
             }
           });
@@ -227,7 +268,41 @@ export default function CalendarPage() {
       });
     }
     return grid;
-  }, [subjectMode, customSubjects, presetTimetable]);
+  }, [subjectMode, customSubjects, presetTimetable, uniqueTimes]);
+
+  const timetableWithSpans = useMemo(() => {
+    const processed: Record<string, Array<{ time: string; subjects: string[]; span: number; skip: boolean }>> = {};
+    
+    DAYS_ORDER.forEach(day => {
+      processed[day] = [];
+      const skipSet = new Set<number>();
+
+      uniqueTimes.forEach((time, timeIdx) => {
+        if (skipSet.has(timeIdx)) {
+          processed[day].push({ time, subjects: [], span: 0, skip: true });
+          return;
+        }
+
+        const currentSubs = timetableGrid[day][time] || [];
+        let span = 1;
+        
+        if (currentSubs.length > 0) {
+          for (let i = timeIdx + 1; i < uniqueTimes.length; i++) {
+            const nextSubs = timetableGrid[day][uniqueTimes[i]] || [];
+            if (currentSubs.length === nextSubs.length && currentSubs.every((s, idx) => s === nextSubs[idx])) {
+              span++;
+              skipSet.add(i);
+            } else {
+              break;
+            }
+          }
+        }
+        
+        processed[day].push({ time, subjects: currentSubs, span, skip: false });
+      });
+    });
+    return processed;
+  }, [timetableGrid, uniqueTimes]);
 
   const wardRotationsList = useMemo(() => {
     if (subjectMode === 'preloaded') {
@@ -341,56 +416,68 @@ export default function CalendarPage() {
               </div>
 
               {/* Dynamic Day vs Time Table */}
-              <div className="overflow-x-auto border border-border rounded-2xl bg-card shadow-sm">
-                <table className="w-full text-left border-collapse text-xs md:text-sm">
-                  <thead>
-                    <tr className="bg-muted/50 border-b border-border">
-                      <th className="p-1.5 md:p-2 px-2 font-bold text-[10px] md:text-xs uppercase tracking-wider text-muted-foreground border-r border-border min-w-[55px] md:min-w-[80px]">Day</th>
-                      {uniqueTimes.length === 0 ? (
-                        <th className="p-1.5 md:p-2 px-2 font-bold text-[10px] md:text-xs uppercase tracking-wider text-muted-foreground">Schedule</th>
-                      ) : (
-                        uniqueTimes.map(t => (
-                          <th key={t} className="p-1.5 md:p-2 font-bold text-[10px] md:text-xs uppercase tracking-wider text-muted-foreground min-w-[85px] md:min-w-[110px] text-center border-r border-border/40 last:border-0">{t}</th>
-                        ))
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {DAYS_ORDER.map((day, idx) => {
-                      const isToday = today.getDay() === idx;
-                      return (
-                        <tr key={day} className={cn(isToday ? "bg-primary/5" : "hover:bg-muted/20")}>
-                          <td className="p-1.5 md:p-2 px-2 font-bold text-foreground border-r border-border flex items-center gap-1">
-                            <span className="text-[11px] md:text-xs">{day}</span>
-                            {isToday && <span className="w-1 md:w-1.5 h-1 md:h-1.5 rounded-full bg-primary animate-pulse" />}
-                          </td>
-                          {uniqueTimes.length === 0 ? (
-                            <td className="p-1.5 md:p-2 text-muted-foreground text-[10px] md:text-xs italic">No lectures scheduled</td>
-                          ) : (
-                            uniqueTimes.map(t => {
-                              const subs = timetableGrid[day][t] || [];
-                              return (
-                                <td key={t} className="p-1 md:p-1.5 text-center border-r border-border/40 last:border-0">
-                                  {subs.length === 0 ? (
-                                    <span className="text-muted-foreground/30 text-[10px] md:text-xs">—</span>
-                                  ) : (
-                                    <div className="flex flex-col gap-0.5 items-center justify-center">
-                                      {subs.map((s, sIdx) => (
-                                        <span key={sIdx} className="bg-primary/10 text-primary px-1 md:px-1.5 py-0.5 rounded text-[10px] md:text-xs font-semibold block text-center max-w-[75px] md:max-w-[100px] truncate" title={s}>
-                                          {s}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </td>
-                              );
-                            })
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="border border-border rounded-2xl bg-card shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse table-fixed">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border">
+                        <th className="p-1 px-1.5 font-bold text-[9px] uppercase tracking-wider text-muted-foreground border-r border-border w-[45px]">Day</th>
+                        {uniqueTimes.length === 0 ? (
+                          <th className="p-1 px-1.5 font-bold text-[9px] uppercase tracking-wider text-muted-foreground">Schedule</th>
+                        ) : (
+                          uniqueTimes.map(t => (
+                            <th key={t} className="p-1 font-bold text-[9px] uppercase tracking-wider text-muted-foreground text-center border-r border-border/40 last:border-0">{t}</th>
+                          ))
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {DAYS_ORDER.map((day, idx) => {
+                        const isToday = today.getDay() === idx;
+                        const rowData = timetableWithSpans[day];
+                        return (
+                          <tr key={day} className={cn(isToday ? "bg-primary/5" : "hover:bg-muted/20")}>
+                            <td className="p-1 px-1.5 font-bold text-foreground border-r border-border h-10">
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px]">{day}</span>
+                                {isToday && <span className="w-1 h-1 rounded-full bg-primary animate-pulse" />}
+                              </div>
+                            </td>
+                            {uniqueTimes.length === 0 ? (
+                              <td className="p-1 text-muted-foreground text-[9px] italic">No lectures</td>
+                            ) : (
+                              rowData.map((cell, cIdx) => {
+                                if (cell.skip) return null;
+                                return (
+                                  <td 
+                                    key={cIdx} 
+                                    colSpan={cell.span}
+                                    className="p-0.5 text-center border-r border-border/40 last:border-0"
+                                  >
+                                    {cell.subjects.length === 0 ? (
+                                      <span className="text-muted-foreground/10 text-[8px]">—</span>
+                                    ) : (
+                                      <div className="flex items-center justify-center min-h-[30px] w-full px-0.5">
+                                        <p 
+                                          className={cn(
+                                            "text-muted-foreground/80 font-medium leading-tight line-clamp-2 break-words",
+                                            cell.subjects.length > 1 ? "text-[8px]" : "text-[9px]"
+                                          )}
+                                        >
+                                          {cell.subjects.map(s => shortenSubject(s)).join(' / ')}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </td>
+                                );
+                              })
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {/* Separately rendered Ward / Hospital/Clinical Rotations list */}

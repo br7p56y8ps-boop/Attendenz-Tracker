@@ -48,6 +48,8 @@ interface CustomDataContextType {
   startFresh: () => void;
   /** Dynamically switch the active routine mode */
   changeSubjectMode: (mode: SubjectMode) => void;
+  /** Clears all data associated with a specific routine mode. */
+  clearRoutineData: (mode: SubjectMode) => void;
 
   // Preset Overrides
   presetTimetable: typeof TIMETABLE;
@@ -151,6 +153,24 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const changeSubjectMode = (mode: SubjectMode) => {
     localStorage.setItem(SUBJECT_MODE_KEY, mode);
     setSubjectMode(mode);
+  };
+
+  const clearRoutineData = (modeToClear: SubjectMode) => {
+    if (modeToClear === 'preloaded') {
+      // Clear preset overrides
+      localStorage.removeItem('att_preset_timetable');
+      localStorage.removeItem('att_preset_ward_schedule');
+      localStorage.removeItem('att_preset_subject_totals');
+      setPresetTimetable(TIMETABLE);
+      setPresetWardSchedule(WARD_SCHEDULE.map(ws => ({ ...ws, morningTime: '09:30–11:30', eveningTime: '07:00–09:00 PM' })));
+      setPresetSubjectTotals({});
+    } else {
+      // Clear custom mode data
+      localStorage.removeItem(CUSTOM_SUBJECTS_KEY);
+      localStorage.removeItem(CUSTOM_WARDS_KEY);
+      setCustomSubjects([]);
+      setCustomWards([]);
+    }
   };
 
   const getSubjectPlannedTotal = (subjectName: string): number => {
@@ -263,6 +283,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       getCurrentCustomWard,
       completeSetup, startFresh,
       changeSubjectMode,
+      clearRoutineData,
 
       // Presets
       presetTimetable,

@@ -42,7 +42,7 @@ export default function SetupScreen() {
       >
         {/* Header */}
         <div className="text-center mb-8 flex flex-col items-center">
-          <img src={`${import.meta.env.BASE_URL || '/'}attendenz_icon.jpg`} alt="Attendenz Icon" className="w-20 h-20 rounded-[24px] object-cover mb-4 border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.8)] filter drop-shadow-[0_4px_8px_rgba(10,132,255,0.2)]" />
+          <img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Icon" className="w-20 h-20 rounded-[24px] object-cover mb-4 border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.8)] filter drop-shadow-[0_4px_8px_rgba(10,132,255,0.2)]" />
           <h1 className="text-2xl font-bold text-white">
             {isNewAccount ? `Welcome, ${username}!` : 'New Feature Available'}
           </h1>

@@ -58,8 +58,8 @@ export default function AddNew() {
   const [sName, setSName] = useState('');
   const [sPlanned, setSPlanned] = useState('');
   const [sAttended, setSAttended] = useState('');
-  const [singleDays, setSingleDays] = useState<Array<{ day: string; time: string }>>([
-    { day: 'Sun', time: '' }
+  const [singleDays, setSingleDays] = useState<Array<{ day: string; startTime: string; endTime: string }>>([
+    { day: 'Sun', startTime: '', endTime: '' }
   ]);
 
   const addSingleDayRow = () => {
@@ -67,7 +67,7 @@ export default function AddNew() {
     const usedDays = singleDays.map(r => r.day);
     const remainingDays = DAYS.filter(d => !usedDays.includes(d));
     if (remainingDays.length > 0) {
-      setSingleDays([...singleDays, { day: remainingDays[0], time: '' }]);
+      setSingleDays([...singleDays, { day: remainingDays[0], startTime: '', endTime: '' }]);
     }
   };
 
@@ -75,10 +75,13 @@ export default function AddNew() {
     e.preventDefault();
     if (!sName.trim() || !sPlanned) return;
 
-    const finalSchedules = singleDays.map(d => ({
-      day: d.day,
-      time: d.time.trim() || 'Time not set'
-    }));
+    const finalSchedules = singleDays.map(d => {
+      const timeStr = (d.startTime && d.endTime) ? `${d.startTime}–${d.endTime}` : (d.startTime || d.endTime || 'Time not set');
+      return {
+        day: d.day,
+        time: timeStr
+      };
+    });
 
     const finalDays = finalSchedules.map(s => s.day).join(', ');
     const finalTime = finalSchedules.map(s => `${s.day}: ${s.time}`).join('; ');
@@ -100,7 +103,7 @@ export default function AddNew() {
     setSName('');
     setSPlanned('');
     setSAttended('');
-    setSingleDays([{ day: 'Sun', time: '' }]);
+    setSingleDays([{ day: 'Sun', startTime: '', endTime: '' }]);
     showSuccess(`"${sName.trim()}" saved successfully ✓`);
   };
 
@@ -120,8 +123,8 @@ export default function AddNew() {
   const [cName, setCName] = useState('');
   const [cPlanned, setCPlanned] = useState('');
   const [cAttended, setCAttended] = useState('');
-  const [childDays, setChildDays] = useState<Array<{ day: string; time: string }>>([
-    { day: 'Sun', time: '' }
+  const [childDays, setChildDays] = useState<Array<{ day: string; startTime: string; endTime: string }>>([
+    { day: 'Sun', startTime: '', endTime: '' }
   ]);
 
   const addChildDayRow = () => {
@@ -129,7 +132,7 @@ export default function AddNew() {
     const usedDays = childDays.map(r => r.day);
     const remainingDays = DAYS.filter(d => !usedDays.includes(d));
     if (remainingDays.length > 0) {
-      setChildDays([...childDays, { day: remainingDays[0], time: '' }]);
+      setChildDays([...childDays, { day: remainingDays[0], startTime: '', endTime: '' }]);
     }
   };
 
@@ -141,10 +144,13 @@ export default function AddNew() {
       name: cName.trim(),
       planned: parseInt(cPlanned) || 0,
       attended: parseInt(cAttended) || 0,
-      days: childDays.map(d => ({
-        day: d.day,
-        time: d.time.trim() || 'Time not set'
-      }))
+      days: childDays.map(d => {
+        const timeStr = (d.startTime && d.endTime) ? `${d.startTime}–${d.endTime}` : (d.startTime || d.endTime || 'Time not set');
+        return {
+          day: d.day,
+          time: timeStr
+        };
+      })
     };
 
     setSavedChildren([...savedChildren, newChild]);
@@ -153,7 +159,7 @@ export default function AddNew() {
     setCName('');
     setCPlanned('');
     setCAttended('');
-    setChildDays([{ day: 'Sun', time: '' }]);
+    setChildDays([{ day: 'Sun', startTime: '', endTime: '' }]);
     
     // Go to actions screen
     setAlliedStep('actions');
@@ -327,23 +333,38 @@ export default function AddNew() {
                               ))}
                             </select>
                           </div>
-                          <div className="relative flex items-center gap-2">
-                            <input
-                              type="text"
-                              placeholder="e.g. 08:30–09:30"
-                              value={row.time}
-                              onChange={e => {
-                                const updated = [...singleDays];
-                                updated[idx].time = e.target.value;
-                                setSingleDays(updated);
-                              }}
-                              className={inputClass}
-                            />
+                          <div className="flex items-center gap-2 flex-1">
+                            <div className="flex-1 flex flex-col gap-1">
+                              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start</label>
+                              <input
+                                type="time"
+                                value={row.startTime}
+                                onChange={e => {
+                                  const updated = [...singleDays];
+                                  updated[idx].startTime = e.target.value;
+                                  setSingleDays(updated);
+                                }}
+                                className={cn(inputClass, "py-2 px-3")}
+                              />
+                            </div>
+                            <div className="flex-1 flex flex-col gap-1">
+                              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">End</label>
+                              <input
+                                type="time"
+                                value={row.endTime}
+                                onChange={e => {
+                                  const updated = [...singleDays];
+                                  updated[idx].endTime = e.target.value;
+                                  setSingleDays(updated);
+                                }}
+                                className={cn(inputClass, "py-2 px-3")}
+                              />
+                            </div>
                             {singleDays.length > 1 && (
                               <button
                                 type="button"
                                 onClick={() => setSingleDays(singleDays.filter((_, i) => i !== idx))}
-                                className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0"
+                                className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0 mt-5"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -485,23 +506,38 @@ export default function AddNew() {
                                   ))}
                                 </select>
                               </div>
-                              <div className="relative flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  placeholder="e.g. 12:00–01:00"
-                                  value={row.time}
-                                  onChange={e => {
-                                    const updated = [...childDays];
-                                    updated[idx].time = e.target.value;
-                                    setChildDays(updated);
-                                  }}
-                                  className={inputClass}
-                                />
+                              <div className="flex items-center gap-2 flex-1">
+                                <div className="flex-1 flex flex-col gap-1">
+                                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start</label>
+                                  <input
+                                    type="time"
+                                    value={row.startTime}
+                                    onChange={e => {
+                                      const updated = [...childDays];
+                                      updated[idx].startTime = e.target.value;
+                                      setChildDays(updated);
+                                    }}
+                                    className={cn(inputClass, "py-2 px-3")}
+                                  />
+                                </div>
+                                <div className="flex-1 flex flex-col gap-1">
+                                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">End</label>
+                                  <input
+                                    type="time"
+                                    value={row.endTime}
+                                    onChange={e => {
+                                      const updated = [...childDays];
+                                      updated[idx].endTime = e.target.value;
+                                      setChildDays(updated);
+                                    }}
+                                    className={cn(inputClass, "py-2 px-3")}
+                                  />
+                                </div>
                                 {childDays.length > 1 && (
                                   <button
                                     type="button"
                                     onClick={() => setChildDays(childDays.filter((_, i) => i !== idx))}
-                                    className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0"
+                                    className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0 mt-5"
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
@@ -659,8 +695,8 @@ export default function AddNew() {
                   <div>
                     <label className={labelClass}>Morning Time</label>
                     <input
+                      type="time"
                       className={inputClass}
-                      placeholder="e.g. 09:30–11:30"
                       value={wMorning}
                       onChange={e => setWMorning(e.target.value)}
                       required
@@ -669,8 +705,8 @@ export default function AddNew() {
                   <div>
                     <label className={labelClass}>Evening Time</label>
                     <input
+                      type="time"
                       className={inputClass}
-                      placeholder="e.g. 07:00–09:00 PM"
                       value={wEvening}
                       onChange={e => setWEvening(e.target.value)}
                       required

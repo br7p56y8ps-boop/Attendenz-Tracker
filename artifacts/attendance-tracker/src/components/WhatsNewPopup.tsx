@@ -51,7 +51,7 @@ export const WhatsNewPopup = () => {
               </button>
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-5 h-5 rounded-md overflow-hidden border border-white/10">
-                  <img src="/attendenz_icon.jpg" className="w-full h-full object-cover" alt="" />
+                  <img src="/Logo.jpeg" className="w-full h-full object-cover" alt="" />
                 </div>
                 <span className="text-white/50 text-xs font-semibold uppercase tracking-widest">v{APP_VERSION}</span>
               </div>

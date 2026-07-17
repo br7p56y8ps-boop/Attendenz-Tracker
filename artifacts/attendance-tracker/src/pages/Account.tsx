@@ -2,16 +2,16 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
-import { useCustomData } from '@/contexts/CustomDataContext';
+import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, Upload, LogOut, User, RefreshCw, Info, Copy, Check } from 'lucide-react';
+import { Download, Upload, LogOut, User, RefreshCw, Info, Copy, Check, Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 
 export default function Account() {
-  const { username, logout } = useAuth();
-  const { subjects, wards, preferredPercentage, setPreferredPercentage } = useAttendance();
-  const { customSubjects, customWards, subjectMode, changeSubjectMode, setWhatsNewOpen, getCurrentPresetWard } = useCustomData();
+  const { username, logout, profileImage, updateProfileImage } = useAuth();
+  const { subjects, wards, preferredPercentage, setPreferredPercentage, clearModeAttendance } = useAttendance();
+  const { customSubjects, customWards, subjectMode, changeSubjectMode, clearRoutineData, setWhatsNewOpen, getCurrentPresetWard } = useCustomData();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [restoreMsg, setRestoreMsg] = useState('');
@@ -19,6 +19,146 @@ export default function Account() {
   const [copied, setCopied] = useState(false);
   const [storageSize, setStorageSize] = useState('0.00 KB');
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [showSwitchDialog, setShowSwitchDialog] = useState(false);
+  const [switchStep, setSwitchStep] = useState<'warning' | 'final' | 'backup_found'>('warning');
+  const [pendingMode, setPendingMode] = useState<SubjectMode | null>(null);
+  
+  // Randomized Subject Rotation State
+  const [displayIndices, setDisplayIndices] = useState([0, 1, 2, 3]);
+
+  // ── Mode Switch Logic ────────────────────────────────────────────────────
+  const getSnapshotKey = (mode: SubjectMode) => `att_snapshot_${mode}`;
+
+  const initiateSwitch = (newMode: SubjectMode) => {
+    setPendingMode(newMode);
+    
+    // Check if an internal backup exists for the destination mode
+    const snapshot = localStorage.getItem(getSnapshotKey(newMode));
+    if (snapshot) {
+      setSwitchStep('backup_found');
+    } else {
+      setSwitchStep('warning');
+    }
+    setShowSwitchDialog(true);
+  };
+
+  const handleBackupAndContinue = () => {
+    // Create internal snapshot for current mode before leaving
+    saveInternalSnapshot();
+    handleBackup(); // Also trigger manual export
+    setSwitchStep('final');
+  };
+
+  const saveInternalSnapshot = () => {
+    const data: Record<string, any> = {};
+    const keysToSave = [
+      'attendance_tracker_subjects',
+      'attendance_tracker_ward',
+      'attendance_tracker_home_selections',
+      'att_preset_timetable',
+      'att_preset_ward_schedule',
+      'att_preset_subject_totals',
+      'att_custom_subjects',
+      'att_custom_wards'
+    ];
+    keysToSave.forEach(k => {
+      const val = localStorage.getItem(k);
+      if (val) data[k] = val;
+    });
+    localStorage.setItem(getSnapshotKey(subjectMode), JSON.stringify(data));
+  };
+
+  const handleRestoreFromSnapshot = () => {
+    if (!pendingMode) return;
+    const snapshotRaw = localStorage.getItem(getSnapshotKey(pendingMode));
+    if (snapshotRaw) {
+      const data = JSON.parse(snapshotRaw);
+      Object.entries(data).forEach(([k, v]) => {
+        localStorage.setItem(k, v as string);
+      });
+    }
+    
+    // Switch mode
+    changeSubjectMode(pendingMode);
+    setShowSwitchDialog(false);
+    setPendingMode(null);
+    import('sonner').then(({ toast }) => toast.success(`Restored ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine backup.`));
+    setTimeout(() => window.location.reload(), 500);
+  };
+
+  const executeSwitch = () => {
+    if (!pendingMode) return;
+    
+    // Clear data for mode we are LEAVING
+    clearModeAttendance(subjectMode);
+    clearRoutineData(subjectMode);
+
+    // Change to NEW mode
+    changeSubjectMode(pendingMode);
+
+    // UI Cleanup
+    setShowSwitchDialog(false);
+    setPendingMode(null);
+    import('sonner').then(({ toast }) => toast.success(`Switched to fresh ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine.`));
+  };
+
+  // ── Analytics Data Collection ───────────────────────────────────────────
+  const allAvailableSubjects = React.useMemo(() => {
+    const list: { name: string; pct: number }[] = [];
+    
+    const getPct = (name: string, isWard: boolean = false) => {
+      const key = isWard ? `ward-${name}` : name;
+      const d = (isWard ? wards[key] : subjects[key]) || { attended: 0, missed: 0 };
+      const total = d.attended + d.missed;
+      return total === 0 ? 100 : (d.attended / total) * 100;
+    };
+
+    if (subjectMode === 'preloaded') {
+      CATEGORIES.forEach(c => {
+        c.subjects.forEach(s => {
+          list.push({ name: s.name, pct: getPct(s.name) });
+        });
+      });
+      INTEGRATED_SUBJECTS.forEach(s => {
+        list.push({ name: s.name, pct: getPct(s.name) });
+      });
+      WARD_SUBJECTS.forEach(w => {
+        list.push({ name: w.name, pct: getPct(w.name, true) });
+      });
+    } else {
+      customSubjects.forEach(s => {
+        list.push({ name: s.name, pct: getPct(s.name) });
+      });
+      customWards.forEach(w => {
+        list.push({ name: w.name, pct: getPct(w.name, true) });
+      });
+    }
+    return list;
+  }, [subjects, wards, customSubjects, customWards, subjectMode]);
+
+  // Rotation timers for 4 independent rows
+  useEffect(() => {
+    if (allAvailableSubjects.length === 0) return;
+
+    const timers = [0, 1, 2, 3].map(rowIdx => {
+      const interval = 6000 + Math.random() * 1000; // 6-7s
+      return setInterval(() => {
+        setDisplayIndices(prev => {
+          const next = [...prev];
+          // Simple rotation: next subject in list, skipping those already visible
+          let nextVal = (next[rowIdx] + 1) % allAvailableSubjects.length;
+          // Basic duplicate prevention for 4 rows
+          while (next.includes(nextVal) && allAvailableSubjects.length > 4) {
+            nextVal = (nextVal + 1) % allAvailableSubjects.length;
+          }
+          next[rowIdx] = nextVal;
+          return next;
+        });
+      }, interval);
+    });
+
+    return () => timers.forEach(t => clearInterval(t));
+  }, [allAvailableSubjects.length]);
 
   // Dynamic localStorage space used estimation
   useEffect(() => {
@@ -32,6 +172,48 @@ export default function Account() {
     }
     setStorageSize((totalBytes / 1024).toFixed(2) + ' KB');
   }, [subjects, wards, customSubjects, customWards, subjectMode]);
+
+  // ── Profile Image Logic ──────────────────────────────────────────────────
+  const detectGender = (name: string): 'male' | 'female' | 'neutral' => {
+    if (!name || name.length < 2) return 'neutral';
+    const n = name.toLowerCase().trim();
+    // Common female endings and names in medical context (South Asian/Global)
+    const femaleEndings = ['a', 'i', 'ee', 'ia', 'shree', 'mita', 'rina', 'lina', 'nita', 'jali', 'shikha', 'preeti', 'priya', 'sneha', 'swati'];
+    const femaleNames = ['mary', 'jane', 'sarah', 'fatima', 'aisha', 'zainab', 'ananya', 'ishani', 'diya', 'sana', 'nora', 'luna'];
+    
+    if (femaleNames.some(fn => n.includes(fn))) return 'female';
+    if (femaleEndings.some(fe => n.endsWith(fe))) return 'female';
+    
+    return 'male';
+  };
+
+  const getDefaultAvatar = () => {
+    const gender = detectGender(username);
+    if (gender === 'female') return '/female_student.jpg';
+    if (gender === 'male') return '/male_student.jpg';
+    return '/neutral_student.jpg';
+  };
+
+  const handleImageClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file size (limit to ~1MB for base64 safety)
+      if (file.size > 1024 * 1024) {
+        alert('Image too large. Please select an image under 1MB.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        updateProfileImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // ── Backup ───────────────────────────────────────────────────────────────
   const handleBackup = () => {
@@ -95,8 +277,37 @@ export default function Account() {
         
         {/* Profile Card */}
         <div className="flex items-center gap-4 bg-card border border-border rounded-3xl p-5 shadow-sm">
-          <div className="w-14 h-14 rounded-2xl bg-primary/15 flex items-center justify-center shrink-0">
-            <User className="w-7 h-7 text-primary" />
+          <div 
+            className="relative w-16 h-16 rounded-2xl group cursor-pointer active:scale-95 transition-transform"
+            onClick={handleImageClick}
+          >
+            <div className="w-full h-full rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden border border-primary/20 relative">
+              <AnimatePresence mode="wait">
+                <motion.img 
+                  key={profileImage || 'default'}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  src={profileImage || getDefaultAvatar()} 
+                  className="w-full h-full object-cover" 
+                  alt="Profile" 
+                />
+              </AnimatePresence>
+              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Camera className="w-6 h-6 text-white" />
+              </div>
+            </div>
+            {/* Edit Badge */}
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-lg border-2 border-card">
+              <Camera className="w-3 h-3 text-primary-foreground" />
+            </div>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleImageChange} 
+              className="hidden" 
+              accept="image/*"
+            />
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Account</p>
@@ -106,80 +317,22 @@ export default function Account() {
 
         {/* Clinical Analytics Card */}
         {(() => {
-          const getAnalyticsData = () => {
-            const data: { label: string; pct: number }[] = [];
-            
-            // 1. Single Subject (Major subjects: Medicine, Surgery, OBG, or custom single subjects)
-            const majorNames = ['Medicine', 'Surgery', 'Obstetrics & Gynaecology'];
-            let sAtt = 0, sMiss = 0;
-            CATEGORIES.forEach(c => {
-              c.subjects.forEach(s => {
-                if (majorNames.includes(s.name)) {
-                  const d = subjects[s.name];
-                  if (d) { sAtt += d.attended; sMiss += d.missed; }
-                }
-              });
-            });
-            customSubjects.forEach(s => {
-              if (s.subjectType === 'single') {
-                const d = subjects[s.name];
-                if (d) { sAtt += d.attended; sMiss += d.missed; }
-              }
-            });
-            const sPct = (sAtt + sMiss) === 0 ? 100 : (sAtt / (sAtt + sMiss)) * 100;
-            data.push({ label: 'Single Subject', pct: sPct });
-
-            // 2. Allied Subject (All other subjects in categories or custom allied subjects)
-            let aAtt = 0, aMiss = 0;
-            CATEGORIES.forEach(c => {
-              c.subjects.forEach(s => {
-                if (!majorNames.includes(s.name)) {
-                  const d = subjects[s.name];
-                  if (d) { aAtt += d.attended; aMiss += d.missed; }
-                }
-              });
-            });
-            customSubjects.forEach(s => {
-              if (s.subjectType === 'allied') {
-                const d = subjects[s.name];
-                if (d) { aAtt += d.attended; aMiss += d.missed; }
-              }
-            });
-            const aPct = (aAtt + aMiss) === 0 ? 100 : (aAtt / (aAtt + aMiss)) * 100;
-            data.push({ label: 'Allied Subject', pct: aPct });
-
-            // 3. Current Ward Posting
-            const currentWard = getCurrentPresetWard()?.ward;
-            let wPct = 100;
-            if (currentWard && currentWard !== 'Holiday') {
-              const d = wards[`ward-${currentWard}`];
-              if (d && (d.attended + d.missed) > 0) wPct = (d.attended / (d.attended + d.missed)) * 100;
-            }
-            data.push({ label: 'Current Ward Posting', pct: wPct });
-
-            // 4. Integrated Teaching
-            let iAtt = 0, iMiss = 0;
-            INTEGRATED_SUBJECTS.forEach(s => {
-              const d = subjects[s.name];
-              if (d) { iAtt += d.attended; iMiss += d.missed; }
-            });
-            const iPct = (iAtt + iMiss) === 0 ? 100 : (iAtt / (iAtt + iMiss)) * 100;
-            data.push({ label: 'Integrated Teaching', pct: iPct });
-
-            return data;
-          };
-
-          const analytics = getAnalyticsData();
-          const overallPct = analytics.reduce((sum, item) => sum + item.pct, 0) / analytics.length;
+          const analytics = displayIndices.map(idx => 
+            allAvailableSubjects[idx % allAvailableSubjects.length] || { name: 'Subject', pct: 100 }
+          );
+          
+          const overallPct = allAvailableSubjects.length > 0 
+            ? allAvailableSubjects.reduce((sum, item) => sum + item.pct, 0) / allAvailableSubjects.length 
+            : 100;
           
           return (
-            <div className="space-y-3">
-              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Vital Analytics</p>
-              <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-6">
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">Vital Analytics</p>
+              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Global Compliance</p>
-                    <p className={cn("text-3xl font-black", 
+                    <p className={cn("text-2xl font-black", 
                       overallPct >= 80 ? "text-emerald-500" : 
                       overallPct >= 75 ? "text-amber-500" : "text-red-500"
                     )}>
@@ -196,31 +349,60 @@ export default function Account() {
                 </div>
 
                 {/* 4-Channel ECG Monitor */}
-                <div className="space-y-5">
+                <div className="space-y-4">
                   {analytics.map((item, idx) => {
                     const color = item.pct >= 80 ? "#10b981" : item.pct >= 75 ? "#f59e0b" : "#ef4444";
                     const textColor = item.pct >= 80 ? "text-emerald-500" : item.pct >= 75 ? "text-amber-500" : "text-red-500";
                     
                     return (
-                      <div key={idx} className="space-y-2">
-                        <div className="flex justify-between items-end px-0.5">
-                          <span className="text-[10px] font-bold uppercase tracking-tight text-muted-foreground">{item.label}</span>
-                          <span className={cn("text-xs font-black tabular-nums", textColor)}>{item.pct.toFixed(0)}%</span>
+                      <div key={`${idx}-${item.name}`} className="space-y-1.5">
+                        <div className="flex justify-between items-end px-0.5 overflow-hidden h-3.5">
+                          <AnimatePresence mode="wait">
+                            <motion.span 
+                              key={item.name}
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -5 }}
+                              className="text-[10px] font-bold uppercase tracking-tight text-muted-foreground truncate max-w-[80%]"
+                            >
+                              {item.name}
+                            </motion.span>
+                          </AnimatePresence>
+                          <AnimatePresence mode="wait">
+                            <motion.span 
+                              key={`${item.name}-pct`}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              className={cn("text-[10px] font-black tabular-nums", textColor)}
+                            >
+                              {item.pct.toFixed(0)}%
+                            </motion.span>
+                          </AnimatePresence>
                         </div>
-                        <div className="h-12 w-full bg-muted/20 rounded-lg overflow-hidden relative border border-border/40">
+                        <div className="h-10 w-full bg-muted/20 rounded-lg overflow-hidden relative border border-border/40">
                           {/* Rolling Grid Background */}
                           <div className="absolute inset-0 opacity-10 pointer-events-none">
                             <svg width="100%" height="100%">
                               <defs>
-                                <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                                <pattern id={`grid-${idx}`} width="20" height="20" patternUnits="userSpaceOnUse">
                                   <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" strokeWidth="0.5"/>
                                 </pattern>
                               </defs>
-                              <rect width="100%" height="100%" fill="url(#grid)" />
+                              <rect width="100%" height="100%" fill={`url(#grid-${idx})`} />
                             </svg>
                           </div>
 
                           <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 40">
+                            <defs>
+                              <linearGradient id={`grad-${idx}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="transparent" />
+                                <stop offset="10%" stopColor="white" />
+                                <stop offset="90%" stopColor="white" />
+                                <stop offset="100%" stopColor="transparent" />
+                              </linearGradient>
+                            </defs>
+                            
                             {/* Mask to clip the rolling wave to the percentage */}
                             <mask id={`mask-${idx}`}>
                               <rect x="0" y="0" width={item.pct} height="40" fill="white" />
@@ -229,17 +411,33 @@ export default function Account() {
                             {/* ECG Wave Baseline */}
                             <line x1="0" y1="20" x2="100" y2="20" className="stroke-muted/30 stroke-[0.5]" />
                             
-                            {/* Animated Rolling ECG Wave */}
+                            {/* Animated Rolling ECG Wave (Infinite Loop - HomeCard Style) */}
                             <motion.path
-                              d="M 0 20 L 5 20 L 7 14 L 10 26 L 13 4 L 16 36 L 19 20 L 25 20 L 30 20 L 32 14 L 35 26 L 38 4 L 41 36 L 44 20 L 50 20 L 55 20 L 57 14 L 60 26 L 63 4 L 66 36 L 69 20 L 75 20 L 80 20 L 82 14 L 85 26 L 88 4 L 91 36 L 94 20 L 100 20"
+                              d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 30 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 60 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 90 20 L 100 20"
                               fill="none"
                               stroke={color}
-                              strokeWidth="1.5"
+                              strokeWidth="2"
                               strokeLinecap="round"
                               strokeLinejoin="round"
                               mask={`url(#mask-${idx})`}
-                              animate={{ x: [0, -25] }}
-                              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                              initial={{ pathLength: 0 }}
+                              animate={{ pathLength: 1 }}
+                              transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeInOut" }}
+                            />
+                            
+                            {/* Glow effect path */}
+                            <motion.path
+                              d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 30 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 60 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 90 20 L 100 20"
+                              fill="none"
+                              stroke={color}
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              mask={`url(#mask-${idx})`}
+                              className="opacity-20 blur-[1px]"
+                              initial={{ pathLength: 0 }}
+                              animate={{ pathLength: 1 }}
+                              transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeInOut" }}
                             />
 
                             {/* Percentage Marker Line */}
@@ -318,7 +516,7 @@ export default function Account() {
               </div>
             </div>
             <button
-              onClick={() => changeSubjectMode(subjectMode === 'preloaded' ? 'custom' : 'preloaded')}
+              onClick={() => initiateSwitch(subjectMode === 'preloaded' ? 'custom' : 'preloaded')}
               className="px-4 py-2 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.97] transition-all"
             >
               Switch to {subjectMode === 'preloaded' ? 'Custom' : 'Preset'}
@@ -360,7 +558,7 @@ export default function Account() {
             className="w-full bg-card border border-border rounded-2xl px-4 py-4 flex items-center gap-4 text-left hover:bg-muted/40 active:scale-[0.98] cursor-pointer transition-all"
           >
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-primary/10 shrink-0 overflow-hidden border border-primary/20">
-              <img src="/attendenz_icon.jpg" className="w-full h-full object-cover" alt="" />
+              <img src="/Logo.jpeg" className="w-full h-full object-cover" alt="" />
             </div>
             <div className="flex-1">
               <p className="font-semibold text-base text-foreground">What's New</p>
@@ -410,7 +608,7 @@ export default function Account() {
 
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex items-center gap-5">
             <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-border/50">
-              <img src="/attendenz_icon.jpg" alt="Attendenz Logo" className="w-full h-full object-cover" />
+              <img src="/Logo.jpeg" alt="Attendenz Logo" className="w-full h-full object-cover" />
             </div>
             <div className="text-sm space-y-1">
               <p className="font-bold text-foreground">Version: 3.5.1</p>
@@ -483,6 +681,126 @@ export default function Account() {
                   Log out
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Routine Switch Dialog */}
+      <AnimatePresence>
+        {showSwitchDialog && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4"
+            onClick={e => { if (e.target === e.currentTarget) setShowSwitchDialog(false); }}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
+              className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+            >
+              {switchStep === 'backup_found' ? (
+                <>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
+                      <RefreshCw className="w-5 h-5 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-bold text-foreground">Backup Found</h3>
+                  </div>
+                  <p className="text-muted-foreground text-sm mb-4">
+                    A backup for your <span className="font-bold text-foreground">{pendingMode === 'preloaded' ? 'Preset' : 'Custom'} Routine</span> was found. Would you like to restore it?
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={handleRestoreFromSnapshot}
+                      className="w-full py-3 rounded-2xl bg-primary text-primary-foreground text-sm font-bold hover:opacity-90 transition-all"
+                    >
+                      Restore Backup
+                    </button>
+                    <button
+                      onClick={() => setSwitchStep('warning')}
+                      className="w-full py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
+                    >
+                      Start Fresh
+                    </button>
+                    <button
+                      onClick={() => setShowSwitchDialog(false)}
+                      className="w-full py-3 rounded-2xl text-muted-foreground text-xs font-medium hover:text-foreground transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : switchStep === 'warning' ? (
+                <>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center">
+                      <RefreshCw className="w-5 h-5 text-amber-500" />
+                    </div>
+                    <h3 className="text-lg font-bold text-foreground">Switch Routine Mode?</h3>
+                  </div>
+                  <p className="text-muted-foreground text-sm mb-4">
+                    Switching routine modes will permanently remove your current routine data from the app.
+                  </p>
+                  <p className="text-muted-foreground text-sm mb-6">
+                    If you may want to return to this routine later, please create a Backup first. Your backup file will <span className="font-bold text-foreground underline decoration-primary">NOT</span> be deleted and can be restored anytime.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={handleBackupAndContinue}
+                      className="w-full py-3 rounded-2xl bg-primary text-primary-foreground text-sm font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Download className="w-4 h-4" />
+                      Backup Now
+                    </button>
+                    <button
+                      onClick={() => setSwitchStep('final')}
+                      className="w-full py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
+                    >
+                      Continue Anyway
+                    </button>
+                    <button
+                      onClick={() => setShowSwitchDialog(false)}
+                      className="w-full py-3 rounded-2xl text-muted-foreground text-xs font-medium hover:text-foreground transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-2xl bg-destructive/10 flex items-center justify-center">
+                      <LogOut className="w-5 h-5 text-destructive" />
+                    </div>
+                    <h3 className="text-lg font-bold text-foreground">Final Confirmation</h3>
+                  </div>
+                  <div className="space-y-4 mb-6">
+                    <p className="text-muted-foreground text-sm">
+                      You are about to switch from <span className="font-bold text-foreground">{subjectMode === 'preloaded' ? 'Preset' : 'Custom'} Routine</span> → <span className="font-bold text-primary">{pendingMode === 'preloaded' ? 'Preset' : 'Custom'} Routine</span>.
+                    </p>
+                    <p className="text-destructive/90 text-sm font-medium bg-destructive/5 p-3 rounded-xl border border-destructive/10">
+                      This will permanently erase ALL current attendance data, timetable, subjects, ward postings, statistics, and related records for the current routine stored inside the app.
+                    </p>
+                    <p className="text-muted-foreground text-xs italic">
+                      Your backup file will remain safe and can be restored later. This action cannot be undone.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowSwitchDialog(false)}
+                      className="flex-1 py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={executeSwitch}
+                      className="flex-1 py-3 rounded-2xl bg-destructive text-destructive-foreground text-sm font-bold hover:opacity-90 transition-all"
+                    >
+                      Switch Routine
+                    </button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}
