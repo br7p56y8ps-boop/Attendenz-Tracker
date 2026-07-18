@@ -2,12 +2,14 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 
 const AUTH_KEY = 'att_auth';
 const SESSION_KEY = 'att_session';
+const PROFILE_IMAGE_KEY = 'att_profile_image';
 
 // All localStorage keys owned by this app — used for targeted wipe in forgotPassword.
 // Keep this list in sync with every key used across all contexts/components.
 const ALL_APP_KEYS = [
   'att_auth',
   'att_session',
+  'att_profile_image',
   'att_custom_subjects',
   'att_custom_wards',
   'att_whats_new_version',
@@ -39,6 +41,8 @@ interface AuthContextType {
   username: string;
   /** True immediately after createAccount() succeeds; used to show new-user setup vs migration prompt */
   isNewAccount: boolean;
+  profileImage: string | null;
+  updateProfileImage: (image: string | null) => void;
   createAccount: (username: string, password: string) => boolean;
   login: (username: string, password: string) => boolean;
   logout: () => void;
@@ -52,9 +56,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [hasAccount, setHasAccount] = useState(false);
   const [username, setUsername] = useState('');
   const [isNewAccount, setIsNewAccount] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
 
   useEffect(() => {
     const raw = localStorage.getItem(AUTH_KEY);
+    const storedImage = localStorage.getItem(PROFILE_IMAGE_KEY);
+    if (storedImage) setProfileImage(storedImage);
+    
     if (raw) {
       try {
         const parsed: StoredAuth = JSON.parse(raw);
@@ -104,6 +112,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsNewAccount(false);
   };
 
+  const updateProfileImage = (image: string | null) => {
+    if (image) {
+      localStorage.setItem(PROFILE_IMAGE_KEY, image);
+    } else {
+      localStorage.removeItem(PROFILE_IMAGE_KEY);
+    }
+    setProfileImage(image);
+  };
+
   const forgotPassword = () => {
     ALL_APP_KEYS.forEach(k => localStorage.removeItem(k));
     setIsLoggedIn(false);
@@ -113,7 +130,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, hasAccount, username, isNewAccount, createAccount, login, logout, forgotPassword }}>
+    <AuthContext.Provider value={{ 
+      isLoggedIn, 
+      hasAccount, 
+      username, 
+      isNewAccount, 
+      profileImage,
+      updateProfileImage,
+      createAccount, 
+      login, 
+      logout, 
+      forgotPassword 
+    }}>
       {children}
     </AuthContext.Provider>
   );

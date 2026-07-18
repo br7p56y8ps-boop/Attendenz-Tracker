@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 
 export type AttendanceData = { attended: number; missed: number };
 export type SelectionType = 'off' | 'missed' | 'attended';
@@ -7,10 +8,13 @@ interface AttendanceContextType {
   subjects: Record<string, AttendanceData>;
   wards: Record<string, AttendanceData>;
   homeSelections: Record<string, SelectionType>;
+  preferredPercentage: number;
+  setPreferredPercentage: (p: number) => void;
   updateSubject: (subject: string, attended: number, missed: number) => void;
   updateWard: (ward: string, attended: number, missed: number) => void;
   updateHomeSelection: (homeKey: string, subject: string, selection: SelectionType, isWard: boolean) => void;
   resetAllData: () => void;
+  clearModeAttendance: (mode: 'preloaded' | 'custom') => void;
 }
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
@@ -18,11 +22,13 @@ const AttendanceContext = createContext<AttendanceContextType | undefined>(undef
 const SUBJECTS_KEY = 'attendance_tracker_subjects';
 const WARD_KEY = 'attendance_tracker_ward';
 const HOME_SELECTIONS_KEY = 'attendance_tracker_home_selections';
+const PREFERRED_PERCENTAGE_KEY = 'attendance_tracker_preferred_percentage';
 
 export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
   const [subjects, setSubjects] = useState<Record<string, AttendanceData>>({});
   const [wards, setWards] = useState<Record<string, AttendanceData>>({});
   const [homeSelections, setHomeSelections] = useState<Record<string, SelectionType>>({});
+  const [preferredPercentage, setPreferredPercentage] = useState<number>(75);
 
   useEffect(() => {
     try {
@@ -32,6 +38,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       const w = localStorage.getItem(WARD_KEY);
       if (w) setWards(JSON.parse(w));
       
+      const p = localStorage.getItem(PREFERRED_PERCENTAGE_KEY);
+      if (p) setPreferredPercentage(JSON.parse(p));
+
       const h = localStorage.getItem(HOME_SELECTIONS_KEY);
       if (h) {
         const raw: Record<string, string> = JSON.parse(h);
@@ -51,6 +60,11 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       console.error('Failed to load attendance data', e);
     }
   }, []);
+
+  const savePreferredPercentage = (p: number) => {
+    setPreferredPercentage(p);
+    localStorage.setItem(PREFERRED_PERCENTAGE_KEY, JSON.stringify(p));
+  };
 
   const saveSubjects = (data: Record<string, AttendanceData>) => {
     setSubjects(data);
@@ -123,8 +137,58 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     setHomeSelections({});
   };
 
+  const clearModeAttendance = (mode: 'preloaded' | 'custom') => {
+    const newSubjects = { ...subjects };
+    const newWards = { ...wards };
+    const newHomeSelections = { ...homeSelections };
+
+    if (mode === 'preloaded') {
+      CATEGORIES.forEach(c => {
+        c.subjects.forEach(s => {
+          delete newSubjects[s.name];
+          delete newHomeSelections[`subject-${s.name}`];
+        });
+      });
+      INTEGRATED_SUBJECTS.forEach(s => {
+        delete newSubjects[s.name];
+        delete newHomeSelections[`subject-${s.name}`];
+      });
+      WARD_SUBJECTS.forEach(w => {
+        delete newWards[`ward-${w.name}`];
+        delete newHomeSelections[`ward-${w.name}`];
+      });
+    } else {
+      const preloadedNames = new Set<string>();
+      CATEGORIES.forEach(c => c.subjects.forEach(s => preloadedNames.add(s.name)));
+      INTEGRATED_SUBJECTS.forEach(s => preloadedNames.add(s.name));
+      WARD_SUBJECTS.forEach(w => preloadedNames.add(w.name));
+
+      Object.keys(newSubjects).forEach(name => {
+        if (!preloadedNames.has(name)) {
+          delete newSubjects[name];
+          delete newHomeSelections[`subject-${name}`];
+        }
+      });
+      
+      Object.keys(newWards).forEach(key => {
+        const name = key.replace('ward-', '');
+        if (!preloadedNames.has(name)) {
+          delete newWards[key];
+          delete newHomeSelections[key];
+        }
+      });
+    }
+
+    setSubjects(newSubjects);
+    setWards(newWards);
+    setHomeSelections(newHomeSelections);
+    localStorage.setItem(SUBJECTS_KEY, JSON.stringify(newSubjects));
+    localStorage.setItem(WARD_KEY, JSON.stringify(newWards));
+    localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(newHomeSelections));
+  };
+
   return (
-    <AttendanceContext.Provider value={{ subjects, wards, homeSelections, updateSubject, updateWard, updateHomeSelection, resetAllData }}>
+    <AttendanceContext.Provider value={{ subjects, wards, homeSelections, preferredPercentage, setPreferredPercentage: savePreferredPercentage, updateSubject, updateWard, updateHomeSelection, resetAllData, clearModeAttendance }}>
       {children}
     </AttendanceContext.Provider>
   );

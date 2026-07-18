@@ -33,7 +33,7 @@ export default function SetupScreen() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex flex-col items-center justify-center px-5 py-12">
+    <div className="min-h-[100dvh] bg-black flex flex-col items-center justify-center px-5 py-12">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -41,8 +41,8 @@ export default function SetupScreen() {
         className="w-full max-w-sm"
       >
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="text-5xl mb-4">{isNewAccount ? '👋' : '✨'}</div>
+        <div className="text-center mb-8 flex flex-col items-center">
+          <img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Icon" className="w-20 h-20 rounded-[24px] object-cover mb-4 border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.8)] filter drop-shadow-[0_4px_8px_rgba(10,132,255,0.2)]" />
           <h1 className="text-2xl font-bold text-white">
             {isNewAccount ? `Welcome, ${username}!` : 'New Feature Available'}
           </h1>
@@ -54,21 +54,21 @@ export default function SetupScreen() {
         </div>
 
         {/* Options */}
-        <div className="space-y-3">
+        <div className="space-y-4">
           {/* Preloaded option */}
           <button
             onClick={handlePreloaded}
-            className="w-full bg-white/10 hover:bg-white/15 border border-white/20 rounded-3xl p-5 text-left transition-all active:scale-[0.98] group"
+            className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-[28px] p-6 text-left transition-all active:scale-[0.98] group"
           >
             <div className="flex items-start gap-4">
-              <div className="w-11 h-11 rounded-2xl bg-blue-500/30 flex items-center justify-center shrink-0 group-hover:bg-blue-500/40 transition-colors">
-                <BookOpen className="w-5 h-5 text-blue-300" />
+              <div className="w-11 h-11 rounded-2xl bg-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/30 transition-colors shadow-[0_0_15px_rgba(10,132,255,0.2)]">
+                <BookOpen className="w-5 h-5 text-primary" />
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="font-bold text-white text-base">
                   {isNewAccount ? 'Use Preloaded MBBS Subjects' : 'Keep Existing Subjects'}
                 </p>
-                <p className="text-white/50 text-sm mt-1 leading-relaxed">
+                <p className="text-white/40 text-sm mt-1.5 leading-relaxed">
                   {isNewAccount
                     ? 'Start with the built-in MBBS timetable, including all standard academic subjects, ward postings, and integrated teaching.'
                     : 'Keep your current subjects and data as-is. No changes will be made.'}
@@ -80,23 +80,23 @@ export default function SetupScreen() {
           {/* Custom option */}
           <button
             onClick={handleCustom}
-            className="w-full bg-white/10 hover:bg-white/15 border border-white/20 rounded-3xl p-5 text-left transition-all active:scale-[0.98] group"
+            className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-[28px] p-6 text-left transition-all active:scale-[0.98] group"
           >
             <div className="flex items-start gap-4">
-              <div className="w-11 h-11 rounded-2xl bg-purple-500/30 flex items-center justify-center shrink-0 group-hover:bg-purple-500/40 transition-colors">
-                <Pencil className="w-5 h-5 text-purple-300" />
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/30 transition-colors shadow-[0_0_15px_rgba(52,199,89,0.2)]">
+                <Pencil className="w-5 h-5 text-emerald-400" />
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="font-bold text-white text-base">Create My Own Subjects</p>
-                <p className="text-white/50 text-sm mt-1 leading-relaxed">
+                <p className="text-white/40 text-sm mt-1.5 leading-relaxed">
                   {isNewAccount
                     ? 'Start with an empty list. Add your own subjects, categories, and ward rotations using the Add New tab.'
                     : 'Start fresh with a clean slate. All existing subjects and attendance data will be permanently deleted.'}
                 </p>
                 {!isNewAccount && (
                   <div className="flex items-center gap-1.5 mt-2">
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span className="text-amber-400 text-xs font-semibold">This will delete all current data</span>
+                    <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
+                    <span className="text-warning text-xs font-semibold">This will delete all current data</span>
                   </div>
                 )}
               </div>

@@ -1,20 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { APP_VERSION } from '@/lib/appVersion';
-import { X, Sparkles } from 'lucide-react';
+import { APP_VERSION, FEATURES_UPDATED } from '@/lib/appVersion';
+import { useCustomData } from '@/contexts/CustomDataContext';
+import { X } from 'lucide-react';
 
 const WHATS_NEW_KEY = 'att_whats_new_version';
 
-const FEATURES = [
-  { emoji: '🔐', title: 'Offline Login', desc: 'Secure account with username & password stored locally.' },
-  { emoji: '➕', title: 'Add New Subjects', desc: 'Create single or allied subjects with custom planned classes.' },
-  { emoji: '🏥', title: 'Custom Ward Rotations', desc: 'Add your own ward with start & end dates.' },
-  { emoji: '📅', title: 'Calendar View', desc: 'Browse attendance history by month and date.' },
-  { emoji: '👤', title: 'Account Page', desc: 'Backup, restore, view statistics, and manage your session.' },
-  { emoji: '📊', title: 'Statistics & Charts', desc: 'Visual attendance breakdown across all subjects.' },
-];
-
 export const WhatsNewPopup = () => {
+  const { whatsNewOpen, setWhatsNewOpen } = useCustomData();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -24,14 +17,17 @@ export const WhatsNewPopup = () => {
     }
   }, []);
 
+  const isOpen = visible || whatsNewOpen;
+
   const dismiss = () => {
     localStorage.setItem(WHATS_NEW_KEY, APP_VERSION);
     setVisible(false);
+    setWhatsNewOpen(false);
   };
 
   return (
     <AnimatePresence>
-      {visible && (
+      {isOpen && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -46,25 +42,27 @@ export const WhatsNewPopup = () => {
             className="bg-card border border-border rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden"
           >
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 pt-6 pb-5 relative">
+            <div className="bg-white/5 border-b border-white/5 px-6 pt-6 pb-5 relative">
               <button
                 onClick={dismiss}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 hover:bg-white/25 transition-all"
               >
                 <X className="w-4 h-4" />
               </button>
               <div className="flex items-center gap-2 mb-1">
-                <Sparkles className="w-5 h-5 text-yellow-300" />
-                <span className="text-white/70 text-xs font-semibold uppercase tracking-widest">v{APP_VERSION}</span>
+                <div className="w-5 h-5 rounded-md overflow-hidden border border-white/10">
+                  <img src="/Logo.jpeg" className="w-full h-full object-cover" alt="" />
+                </div>
+                <span className="text-white/50 text-xs font-semibold uppercase tracking-widest">v{APP_VERSION}</span>
               </div>
               <h2 className="text-white text-2xl font-bold leading-tight">
-                🎉 What's New in<br />Benz Attendance
+                🎉 What's New in<br />Attendenz
               </h2>
             </div>
 
             {/* Feature list */}
             <div className="px-5 py-4 space-y-3 max-h-72 overflow-y-auto">
-              {FEATURES.map((f, i) => (
+              {FEATURES_UPDATED.map((f, i) => (
                 <motion.div
                   key={i}
                   initial={{ opacity: 0, x: -10 }}
@@ -96,3 +94,4 @@ export const WhatsNewPopup = () => {
     </AnimatePresence>
   );
 };
+
