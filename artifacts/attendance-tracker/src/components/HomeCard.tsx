@@ -127,7 +127,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
               </>
             ) : (
               <>
-                🥺 You can't miss it; Need to attend{' '}
+                🥺 You can't bunk this class; Need to Attend{' '}
                 <span className="text-destructive font-semibold">{needToAttend}</span>
                 {' '}class{needToAttend !== 1 ? 'es' : ''}
               </>
@@ -146,7 +146,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
               : "bg-background/70 text-muted-foreground border-border hover:bg-success/5 hover:text-success hover:border-success/20"
           )}
         >
-          😁 Attended
+           Attended
         </button>
         <button
           onClick={() => handleSelection('missed')}
@@ -157,7 +157,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
               : "bg-background/70 text-muted-foreground border-border hover:bg-destructive/5 hover:text-destructive hover:border-destructive/20"
           )}
         >
-          😒 Missed
+           Missed
         </button>
         <button
           onClick={() => handleSelection('off')}
@@ -168,7 +168,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
               : "bg-background/70 text-muted-foreground border-border hover:bg-warning/5 hover:text-warning hover:border-warning/20"
           )}
         >
-          🥰 Holiday
+           Holiday
         </button>
       </div>
     </div>
