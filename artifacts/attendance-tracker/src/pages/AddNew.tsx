@@ -310,7 +310,7 @@ export default function AddNew() {
 
                 {/* Row 3+ */}
                 <div className="space-y-3">
-                  <label className={labelClass}>Weekly Schedules (Day & Time)</label>
+                  <label className={labelClass}>Weekly Schedules</label>
                   
                   <div className="space-y-3">
                     {singleDays.map((row, idx) => {
