@@ -7,6 +7,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Upload, LogOut, User, RefreshCw, Info, Copy, Check, Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
+import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
+import femaleStudentProfile from '@/assets/images/female_student_profile_1784286920737.jpg';
+import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
 
 export default function Account() {
   const { username, logout, profileImage, updateProfileImage } = useAuth();
@@ -189,9 +192,9 @@ export default function Account() {
 
   const getDefaultAvatar = () => {
     const gender = detectGender(username);
-    if (gender === 'female') return '/female_student.jpg';
-    if (gender === 'male') return '/male_student.jpg';
-    return '/neutral_student.jpg';
+    if (gender === 'female') return femaleStudentProfile;
+    if (gender === 'male') return maleStudentProfile;
+    return neutralStudentProfile;
   };
 
   const handleImageClick = () => {
