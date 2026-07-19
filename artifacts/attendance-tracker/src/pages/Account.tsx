@@ -5,6 +5,8 @@ import { useAttendance } from '@/contexts/AttendanceContext';
 import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Upload, LogOut, User, RefreshCw, Info, Copy, Check, Camera } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
@@ -15,6 +17,7 @@ export default function Account() {
   const { username, logout, profileImage, updateProfileImage } = useAuth();
   const { subjects, wards, preferredPercentage, setPreferredPercentage, clearModeAttendance } = useAttendance();
   const { customSubjects, customWards, subjectMode, changeSubjectMode, clearRoutineData, setWhatsNewOpen, getCurrentPresetWard } = useCustomData();
+  const { isLightMode, toggleTheme } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [restoreMsg, setRestoreMsg] = useState('');
@@ -312,9 +315,13 @@ export default function Account() {
               accept="image/*"
             />
           </div>
-          <div>
+          <div className="min-w-0 flex-1 pr-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Account</p>
-            <p className="font-bold text-2xl text-foreground mt-0.5">{username}</p>
+            <p className="font-bold text-2xl text-foreground mt-0.5 truncate">{username}</p>
+          </div>
+          <div className="ml-auto flex shrink-0 flex-col items-end gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Light Mode</span>
+            <Switch checked={isLightMode} onCheckedChange={toggleTheme} aria-label="Toggle light mode" />
           </div>
         </div>
 
@@ -490,6 +497,7 @@ export default function Account() {
             <div className="flex items-center gap-2">
               <input
                 type="number"
+                inputMode="numeric"
                 min="0"
                 max="100"
                 value={preferredPercentage}

@@ -80,6 +80,23 @@
   --warning: #FF9F0A;
 }
 
+
+.light {
+  --background: #f7f8fb;
+  --foreground: #111827;
+  --card: rgba(255, 255, 255, 0.88);
+  --card-foreground: #111827;
+  --border: rgba(17, 24, 39, 0.12);
+  --primary: #0A84FF;
+  --primary-foreground: #FFFFFF;
+  --muted: rgba(17, 24, 39, 0.06);
+  --muted-foreground: rgba(17, 24, 39, 0.58);
+  --destructive: #d92d20;
+  --destructive-foreground: #FFFFFF;
+  --success: #15803d;
+  --warning: #d97706;
+}
+
 /* Premium Liquid Glass Styles */
 .glass-panel {
   background: rgba(20, 20, 25, 0.45);
@@ -169,6 +186,7 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 }
 
@@ -189,4 +207,14 @@ input[type=number]::-webkit-outer-spin-button {
 }
 input[type=number] {
   -moz-appearance: textfield;
+}
+
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
+
+input[type=time], input[type=date] {
+  min-width: 0;
 }

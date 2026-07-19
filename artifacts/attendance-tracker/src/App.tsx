@@ -3,6 +3,7 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
 import Home from '@/pages/Home';
 import Subjects from '@/pages/Subjects';
@@ -49,9 +50,11 @@ function App() {
       <AuthProvider>
         <AttendanceProvider>
           <CustomDataProvider>
+            <ThemeProvider>
             <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
               <AuthGate />
             </WouterRouter>
+            </ThemeProvider>
           </CustomDataProvider>
         </AttendanceProvider>
       </AuthProvider>
