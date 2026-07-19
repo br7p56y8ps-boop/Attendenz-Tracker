@@ -178,27 +178,41 @@ export default function CalendarPage() {
   };
 
   const shortenSubject = (name: string) => {
-    const map: Record<string, string> = {
-      'Surgery': 'Surg.',
-      'Obstetrics & Gynaecology': 'Obs & Gyn.',
-      'Pediatrics': 'Peds.',
-      'Orthopedics': 'Ortho.',
-      'Ophthalmology': 'Ophtha.',
-      'Otolaryngology': 'ENT',
-      'Dermatology': 'Derm.',
-      'Psychiatry': 'Psych.',
+    const exact: Record<string, string> = {
+      'General Surgery': 'G.Surg.',
+      'Plastic Surgery': 'P.Surg.',
+      'Burn & Plastic Surgery': 'P.Surg.',
+      'Obstetrics & Gynaecology': 'Obs/Gyn.',
+      'Pediatric Surgery': 'P.Surg.',
       'Physical Medicine': 'PMR',
-      'Radiology': 'Radio.',
-      'Radiotherapy': 'RadioT.',
-      'Nuclear Medicine': 'Nuc Med.',
-      'Neurosurgery': 'NeuroS.',
-      'Pediatric Surgery': 'Peds Surg.',
-      'Burn & Plastic Surgery': 'Plastic S.',
-      'Internal Medicine': 'Medicine',
-      'Phase Integrated Teaching': 'Phase Integrated',
-      'Departmental Integrated Teaching': 'Dept. Integrated'
+      'Otolaryngology': 'ENT',
+      'Phase Integrated Teaching': 'Phase Int.',
+      'Departmental Integrated Teaching': 'Dept. Int.',
     };
-    return map[name] || name;
+    if (exact[name]) return exact[name];
+
+    const words = name.trim().split(/\s+/).filter(Boolean);
+    if (words.length < 2) return name.length > 12 ? `${name.slice(0, 11)}.` : name;
+
+    const suffix = words[words.length - 1];
+    const compactSuffix: Record<string, string> = {
+      Surgery: 'Surg.',
+      Medicine: 'Med.',
+      Teaching: 'Teach.',
+      Radiology: 'Radio.',
+    };
+    if (compactSuffix[suffix]) {
+      const initials = words
+        .slice(0, -1)
+        .filter(word => word !== '&' && word.toLowerCase() !== 'and')
+        .map(word => `${word[0]}.`)
+        .join('');
+      return `${initials}${compactSuffix[suffix]}`;
+    }
+
+    return words
+      .map(word => word.length > 5 ? `${word.slice(0, 4)}.` : word)
+      .join(' ');
   };
 
   // ── 8.1 Weekly Timetable Display Data ──────────────────────────────────────
@@ -417,7 +431,7 @@ export default function CalendarPage() {
 
               {/* Dynamic Day vs Time Table */}
               <div className="border border-border rounded-2xl bg-card shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="w-full">
                   <table className="w-full text-left border-collapse table-fixed">
                     <thead>
                       <tr className="bg-muted/50 border-b border-border">
@@ -444,33 +458,44 @@ export default function CalendarPage() {
                               </div>
                             </td>
                             {uniqueTimes.length === 0 ? (
-                              <td className="p-1 text-muted-foreground text-[9px] italic">No lectures</td>
+                              <td className="p-1 text-center text-[9px] font-semibold text-muted-foreground">Holiday</td>
                             ) : (
-                              rowData.map((cell, cIdx) => {
-                                if (cell.skip) return null;
-                                return (
-                                  <td 
-                                    key={cIdx} 
-                                    colSpan={cell.span}
-                                    className="p-0.5 text-center border-r border-border/40 last:border-0"
-                                  >
-                                    {cell.subjects.length === 0 ? (
-                                      <span className="text-muted-foreground/10 text-[8px]">—</span>
-                                    ) : (
-                                      <div className="flex items-center justify-center min-h-[30px] w-full px-0.5">
-                                        <p 
-                                          className={cn(
-                                            "text-muted-foreground/80 font-medium leading-tight line-clamp-2 break-words",
-                                            cell.subjects.length > 1 ? "text-[8px]" : "text-[9px]"
-                                          )}
-                                        >
-                                          {cell.subjects.map(s => shortenSubject(s)).join(' / ')}
-                                        </p>
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              })
+                              rowData.every(cell => cell.subjects.length === 0) ? (
+                                <td
+                                  colSpan={uniqueTimes.length}
+                                  className="p-0.5 text-center border-r border-border/40 last:border-0"
+                                >
+                                  <div className="flex min-h-[30px] w-full items-center justify-center">
+                                    <span className="text-[9px] font-semibold text-muted-foreground">Holiday</span>
+                                  </div>
+                                </td>
+                              ) : (
+                                rowData.map((cell, cIdx) => {
+                                  if (cell.skip) return null;
+                                  return (
+                                    <td 
+                                      key={cIdx} 
+                                      colSpan={cell.span}
+                                      className="p-0.5 text-center border-r border-border/40 last:border-0"
+                                    >
+                                      {cell.subjects.length === 0 ? (
+                                        <span className="text-muted-foreground/10 text-[8px]">—</span>
+                                      ) : (
+                                        <div className="flex min-h-[30px] w-full items-center justify-center px-0.5">
+                                          <p 
+                                            className={cn(
+                                              "break-words text-muted-foreground/80 font-medium leading-[1.05]",
+                                              cell.subjects.length > 1 ? "text-[7px]" : "text-[8px]"
+                                            )}
+                                          >
+                                            {cell.subjects.map(s => shortenSubject(s)).join(' · ')}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </td>
+                                  );
+                                })
+                              )}
                             )}
                           </tr>
                         );
