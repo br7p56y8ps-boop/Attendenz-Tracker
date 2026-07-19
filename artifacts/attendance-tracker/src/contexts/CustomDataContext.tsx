@@ -61,6 +61,11 @@ interface CustomDataContextType {
   updatePresetTimetableSlot: (currentDay: number, slotIndex: number, updatedTime: string, updatedSubjects: string[], targetDay: number) => void;
   updatePresetWardSchedule: (index: number, start: string, end: string, morningTime?: string, eveningTime?: string) => void;
   updatePresetSubjectTotal: (subjectName: string, total: number) => void;
+  savePresetOverrides: (
+    timetable: typeof TIMETABLE,
+    wardSchedule: Array<{ start: string; end: string; ward: string; morningTime?: string; eveningTime?: string }>,
+    subjectTotals: Record<string, number>,
+  ) => void;
 }
 
 const CustomDataContext = createContext<CustomDataContextType | undefined>(undefined);
@@ -274,6 +279,20 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('att_preset_subject_totals', JSON.stringify(updated));
   };
 
+  // Commits a complete local preset draft in one update so abandoned edits never leak into saved data.
+  const savePresetOverrides = (
+    timetable: typeof TIMETABLE,
+    wardSchedule: Array<{ start: string; end: string; ward: string; morningTime?: string; eveningTime?: string }>,
+    subjectTotals: Record<string, number>,
+  ) => {
+    setPresetTimetable(timetable);
+    setPresetWardSchedule(wardSchedule);
+    setPresetSubjectTotals(subjectTotals);
+    localStorage.setItem('att_preset_timetable', JSON.stringify(timetable));
+    localStorage.setItem('att_preset_ward_schedule', JSON.stringify(wardSchedule));
+    localStorage.setItem('att_preset_subject_totals', JSON.stringify(subjectTotals));
+  };
+
   return (
     <CustomDataContext.Provider value={{
       customSubjects, customWards, subjectMode, setupDone,
@@ -295,6 +314,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       updatePresetTimetableSlot,
       updatePresetWardSchedule,
       updatePresetSubjectTotal,
+      savePresetOverrides,
     }}>
       {children}
     </CustomDataContext.Provider>
