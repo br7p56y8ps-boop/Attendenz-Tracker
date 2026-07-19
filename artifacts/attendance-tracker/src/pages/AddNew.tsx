@@ -24,7 +24,10 @@ const TabButton = ({ label, active, onClick }: { label: string; active: boolean;
 );
 
 const inputClass =
-  'w-full bg-background border border-border rounded-2xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-base transition-all placeholder:text-muted-foreground/50';
+  'w-full min-w-0 bg-background border border-border rounded-2xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-base transition-all placeholder:text-muted-foreground/50';
+
+const timeInputClass = cn(inputClass, 'py-2 px-2 sm:px-3 text-sm sm:text-base');
+const daySelectClass = cn(inputClass, 'w-24 sm:w-28 px-3');
 
 const labelClass = 'text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5';
 
@@ -48,6 +51,8 @@ export default function AddNew() {
 
   const [tab, setTab] = useState<Tab>('single');
   const [successMsg, setSuccessMsg] = useState('');
+  const [focusedOptionalNumber, setFocusedOptionalNumber] = useState<string | null>(null);
+  const [numberFocusBackup, setNumberFocusBackup] = useState('');
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
@@ -302,7 +307,16 @@ export default function AddNew() {
                       inputMode="numeric"
                       min="0"
                       placeholder="e.g. 10 (optional)"
-                      value={sAttended}
+                      value={focusedOptionalNumber === 'single-attended' ? sAttended : (sAttended || '0')}
+                      onFocus={() => {
+                        setFocusedOptionalNumber('single-attended');
+                        setNumberFocusBackup(sAttended);
+                        if (!sAttended) setSAttended('');
+                      }}
+                      onBlur={() => {
+                        setFocusedOptionalNumber(null);
+                        if (!sAttended) setSAttended(numberFocusBackup);
+                      }}
                       onChange={e => setSAttended(e.target.value)}
                     />
                   </div>
@@ -317,7 +331,7 @@ export default function AddNew() {
                       const usedDaysInOthers = singleDays.filter((_, i) => i !== idx).map(r => r.day);
                       const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                       return (
-                        <div key={idx} className="grid grid-cols-2 gap-3 items-center">
+                        <div key={idx} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 items-end">
                           <div>
                             <select
                               value={row.day}
@@ -326,14 +340,14 @@ export default function AddNew() {
                                 updated[idx].day = e.target.value;
                                 setSingleDays(updated);
                               }}
-                              className={inputClass}
+                              className={daySelectClass}
                             >
                               {availableOptions.map(o => (
                                 <option key={o} value={o}>{o}</option>
                               ))}
                             </select>
                           </div>
-                          <div className="flex items-center gap-2 flex-1">
+                          <div className="flex min-w-0 items-center gap-2">
                             <div className="flex-1 flex flex-col gap-1">
                               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start</label>
                               <input
@@ -344,7 +358,7 @@ export default function AddNew() {
                                   updated[idx].startTime = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                className={cn(inputClass, "py-2 px-3")}
+                                className={timeInputClass}
                               />
                             </div>
                             <div className="flex-1 flex flex-col gap-1">
@@ -357,7 +371,7 @@ export default function AddNew() {
                                   updated[idx].endTime = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                className={cn(inputClass, "py-2 px-3")}
+                                className={timeInputClass}
                               />
                             </div>
                             {singleDays.length > 1 && (
@@ -475,7 +489,16 @@ export default function AddNew() {
                           inputMode="numeric"
                           min="0"
                           placeholder="e.g. 5 (optional)"
-                          value={cAttended}
+                          value={focusedOptionalNumber === 'child-attended' ? cAttended : (cAttended || '0')}
+                          onFocus={() => {
+                            setFocusedOptionalNumber('child-attended');
+                            setNumberFocusBackup(cAttended);
+                            if (!cAttended) setCAttended('');
+                          }}
+                          onBlur={() => {
+                            setFocusedOptionalNumber(null);
+                            if (!cAttended) setCAttended(numberFocusBackup);
+                          }}
                           onChange={e => setCAttended(e.target.value)}
                         />
                       </div>
@@ -490,7 +513,7 @@ export default function AddNew() {
                           const usedDaysInOthers = childDays.filter((_, i) => i !== idx).map(r => r.day);
                           const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                           return (
-                            <div key={idx} className="grid grid-cols-2 gap-3 items-center">
+                            <div key={idx} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 items-end">
                               <div>
                                 <select
                                   value={row.day}
@@ -506,7 +529,7 @@ export default function AddNew() {
                                   ))}
                                 </select>
                               </div>
-                              <div className="flex items-center gap-2 flex-1">
+                              <div className="flex min-w-0 items-center gap-2">
                                 <div className="flex-1 flex flex-col gap-1">
                                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start</label>
                                   <input
@@ -517,7 +540,7 @@ export default function AddNew() {
                                       updated[idx].startTime = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    className={cn(inputClass, "py-2 px-3")}
+                                    className={timeInputClass}
                                   />
                                 </div>
                                 <div className="flex-1 flex flex-col gap-1">
@@ -530,7 +553,7 @@ export default function AddNew() {
                                       updated[idx].endTime = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    className={cn(inputClass, "py-2 px-3")}
+                                    className={timeInputClass}
                                   />
                                 </div>
                                 {childDays.length > 1 && (
@@ -744,7 +767,7 @@ export default function AddNew() {
                   {/* Weekly Timetable Override */}
                   <div className="space-y-4">
                     <h4 className="font-bold text-sm text-primary uppercase tracking-wider flex items-center gap-2">
-                      📅 Weekly Timetable Slots
+                      Weekly Schedule (Day & Time)
                     </h4>
                     <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 divide-y divide-border/30">
                       {DAYS.map((dayName, dayIdx) => {
@@ -815,6 +838,7 @@ export default function AddNew() {
                                               />
                                               <input
                                                 type="number"
+                                                inputMode="numeric"
                                                 min="1"
                                                 value={plannedVal}
                                                 onChange={(e) => {
@@ -842,7 +866,7 @@ export default function AddNew() {
                   {/* Ward Rotations Override */}
                   <div className="space-y-4">
                     <h4 className="font-bold text-sm text-primary uppercase tracking-wider flex items-center gap-2">
-                      🏥 Clinical Ward Rotations
+                      Clinical Ward Rotations
                     </h4>
                     <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
                       {presetWardSchedule.map((ws, wsIdx) => {

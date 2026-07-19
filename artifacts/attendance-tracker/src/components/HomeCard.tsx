@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { cn, getCurrentDateStr } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -19,6 +19,8 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
   const { subjects, wards, homeSelections, updateHomeSelection, preferredPercentage } = useAttendance();
   const activeDateStr = dateStr || getCurrentDateStr();
   const [showECG, setShowECG] = useState(false);
+  const [messageOverride, setMessageOverride] = useState<string | null>(null);
+  const [typedMessage, setTypedMessage] = useState('');
   
   // Format date: dd/mm/yy
   const formatDate = (dateString: string) => {
@@ -54,7 +56,43 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
   
   const isSafeToMiss = canMissCount > 0;
 
+  const predictionMessage = useMemo(() => (
+    isSafeToMiss
+      ? `You can bunk ${canMissCount} class${canMissCount !== 1 ? 'es' : ''}`
+      : `You can't bunk this class; Need to Attend ${needToAttend} class${needToAttend !== 1 ? 'es' : ''}`
+  ), [canMissCount, isSafeToMiss, needToAttend]);
+
+  const statusMessage = messageOverride ?? predictionMessage;
+
+  useEffect(() => {
+    setTypedMessage('');
+    if (!statusMessage) return;
+
+    const duration = 2400;
+    const intervalMs = Math.max(25, Math.floor(duration / statusMessage.length));
+    let index = 0;
+    const interval = window.setInterval(() => {
+      index += 1;
+      setTypedMessage(statusMessage.slice(0, index));
+      if (index >= statusMessage.length) {
+        window.clearInterval(interval);
+      }
+    }, intervalMs);
+
+    return () => window.clearInterval(interval);
+  }, [statusMessage]);
+
   const handleSelection = (selection: 'off' | 'missed' | 'attended') => {
+    const isUndo = currentSelection === selection;
+    if (isUndo) {
+      setMessageOverride(null);
+    } else if (selection === 'attended') {
+      setMessageOverride(isSafeToMiss ? 'Attendance marked.' : `Attendance marked. Don't miss the next ${isWard ? 'ward' : 'lecture'}.`);
+    } else if (selection === 'missed') {
+      setMessageOverride('Marked as missed.');
+    } else {
+      setMessageOverride('Marked as holiday.');
+    }
     updateHomeSelection(selectionKey, key, selection, isWard);
     setShowECG(true);
     setTimeout(() => setShowECG(false), 3000);
@@ -118,20 +156,8 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
 
       {!dateStr && (
         <div className="mb-5 relative z-10">
-          <p className="text-sm font-medium text-muted-foreground">
-            {isSafeToMiss ? (
-              <>
-                ✌️ You can bunk{' '}
-                <span className="text-success font-semibold">{canMissCount}</span>
-                {' '}class{canMissCount !== 1 ? 'es' : ''}
-              </>
-            ) : (
-              <>
-                🥺 You can't bunk this class; Need to Attend{' '}
-                <span className="text-destructive font-semibold">{needToAttend}</span>
-                {' '}class{needToAttend !== 1 ? 'es' : ''}
-              </>
-            )}
+          <p className="min-h-5 text-sm font-medium text-muted-foreground" aria-label={statusMessage}>
+            {typedMessage}
           </p>
         </div>
       )}
