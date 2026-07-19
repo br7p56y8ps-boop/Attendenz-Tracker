@@ -218,3 +218,23 @@ input[type=number] {
 input[type=time], input[type=date] {
   min-width: 0;
 }
+
+/* Compact native date controls stay inside narrow mobile form columns. */
+.compact-date-input {
+  max-width: 100%;
+  min-width: 0;
+}
+.compact-date-input::-webkit-datetime-edit {
+  min-width: 0;
+  padding: 0;
+}
+
+/* Dark-mode separation without changing the app's spacing or palette. */
+.dark button {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+.dark .bg-card,
+.dark .glass-card,
+.dark .glass-panel {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
