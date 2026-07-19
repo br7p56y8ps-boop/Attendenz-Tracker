@@ -27,7 +27,7 @@ const TabButton = ({ label, active, onClick }: { label: string; active: boolean;
 const inputClass =
   'w-full min-w-0 bg-background border border-border rounded-2xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-base transition-all placeholder:text-muted-foreground/50';
 
-const dateInputClass = cn(inputClass, 'h-10 px-2 py-2 text-sm');
+const dateInputClass = cn(inputClass, 'compact-date-input h-10 px-2 py-2 text-sm');
 const daySelectClass = cn(inputClass, 'h-10 w-full px-2 py-2 text-sm');
 
 const labelClass = 'text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5';
