@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { CompactTimePicker } from '@/components/CompactTimePicker';
 import { Layout } from '@/components/Layout';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
@@ -26,8 +27,8 @@ const TabButton = ({ label, active, onClick }: { label: string; active: boolean;
 const inputClass =
   'w-full min-w-0 bg-background border border-border rounded-2xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-base transition-all placeholder:text-muted-foreground/50';
 
-const timeInputClass = cn(inputClass, 'py-2 px-2 sm:px-3 text-sm sm:text-base');
-const daySelectClass = cn(inputClass, 'w-24 sm:w-28 px-3');
+const dateInputClass = cn(inputClass, 'h-10 px-2 py-2 text-sm');
+const daySelectClass = cn(inputClass, 'h-10 w-full px-2 py-2 text-sm');
 
 const labelClass = 'text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5';
 
@@ -57,6 +58,12 @@ export default function AddNew() {
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(''), 2500);
+  };
+
+  const handleTabChange = (nextTab: Tab) => {
+    if (nextTab === tab) return;
+    resetAllDrafts();
+    setTab(nextTab);
   };
 
   // ── 1. Single Subject State ──────────────────────────────────────────────────
@@ -212,6 +219,37 @@ export default function AddNew() {
   const [wMorning, setWMorning] = useState('');
   const [wEvening, setWEvening] = useState('');
 
+  const resetSingleDraft = () => {
+    setSName('');
+    setSPlanned('');
+    setSAttended('');
+    setSingleDays([{ day: 'Sun', startTime: '', endTime: '' }]);
+  };
+
+  const resetAlliedDraft = () => {
+    setParentName('');
+    setCName('');
+    setCPlanned('');
+    setCAttended('');
+    setChildDays([{ day: 'Sun', startTime: '', endTime: '' }]);
+    setSavedChildren([]);
+    setAlliedStep('parent_input');
+  };
+
+  const resetWardDraft = () => {
+    setWName('');
+    setWStart('');
+    setWEnd('');
+    setWMorning('');
+    setWEvening('');
+  };
+
+  const resetAllDrafts = () => {
+    resetSingleDraft();
+    resetAlliedDraft();
+    resetWardDraft();
+  };
+
   const handleSaveWard = (e: React.FormEvent) => {
     e.preventDefault();
     if (!wName.trim() || !wStart || !wEnd) return;
@@ -256,10 +294,10 @@ export default function AddNew() {
 
         {/* Tab bar */}
         <div className="flex flex-wrap md:flex-nowrap gap-1 bg-muted/60 p-1 rounded-2xl">
-          <TabButton label="Single Subject" active={tab === 'single'} onClick={() => setTab('single')} />
-          <TabButton label="Allied Subject" active={tab === 'allied'} onClick={() => setTab('allied')} />
-          <TabButton label="Hospital/Clinical Rotation" active={tab === 'ward'} onClick={() => setTab('ward')} />
-          <TabButton label="Preset Overrides" active={tab === 'presets'} onClick={() => setTab('presets')} />
+          <TabButton label="Single Subject" active={tab === 'single'} onClick={() => handleTabChange('single')} />
+          <TabButton label="Allied Subject" active={tab === 'allied'} onClick={() => handleTabChange('allied')} />
+          <TabButton label="Hospital/Clinical Rotation" active={tab === 'ward'} onClick={() => handleTabChange('ward')} />
+          <TabButton label="Preset Overrides" active={tab === 'presets'} onClick={() => handleTabChange('presets')} />
         </div>
 
         {/* ── Tab 1: Single Subject ── */}
@@ -331,7 +369,7 @@ export default function AddNew() {
                       const usedDaysInOthers = singleDays.filter((_, i) => i !== idx).map(r => r.day);
                       const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                       return (
-                        <div key={idx} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 items-end">
+                        <div key={idx} className="grid grid-cols-[5.25rem_minmax(0,1fr)] gap-2 items-end">
                           <div>
                             <select
                               value={row.day}
@@ -347,38 +385,36 @@ export default function AddNew() {
                               ))}
                             </select>
                           </div>
-                          <div className="flex min-w-0 items-center gap-2">
-                            <div className="flex-1 flex flex-col gap-1">
+                          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2">
+                            <div className="min-w-0 flex flex-col gap-1">
                               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start</label>
-                              <input
-                                type="time"
+                              <CompactTimePicker
+                                label="Start time"
                                 value={row.startTime}
-                                onChange={e => {
+                                onChange={value => {
                                   const updated = [...singleDays];
-                                  updated[idx].startTime = e.target.value;
+                                  updated[idx].startTime = value;
                                   setSingleDays(updated);
                                 }}
-                                className={timeInputClass}
                               />
                             </div>
-                            <div className="flex-1 flex flex-col gap-1">
+                            <div className="min-w-0 flex flex-col gap-1">
                               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">End</label>
-                              <input
-                                type="time"
+                              <CompactTimePicker
+                                label="End time"
                                 value={row.endTime}
-                                onChange={e => {
+                                onChange={value => {
                                   const updated = [...singleDays];
-                                  updated[idx].endTime = e.target.value;
+                                  updated[idx].endTime = value;
                                   setSingleDays(updated);
                                 }}
-                                className={timeInputClass}
                               />
                             </div>
                             {singleDays.length > 1 && (
                               <button
                                 type="button"
                                 onClick={() => setSingleDays(singleDays.filter((_, i) => i !== idx))}
-                                className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0 mt-5"
+                                className="mt-5 shrink-0 rounded-xl bg-destructive/10 p-2.5 text-destructive transition-all hover:bg-destructive/20"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -513,7 +549,7 @@ export default function AddNew() {
                           const usedDaysInOthers = childDays.filter((_, i) => i !== idx).map(r => r.day);
                           const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                           return (
-                            <div key={idx} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 items-end">
+                            <div key={idx} className="grid grid-cols-[5.25rem_minmax(0,1fr)] gap-2 items-end">
                               <div>
                                 <select
                                   value={row.day}
@@ -522,45 +558,43 @@ export default function AddNew() {
                                     updated[idx].day = e.target.value;
                                     setChildDays(updated);
                                   }}
-                                  className={inputClass}
+                                  className={daySelectClass}
                                 >
                                   {availableOptions.map(o => (
                                     <option key={o} value={o}>{o}</option>
                                   ))}
                                 </select>
                               </div>
-                              <div className="flex min-w-0 items-center gap-2">
-                                <div className="flex-1 flex flex-col gap-1">
+                              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2">
+                                <div className="min-w-0 flex flex-col gap-1">
                                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start</label>
-                                  <input
-                                    type="time"
+                                  <CompactTimePicker
+                                    label="Start time"
                                     value={row.startTime}
-                                    onChange={e => {
+                                    onChange={value => {
                                       const updated = [...childDays];
-                                      updated[idx].startTime = e.target.value;
+                                      updated[idx].startTime = value;
                                       setChildDays(updated);
                                     }}
-                                    className={timeInputClass}
                                   />
                                 </div>
-                                <div className="flex-1 flex flex-col gap-1">
+                                <div className="min-w-0 flex flex-col gap-1">
                                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">End</label>
-                                  <input
-                                    type="time"
+                                  <CompactTimePicker
+                                    label="End time"
                                     value={row.endTime}
-                                    onChange={e => {
+                                    onChange={value => {
                                       const updated = [...childDays];
-                                      updated[idx].endTime = e.target.value;
+                                      updated[idx].endTime = value;
                                       setChildDays(updated);
                                     }}
-                                    className={timeInputClass}
                                   />
                                 </div>
                                 {childDays.length > 1 && (
                                   <button
                                     type="button"
                                     onClick={() => setChildDays(childDays.filter((_, i) => i !== idx))}
-                                    className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0 mt-5"
+                                    className="mt-5 shrink-0 rounded-xl bg-destructive/10 p-2.5 text-destructive transition-all hover:bg-destructive/20"
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
@@ -683,12 +717,12 @@ export default function AddNew() {
                 </div>
 
                 {/* Row 2 */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                  <div className="min-w-0">
                     <label className={labelClass}>Start Date</label>
                     <input
                       type="date"
-                      className={inputClass}
+                      className={dateInputClass}
                       min="2026-01-01"
                       max="2026-12-31"
                       value={wStart}
@@ -696,11 +730,11 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className={labelClass}>End Date</label>
                     <input
                       type="date"
-                      className={inputClass}
+                      className={dateInputClass}
                       min="2026-01-01"
                       max="2026-12-31"
                       value={wEnd}
@@ -714,25 +748,21 @@ export default function AddNew() {
                 )}
 
                 {/* Row 3 */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                  <div className="min-w-0">
                     <label className={labelClass}>Morning Time</label>
-                    <input
-                      type="time"
-                      className={inputClass}
+                    <CompactTimePicker
+                      label="Morning time"
                       value={wMorning}
-                      onChange={e => setWMorning(e.target.value)}
-                      required
+                      onChange={setWMorning}
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className={labelClass}>Evening Time</label>
-                    <input
-                      type="time"
-                      className={inputClass}
+                    <CompactTimePicker
+                      label="Evening time"
                       value={wEvening}
-                      onChange={e => setWEvening(e.target.value)}
-                      required
+                      onChange={setWEvening}
                     />
                   </div>
                 </div>
