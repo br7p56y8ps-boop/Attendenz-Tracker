@@ -38,7 +38,11 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
     sessionStorage.setItem(expansionKey, String(newVal));
   };
 
+  const editingFieldRef = useRef<'attended' | 'missed' | null>(null);
+
   useEffect(() => {
+    // Do not replace the controlled value while the user is actively typing.
+    if (editingFieldRef.current) return;
     setLocalAttended(data.attended.toString());
     setLocalMissed(data.missed.toString());
   }, [data.attended, data.missed]);
@@ -54,21 +58,23 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
   const neededToReach75 = Math.max(0, 3 * missedNum - attendedNum);
   const canStillMiss = Math.max(0, Math.floor((attendedNum - 3 * missedNum) / 3));
 
-  const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
-
   const handleInputChange = (field: 'attended' | 'missed', value: string) => {
     if (value !== '' && !/^\d+$/.test(value)) return;
-    
     if (field === 'attended') setLocalAttended(value);
-    if (field === 'missed') setLocalMissed(value);
+    else setLocalMissed(value);
+  };
 
-    if (timerRef.current) clearTimeout(timerRef.current);
+  const commitInputs = () => {
+    updateFn(key, parseInt(localAttended) || 0, parseInt(localMissed) || 0);
+  };
 
-    timerRef.current = setTimeout(() => {
-      const parsedAttended = field === 'attended' ? (parseInt(value) || 0) : attendedNum;
-      const parsedMissed = field === 'missed' ? (parseInt(value) || 0) : missedNum;
-      updateFn(key, parsedAttended, parsedMissed);
-    }, 300);
+  const beginEditing = (field: 'attended' | 'missed') => {
+    editingFieldRef.current = field;
+  };
+
+  const finishEditing = () => {
+    editingFieldRef.current = null;
+    commitInputs();
   };
 
   const getPercentageColor = (pct: number) => {
@@ -108,6 +114,11 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
             type="number"
             inputMode="numeric"
             value={localAttended}
+            onFocus={() => beginEditing('attended')}
+            onBlur={finishEditing}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur();
+            }}
             onChange={(e) => handleInputChange('attended', e.target.value)}
             className="w-full bg-background border border-border rounded-xl px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-base"
           />
@@ -118,6 +129,11 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
             type="number"
             inputMode="numeric"
             value={localMissed}
+            onFocus={() => beginEditing('missed')}
+            onBlur={finishEditing}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur();
+            }}
             onChange={(e) => handleInputChange('missed', e.target.value)}
             className="w-full bg-background border border-border rounded-xl px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-destructive/50 transition-all text-base"
           />
