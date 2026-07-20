@@ -88,7 +88,7 @@ export const TIMETABLE: Record<number, Array<{time: string, type: string, subjec
     { time: '07:00–08:00', type: 'lecture', subjects: ['Surgery'] },
     { time: '08:30–09:30', type: 'lecture', subjects: ['Obstetrics & Gynaecology'] },
     { time: '09:30–11:30', type: 'ward', subjects: [] },
-    { time: '12:00–01:00', type: 'lecture', subjects: ['Orthopedics', 'Burn & Plastic Surgery', 'Dermatology', 'Psychiatry', 'Physical Medicine'] },
+    { time: '12:00–01:00', type: 'lecture', subjects: ['Orthopedics', 'Burn & Plastic Surgery'] },
     { time: '07:00–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
   ],
   2: [ // Tuesday
