@@ -19,6 +19,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
   const { subjects, wards, homeSelections, updateHomeSelection, preferredPercentage } = useAttendance();
   const activeDateStr = dateStr || getCurrentDateStr();
   const [showECG, setShowECG] = useState(false);
+  const [pendingSelection, setPendingSelection] = useState<'off' | 'missed' | 'attended' | null>(null);
   
   // Format date: dd/mm/yy
   const formatDate = (dateString: string) => {
@@ -32,38 +33,45 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
 
   const attended = data?.attended || 0;
   const missed = data?.missed || 0;
+  
+  // Feature 1: Remaining Planned Classes Calculation
+  const totalPlannedClasses = data?.plannedClasses; 
+  const total = attended + missed;
+  const percentage = total === 0 ? 100 : (attended / total) * 100;
+
+  // Remaining planned classes logic
+  const remainingClasses = totalPlannedClasses !== undefined ? Math.max(0, totalPlannedClasses - total) : undefined;
+  const isFinished = totalPlannedClasses !== undefined && remainingClasses === 0;
 
   // Include sessionId so two slots for the same subject on the same day
   // (especially ward vs ward_replacement) never collide on the same key.
   const selectionKey = sessionId ? `${activeDateStr}-${key}-${sessionId}` : `${activeDateStr}-${key}`;
   const currentSelection = homeSelections[selectionKey];
 
-  // Attendance calculations (Off is excluded — only attended + missed count)
-  const total = attended + missed;
-  const percentage = total === 0 ? 100 : (attended / total) * 100;
-
   // How many future classes can still be missed while staying ≥ preferredPercentage%
-  // Formula derived from: (attended / (total + x)) >= P/100
-  // x = (attended * 100 / P) - total
   const canMissCount = Math.max(0, Math.floor((attended * 100 / preferredPercentage) - total));
 
   // How many classes must be attended to climb back to / stay at preferredPercentage%
-  // Formula derived from: ((attended + x) / (total + x)) >= P/100
-  // x = (P * total - 100 * attended) / (100 - P)
   const needToAttend = Math.max(1, Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage)));
   
-  const isSafeToMiss = canMissCount > 0;
-
   const handleSelection = (selection: 'off' | 'missed' | 'attended') => {
-    updateHomeSelection(selectionKey, key, selection, isWard);
-    setShowECG(true);
-    setTimeout(() => setShowECG(false), 3000);
+    if (isFinished) return;
+
+    if (pendingSelection === selection) {
+      updateHomeSelection(selectionKey, key, selection, isWard);
+      setShowECG(true);
+      setTimeout(() => setShowECG(false), 3000);
+      setPendingSelection(null);
+    } else {
+      setPendingSelection(selection);
+    }
   };
 
+  // Feature 5: Dynamic Percentage Range Colors
   const getPercentageColor = (pct: number) => {
-    if (pct >= preferredPercentage) return 'text-success';
-    if (pct >= preferredPercentage - 10) return 'text-warning';
-    return 'text-destructive';
+    if (pct < preferredPercentage) return 'text-destructive';
+    if (pct <= preferredPercentage + 5) return 'text-warning';
+    return 'text-success';
   };
 
   const ecgColor = percentage >= 80 ? "#10b981" : percentage >= 75 ? "#f59e0b" : "#ef4444";
@@ -77,8 +85,60 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
     ? 'bg-warning/10 border-warning/30'
     : 'bg-card border-card-border';
 
+  // Feature 3: Dynamic Subtitle Line Generation
+  const renderSubtitle = () => {
+    if (total === 0) {
+      return <span>No classes conducted yet</span>;
+    }
+
+    if (percentage < preferredPercentage) {
+      if (remainingClasses !== undefined && needToAttend > remainingClasses) {
+        const maxPossiblePct = Math.round(((attended + remainingClasses) / (total + remainingClasses)) * 100);
+        return (
+          <span className="text-destructive font-medium">
+            Unreachable target! Max possible is {maxPossiblePct}%
+          </span>
+        );
+      }
+      return (
+        <span className="text-destructive font-medium">
+          Must attend next <strong className="font-bold">{needToAttend}</strong> {needToAttend === 1 ? 'class' : 'classes'} to reach {preferredPercentage}%
+        </span>
+      );
+    }
+
+    if (canMissCount > 0) {
+      return (
+        <span>
+          On track. Can miss next <strong className="font-bold text-foreground">{canMissCount}</strong> {canMissCount === 1 ? 'class' : 'classes'}
+        </span>
+      );
+    }
+
+    return (
+      <span className="text-muted-foreground">
+        At target limit. Do not miss next class
+      </span>
+    );
+  };
+
   return (
-    <div className={cn("rounded-2xl p-5 shadow-sm border mb-4 transition-colors duration-300 relative overflow-hidden", cardBg)}>
+    <div 
+      className={cn(
+        "rounded-2xl p-5 shadow-sm border mb-4 transition-colors duration-300 relative overflow-hidden", 
+        cardBg,
+        isFinished && "opacity-60 backdrop-blur-[2px]"
+      )}
+    >
+      {/* Feature 2: Finished Overlay Banner */}
+      {isFinished && (
+        <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+          <div className="bg-destructive/90 text-destructive-foreground font-extrabold text-xs tracking-wider uppercase px-6 py-1.5 shadow-md -rotate-6 border border-destructive-foreground/20">
+            ALL PLANNED CLASSES FINISHED
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-start mb-2 relative z-10">
         <div className="pr-4">
           <h3 className="text-xl font-bold leading-tight text-foreground">{title || subject}</h3>
@@ -117,58 +177,50 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
       </AnimatePresence>
 
       {!dateStr && (
-        <div className="mb-5 relative z-10">
-          <p className="text-sm font-medium text-muted-foreground">
-            {isSafeToMiss ? (
-              <>
-                ✌️ You can bunk{' '}
-                <span className="text-success font-semibold">{canMissCount}</span>
-                {' '}class{canMissCount !== 1 ? 'es' : ''}
-              </>
-            ) : (
-              <>
-                🥺 You can't bunk this class; Need to Attend{' '}
-                <span className="text-destructive font-semibold">{needToAttend}</span>
-                {' '}class{needToAttend !== 1 ? 'es' : ''}
-              </>
-            )}
-          </p>
+        <div className="mb-5 relative z-10 text-sm font-medium text-muted-foreground">
+          {renderSubtitle()}
         </div>
       )}
 
       <div className="flex gap-2 w-full relative z-10">
         <button
+          disabled={isFinished}
           onClick={() => handleSelection('attended')}
           className={cn(
             "flex-1 py-3 px-2 rounded-xl text-sm font-semibold transition-all active:scale-95 duration-200 border",
             currentSelection === 'attended'
               ? "bg-success/20 text-success border-success/40 shadow-sm"
-              : "bg-background/70 text-muted-foreground border-border hover:bg-success/5 hover:text-success hover:border-success/20"
+              : "bg-background/70 text-muted-foreground border-border hover:bg-success/5 hover:text-success hover:border-success/20",
+            pendingSelection === 'attended' && "ring-2 ring-success ring-offset-2 ring-offset-background"
           )}
         >
-           Attended
+          {pendingSelection === 'attended' ? (currentSelection === 'attended' ? 'Confirm Undo?' : 'Confirm?') : 'Attended'}
         </button>
         <button
+          disabled={isFinished}
           onClick={() => handleSelection('missed')}
           className={cn(
             "flex-1 py-3 px-2 rounded-xl text-sm font-semibold transition-all active:scale-95 duration-200 border",
             currentSelection === 'missed'
               ? "bg-destructive/20 text-destructive border-destructive/40 shadow-sm"
-              : "bg-background/70 text-muted-foreground border-border hover:bg-destructive/5 hover:text-destructive hover:border-destructive/20"
+              : "bg-background/70 text-muted-foreground border-border hover:bg-destructive/5 hover:text-destructive hover:border-destructive/20",
+            pendingSelection === 'missed' && "ring-2 ring-destructive ring-offset-2 ring-offset-background"
           )}
         >
-           Missed
+          {pendingSelection === 'missed' ? (currentSelection === 'missed' ? 'Confirm Undo?' : 'Confirm?') : 'Missed'}
         </button>
         <button
+          disabled={isFinished}
           onClick={() => handleSelection('off')}
           className={cn(
             "flex-1 py-3 px-2 rounded-xl text-sm font-semibold transition-all active:scale-95 duration-200 border",
             currentSelection === 'off'
               ? "bg-warning/20 text-warning border-warning/40 shadow-sm"
-              : "bg-background/70 text-muted-foreground border-border hover:bg-warning/5 hover:text-warning hover:border-warning/20"
+              : "bg-background/70 text-muted-foreground border-border hover:bg-warning/5 hover:text-warning hover:border-warning/20",
+            pendingSelection === 'off' && "ring-2 ring-warning ring-offset-2 ring-offset-background"
           )}
         >
-           Holiday
+          {pendingSelection === 'off' ? (currentSelection === 'off' ? 'Confirm Undo?' : 'Confirm?') : 'Holiday'}
         </button>
       </div>
     </div>
