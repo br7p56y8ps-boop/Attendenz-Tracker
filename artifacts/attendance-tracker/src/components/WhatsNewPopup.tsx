@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { X, Sparkles, Calendar, Sun, Image, Percent, CheckCircle2 } from 'lucide-react';
 
-export function WhatsNewModal() {
+export function WhatsNewPopup() {
   const { isWhatsNewOpen, setWhatsNewOpen } = useCustomData();
 
   if (!isWhatsNewOpen) return null;
@@ -93,3 +93,5 @@ export function WhatsNewModal() {
     </AnimatePresence>
   );
 }
+
+export default WhatsNewPopup;
