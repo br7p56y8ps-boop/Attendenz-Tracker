@@ -353,49 +353,55 @@ export default function AddNew() {
                       return (
                         <div key={idx} className="space-y-2 bg-muted/20 p-3 rounded-2xl border border-border/40">
                           {/* Column Labels Header */}
-                          <div className="grid grid-cols-3 gap-2">
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Day</span>
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Start</span>
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">End</span>
+                          <div className="grid grid-cols-12 gap-2">
+                            <span className="col-span-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Day</span>
+                            <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Start</span>
+                            <span className="col-span-5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">End</span>
                           </div>
 
-                          {/* Inputs Grid - Strict Equal Width Columns */}
-                          <div className="grid grid-cols-3 gap-2 items-center">
-                            <select
-                              value={row.day}
-                              onChange={e => {
-                                const updated = [...singleDays];
-                                updated[idx].day = e.target.value;
-                                setSingleDays(updated);
-                              }}
-                              className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
-                            >
-                              {availableOptions.map(o => (
-                                <option key={o} value={o}>{o}</option>
-                              ))}
-                            </select>
+                          {/* Inputs Grid - Balanced 12-Column Span */}
+                          <div className="grid grid-cols-12 gap-2 items-center">
+                            <div className="col-span-3">
+                              <select
+                                value={row.day}
+                                onChange={e => {
+                                  const updated = [...singleDays];
+                                  updated[idx].day = e.target.value;
+                                  setSingleDays(updated);
+                                }}
+                                className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
+                              >
+                                {availableOptions.map(o => (
+                                  <option key={o} value={o}>{o}</option>
+                                ))}
+                              </select>
+                            </div>
 
-                            <input
-                              type="time"
-                              value={row.startTime}
-                              onChange={e => {
-                                const updated = [...singleDays];
-                                updated[idx].startTime = e.target.value;
-                                setSingleDays(updated);
-                              }}
-                              className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
-                            />
+                            <div className="col-span-4">
+                              <input
+                                type="time"
+                                value={row.startTime}
+                                onChange={e => {
+                                  const updated = [...singleDays];
+                                  updated[idx].startTime = e.target.value;
+                                  setSingleDays(updated);
+                                }}
+                                className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
+                              />
+                            </div>
 
-                            <input
-                              type="time"
-                              value={row.endTime}
-                              onChange={e => {
-                                const updated = [...singleDays];
-                                updated[idx].endTime = e.target.value;
-                                setSingleDays(updated);
-                              }}
-                              className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
-                            />
+                            <div className="col-span-5">
+                              <input
+                                type="time"
+                                value={row.endTime}
+                                onChange={e => {
+                                  const updated = [...singleDays];
+                                  updated[idx].endTime = e.target.value;
+                                  setSingleDays(updated);
+                                }}
+                                className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
+                              />
+                            </div>
                           </div>
 
                           {singleDays.length > 1 && (
@@ -531,49 +537,55 @@ export default function AddNew() {
                           return (
                             <div key={idx} className="space-y-2 bg-muted/20 p-3 rounded-2xl border border-border/40">
                               {/* Column Labels Header */}
-                              <div className="grid grid-cols-3 gap-2">
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Day</span>
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Start</span>
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">End</span>
+                              <div className="grid grid-cols-12 gap-2">
+                                <span className="col-span-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Day</span>
+                                <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Start</span>
+                                <span className="col-span-5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">End</span>
                               </div>
 
-                              {/* Inputs Grid - Strict Equal Width Columns */}
-                              <div className="grid grid-cols-3 gap-2 items-center">
-                                <select
-                                  value={row.day}
-                                  onChange={e => {
-                                    const updated = [...childDays];
-                                    updated[idx].day = e.target.value;
-                                    setChildDays(updated);
-                                  }}
-                                  className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
-                                >
-                                  {availableOptions.map(o => (
-                                    <option key={o} value={o}>{o}</option>
-                                  ))}
-                                </select>
+                              {/* Inputs Grid - Balanced 12-Column Span */}
+                              <div className="grid grid-cols-12 gap-2 items-center">
+                                <div className="col-span-3">
+                                  <select
+                                    value={row.day}
+                                    onChange={e => {
+                                      const updated = [...childDays];
+                                      updated[idx].day = e.target.value;
+                                      setChildDays(updated);
+                                    }}
+                                    className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
+                                  >
+                                    {availableOptions.map(o => (
+                                      <option key={o} value={o}>{o}</option>
+                                    ))}
+                                  </select>
+                                </div>
 
-                                <input
-                                  type="time"
-                                  value={row.startTime}
-                                  onChange={e => {
-                                    const updated = [...childDays];
-                                    updated[idx].startTime = e.target.value;
-                                    setChildDays(updated);
-                                  }}
-                                  className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
-                                />
+                                <div className="col-span-4">
+                                  <input
+                                    type="time"
+                                    value={row.startTime}
+                                    onChange={e => {
+                                      const updated = [...childDays];
+                                      updated[idx].startTime = e.target.value;
+                                      setChildDays(updated);
+                                    }}
+                                    className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
+                                  />
+                                </div>
 
-                                <input
-                                  type="time"
-                                  value={row.endTime}
-                                  onChange={e => {
-                                    const updated = [...childDays];
-                                    updated[idx].endTime = e.target.value;
-                                    setChildDays(updated);
-                                  }}
-                                  className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
-                                />
+                                <div className="col-span-5">
+                                  <input
+                                    type="time"
+                                    value={row.endTime}
+                                    onChange={e => {
+                                      const updated = [...childDays];
+                                      updated[idx].endTime = e.target.value;
+                                      setChildDays(updated);
+                                    }}
+                                    className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
+                                  />
+                                </div>
                               </div>
 
                               {childDays.length > 1 && (
@@ -703,9 +715,9 @@ export default function AddNew() {
                   />
                 </div>
 
-                {/* Row 2 */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                {/* Row 2 - Balanced 12-column Grid */}
+                <div className="grid grid-cols-12 gap-4">
+                  <div className="col-span-6">
                     <label className={labelClass}>Start Date</label>
                     <input
                       type="date"
@@ -717,7 +729,7 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div>
+                  <div className="col-span-6">
                     <label className={labelClass}>End Date</label>
                     <input
                       type="date"
@@ -734,9 +746,9 @@ export default function AddNew() {
                   <p className="text-destructive text-xs font-semibold -mt-2">End date must be after start date.</p>
                 )}
 
-                {/* Row 3 */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                {/* Row 3 - Balanced 12-column Grid */}
+                <div className="grid grid-cols-12 gap-4">
+                  <div className="col-span-6">
                     <label className={labelClass}>Morning Time</label>
                     <input
                       type="time"
@@ -746,7 +758,7 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div>
+                  <div className="col-span-6">
                     <label className={labelClass}>Evening Time</label>
                     <input
                       type="time"
