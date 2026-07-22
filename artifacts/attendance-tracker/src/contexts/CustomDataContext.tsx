@@ -8,15 +8,15 @@ export interface CustomSubject {
   plannedClasses: number;
   days: string;
   time: string;
-  category?: string; // group name for allied subjects
+  category?: string;
   schedules?: Array<{ day: string; time: string }>;
 }
 
 export interface CustomWard {
   id: string;
   name: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string;   // YYYY-MM-DD
+  startDate: string;
+  endDate: string;
   morningTime?: string;
   eveningTime?: string;
 }
