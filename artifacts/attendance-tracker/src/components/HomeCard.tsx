@@ -133,7 +133,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
       {isFinished && (
         <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
           <div className="bg-destructive/90 text-destructive-foreground font-extrabold text-xs tracking-wider uppercase px-6 py-1.5 shadow-md -rotate-6 border border-destructive-foreground/20">
-            ALL PLANNED CLASSES FINISHED
+            NO MORE PLANNED CLASSES!!!
           </div>
         </div>
       )}
