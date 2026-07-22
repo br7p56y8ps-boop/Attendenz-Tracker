@@ -3,8 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
-import { BookOpen, Pencil, AlertTriangle, CheckCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { BookOpen, Pencil, AlertTriangle } from 'lucide-react';
 
 export default function SetupScreen() {
   const { isNewAccount, username } = useAuth();
@@ -19,10 +18,8 @@ export default function SetupScreen() {
 
   const handleCustom = () => {
     if (isNewAccount) {
-      // New account — no data to lose, go straight to custom mode
       startFresh();
     } else {
-      // Existing user — data exists, confirm before wiping
       setShowConfirm(true);
     }
   };
@@ -33,7 +30,7 @@ export default function SetupScreen() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-black flex flex-col items-center justify-center px-5 py-12">
+    <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center px-5 py-12 relative">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -42,11 +39,11 @@ export default function SetupScreen() {
       >
         {/* Header */}
         <div className="text-center mb-8 flex flex-col items-center">
-          <img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Icon" className="w-20 h-20 rounded-[24px] object-cover mb-4 border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.8)] filter drop-shadow-[0_4px_8px_rgba(10,132,255,0.2)]" />
-          <h1 className="text-2xl font-bold text-white">
+          <img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Icon" className="w-20 h-20 rounded-[24px] object-cover mb-4 border border-border shadow-md" />
+          <h1 className="text-2xl font-bold text-foreground">
             {isNewAccount ? `Welcome, ${username}!` : 'New Feature Available'}
           </h1>
-          <p className="text-white/50 text-sm mt-2 leading-relaxed">
+          <p className="text-muted-foreground text-sm mt-2 leading-relaxed">
             {isNewAccount
               ? 'Choose how you want to track your attendance.'
               : 'You can now manage your own custom subjects. Choose how to proceed.'}
@@ -58,17 +55,17 @@ export default function SetupScreen() {
           {/* Preloaded option */}
           <button
             onClick={handlePreloaded}
-            className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-[28px] p-6 text-left transition-all active:scale-[0.98] group"
+            className="w-full bg-card hover:bg-muted/40 border border-border rounded-[28px] p-6 text-left transition-all active:scale-[0.98] group shadow-sm"
           >
             <div className="flex items-start gap-4">
-              <div className="w-11 h-11 rounded-2xl bg-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/30 transition-colors shadow-[0_0_15px_rgba(10,132,255,0.2)]">
+              <div className="w-11 h-11 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
                 <BookOpen className="w-5 h-5 text-primary" />
               </div>
               <div className="flex-1">
-                <p className="font-bold text-white text-base">
+                <p className="font-bold text-foreground text-base">
                   {isNewAccount ? 'Use Preloaded MBBS Subjects' : 'Keep Existing Subjects'}
                 </p>
-                <p className="text-white/40 text-sm mt-1.5 leading-relaxed">
+                <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
                   {isNewAccount
                     ? 'Start with the built-in MBBS timetable, including all standard academic subjects, ward postings, and integrated teaching.'
                     : 'Keep your current subjects and data as-is. No changes will be made.'}
@@ -80,15 +77,15 @@ export default function SetupScreen() {
           {/* Custom option */}
           <button
             onClick={handleCustom}
-            className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-[28px] p-6 text-left transition-all active:scale-[0.98] group"
+            className="w-full bg-card hover:bg-muted/40 border border-border rounded-[28px] p-6 text-left transition-all active:scale-[0.98] group shadow-sm"
           >
             <div className="flex items-start gap-4">
-              <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/30 transition-colors shadow-[0_0_15px_rgba(52,199,89,0.2)]">
-                <Pencil className="w-5 h-5 text-emerald-400" />
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition-colors">
+                <Pencil className="w-5 h-5 text-emerald-500" />
               </div>
               <div className="flex-1">
-                <p className="font-bold text-white text-base">Create My Own Subjects</p>
-                <p className="text-white/40 text-sm mt-1.5 leading-relaxed">
+                <p className="font-bold text-foreground text-base">Create My Own Subjects</p>
+                <p className="text-muted-foreground text-sm mt-1.5 leading-relaxed">
                   {isNewAccount
                     ? 'Start with an empty list. Add your own subjects, categories, and ward rotations using the Add New tab.'
                     : 'Start fresh with a clean slate. All existing subjects and attendance data will be permanently deleted.'}
@@ -104,8 +101,13 @@ export default function SetupScreen() {
           </button>
         </div>
 
-        <p className="text-white/30 text-xs text-center mt-6">
+        <p className="text-muted-foreground/60 text-xs text-center mt-6">
           You can add custom subjects anytime from the Add New tab.
+        </p>
+
+        {/* Version Badge Footer */}
+        <p className="text-[10px] font-bold tracking-widest text-muted-foreground/40 uppercase text-center mt-8">
+          Attendenz v3.6.0 (Stable)
         </p>
       </motion.div>
 
@@ -123,23 +125,23 @@ export default function SetupScreen() {
               initial={{ y: 60, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 60, opacity: 0 }}
-              className="bg-slate-800 border border-white/10 rounded-3xl p-6 w-full max-w-sm"
+              className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl"
             >
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-2xl bg-red-500/20 flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
                 </div>
-                <h3 className="text-lg font-bold text-white">Delete all data?</h3>
+                <h3 className="text-lg font-bold text-foreground">Delete all data?</h3>
               </div>
-              <p className="text-white/60 text-sm leading-relaxed mb-6">
+              <p className="text-muted-foreground text-sm leading-relaxed mb-6">
                 All your attendance records, subject data, and home selections will be
-                <span className="text-red-400 font-semibold"> permanently deleted</span>.
-                This cannot be undone. Consider exporting a backup first from the Account tab.
+                <span className="text-red-500 font-semibold"> permanently deleted</span>.
+                This cannot be undone.
               </p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowConfirm(false)}
-                  className="flex-1 py-3 rounded-2xl border border-white/20 text-white/70 text-sm font-semibold hover:bg-white/5 transition-colors"
+                  className="flex-1 py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
                 >
                   Cancel
                 </button>
