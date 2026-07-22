@@ -492,16 +492,25 @@ export default function CalendarPage() {
                               rowData.map((cell, cIdx) => {
                                 const timeSlot = cell.time;
 
-                                // Special Preset Merging for 11:30–12:00 (Rest)
+                                // Thursday 08:30–09:30: Small Group Teaching
+                                if (subjectMode === 'preloaded' && timeSlot === '08:30–09:30' && day === 'Thu') {
+                                  return (
+                                    <td key={cIdx} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
+                                      Small Group Teaching
+                                    </td>
+                                  );
+                                }
+
+                                // Special Preset Merging for 11:30–12:00 (Rest - Merged across Mon, Tue, Wed, Thu)
                                 if (subjectMode === 'preloaded' && timeSlot === '11:30–12:00') {
                                   if (day === 'Mon') {
                                     return (
-                                      <td key={cIdx} rowSpan={3} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
+                                      <td key={cIdx} rowSpan={4} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
                                         Rest
                                       </td>
                                     );
                                   }
-                                  if (day === 'Tue' || day === 'Wed') return null; // Covered by Mon rowSpan
+                                  if (day === 'Tue' || day === 'Wed' || day === 'Thu') return null; // Covered by Mon rowSpan (4 rows)
                                   if (day === 'Sat') {
                                     return (
                                       <td key={cIdx} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
@@ -511,7 +520,7 @@ export default function CalendarPage() {
                                   }
                                 }
 
-                                // Special Preset Merging for 01:00–02:00 (Small Group Teaching)
+                                // Special Preset Merging for 01:00–02:00 (Small Group Teaching - Merged across Mon, Tue, Wed)
                                 if (subjectMode === 'preloaded' && timeSlot === '01:00–02:00') {
                                   if (day === 'Mon') {
                                     return (
@@ -520,7 +529,7 @@ export default function CalendarPage() {
                                       </td>
                                     );
                                   }
-                                  if (day === 'Tue' || day === 'Wed') return null; // Covered by Mon rowSpan
+                                  if (day === 'Tue' || day === 'Wed') return null; // Covered by Mon rowSpan (3 rows)
                                   if (day === 'Sat') {
                                     return (
                                       <td key={cIdx} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
