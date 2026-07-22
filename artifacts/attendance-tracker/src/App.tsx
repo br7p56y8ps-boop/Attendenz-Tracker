@@ -24,6 +24,7 @@ function AuthGate() {
     return <Login />;
   }
 
+  // Show setup/migration screen until the user makes their subject mode choice
   if (!setupDone) {
     return <SetupScreen />;
   }
@@ -44,7 +45,7 @@ function AuthGate() {
 }
 
 export default function App() {
-  // Global Theme Sync (Default: Dark Mode)
+  // Global Theme Initialization (Default: Dark Mode)
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light') {
