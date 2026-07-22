@@ -1,10 +1,25 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { X, Sparkles, Calendar, Sun, Image, Percent, CheckCircle2 } from 'lucide-react';
 
+const CURRENT_VERSION_KEY = 'attendenz_whats_new_seen_v3.6.0';
+
 export function WhatsNewPopup() {
   const { isWhatsNewOpen, setWhatsNewOpen } = useCustomData();
+
+  // Auto-trigger popup on first entry for v3.6.0 (Stable)
+  useEffect(() => {
+    const hasSeen = localStorage.getItem(CURRENT_VERSION_KEY);
+    if (!hasSeen) {
+      setWhatsNewOpen(true);
+    }
+  }, [setWhatsNewOpen]);
+
+  const handleClose = () => {
+    localStorage.setItem(CURRENT_VERSION_KEY, 'true');
+    setWhatsNewOpen(false);
+  };
 
   if (!isWhatsNewOpen) return null;
 
@@ -34,15 +49,15 @@ export function WhatsNewPopup() {
   return (
     <AnimatePresence>
       <div 
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
-        onClick={() => setWhatsNewOpen(false)}
+        className="fixed inset-0 bg-black/70 backdrop-blur-md z-[9999] flex items-center justify-center p-4 overflow-y-auto"
+        onClick={handleClose}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-card border border-border rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-6 my-auto"
+          className="bg-card border border-border rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-6 my-auto relative"
         >
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -58,7 +73,7 @@ export function WhatsNewPopup() {
               </div>
             </div>
             <button
-              onClick={() => setWhatsNewOpen(false)}
+              onClick={handleClose}
               className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
             >
               <X className="w-4 h-4" />
@@ -66,10 +81,10 @@ export function WhatsNewPopup() {
           </div>
 
           {/* Highlights List */}
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             {features.map((f, i) => (
-              <div key={i} className="flex items-start gap-3.5 bg-muted/30 p-3.5 rounded-2xl border border-border/40">
-                <div className="p-2 rounded-xl bg-card border border-border/50 shrink-0">
+              <div key={i} className="flex items-start gap-3.5 bg-muted/40 p-3.5 rounded-2xl border border-border/50">
+                <div className="p-2 rounded-xl bg-card border border-border/60 shrink-0 mt-0.5">
                   {f.icon}
                 </div>
                 <div>
@@ -82,8 +97,8 @@ export function WhatsNewPopup() {
 
           {/* Action Button */}
           <button
-            onClick={() => setWhatsNewOpen(false)}
-            className="w-full py-3.5 bg-primary text-primary-foreground font-bold rounded-2xl shadow-sm hover:opacity-90 transition-all flex items-center justify-center gap-2 text-sm"
+            onClick={handleClose}
+            className="w-full py-3.5 bg-primary text-primary-foreground font-bold rounded-2xl shadow-md hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm"
           >
             <CheckCircle2 className="w-4 h-4" />
             Got it, Let's go!
