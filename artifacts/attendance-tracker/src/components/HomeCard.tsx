@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAttendance } from '@/contexts/AttendanceContext';
+import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, getCurrentDateStr } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -8,15 +9,13 @@ interface HomeCardProps {
   time: string;
   isWard?: boolean;
   title?: string;
-  /** Unique identifier for this timetable slot (e.g. slot index).
-   *  Prevents two slots for the same subject on the same day from sharing
-   *  a selection key — most critical for ward vs ward_replacement sessions. */
   sessionId?: string;
   dateStr?: string;
 }
 
 export const HomeCard = ({ subject, time, isWard = false, title, sessionId, dateStr }: HomeCardProps) => {
   const { subjects, wards, homeSelections, updateHomeSelection, preferredPercentage } = useAttendance();
+  const { customSubjects } = useCustomData(); // Fetching custom subjects to get plannedClasses
   const activeDateStr = dateStr || getCurrentDateStr();
   const [showECG, setShowECG] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<'off' | 'missed' | 'attended' | null>(null);
@@ -26,32 +25,33 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
     const [y, m, d] = dateString.split('-');
     return `${d}/${m}/${y.slice(-2)}`;
   };
-  const formattedDate = dateStr ? formatDate(dateStr) : '';
 
   const key = isWard ? `ward-${subject}` : subject;
   const data = isWard ? wards[key] : subjects[subject];
 
   const attended = data?.attended || 0;
   const missed = data?.missed || 0;
-  
-  // Feature 1: Remaining Planned Classes Calculation
-  const totalPlannedClasses = data?.plannedClasses; 
   const total = attended + missed;
-  const percentage = total === 0 ? 100 : (attended / total) * 100;
 
-  // Remaining planned classes logic
+  // FIX: Look up total planned classes from customSubjects / subjects
+  const foundSubject = customSubjects?.find(
+    (s) => s.name.toLowerCase() === subject.toLowerCase()
+  );
+  const totalPlannedClasses = foundSubject?.plannedClasses;
+
+  // Feature 1 & 2: Remaining planned classes & Finished state calculation
   const remainingClasses = totalPlannedClasses !== undefined ? Math.max(0, totalPlannedClasses - total) : undefined;
-  const isFinished = totalPlannedClasses !== undefined && remainingClasses === 0;
+  const isFinished = totalPlannedClasses !== undefined && totalPlannedClasses > 0 && remainingClasses === 0;
 
-  // Include sessionId so two slots for the same subject on the same day
-  // (especially ward vs ward_replacement) never collide on the same key.
   const selectionKey = sessionId ? `${activeDateStr}-${key}-${sessionId}` : `${activeDateStr}-${key}`;
   const currentSelection = homeSelections[selectionKey];
 
-  // How many future classes can still be missed while staying ≥ preferredPercentage%
+  const percentage = total === 0 ? 100 : (attended / total) * 100;
+
+  // How many future classes can still be missed
   const canMissCount = Math.max(0, Math.floor((attended * 100 / preferredPercentage) - total));
 
-  // How many classes must be attended to climb back to / stay at preferredPercentage%
+  // How many classes must be attended
   const needToAttend = Math.max(1, Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage)));
   
   const handleSelection = (selection: 'off' | 'missed' | 'attended') => {
@@ -67,7 +67,6 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
     }
   };
 
-  // Feature 5: Dynamic Percentage Range Colors
   const getPercentageColor = (pct: number) => {
     if (pct < preferredPercentage) return 'text-destructive';
     if (pct <= preferredPercentage + 5) return 'text-warning';
@@ -76,7 +75,6 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
 
   const ecgColor = percentage >= 80 ? "#10b981" : percentage >= 75 ? "#f59e0b" : "#ef4444";
 
-  // Card-level background tint based on current selection
   const cardBg = currentSelection === 'attended'
     ? 'bg-success/10 border-success/30'
     : currentSelection === 'missed'
@@ -85,7 +83,6 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
     ? 'bg-warning/10 border-warning/30'
     : 'bg-card border-card-border';
 
-  // Feature 3: Dynamic Subtitle Line Generation
   const renderSubtitle = () => {
     if (total === 0) {
       return <span>No classes conducted yet</span>;
@@ -130,7 +127,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
         isFinished && "opacity-60 backdrop-blur-[2px]"
       )}
     >
-      {/* Feature 2: Finished Overlay Banner */}
+      {/* Finished Overlay Banner */}
       {isFinished && (
         <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
           <div className="bg-destructive/90 text-destructive-foreground font-extrabold text-xs tracking-wider uppercase px-6 py-1.5 shadow-md -rotate-6 border border-destructive-foreground/20">
@@ -226,3 +223,4 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
     </div>
   );
 };
+
