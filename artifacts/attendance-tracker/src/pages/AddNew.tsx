@@ -24,9 +24,9 @@ const TabButton = ({ label, active, onClick }: { label: string; active: boolean;
 );
 
 const inputClass =
-  'w-full bg-background border border-border rounded-2xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-base transition-all placeholder:text-muted-foreground/50 box-border';
+  'w-full bg-background border border-border rounded-2xl px-4 h-12 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm md:text-base transition-all placeholder:text-muted-foreground/50 box-border [color-scheme:dark] min-w-0';
 
-const labelClass = 'text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5';
+const labelClass = 'text-xs font-bold uppercase tracking-wider text-muted-foreground block min-h-[28px] flex items-end pb-1';
 
 export default function AddNew() {
   const {
@@ -311,7 +311,7 @@ export default function AddNew() {
 
                 {/* Row 2 */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  <div className="min-w-0">
                     <label className={labelClass}>Total Planned Classes</label>
                     <input
                       className={inputClass}
@@ -324,7 +324,7 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className={labelClass}>Attended Classes (Optional)</label>
                     <input
                       className={inputClass}
@@ -348,16 +348,16 @@ export default function AddNew() {
                       const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                       return (
                         <div key={idx} className="space-y-2.5 bg-muted/20 p-3.5 rounded-2xl border border-border/40 box-border">
-                          {/* Column Headers - Exactly Balanced 4-4-4 Grid */}
+                          {/* Column Headers */}
                           <div className="grid grid-cols-12 gap-2 px-0.5">
                             <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Day</span>
                             <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Start</span>
                             <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">End</span>
                           </div>
 
-                          {/* Inputs Grid - Perfectly Equal 4-4-4 Proportions with matching heights */}
+                          {/* Inputs Grid */}
                           <div className="grid grid-cols-12 gap-2 items-center">
-                            <div className="col-span-4">
+                            <div className="col-span-4 min-w-0">
                               <select
                                 value={row.day}
                                 onChange={e => {
@@ -365,7 +365,7 @@ export default function AddNew() {
                                   updated[idx].day = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                className="w-full bg-background border border-border rounded-xl px-2 py-3 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border h-12"
+                                className="w-full bg-background border border-border rounded-2xl px-2 h-12 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                               >
                                 {availableOptions.map(o => (
                                   <option key={o} value={o}>{o}</option>
@@ -373,7 +373,7 @@ export default function AddNew() {
                               </select>
                             </div>
 
-                            <div className="col-span-4">
+                            <div className="col-span-4 min-w-0">
                               <input
                                 type="time"
                                 value={row.startTime}
@@ -382,11 +382,11 @@ export default function AddNew() {
                                   updated[idx].startTime = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                className="w-full bg-background border border-border rounded-xl px-2.5 py-3 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border h-12"
+                                className="w-full bg-background border border-border rounded-2xl px-2.5 h-12 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                               />
                             </div>
 
-                            <div className="col-span-4">
+                            <div className="col-span-4 min-w-0">
                               <input
                                 type="time"
                                 value={row.endTime}
@@ -395,7 +395,7 @@ export default function AddNew() {
                                   updated[idx].endTime = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                className="w-full bg-background border border-border rounded-xl px-2.5 py-3 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border h-12"
+                                className="w-full bg-background border border-border rounded-2xl px-2.5 h-12 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                               />
                             </div>
                           </div>
@@ -493,7 +493,7 @@ export default function AddNew() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
+                      <div className="min-w-0">
                         <label className={labelClass}>Total Planned Classes</label>
                         <input
                           className={inputClass}
@@ -506,7 +506,7 @@ export default function AddNew() {
                           required
                         />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className={labelClass}>Optional Attended Classes</label>
                         <input
                           className={inputClass}
@@ -537,7 +537,7 @@ export default function AddNew() {
                               </div>
 
                               <div className="grid grid-cols-12 gap-2 items-center">
-                                <div className="col-span-4">
+                                <div className="col-span-4 min-w-0">
                                   <select
                                     value={row.day}
                                     onChange={e => {
@@ -545,7 +545,7 @@ export default function AddNew() {
                                       updated[idx].day = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    className="w-full bg-background border border-border rounded-xl px-2 py-3 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border h-12"
+                                    className="w-full bg-background border border-border rounded-2xl px-2 h-12 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                                   >
                                     {availableOptions.map(o => (
                                       <option key={o} value={o}>{o}</option>
@@ -553,7 +553,7 @@ export default function AddNew() {
                                   </select>
                                 </div>
 
-                                <div className="col-span-4">
+                                <div className="col-span-4 min-w-0">
                                   <input
                                     type="time"
                                     value={row.startTime}
@@ -562,11 +562,11 @@ export default function AddNew() {
                                       updated[idx].startTime = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    className="w-full bg-background border border-border rounded-xl px-2.5 py-3 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border h-12"
+                                    className="w-full bg-background border border-border rounded-2xl px-2.5 h-12 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                                   />
                                 </div>
 
-                                <div className="col-span-4">
+                                <div className="col-span-4 min-w-0">
                                   <input
                                     type="time"
                                     value={row.endTime}
@@ -575,7 +575,7 @@ export default function AddNew() {
                                       updated[idx].endTime = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    className="w-full bg-background border border-border rounded-xl px-2.5 py-3 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border h-12"
+                                    className="w-full bg-background border border-border rounded-2xl px-2.5 h-12 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                                   />
                                 </div>
                               </div>
@@ -707,11 +707,11 @@ export default function AddNew() {
 
                 {/* Equal 2-Column Grid */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  <div className="min-w-0">
                     <label className={labelClass}>Start Date</label>
                     <input
                       type="date"
-                      className="w-full bg-background border border-border rounded-2xl px-3 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm md:text-base transition-all box-border"
+                      className={inputClass}
                       min="2026-01-01"
                       max="2026-12-31"
                       value={wStart}
@@ -719,11 +719,11 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className={labelClass}>End Date</label>
                     <input
                       type="date"
-                      className="w-full bg-background border border-border rounded-2xl px-3 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm md:text-base transition-all box-border"
+                      className={inputClass}
                       min="2026-01-01"
                       max="2026-12-31"
                       value={wEnd}
@@ -738,21 +738,21 @@ export default function AddNew() {
 
                 {/* Equal 2-Column Grid */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  <div className="min-w-0">
                     <label className={labelClass}>Morning Time</label>
                     <input
                       type="time"
-                      className="w-full bg-background border border-border rounded-2xl px-3 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm md:text-base transition-all box-border"
+                      className={inputClass}
                       value={wMorning}
                       onChange={e => setWMorning(e.target.value)}
                       required
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className={labelClass}>Evening Time</label>
                     <input
                       type="time"
-                      className="w-full bg-background border border-border rounded-2xl px-3 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm md:text-base transition-all box-border"
+                      className={inputClass}
                       value={wEvening}
                       onChange={e => setWEvening(e.target.value)}
                       required
@@ -809,7 +809,7 @@ export default function AddNew() {
                                 return (
                                   <div key={slotIdx} className="grid grid-cols-1 md:grid-cols-2 gap-2.5 bg-muted/20 p-3 rounded-xl border border-border/40 text-sm box-border">
                                     <div className="grid grid-cols-2 gap-2">
-                                      <div>
+                                      <div className="min-w-0">
                                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Day</label>
                                         <select
                                           value={dayIdx}
@@ -817,14 +817,14 @@ export default function AddNew() {
                                             const newDay = parseInt(e.target.value);
                                             updatePresetTimetableSlot(dayIdx, slotIdx, slot.time, slot.subjects, newDay);
                                           }}
-                                          className="w-full bg-background border border-border rounded-xl px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
+                                          className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border [color-scheme:dark]"
                                         >
                                           {DAYS.map((d, dIdx) => (
                                             <option key={d} value={dIdx}>{d}</option>
                                           ))}
                                         </select>
                                       </div>
-                                      <div>
+                                      <div className="min-w-0">
                                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Time</label>
                                         <input
                                           type="text"
@@ -832,12 +832,12 @@ export default function AddNew() {
                                           onChange={(e) => {
                                             updatePresetTimetableSlot(dayIdx, slotIdx, e.target.value, slot.subjects, dayIdx);
                                           }}
-                                          className="w-full bg-background border border-border rounded-xl px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
+                                          className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border [color-scheme:dark]"
                                         />
                                       </div>
                                     </div>
 
-                                    <div>
+                                    <div className="min-w-0">
                                       <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Subjects & Planned Classes</label>
                                       <div className="space-y-1.5">
                                         {slot.subjects.map((subName, subIdx) => {
@@ -852,7 +852,7 @@ export default function AddNew() {
                                                   newSubjects[subIdx] = e.target.value;
                                                   updatePresetTimetableSlot(dayIdx, slotIdx, slot.time, newSubjects, dayIdx);
                                                 }}
-                                                className="flex-1 bg-background border border-border rounded-xl px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
+                                                className="flex-1 min-w-0 bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border [color-scheme:dark]"
                                                 placeholder="Subject name"
                                               />
                                               <input
@@ -863,7 +863,7 @@ export default function AddNew() {
                                                   const newVal = parseInt(e.target.value) || 0;
                                                   updatePresetSubjectTotal(subName, newVal);
                                                 }}
-                                                className="w-14 bg-background border border-border rounded-xl px-1.5 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 text-center box-border"
+                                                className="w-14 bg-background border border-border rounded-xl px-1.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 text-center box-border [color-scheme:dark]"
                                                 placeholder="Planned"
                                               />
                                             </div>
@@ -895,7 +895,7 @@ export default function AddNew() {
                             </div>
                             
                             <div className="grid grid-cols-2 gap-3">
-                              <div>
+                              <div className="min-w-0">
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Start Date</label>
                                 <input
                                   type="date"
@@ -903,10 +903,10 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, e.target.value, ws.end, ws.morningTime, ws.eveningTime);
                                   }}
-                                  className="w-full bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
+                                  className="w-full bg-background border border-border rounded-xl px-2.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border [color-scheme:dark]"
                                 />
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">End Date</label>
                                 <input
                                   type="date"
@@ -914,13 +914,13 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, ws.start, e.target.value, ws.morningTime, ws.eveningTime);
                                   }}
-                                  className="w-full bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
+                                  className="w-full bg-background border border-border rounded-xl px-2.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border [color-scheme:dark]"
                                 />
                               </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
-                              <div>
+                              <div className="min-w-0">
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Morning Time</label>
                                 <input
                                   type="text"
@@ -928,11 +928,11 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, ws.start, ws.end, e.target.value, ws.eveningTime);
                                   }}
-                                  className="w-full bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
+                                  className="w-full bg-background border border-border rounded-xl px-2.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border [color-scheme:dark]"
                                   placeholder="e.g. 09:30–11:30"
                                 />
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Evening Time</label>
                                 <input
                                   type="text"
@@ -940,7 +940,7 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, ws.start, ws.end, ws.morningTime, e.target.value);
                                   }}
-                                  className="w-full bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
+                                  className="w-full bg-background border border-border rounded-xl px-2.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border [color-scheme:dark]"
                                   placeholder="e.g. 07:00–09:00 PM"
                                 />
                               </div>
