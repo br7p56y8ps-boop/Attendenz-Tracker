@@ -359,7 +359,7 @@ export default function AddNew() {
                             <span className="col-span-5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">End</span>
                           </div>
 
-                          {/* Inputs Grid - Balanced 12-Column Span */}
+                          {/* Inputs Grid - Strict 12 Column Proportions */}
                           <div className="grid grid-cols-12 gap-2 items-center">
                             <div className="col-span-3">
                               <select
@@ -543,7 +543,7 @@ export default function AddNew() {
                                 <span className="col-span-5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">End</span>
                               </div>
 
-                              {/* Inputs Grid - Balanced 12-Column Span */}
+                              {/* Inputs Grid - Strict 12 Column Proportions */}
                               <div className="grid grid-cols-12 gap-2 items-center">
                                 <div className="col-span-3">
                                   <select
@@ -715,9 +715,9 @@ export default function AddNew() {
                   />
                 </div>
 
-                {/* Row 2 - Balanced 12-column Grid */}
-                <div className="grid grid-cols-12 gap-4">
-                  <div className="col-span-6">
+                {/* Row 2 - Equal 2-Column Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
                     <label className={labelClass}>Start Date</label>
                     <input
                       type="date"
@@ -729,7 +729,7 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div className="col-span-6">
+                  <div>
                     <label className={labelClass}>End Date</label>
                     <input
                       type="date"
@@ -746,9 +746,9 @@ export default function AddNew() {
                   <p className="text-destructive text-xs font-semibold -mt-2">End date must be after start date.</p>
                 )}
 
-                {/* Row 3 - Balanced 12-column Grid */}
-                <div className="grid grid-cols-12 gap-4">
-                  <div className="col-span-6">
+                {/* Row 3 - Equal 2-Column Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
                     <label className={labelClass}>Morning Time</label>
                     <input
                       type="time"
@@ -758,7 +758,7 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div className="col-span-6">
+                  <div>
                     <label className={labelClass}>Evening Time</label>
                     <input
                       type="time"
