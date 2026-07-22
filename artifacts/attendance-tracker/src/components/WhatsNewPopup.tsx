@@ -1,27 +1,16 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { X, Sparkles, Calendar, Sun, Image, Percent, CheckCircle2 } from 'lucide-react';
 
-const CURRENT_VERSION_KEY = 'attendenz_whats_new_seen_v3.6.0';
-
 export function WhatsNewPopup() {
-  const { isWhatsNewOpen, setWhatsNewOpen } = useCustomData();
+  const { whatsNewOpen, setWhatsNewOpen } = useCustomData();
 
-  // Auto-trigger popup on first entry for v3.6.0 (Stable)
-  useEffect(() => {
-    const hasSeen = localStorage.getItem(CURRENT_VERSION_KEY);
-    if (!hasSeen) {
-      setWhatsNewOpen(true);
-    }
-  }, [setWhatsNewOpen]);
+  if (!whatsNewOpen) return null;
 
   const handleClose = () => {
-    localStorage.setItem(CURRENT_VERSION_KEY, 'true');
     setWhatsNewOpen(false);
   };
-
-  if (!isWhatsNewOpen) return null;
 
   const features = [
     {
