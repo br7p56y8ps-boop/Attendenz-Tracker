@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, getCurrentDateStr } from '@/lib/utils';
+import { CATEGORIES } from '@/lib/constants';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface HomeCardProps {
@@ -34,10 +35,11 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
   const total = attended + missed;
 
   // FIXED: Fetch plannedClasses for BOTH Preset and Custom users
+  const presetTotal = CATEGORIES.flatMap(c => c.subjects).find(s => s.name.toLowerCase() === subject.toLowerCase())?.total;
   const customSub = customSubjects?.find(
     (s) => s.name.toLowerCase() === subject.toLowerCase()
   );
-  const totalPlannedClasses = data?.plannedClasses ?? data?.total ?? customSub?.plannedClasses;
+  const totalPlannedClasses = data?.plannedClasses ?? data?.total ?? customSub?.plannedClasses ?? presetTotal;
 
   // Remaining planned classes & Finished state
   const remainingClasses = totalPlannedClasses !== undefined ? Math.max(0, totalPlannedClasses - total) : undefined;
