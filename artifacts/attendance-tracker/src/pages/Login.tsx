@@ -39,10 +39,10 @@ export default function Login() {
     forgotPassword();
   };
 
-  const inputClass = "w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white placeholder:text-white/30 focus:outline-none focus:border-primary/50 text-base transition-all";
+  const inputClass = "w-full bg-muted/40 border border-border rounded-2xl px-4 py-3.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 text-base transition-all";
 
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-black px-5 py-10">
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background px-5 py-10 relative">
       {/* Logo / Title */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -50,26 +50,23 @@ export default function Login() {
         transition={{ duration: 0.5 }}
         className="text-center mb-8 flex flex-col items-center"
       >
-        <img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Icon" className="w-24 h-24 rounded-[28px] object-cover mb-4 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.8)] filter drop-shadow-[0_4px_12px_rgba(10,132,255,0.25)]" />
+        <img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Icon" className="w-24 h-24 rounded-[28px] object-cover mb-4 border border-border shadow-lg" />
         
         <div className="relative inline-flex flex-col items-center pb-2.5 select-none">
           <span className="font-extrabold tracking-[-0.03em] flex items-center text-4xl sm:text-5xl">
-            {/* Gold/Amber liquid glass gradient for "Attend" */}
             <span className="bg-gradient-to-b from-[#FFF5C3] via-[#E29A1F] to-[#734300] bg-clip-text text-transparent filter drop-shadow-[0_2px_12px_rgba(226,154,31,0.5)]">
               Attend
             </span>
-            {/* Platinum silver glass gradient for "enz" */}
-            <span className="bg-gradient-to-b from-[#FFFFFF] via-[#D1D9E6] to-[#4A5E75] bg-clip-text text-transparent filter drop-shadow-[0_2px_12px_rgba(209,217,230,0.4)] relative">
+            <span className="bg-gradient-to-b from-[#4A5E75] via-[#2A3E55] to-[#101E30] dark:from-[#FFFFFF] dark:via-[#D1D9E6] dark:to-[#4A5E75] bg-clip-text text-transparent relative">
               enz
-              {/* "TRACKER" Subscript aligned under "enz" */}
-              <span className="absolute left-0 -bottom-2 text-[8px] md:text-[9px] text-white/70 tracking-[0.3em] font-light uppercase">
+              <span className="absolute left-0 -bottom-2 text-[8px] md:text-[9px] text-muted-foreground tracking-[0.3em] font-light uppercase">
                 TRACKER
               </span>
             </span>
           </span>
         </div>
         
-        <p className="text-white/40 text-xs tracking-wider uppercase mt-2">Lecture & Clinical Tracker</p>
+        <p className="text-muted-foreground text-xs tracking-wider uppercase mt-2">Lecture & Clinical Tracker</p>
       </motion.div>
 
       {/* Card */}
@@ -77,18 +74,18 @@ export default function Login() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.1 }}
-        className="w-full max-w-sm glass-panel rounded-[28px] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.8)]"
+        className="w-full max-w-sm bg-card border border-border rounded-[28px] p-6 shadow-xl"
       >
         {/* Mode toggle (only if account exists) */}
         {hasAccount && (
-          <div className="flex bg-white/5 rounded-2xl p-1 mb-6 border border-white/5">
+          <div className="flex bg-muted rounded-2xl p-1 mb-6 border border-border">
             {(['login', 'create'] as Mode[]).map(m => (
               <button
                 key={m}
                 onClick={() => { setMode(m); setError(''); }}
                 className={cn(
                   "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300",
-                  mode === m ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-white/50 hover:text-white/80"
+                  mode === m ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {m === 'login' ? 'Sign In' : 'New Account'}
@@ -121,7 +118,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => setShowPassword(v => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
             >
               {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </button>
@@ -140,7 +137,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => setShowConfirm(v => !v)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
               >
                 {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
@@ -162,7 +159,7 @@ export default function Login() {
 
           <button
             type="submit"
-            className="w-full py-4 rounded-2xl bg-primary text-white font-bold text-base hover:opacity-95 active:scale-[0.98] transition-all shadow-[0_4px_15px_rgba(10,132,255,0.3)] mt-2"
+            className="w-full py-4 rounded-2xl bg-primary text-primary-foreground font-bold text-base hover:opacity-95 active:scale-[0.98] transition-all shadow-sm mt-2"
           >
             {mode === 'create' ? 'Create Account' : 'Sign In'}
           </button>
@@ -176,11 +173,10 @@ export default function Login() {
             className="mt-5 bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex gap-3"
           >
             <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-            <p className="text-amber-200/60 text-xs leading-relaxed">
+            <p className="text-amber-600 dark:text-amber-200/70 text-xs leading-relaxed">
               <span className="font-semibold text-amber-500">Offline only.</span>{' '}
               Your credentials and all attendance data are stored locally on this device.
               There is no recovery option — forgetting your password will permanently erase all data.
-              Keep your credentials safe.
             </p>
           </motion.div>
         )}
@@ -189,12 +185,17 @@ export default function Login() {
         {mode === 'login' && (
           <button
             onClick={() => { setShowForgotDialog(true); setForgotStep(1); }}
-            className="w-full mt-5 text-white/40 text-sm hover:text-white/70 transition-colors"
+            className="w-full mt-5 text-muted-foreground text-sm hover:text-foreground transition-colors"
           >
             Forgot password?
           </button>
         )}
       </motion.div>
+
+      {/* Version Badge Footer */}
+      <p className="text-[10px] font-bold tracking-widest text-muted-foreground/40 uppercase mt-8">
+        Attendenz v3.6.0 (Stable)
+      </p>
 
       {/* Forgot Password Dialog */}
       <AnimatePresence>
@@ -210,24 +211,24 @@ export default function Login() {
               initial={{ y: 60, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 60, opacity: 0 }}
-              className="bg-slate-800 border border-white/10 rounded-3xl p-6 w-full max-w-sm"
+              className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl"
             >
               {forgotStep === 1 ? (
                 <>
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 rounded-2xl bg-red-500/20 flex items-center justify-center">
-                      <AlertTriangle className="w-5 h-5 text-red-400" />
+                      <AlertTriangle className="w-5 h-5 text-red-500" />
                     </div>
-                    <h3 className="text-lg font-bold text-white">Forgot Password</h3>
+                    <h3 className="text-lg font-bold text-foreground">Forgot Password</h3>
                   </div>
-                  <p className="text-white/60 text-sm leading-relaxed mb-6">
-                    Since this app is fully offline, there is <span className="text-white font-semibold">no recovery option</span>.
-                    Resetting will <span className="text-red-400 font-semibold">permanently delete all your attendance data</span> — including all subjects, history, and settings. This cannot be undone.
+                  <p className="text-muted-foreground text-sm leading-relaxed mb-6">
+                    Since this app is fully offline, there is <span className="text-foreground font-semibold">no recovery option</span>.
+                    Resetting will <span className="text-red-500 font-semibold">permanently delete all your attendance data</span>.
                   </p>
                   <div className="flex gap-3">
                     <button
                       onClick={() => setShowForgotDialog(false)}
-                      className="flex-1 py-3 rounded-2xl border border-white/20 text-white/70 text-sm font-semibold hover:bg-white/5 transition-colors"
+                      className="flex-1 py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
                     >
                       Cancel
                     </button>
@@ -243,17 +244,17 @@ export default function Login() {
                 <>
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 rounded-2xl bg-red-500/20 flex items-center justify-center">
-                      <Trash2 className="w-5 h-5 text-red-400" />
+                      <Trash2 className="w-5 h-5 text-red-500" />
                     </div>
-                    <h3 className="text-lg font-bold text-white">Are you absolutely sure?</h3>
+                    <h3 className="text-lg font-bold text-foreground">Are you absolutely sure?</h3>
                   </div>
-                  <p className="text-white/60 text-sm mb-6">
+                  <p className="text-muted-foreground text-sm mb-6">
                     All data will be wiped and you'll start fresh. Consider exporting a backup first (from Account tab).
                   </p>
                   <div className="flex gap-3">
                     <button
                       onClick={() => setShowForgotDialog(false)}
-                      className="flex-1 py-3 rounded-2xl border border-white/20 text-white/70 text-sm font-semibold hover:bg-white/5 transition-colors"
+                      className="flex-1 py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
                     >
                       Cancel
                     </button>
