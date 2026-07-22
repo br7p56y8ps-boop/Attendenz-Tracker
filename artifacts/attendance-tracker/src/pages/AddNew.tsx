@@ -24,9 +24,10 @@ const TabButton = ({ label, active, onClick }: { label: string; active: boolean;
 );
 
 const inputClass =
-  'w-full max-w-full bg-background border border-border rounded-xl sm:rounded-2xl px-2.5 sm:px-4 h-11 sm:h-12 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-base transition-all placeholder:text-muted-foreground/50 box-border min-w-0';
+  'w-full bg-background border border-border rounded-2xl px-3 h-11 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border';
 
-const labelClass = 'text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block min-h-[28px] flex items-end pb-1 truncate';
+const labelClass =
+  'text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block min-h-[26px] flex items-end pb-1 leading-tight';
 
 export default function AddNew() {
   const {
@@ -291,7 +292,7 @@ export default function AddNew() {
         <AnimatePresence mode="wait">
           {tab === 'single' && (
             <motion.div key="single" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <form onSubmit={handleSaveSingle} className="bg-card border border-border rounded-3xl p-4 sm:p-6 space-y-5 shadow-sm overflow-hidden">
+              <form onSubmit={handleSaveSingle} className="bg-card border border-border rounded-3xl p-3.5 sm:p-5 space-y-4 shadow-sm">
                 <div className="flex items-center gap-2 border-b border-border/50 pb-3">
                   <GraduationCap className="w-5 h-5 text-primary" />
                   <h3 className="font-bold text-lg text-foreground">Add New Single Subject</h3>
@@ -301,7 +302,7 @@ export default function AddNew() {
                 <div>
                   <label className={labelClass}>Subject Name</label>
                   <input
-                    className={inputClass}
+                    className={`${inputClass} px-3.5`}
                     placeholder="e.g. Pathology"
                     value={sName}
                     onChange={e => setSName(e.target.value)}
@@ -310,11 +311,11 @@ export default function AddNew() {
                 </div>
 
                 {/* Row 2 */}
-                <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                  <div className="min-w-0 overflow-hidden">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <div>
                     <label className={labelClass}>Total Planned Classes</label>
                     <input
-                      className={inputClass}
+                      className={`${inputClass} px-3`}
                       type="number"
                       inputMode="numeric"
                       min="1"
@@ -324,10 +325,10 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div className="min-w-0 overflow-hidden">
+                  <div>
                     <label className={labelClass}>Attended Classes (Optional)</label>
                     <input
-                      className={inputClass}
+                      className={`${inputClass} px-3`}
                       type="number"
                       inputMode="numeric"
                       min="0"
@@ -342,22 +343,22 @@ export default function AddNew() {
                 <div className="space-y-3">
                   <label className={labelClass}>Weekly Schedules</label>
                   
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {singleDays.map((row, idx) => {
                       const usedDaysInOthers = singleDays.filter((_, i) => i !== idx).map(r => r.day);
                       const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                       return (
-                        <div key={idx} className="space-y-2.5 bg-muted/20 p-2.5 sm:p-3.5 rounded-2xl border border-border/40 box-border overflow-hidden">
+                        <div key={idx} className="space-y-2 bg-muted/20 p-2.5 sm:p-3.5 rounded-2xl border border-border/40 box-border">
                           {/* Column Headers */}
-                          <div className="grid grid-cols-12 gap-1.5 sm:gap-2 px-0.5">
-                            <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate">Day</span>
-                            <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate">Start</span>
-                            <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate">End</span>
+                          <div className="grid grid-cols-3 gap-2 px-0.5">
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Day</span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Start</span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">End</span>
                           </div>
 
                           {/* Inputs Grid */}
-                          <div className="grid grid-cols-12 gap-1.5 sm:gap-2 items-center">
-                            <div className="col-span-4 min-w-0 overflow-hidden">
+                          <div className="grid grid-cols-3 gap-2 items-center">
+                            <div>
                               <select
                                 value={row.day}
                                 onChange={e => {
@@ -365,7 +366,7 @@ export default function AddNew() {
                                   updated[idx].day = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                className="w-full max-w-full bg-background border border-border rounded-xl px-1.5 sm:px-2.5 h-11 sm:h-12 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border min-w-0"
+                                className="w-full bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                               >
                                 {availableOptions.map(o => (
                                   <option key={o} value={o}>{o}</option>
@@ -373,7 +374,7 @@ export default function AddNew() {
                               </select>
                             </div>
 
-                            <div className="col-span-4 min-w-0 overflow-hidden">
+                            <div>
                               <input
                                 type="time"
                                 value={row.startTime}
@@ -383,11 +384,11 @@ export default function AddNew() {
                                   setSingleDays(updated);
                                 }}
                                 style={{ colorScheme: 'dark' }}
-                                className="w-full max-w-full bg-background border border-border rounded-xl px-1.5 sm:px-2.5 h-11 sm:h-12 text-[11px] sm:text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border min-w-0"
+                                className="w-full bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                               />
                             </div>
 
-                            <div className="col-span-4 min-w-0 overflow-hidden">
+                            <div>
                               <input
                                 type="time"
                                 value={row.endTime}
@@ -397,7 +398,7 @@ export default function AddNew() {
                                   setSingleDays(updated);
                                 }}
                                 style={{ colorScheme: 'dark' }}
-                                className="w-full max-w-full bg-background border border-border rounded-xl px-1.5 sm:px-2.5 h-11 sm:h-12 text-[11px] sm:text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border min-w-0"
+                                className="w-full bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                               />
                             </div>
                           </div>
@@ -445,7 +446,7 @@ export default function AddNew() {
           {/* ── Tab 2: Allied Subject ── */}
           {tab === 'allied' && (
             <motion.div key="allied" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="bg-card border border-border rounded-3xl p-4 sm:p-6 space-y-5 shadow-sm overflow-hidden">
+              <div className="bg-card border border-border rounded-3xl p-3.5 sm:p-5 space-y-4 shadow-sm">
                 <div className="flex items-center gap-2 border-b border-border/50 pb-3">
                   <Building2 className="w-5 h-5 text-primary" />
                   <h3 className="font-bold text-lg text-foreground font-sans">Add Allied Subjects Group</h3>
@@ -455,7 +456,7 @@ export default function AddNew() {
                 <div>
                   <label className={labelClass}>Parent Subject Name</label>
                   <input
-                    className={inputClass}
+                    className={`${inputClass} px-3.5`}
                     placeholder="e.g. Medicine & Allied"
                     value={parentName}
                     onChange={e => setParentName(e.target.value)}
@@ -486,7 +487,7 @@ export default function AddNew() {
                     <div>
                       <label className={labelClass}>Child Subject Name</label>
                       <input
-                        className={inputClass}
+                        className={`${inputClass} px-3.5`}
                         placeholder="e.g. Cardiology"
                         value={cName}
                         onChange={e => setCName(e.target.value)}
@@ -494,11 +495,11 @@ export default function AddNew() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                      <div className="min-w-0 overflow-hidden">
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                      <div>
                         <label className={labelClass}>Total Planned Classes</label>
                         <input
-                          className={inputClass}
+                          className={`${inputClass} px-3`}
                           type="number"
                           inputMode="numeric"
                           min="1"
@@ -508,10 +509,10 @@ export default function AddNew() {
                           required
                         />
                       </div>
-                      <div className="min-w-0 overflow-hidden">
+                      <div>
                         <label className={labelClass}>Optional Attended Classes</label>
                         <input
-                          className={inputClass}
+                          className={`${inputClass} px-3`}
                           type="number"
                           inputMode="numeric"
                           min="0"
@@ -526,20 +527,20 @@ export default function AddNew() {
                     <div className="space-y-3">
                       <label className={labelClass}>Day & Time Schedule</label>
                       
-                      <div className="space-y-3">
+                      <div className="space-y-2.5">
                         {childDays.map((row, idx) => {
                           const usedDaysInOthers = childDays.filter((_, i) => i !== idx).map(r => r.day);
                           const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                           return (
-                            <div key={idx} className="space-y-2.5 bg-muted/20 p-2.5 sm:p-3.5 rounded-2xl border border-border/40 box-border overflow-hidden">
-                              <div className="grid grid-cols-12 gap-1.5 sm:gap-2 px-0.5">
-                                <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate">Day</span>
-                                <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate">Start</span>
-                                <span className="col-span-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate">End</span>
+                            <div key={idx} className="space-y-2 bg-muted/20 p-2.5 sm:p-3.5 rounded-2xl border border-border/40 box-border">
+                              <div className="grid grid-cols-3 gap-2 px-0.5">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Day</span>
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Start</span>
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">End</span>
                               </div>
 
-                              <div className="grid grid-cols-12 gap-1.5 sm:gap-2 items-center">
-                                <div className="col-span-4 min-w-0 overflow-hidden">
+                              <div className="grid grid-cols-3 gap-2 items-center">
+                                <div>
                                   <select
                                     value={row.day}
                                     onChange={e => {
@@ -547,7 +548,7 @@ export default function AddNew() {
                                       updated[idx].day = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    className="w-full max-w-full bg-background border border-border rounded-xl px-1.5 sm:px-2.5 h-11 sm:h-12 text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border min-w-0"
+                                    className="w-full bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                                   >
                                     {availableOptions.map(o => (
                                       <option key={o} value={o}>{o}</option>
@@ -555,7 +556,7 @@ export default function AddNew() {
                                   </select>
                                 </div>
 
-                                <div className="col-span-4 min-w-0 overflow-hidden">
+                                <div>
                                   <input
                                     type="time"
                                     value={row.startTime}
@@ -565,11 +566,11 @@ export default function AddNew() {
                                       setChildDays(updated);
                                     }}
                                     style={{ colorScheme: 'dark' }}
-                                    className="w-full max-w-full bg-background border border-border rounded-xl px-1.5 sm:px-2.5 h-11 sm:h-12 text-[11px] sm:text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border min-w-0"
+                                    className="w-full bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                                   />
                                 </div>
 
-                                <div className="col-span-4 min-w-0 overflow-hidden">
+                                <div>
                                   <input
                                     type="time"
                                     value={row.endTime}
@@ -579,7 +580,7 @@ export default function AddNew() {
                                       setChildDays(updated);
                                     }}
                                     style={{ colorScheme: 'dark' }}
-                                    className="w-full max-w-full bg-background border border-border rounded-xl px-1.5 sm:px-2.5 h-11 sm:h-12 text-[11px] sm:text-xs md:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border min-w-0"
+                                    className="w-full bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                                   />
                                 </div>
                               </div>
@@ -692,7 +693,7 @@ export default function AddNew() {
           {/* ── Tab 3: Ward Rotation ── */}
           {tab === 'ward' && (
             <motion.div key="ward" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <form onSubmit={handleSaveWard} className="bg-card border border-border rounded-3xl p-4 sm:p-6 space-y-5 shadow-sm overflow-hidden">
+              <form onSubmit={handleSaveWard} className="bg-card border border-border rounded-3xl p-3.5 sm:p-5 space-y-4 shadow-sm">
                 <div className="flex items-center gap-2 border-b border-border/50 pb-3">
                   <Calendar className="w-5 h-5 text-primary" />
                   <h3 className="font-bold text-lg text-foreground">Add New Hospital/Clinical Rotation</h3>
@@ -701,7 +702,7 @@ export default function AddNew() {
                 <div>
                   <label className={labelClass}>Department/Ward Name</label>
                   <input
-                    className={inputClass}
+                    className={`${inputClass} px-3.5`}
                     placeholder="e.g. Neurology"
                     value={wName}
                     onChange={e => setWName(e.target.value)}
@@ -710,12 +711,12 @@ export default function AddNew() {
                 </div>
 
                 {/* Equal 2-Column Grid */}
-                <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                  <div className="min-w-0 overflow-hidden">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <div>
                     <label className={labelClass}>Start Date</label>
                     <input
                       type="date"
-                      className={inputClass}
+                      className="w-full bg-background border border-border rounded-2xl px-2 sm:px-3 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                       style={{ colorScheme: 'dark' }}
                       min="2026-01-01"
                       max="2026-12-31"
@@ -724,11 +725,11 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div className="min-w-0 overflow-hidden">
+                  <div>
                     <label className={labelClass}>End Date</label>
                     <input
                       type="date"
-                      className={inputClass}
+                      className="w-full bg-background border border-border rounded-2xl px-2 sm:px-3 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                       style={{ colorScheme: 'dark' }}
                       min="2026-01-01"
                       max="2026-12-31"
@@ -743,23 +744,23 @@ export default function AddNew() {
                 )}
 
                 {/* Equal 2-Column Grid */}
-                <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                  <div className="min-w-0 overflow-hidden">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <div>
                     <label className={labelClass}>Morning Time</label>
                     <input
                       type="time"
-                      className={inputClass}
+                      className="w-full bg-background border border-border rounded-2xl px-2 sm:px-3 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                       style={{ colorScheme: 'dark' }}
                       value={wMorning}
                       onChange={e => setWMorning(e.target.value)}
                       required
                     />
                   </div>
-                  <div className="min-w-0 overflow-hidden">
+                  <div>
                     <label className={labelClass}>Evening Time</label>
                     <input
                       type="time"
-                      className={inputClass}
+                      className="w-full bg-background border border-border rounded-2xl px-2 sm:px-3 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                       style={{ colorScheme: 'dark' }}
                       value={wEvening}
                       onChange={e => setWEvening(e.target.value)}
@@ -784,7 +785,7 @@ export default function AddNew() {
           {/* ── Tab 4: Preset Overrides ── */}
           {tab === 'presets' && (
             <motion.div key="presets" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="bg-card border border-border rounded-3xl p-4 sm:p-6 space-y-6 shadow-sm overflow-hidden">
+              <div className="bg-card border border-border rounded-3xl p-3.5 sm:p-5 space-y-6 shadow-sm">
                 <div className="border-b border-border/50 pb-3 flex items-center gap-2">
                   <Sliders className="w-5 h-5 text-primary" />
                   <div>
@@ -817,7 +818,7 @@ export default function AddNew() {
                                 return (
                                   <div key={slotIdx} className="grid grid-cols-1 md:grid-cols-2 gap-2.5 bg-muted/20 p-3 rounded-xl border border-border/40 text-sm box-border">
                                     <div className="grid grid-cols-2 gap-2">
-                                      <div className="min-w-0 overflow-hidden">
+                                      <div>
                                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Day</label>
                                         <select
                                           value={dayIdx}
@@ -825,14 +826,14 @@ export default function AddNew() {
                                             const newDay = parseInt(e.target.value);
                                             updatePresetTimetableSlot(dayIdx, slotIdx, slot.time, slot.subjects, newDay);
                                           }}
-                                          className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
+                                          className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border [color-scheme:dark]"
                                         >
                                           {DAYS.map((d, dIdx) => (
                                             <option key={d} value={dIdx}>{d}</option>
                                           ))}
                                         </select>
                                       </div>
-                                      <div className="min-w-0 overflow-hidden">
+                                      <div>
                                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Time</label>
                                         <input
                                           type="text"
@@ -845,7 +846,7 @@ export default function AddNew() {
                                       </div>
                                     </div>
 
-                                    <div className="min-w-0 overflow-hidden">
+                                    <div>
                                       <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Subjects & Planned Classes</label>
                                       <div className="space-y-1.5">
                                         {slot.subjects.map((subName, subIdx) => {
@@ -860,7 +861,7 @@ export default function AddNew() {
                                                   newSubjects[subIdx] = e.target.value;
                                                   updatePresetTimetableSlot(dayIdx, slotIdx, slot.time, newSubjects, dayIdx);
                                                 }}
-                                                className="flex-1 min-w-0 bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
+                                                className="flex-1 bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                                 placeholder="Subject name"
                                               />
                                               <input
@@ -896,14 +897,14 @@ export default function AddNew() {
                     <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
                       {presetWardSchedule.map((ws, wsIdx) => {
                         return (
-                          <div key={wsIdx} className="bg-muted/20 p-4 rounded-2xl border border-border/40 space-y-3 text-sm box-border overflow-hidden">
+                          <div key={wsIdx} className="bg-muted/20 p-4 rounded-2xl border border-border/40 space-y-3 text-sm box-border">
                             <div className="flex justify-between items-center">
                               <h5 className="font-bold text-foreground text-xs uppercase tracking-wide">{ws.ward} Posting</h5>
                               <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-semibold">Preset Posting</span>
                             </div>
                             
                             <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                              <div className="min-w-0 overflow-hidden">
+                              <div>
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Start Date</label>
                                 <input
                                   type="date"
@@ -912,10 +913,10 @@ export default function AddNew() {
                                     updatePresetWardSchedule(wsIdx, e.target.value, ws.end, ws.morningTime, ws.eveningTime);
                                   }}
                                   style={{ colorScheme: 'dark' }}
-                                  className="w-full bg-background border border-border rounded-xl px-2 sm:px-2.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border min-w-0"
+                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                 />
                               </div>
-                              <div className="min-w-0 overflow-hidden">
+                              <div>
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">End Date</label>
                                 <input
                                   type="date"
@@ -924,13 +925,13 @@ export default function AddNew() {
                                     updatePresetWardSchedule(wsIdx, ws.start, e.target.value, ws.morningTime, ws.eveningTime);
                                   }}
                                   style={{ colorScheme: 'dark' }}
-                                  className="w-full bg-background border border-border rounded-xl px-2 sm:px-2.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border min-w-0"
+                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                 />
                               </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                              <div className="min-w-0 overflow-hidden">
+                              <div>
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Morning Time</label>
                                 <input
                                   type="text"
@@ -938,11 +939,11 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, ws.start, ws.end, e.target.value, ws.eveningTime);
                                   }}
-                                  className="w-full bg-background border border-border rounded-xl px-2 sm:px-2.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border min-w-0"
+                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                   placeholder="e.g. 09:30–11:30"
                                 />
                               </div>
-                              <div className="min-w-0 overflow-hidden">
+                              <div>
                                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Evening Time</label>
                                 <input
                                   type="text"
@@ -950,7 +951,7 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, ws.start, ws.end, ws.morningTime, e.target.value);
                                   }}
-                                  className="w-full bg-background border border-border rounded-xl px-2 sm:px-2.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border min-w-0"
+                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                   placeholder="e.g. 07:00–09:00 PM"
                                 />
                               </div>
