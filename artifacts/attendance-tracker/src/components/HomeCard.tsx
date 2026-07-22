@@ -126,7 +126,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
       className={cn(
         "rounded-2xl p-5 shadow-sm border mb-4 transition-colors duration-300 relative overflow-hidden", 
         cardBg,
-        isFinished && "opacity-60 backdrop-blur-[2px]"
+        isFinished && "opacity-40 backdrop-blur-[5px]"
       )}
     >
       {/* Finished Overlay Banner */}
