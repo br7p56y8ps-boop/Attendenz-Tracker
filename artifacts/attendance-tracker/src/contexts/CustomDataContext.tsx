@@ -27,6 +27,7 @@ const CUSTOM_SUBJECTS_KEY = 'att_custom_subjects';
 const CUSTOM_WARDS_KEY = 'att_custom_wards';
 const SUBJECT_MODE_KEY = 'att_subject_mode';
 const SETUP_DONE_KEY = 'att_setup_done';
+const WHATS_NEW_KEY = 'att_whats_new_v3.6.0';
 
 import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 
@@ -36,19 +37,16 @@ interface CustomDataContextType {
   subjectMode: SubjectMode;
   setupDone: boolean;
   whatsNewOpen: boolean;
+  isWhatsNewOpen: boolean;
   setWhatsNewOpen: (b: boolean) => void;
   addCustomSubject: (s: Omit<CustomSubject, 'id'>) => void;
   removeCustomSubject: (id: string) => void;
   addCustomWard: (w: Omit<CustomWard, 'id'>) => void;
   removeCustomWard: (id: string) => void;
   getCurrentCustomWard: () => CustomWard | null;
-  /** Called after the user makes their setup choice. resetAttendance must be called separately for 'custom'. */
   completeSetup: (mode: SubjectMode) => void;
-  /** Clears all custom subjects/wards from state+LS and sets mode to 'custom'. */
   startFresh: () => void;
-  /** Dynamically switch the active routine mode */
   changeSubjectMode: (mode: SubjectMode) => void;
-  /** Clears all data associated with a specific routine mode. */
   clearRoutineData: (mode: SubjectMode) => void;
 
   // Preset Overrides
@@ -70,7 +68,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [customWards, setCustomWards] = useState<CustomWard[]>([]);
   const [subjectMode, setSubjectMode] = useState<SubjectMode>('preloaded');
   const [setupDone, setSetupDone] = useState(false);
-  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpenState] = useState(false);
 
   // Preset Section Overrides
   const [presetTimetable, setPresetTimetable] = useState<typeof TIMETABLE>(TIMETABLE);
@@ -90,6 +88,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       const done = localStorage.getItem(SETUP_DONE_KEY);
       if (done === 'true') setSetupDone(true);
 
+      // Auto-trigger What's New Pop-up on First Entry for v3.6.0
+      const seenWhatsNew = localStorage.getItem(WHATS_NEW_KEY);
+      if (seenWhatsNew !== 'true') {
+        setWhatsNewOpenState(true);
+      }
+
       // Load presets
       const pt = localStorage.getItem('att_preset_timetable');
       if (pt) setPresetTimetable(JSON.parse(pt));
@@ -99,6 +103,13 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       if (pst) setPresetSubjectTotals(JSON.parse(pst));
     } catch { /* ignore */ }
   }, []);
+
+  const handleSetWhatsNewOpen = (open: boolean) => {
+    if (!open) {
+      localStorage.setItem(WHATS_NEW_KEY, 'true');
+    }
+    setWhatsNewOpenState(open);
+  };
 
   const saveSubjects = (data: CustomSubject[]) => {
     setCustomSubjects(data);
@@ -141,12 +152,10 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const startFresh = () => {
-    // Clear custom subjects and wards
     localStorage.removeItem(CUSTOM_SUBJECTS_KEY);
     localStorage.removeItem(CUSTOM_WARDS_KEY);
     setCustomSubjects([]);
     setCustomWards([]);
-    // Mark as custom mode + done
     completeSetup('custom');
   };
 
@@ -157,7 +166,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   const clearRoutineData = (modeToClear: SubjectMode) => {
     if (modeToClear === 'preloaded') {
-      // Clear preset overrides
       localStorage.removeItem('att_preset_timetable');
       localStorage.removeItem('att_preset_ward_schedule');
       localStorage.removeItem('att_preset_subject_totals');
@@ -165,7 +173,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       setPresetWardSchedule(WARD_SCHEDULE.map(ws => ({ ...ws, morningTime: '09:30–11:30', eveningTime: '07:00–09:00 PM' })));
       setPresetSubjectTotals({});
     } else {
-      // Clear custom mode data
       localStorage.removeItem(CUSTOM_SUBJECTS_KEY);
       localStorage.removeItem(CUSTOM_WARDS_KEY);
       setCustomSubjects([]);
@@ -214,7 +221,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         const end   = new Date(slot.end   + 'T12:00:00');
         const cur   = new Date(start);
         while (cur <= end) {
-          if (cur.getDay() !== 5) count++; // exclude Friday
+          if (cur.getDay() !== 5) count++;
           cur.setDate(cur.getDate() + 1);
         }
       } catch { /* ignore */ }
@@ -277,7 +284,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   return (
     <CustomDataContext.Provider value={{
       customSubjects, customWards, subjectMode, setupDone,
-      whatsNewOpen, setWhatsNewOpen,
+      whatsNewOpen,
+      isWhatsNewOpen: whatsNewOpen,
+      setWhatsNewOpen: handleSetWhatsNewOpen,
       addCustomSubject, removeCustomSubject,
       addCustomWard, removeCustomWard,
       getCurrentCustomWard,

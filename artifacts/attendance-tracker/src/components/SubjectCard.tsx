@@ -109,6 +109,8 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
             inputMode="numeric"
             value={localAttended}
             onChange={(e) => handleInputChange('attended', e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={() => { if (localAttended === '') setLocalAttended('0'); }}
             className="w-full bg-background border border-border rounded-xl px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-base"
           />
         </div>
@@ -119,6 +121,8 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
             inputMode="numeric"
             value={localMissed}
             onChange={(e) => handleInputChange('missed', e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={() => { if (localMissed === '') setLocalMissed('0'); }}
             className="w-full bg-background border border-border rounded-xl px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-destructive/50 transition-all text-base"
           />
         </div>

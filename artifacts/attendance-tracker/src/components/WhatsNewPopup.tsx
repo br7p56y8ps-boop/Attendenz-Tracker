@@ -1,97 +1,101 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { APP_VERSION, FEATURES_UPDATED } from '@/lib/appVersion';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { X } from 'lucide-react';
+import { X, Sparkles, Calendar, Sun, Image, Percent, CheckCircle2 } from 'lucide-react';
 
-const WHATS_NEW_KEY = 'att_whats_new_version';
-
-export const WhatsNewPopup = () => {
+export function WhatsNewPopup() {
   const { whatsNewOpen, setWhatsNewOpen } = useCustomData();
-  const [visible, setVisible] = useState(false);
 
-  useEffect(() => {
-    const stored = localStorage.getItem(WHATS_NEW_KEY);
-    if (stored !== APP_VERSION) {
-      setVisible(true);
-    }
-  }, []);
+  if (!whatsNewOpen) return null;
 
-  const isOpen = visible || whatsNewOpen;
-
-  const dismiss = () => {
-    localStorage.setItem(WHATS_NEW_KEY, APP_VERSION);
-    setVisible(false);
+  const handleClose = () => {
     setWhatsNewOpen(false);
   };
 
+  const features = [
+    {
+      icon: <Calendar className="w-5 h-5 text-primary" />,
+      title: "Enhanced Timetable & Calendar",
+      desc: "Timetable week now starts on Saturday and ends on Friday (merged Holiday). Features smart 'Rest' and 'Small Group Teaching' cell merges, plus a read-only calendar date history view."
+    },
+    {
+      icon: <Sun className="w-5 h-5 text-amber-500" />,
+      title: "Instant Light & Dark Mode",
+      desc: "Easily switch between Light and Dark mode right from your Profile Card in the Account tab."
+    },
+    {
+      icon: <Image className="w-5 h-5 text-emerald-500" />,
+      title: "Mobile Photos & Gallery Upload",
+      desc: "Profile picture selection is now optimized to open Apple Photos on iOS and Gallery on Android directly."
+    },
+    {
+      icon: <Percent className="w-5 h-5 text-indigo-500" />,
+      title: "Target Attendance Selector",
+      desc: "Updated Preferred Percentage setting to a clean dropdown selector ranging from 50% to 100%."
+    }
+  ];
+
   return (
     <AnimatePresence>
-      {isOpen && (
+      <div 
+        className="fixed inset-0 bg-black/70 backdrop-blur-md z-[9999] flex items-center justify-center p-4 overflow-y-auto"
+        onClick={handleClose}
+      >
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-4"
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.9, y: 20 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-card border border-border rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-6 my-auto relative"
         >
-          <motion.div
-            initial={{ y: 80, opacity: 0, scale: 0.95 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 80, opacity: 0, scale: 0.95 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="bg-card border border-border rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden"
-          >
-            {/* Header */}
-            <div className="bg-white/5 border-b border-white/5 px-6 pt-6 pb-5 relative">
-              <button
-                onClick={dismiss}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 hover:bg-white/25 transition-all"
-              >
-                <X className="w-4 h-4" />
-              </button>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-5 h-5 rounded-md overflow-hidden border border-white/10">
-                  <img src="/Logo.jpeg" className="w-full h-full object-cover" alt="" />
-                </div>
-                <span className="text-white/50 text-xs font-semibold uppercase tracking-widest">v{APP_VERSION}</span>
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Sparkles className="w-5 h-5 text-primary" />
               </div>
-              <h2 className="text-white text-2xl font-bold leading-tight">
-                🎉 What's New in<br />Attendenz
-              </h2>
+              <div>
+                <h2 className="text-lg font-extrabold text-foreground">What's New</h2>
+                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  v3.6.0 (Stable)
+                </span>
+              </div>
             </div>
+            <button
+              onClick={handleClose}
+              className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
-            {/* Feature list */}
-            <div className="px-5 py-4 space-y-3 max-h-72 overflow-y-auto">
-              {FEATURES_UPDATED.map((f, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.05 * i }}
-                  className="flex items-start gap-3"
-                >
-                  <span className="text-2xl shrink-0">{f.emoji}</span>
-                  <div>
-                    <p className="font-semibold text-foreground text-sm">{f.title}</p>
-                    <p className="text-muted-foreground text-xs mt-0.5 leading-relaxed">{f.desc}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
+          {/* Highlights List */}
+          <div className="space-y-3.5">
+            {features.map((f, i) => (
+              <div key={i} className="flex items-start gap-3.5 bg-muted/40 p-3.5 rounded-2xl border border-border/50">
+                <div className="p-2 rounded-xl bg-card border border-border/60 shrink-0 mt-0.5">
+                  {f.icon}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">{f.title}</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">{f.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
 
-            {/* CTA */}
-            <div className="px-5 pb-5 pt-2">
-              <button
-                onClick={dismiss}
-                className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold text-base hover:opacity-90 active:scale-[0.98] transition-all"
-              >
-                Got it 🚀
-              </button>
-            </div>
-          </motion.div>
+          {/* Action Button */}
+          <button
+            onClick={handleClose}
+            className="w-full py-3.5 bg-primary text-primary-foreground font-bold rounded-2xl shadow-md hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            Got it, Let's go!
+          </button>
         </motion.div>
-      )}
+      </div>
     </AnimatePresence>
   );
-};
+}
 
+export default WhatsNewPopup;

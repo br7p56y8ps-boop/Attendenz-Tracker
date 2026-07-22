@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, Upload, LogOut, User, RefreshCw, Info, Copy, Check, Camera } from 'lucide-react';
+import { Download, Upload, LogOut, User, RefreshCw, Info, Copy, Check, Camera, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
@@ -26,6 +26,30 @@ export default function Account() {
   const [switchStep, setSwitchStep] = useState<'warning' | 'final' | 'backup_found'>('warning');
   const [pendingMode, setPendingMode] = useState<SubjectMode | null>(null);
   
+  // Theme State (Dark / Light)
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme) return savedTheme === 'dark';
+      return document.documentElement.classList.contains('dark');
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDark]);
+
+  const toggleTheme = () => {
+    setIsDark(prev => !prev);
+  };
+
   // Randomized Subject Rotation State
   const [displayIndices, setDisplayIndices] = useState([0, 1, 2, 3]);
 
@@ -148,9 +172,7 @@ export default function Account() {
       return setInterval(() => {
         setDisplayIndices(prev => {
           const next = [...prev];
-          // Simple rotation: next subject in list, skipping those already visible
           let nextVal = (next[rowIdx] + 1) % allAvailableSubjects.length;
-          // Basic duplicate prevention for 4 rows
           while (next.includes(nextVal) && allAvailableSubjects.length > 4) {
             nextVal = (nextVal + 1) % allAvailableSubjects.length;
           }
@@ -180,7 +202,6 @@ export default function Account() {
   const detectGender = (name: string): 'male' | 'female' | 'neutral' => {
     if (!name || name.length < 2) return 'neutral';
     const n = name.toLowerCase().trim();
-    // Common female endings and names in medical context (South Asian/Global)
     const femaleEndings = ['a', 'i', 'ee', 'ia', 'shree', 'mita', 'rina', 'lina', 'nita', 'jali', 'shikha', 'preeti', 'priya', 'sneha', 'swati'];
     const femaleNames = ['mary', 'jane', 'sarah', 'fatima', 'aisha', 'zainab', 'ananya', 'ishani', 'diya', 'sana', 'nora', 'luna'];
     
@@ -204,7 +225,6 @@ export default function Account() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check file size (limit to ~1MB for base64 safety)
       if (file.size > 1024 * 1024) {
         alert('Image too large. Please select an image under 1MB.');
         return;
@@ -267,7 +287,7 @@ export default function Account() {
 
   // ── Copy App Info ────────────────────────────────────────────────────────
   const handleCopyInfo = () => {
-    const infoText = `Developer Name: benzavraar\nRelease Version: 3.5.1\nSource Code URL: GitHub (Attendenz Tracker)\nOffline Storage: ${storageSize}`;
+    const infoText = `Developer Name: benzavraar\nRelease Version: v3.6.0 (Stable)\nSource Code URL: GitHub (Attendenz Tracker)\nOffline Storage: ${storageSize}`;
     navigator.clipboard.writeText(infoText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -278,10 +298,19 @@ export default function Account() {
     <Layout>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pb-8">
         
-        {/* Profile Card */}
-        <div className="flex items-center gap-4 bg-card border border-border rounded-3xl p-5 shadow-sm">
+        {/* Profile Card with Center-Right Dark/Light Mode Icon Button */}
+        <div className="relative flex items-center gap-4 bg-card border border-border rounded-3xl p-5 shadow-sm">
+          {/* Theme Toggle Button - Center-Right Aligned */}
+          <button
+            onClick={toggleTheme}
+            className="absolute right-5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-2xl bg-muted/60 hover:bg-muted flex items-center justify-center text-foreground transition-all active:scale-95 shadow-sm border border-border/50"
+            title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          >
+            {isDark ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-700" />}
+          </button>
+
           <div 
-            className="relative w-16 h-16 rounded-2xl group cursor-pointer active:scale-95 transition-transform"
+            className="relative w-16 h-16 rounded-2xl group cursor-pointer active:scale-95 transition-transform shrink-0"
             onClick={handleImageClick}
           >
             <div className="w-full h-full rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden border border-primary/20 relative">
@@ -304,15 +333,16 @@ export default function Account() {
             <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-lg border-2 border-card">
               <Camera className="w-3 h-3 text-primary-foreground" />
             </div>
+            {/* Photos/Gallery Optimized File Input for iOS & Android */}
             <input 
               type="file" 
               ref={fileInputRef} 
               onChange={handleImageChange} 
               className="hidden" 
-              accept="image/*"
+              accept="image/png, image/jpeg, image/jpg, image/webp, image/*"
             />
           </div>
-          <div>
+          <div className="pr-12">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Account</p>
             <p className="font-bold text-2xl text-foreground mt-0.5">{username}</p>
           </div>
@@ -406,15 +436,12 @@ export default function Account() {
                               </linearGradient>
                             </defs>
                             
-                            {/* Mask to clip the rolling wave to the percentage */}
                             <mask id={`mask-${idx}`}>
                               <rect x="0" y="0" width={item.pct} height="40" fill="white" />
                             </mask>
                             
-                            {/* ECG Wave Baseline */}
                             <line x1="0" y1="20" x2="100" y2="20" className="stroke-muted/30 stroke-[0.5]" />
                             
-                            {/* Animated Rolling ECG Wave (Infinite Loop - HomeCard Style) */}
                             <motion.path
                               d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 30 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 60 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 90 20 L 100 20"
                               fill="none"
@@ -428,7 +455,6 @@ export default function Account() {
                               transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeInOut" }}
                             />
                             
-                            {/* Glow effect path */}
                             <motion.path
                               d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 30 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 60 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 90 20 L 100 20"
                               fill="none"
@@ -443,7 +469,6 @@ export default function Account() {
                               transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeInOut" }}
                             />
 
-                            {/* Percentage Marker Line */}
                             <line 
                               x1={item.pct} 
                               y1="5" 
@@ -455,7 +480,6 @@ export default function Account() {
                               className="opacity-50"
                             />
                             
-                            {/* Subtle pulse at the end of the wave */}
                             <motion.circle
                               cx={item.pct}
                               cy="20"
@@ -482,21 +506,23 @@ export default function Account() {
           );
         })()}
 
-        {/* Preferred Percentage Setting */}
+        {/* Preferred Percentage Dropdown Setting */}
         <div className="space-y-3">
           <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Settings</p>
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex items-center justify-between">
             <span className="font-semibold text-base text-foreground">Preferred Percentage</span>
             <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                max="100"
+              <select
                 value={preferredPercentage}
-                onChange={(e) => setPreferredPercentage(parseInt(e.target.value) || 0)}
-                className="w-16 bg-muted rounded-xl px-2 py-1 text-center font-bold text-primary"
-              />
-              <span className="font-bold text-muted-foreground">%</span>
+                onChange={(e) => setPreferredPercentage(parseInt(e.target.value, 10) || 75)}
+                className="bg-muted rounded-xl px-3 py-1.5 font-bold text-primary text-sm border border-border/50 outline-none cursor-pointer focus:ring-2 focus:ring-primary/20 transition-all"
+              >
+                {[50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].map(pct => (
+                  <option key={pct} value={pct} className="bg-card text-foreground font-bold">
+                    {pct}%
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
@@ -553,7 +579,6 @@ export default function Account() {
               <p className="text-xs text-muted-foreground mt-0.5">Import and restore data from a saved JSON file</p>
             </div>
           </div>
-          <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleRestore} />
 
           {/* What's New Trigger */}
           <div
@@ -565,7 +590,7 @@ export default function Account() {
             </div>
             <div className="flex-1">
               <p className="font-semibold text-base text-foreground">What's New</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Click to view the v3.5.1 feature updates</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Click to view the v3.6.0 (Stable) feature updates</p>
             </div>
           </div>
 
@@ -614,7 +639,7 @@ export default function Account() {
               <img src="/Logo.jpeg" alt="Attendenz Logo" className="w-full h-full object-cover" />
             </div>
             <div className="text-sm space-y-1">
-              <p className="font-bold text-foreground">Version: 3.5.1</p>
+              <p className="font-bold text-foreground">Version: v3.6.0 (Stable)</p>
               <p className="text-xs text-muted-foreground font-medium">Offline Storage: {storageSize}</p>
               <p className="text-xs text-muted-foreground font-medium">Developer: benzavraar</p>
             </div>

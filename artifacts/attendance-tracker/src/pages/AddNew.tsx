@@ -24,9 +24,10 @@ const TabButton = ({ label, active, onClick }: { label: string; active: boolean;
 );
 
 const inputClass =
-  'w-full bg-background border border-border rounded-2xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-base transition-all placeholder:text-muted-foreground/50';
+  'w-full bg-background border border-border rounded-2xl px-3 h-11 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border';
 
-const labelClass = 'text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5';
+const labelClass =
+  'text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block min-h-[26px] flex items-end justify-center pb-1 leading-tight text-center';
 
 export default function AddNew() {
   const {
@@ -52,6 +53,35 @@ export default function AddNew() {
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(''), 2500);
+  };
+
+  // ── Form Reset Function ──────────────────────────────────────────────────────
+  const resetAllForms = () => {
+    setSName('');
+    setSPlanned('');
+    setSAttended('');
+    setSingleDays([{ day: 'Sun', startTime: '', endTime: '' }]);
+
+    setParentName('');
+    setAlliedStep('parent_input');
+    setSavedChildren([]);
+    setCName('');
+    setCPlanned('');
+    setCAttended('');
+    setChildDays([{ day: 'Sun', startTime: '', endTime: '' }]);
+
+    setWName('');
+    setWStart('');
+    setWEnd('');
+    setWMorning('');
+    setWEvening('');
+  };
+
+  const handleTabSwitch = (newTab: Tab) => {
+    if (newTab !== tab) {
+      resetAllForms();
+      setTab(newTab);
+    }
   };
 
   // ── 1. Single Subject State ──────────────────────────────────────────────────
@@ -169,7 +199,6 @@ export default function AddNew() {
   const handleCompleteParent = () => {
     if (savedChildren.length < 2) return;
 
-    // Save all child subjects to database/state
     savedChildren.forEach(child => {
       const finalDays = child.days.map(s => s.day).join(', ');
       const finalTime = child.days.map(s => `${s.day}: ${s.time}`).join('; ');
@@ -190,11 +219,8 @@ export default function AddNew() {
     });
 
     showSuccess(`Parent group "${parentName.trim()}" saved successfully! ✓`);
-    
-    // Redirect to Subjects tab
     setLocation('/subjects');
     
-    // Reset Allied state
     setParentName('');
     setSavedChildren([]);
     setAlliedStep('parent_input');
@@ -230,7 +256,12 @@ export default function AddNew() {
 
   return (
     <Layout>
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pb-8">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-6 pb-8 touch-pan-x touch-pan-y"
+        style={{ touchAction: 'pan-x pan-y' }}
+      >
         <div>
           <p className="text-2xl font-bold text-foreground">Manage Subjects & Rotations</p>
         </div>
@@ -251,17 +282,17 @@ export default function AddNew() {
 
         {/* Tab bar */}
         <div className="flex flex-wrap md:flex-nowrap gap-1 bg-muted/60 p-1 rounded-2xl">
-          <TabButton label="Single Subject" active={tab === 'single'} onClick={() => setTab('single')} />
-          <TabButton label="Allied Subject" active={tab === 'allied'} onClick={() => setTab('allied')} />
-          <TabButton label="Hospital/Clinical Rotation" active={tab === 'ward'} onClick={() => setTab('ward')} />
-          <TabButton label="Preset Overrides" active={tab === 'presets'} onClick={() => setTab('presets')} />
+          <TabButton label="Single Subject" active={tab === 'single'} onClick={() => handleTabSwitch('single')} />
+          <TabButton label="Allied Subject" active={tab === 'allied'} onClick={() => handleTabSwitch('allied')} />
+          <TabButton label="Hospital/Clinical Rotation" active={tab === 'ward'} onClick={() => handleTabSwitch('ward')} />
+          <TabButton label="Preset Overrides" active={tab === 'presets'} onClick={() => handleTabSwitch('presets')} />
         </div>
 
         {/* ── Tab 1: Single Subject ── */}
         <AnimatePresence mode="wait">
           {tab === 'single' && (
             <motion.div key="single" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <form onSubmit={handleSaveSingle} className="bg-card border border-border rounded-3xl p-6 space-y-5 shadow-sm">
+              <form onSubmit={handleSaveSingle} className="bg-card border border-border rounded-3xl p-4 sm:p-5 space-y-4 shadow-sm">
                 <div className="flex items-center gap-2 border-b border-border/50 pb-3">
                   <GraduationCap className="w-5 h-5 text-primary" />
                   <h3 className="font-bold text-lg text-foreground">Add New Single Subject</h3>
@@ -269,9 +300,9 @@ export default function AddNew() {
 
                 {/* Row 1 */}
                 <div>
-                  <label className={labelClass}>Subject Name</label>
+                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Subject Name</label>
                   <input
-                    className={inputClass}
+                    className={`${inputClass} px-3.5`}
                     placeholder="e.g. Pathology"
                     value={sName}
                     onChange={e => setSName(e.target.value)}
@@ -279,12 +310,12 @@ export default function AddNew() {
                   />
                 </div>
 
-                {/* Row 2 */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                {/* Row 2: Compact Centered Inputs */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col items-center">
                     <label className={labelClass}>Total Planned Classes</label>
                     <input
-                      className={inputClass}
+                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-3 h-11 text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border"
                       type="number"
                       inputMode="numeric"
                       min="1"
@@ -294,10 +325,10 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div>
+                  <div className="flex flex-col items-center">
                     <label className={labelClass}>Attended Classes (Optional)</label>
                     <input
-                      className={inputClass}
+                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-3 h-11 text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border"
                       type="number"
                       inputMode="numeric"
                       min="0"
@@ -310,32 +341,40 @@ export default function AddNew() {
 
                 {/* Row 3+ */}
                 <div className="space-y-3">
-                  <label className={labelClass}>Weekly Schedules</label>
+                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Weekly Schedules</label>
                   
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {singleDays.map((row, idx) => {
                       const usedDaysInOthers = singleDays.filter((_, i) => i !== idx).map(r => r.day);
                       const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                       return (
-                        <div key={idx} className="grid grid-cols-2 gap-3 items-center">
-                          <div>
-                            <select
-                              value={row.day}
-                              onChange={e => {
-                                const updated = [...singleDays];
-                                updated[idx].day = e.target.value;
-                                setSingleDays(updated);
-                              }}
-                              className={inputClass}
-                            >
-                              {availableOptions.map(o => (
-                                <option key={o} value={o}>{o}</option>
-                              ))}
-                            </select>
+                        <div key={idx} className="space-y-2 bg-muted/20 p-2.5 sm:p-3.5 rounded-2xl border border-border/40 box-border">
+                          {/* Column Headers */}
+                          <div className="grid grid-cols-3 gap-2 px-0.5">
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Day</span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Start</span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">End</span>
                           </div>
-                          <div className="flex items-center gap-2 flex-1">
-                            <div className="flex-1 flex flex-col gap-1">
-                              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start</label>
+
+                          {/* Inputs Grid: Compact Boxes */}
+                          <div className="grid grid-cols-3 gap-2 items-center">
+                            <div className="flex flex-col items-center">
+                              <select
+                                value={row.day}
+                                onChange={e => {
+                                  const updated = [...singleDays];
+                                  updated[idx].day = e.target.value;
+                                  setSingleDays(updated);
+                                }}
+                                className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                              >
+                                {availableOptions.map(o => (
+                                  <option key={o} value={o}>{o}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="flex flex-col items-center">
                               <input
                                 type="time"
                                 value={row.startTime}
@@ -344,11 +383,12 @@ export default function AddNew() {
                                   updated[idx].startTime = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                className={cn(inputClass, "py-2 px-3")}
+                                style={{ colorScheme: 'dark' }}
+                                className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                               />
                             </div>
-                            <div className="flex-1 flex flex-col gap-1">
-                              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">End</label>
+
+                            <div className="flex flex-col items-center">
                               <input
                                 type="time"
                                 value={row.endTime}
@@ -357,19 +397,23 @@ export default function AddNew() {
                                   updated[idx].endTime = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                className={cn(inputClass, "py-2 px-3")}
+                                style={{ colorScheme: 'dark' }}
+                                className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                               />
                             </div>
-                            {singleDays.length > 1 && (
+                          </div>
+
+                          {singleDays.length > 1 && (
+                            <div className="flex justify-end pt-1">
                               <button
                                 type="button"
                                 onClick={() => setSingleDays(singleDays.filter((_, i) => i !== idx))}
-                                className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0 mt-5"
+                                className="py-1.5 px-3 flex items-center gap-1.5 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all text-xs font-bold"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" /> Remove Row
                               </button>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -379,7 +423,7 @@ export default function AddNew() {
                     <button
                       type="button"
                       onClick={addSingleDayRow}
-                      className="py-2.5 px-4 border border-dashed border-primary/50 text-primary hover:bg-primary/5 rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 w-full transition-all mt-2"
+                      className="py-2.5 px-4 border border-dashed border-primary/50 text-primary hover:bg-primary/5 rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 w-full transition-all mt-2 box-border"
                     >
                       <Plus className="w-4 h-4" /> Add another Day & Time
                     </button>
@@ -390,7 +434,7 @@ export default function AddNew() {
                 <div className="border-t border-border/50 pt-4">
                   <button
                     type="submit"
-                    className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all"
+                    className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all box-border"
                   >
                     Save Subject
                   </button>
@@ -402,7 +446,7 @@ export default function AddNew() {
           {/* ── Tab 2: Allied Subject ── */}
           {tab === 'allied' && (
             <motion.div key="allied" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="bg-card border border-border rounded-3xl p-6 space-y-5 shadow-sm">
+              <div className="bg-card border border-border rounded-3xl p-4 sm:p-5 space-y-4 shadow-sm">
                 <div className="flex items-center gap-2 border-b border-border/50 pb-3">
                   <Building2 className="w-5 h-5 text-primary" />
                   <h3 className="font-bold text-lg text-foreground font-sans">Add Allied Subjects Group</h3>
@@ -410,9 +454,9 @@ export default function AddNew() {
 
                 {/* Row 1: Parent Subject Name */}
                 <div>
-                  <label className={labelClass}>Parent Subject Name</label>
+                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Parent Subject Name</label>
                   <input
-                    className={inputClass}
+                    className={`${inputClass} px-3.5`}
                     placeholder="e.g. Medicine & Allied"
                     value={parentName}
                     onChange={e => setParentName(e.target.value)}
@@ -421,14 +465,14 @@ export default function AddNew() {
                   />
                 </div>
 
-                {/* Step 1: Initial parent input, show "Add Child Subject" */}
+                {/* Step 1 */}
                 {alliedStep === 'parent_input' && (
                   <div className="pt-2">
                     <button
                       type="button"
                       disabled={!parentName.trim()}
                       onClick={() => setAlliedStep('child_form')}
-                      className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none"
+                      className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none box-border"
                     >
                       <Plus className="w-4 h-4" /> Add Child Subject
                     </button>
@@ -440,11 +484,10 @@ export default function AddNew() {
                   <form onSubmit={handleSaveChild} className="border-t border-border/50 pt-4 space-y-4">
                     <h4 className="font-bold text-sm text-primary uppercase tracking-wide">New Child Subject Info</h4>
                     
-                    {/* Child Row 1 */}
                     <div>
-                      <label className={labelClass}>Child Subject Name</label>
+                      <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Child Subject Name</label>
                       <input
-                        className={inputClass}
+                        className={`${inputClass} px-3.5`}
                         placeholder="e.g. Cardiology"
                         value={cName}
                         onChange={e => setCName(e.target.value)}
@@ -452,12 +495,11 @@ export default function AddNew() {
                       />
                     </div>
 
-                    {/* Child Row 2 */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col items-center">
                         <label className={labelClass}>Total Planned Classes</label>
                         <input
-                          className={inputClass}
+                          className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-3 h-11 text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border"
                           type="number"
                           inputMode="numeric"
                           min="1"
@@ -467,10 +509,10 @@ export default function AddNew() {
                           required
                         />
                       </div>
-                      <div>
+                      <div className="flex flex-col items-center">
                         <label className={labelClass}>Optional Attended Classes</label>
                         <input
-                          className={inputClass}
+                          className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-3 h-11 text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border"
                           type="number"
                           inputMode="numeric"
                           min="0"
@@ -481,34 +523,40 @@ export default function AddNew() {
                       </div>
                     </div>
 
-                    {/* Child Row 3+: Day & Time */}
+                    {/* Day & Time Grid */}
                     <div className="space-y-3">
-                      <label className={labelClass}>Day & Time Schedule</label>
+                      <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Day & Time Schedule</label>
                       
-                      <div className="space-y-3">
+                      <div className="space-y-2.5">
                         {childDays.map((row, idx) => {
                           const usedDaysInOthers = childDays.filter((_, i) => i !== idx).map(r => r.day);
                           const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                           return (
-                            <div key={idx} className="grid grid-cols-2 gap-3 items-center">
-                              <div>
-                                <select
-                                  value={row.day}
-                                  onChange={e => {
-                                    const updated = [...childDays];
-                                    updated[idx].day = e.target.value;
-                                    setChildDays(updated);
-                                  }}
-                                  className={inputClass}
-                                >
-                                  {availableOptions.map(o => (
-                                    <option key={o} value={o}>{o}</option>
-                                  ))}
-                                </select>
+                            <div key={idx} className="space-y-2 bg-muted/20 p-2.5 sm:p-3.5 rounded-2xl border border-border/40 box-border">
+                              <div className="grid grid-cols-3 gap-2 px-0.5">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Day</span>
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Start</span>
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">End</span>
                               </div>
-                              <div className="flex items-center gap-2 flex-1">
-                                <div className="flex-1 flex flex-col gap-1">
-                                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start</label>
+
+                              <div className="grid grid-cols-3 gap-2 items-center">
+                                <div className="flex flex-col items-center">
+                                  <select
+                                    value={row.day}
+                                    onChange={e => {
+                                      const updated = [...childDays];
+                                      updated[idx].day = e.target.value;
+                                      setChildDays(updated);
+                                    }}
+                                    className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                                  >
+                                    {availableOptions.map(o => (
+                                      <option key={o} value={o}>{o}</option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="flex flex-col items-center">
                                   <input
                                     type="time"
                                     value={row.startTime}
@@ -517,11 +565,12 @@ export default function AddNew() {
                                       updated[idx].startTime = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    className={cn(inputClass, "py-2 px-3")}
+                                    style={{ colorScheme: 'dark' }}
+                                    className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                                   />
                                 </div>
-                                <div className="flex-1 flex flex-col gap-1">
-                                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">End</label>
+
+                                <div className="flex flex-col items-center">
                                   <input
                                     type="time"
                                     value={row.endTime}
@@ -530,19 +579,23 @@ export default function AddNew() {
                                       updated[idx].endTime = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    className={cn(inputClass, "py-2 px-3")}
+                                    style={{ colorScheme: 'dark' }}
+                                    className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
                                   />
                                 </div>
-                                {childDays.length > 1 && (
+                              </div>
+
+                              {childDays.length > 1 && (
+                                <div className="flex justify-end pt-1">
                                   <button
                                     type="button"
                                     onClick={() => setChildDays(childDays.filter((_, i) => i !== idx))}
-                                    className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0 mt-5"
+                                    className="py-1.5 px-3 flex items-center gap-1.5 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all text-xs font-bold"
                                   >
-                                    <Trash2 className="w-4 h-4" />
+                                    <Trash2 className="w-3.5 h-3.5" /> Remove Row
                                   </button>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -552,7 +605,7 @@ export default function AddNew() {
                         <button
                           type="button"
                           onClick={addChildDayRow}
-                          className="py-2.5 px-4 border border-dashed border-primary/50 text-primary hover:bg-primary/5 rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 w-full transition-all mt-2"
+                          className="py-2.5 px-4 border border-dashed border-primary/50 text-primary hover:bg-primary/5 rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 w-full transition-all mt-2 box-border"
                         >
                           <Plus className="w-4 h-4" /> Add another Day & Time
                         </button>
@@ -562,7 +615,7 @@ export default function AddNew() {
                     <div className="pt-2">
                       <button
                         type="submit"
-                        className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-2xl hover:opacity-90 active:scale-[0.98] transition-all"
+                        className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-2xl hover:opacity-90 active:scale-[0.98] transition-all box-border"
                       >
                         Save Child Subject
                       </button>
@@ -570,7 +623,7 @@ export default function AddNew() {
                   </form>
                 )}
 
-                {/* Step 3: Saved list and actions */}
+                {/* Step 3 */}
                 {alliedStep === 'actions' && (
                   <div className="border-t border-border/50 pt-4 space-y-4">
                     {savedChildren.length > 0 && (
@@ -596,7 +649,7 @@ export default function AddNew() {
                       <button
                         type="button"
                         onClick={() => setAlliedStep('child_form')}
-                        className="w-full py-3 rounded-2xl border border-primary text-primary hover:bg-primary/5 font-bold flex items-center justify-center gap-2 transition-all"
+                        className="w-full py-3 rounded-2xl border border-primary text-primary hover:bg-primary/5 font-bold flex items-center justify-center gap-2 transition-all box-border"
                       >
                         <Plus className="w-4 h-4" /> Add Next Child Subject
                       </button>
@@ -605,7 +658,7 @@ export default function AddNew() {
                         type="button"
                         disabled={savedChildren.length < 2}
                         onClick={handleCompleteParent}
-                        className="w-full py-3.5 rounded-2xl bg-success text-success-foreground font-black flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none"
+                        className="w-full py-3.5 rounded-2xl bg-success text-success-foreground font-black flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none box-border"
                       >
                         <Check className="w-4 h-4" /> Complete Parent Subject
                       </button>
@@ -617,7 +670,6 @@ export default function AddNew() {
                   </div>
                 )}
 
-                {/* Restart/Start fresh option */}
                 {(savedChildren.length > 0 || parentName) && (
                   <div className="border-t border-border/50 pt-4 flex justify-center">
                     <button
@@ -641,17 +693,16 @@ export default function AddNew() {
           {/* ── Tab 3: Ward Rotation ── */}
           {tab === 'ward' && (
             <motion.div key="ward" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <form onSubmit={handleSaveWard} className="bg-card border border-border rounded-3xl p-6 space-y-5 shadow-sm">
+              <form onSubmit={handleSaveWard} className="bg-card border border-border rounded-3xl p-4 sm:p-5 space-y-4 shadow-sm">
                 <div className="flex items-center gap-2 border-b border-border/50 pb-3">
                   <Calendar className="w-5 h-5 text-primary" />
                   <h3 className="font-bold text-lg text-foreground">Add New Hospital/Clinical Rotation</h3>
                 </div>
 
-                {/* Row 1 */}
                 <div>
-                  <label className={labelClass}>Department/Ward Name</label>
+                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Department/Ward Name</label>
                   <input
-                    className={inputClass}
+                    className={`${inputClass} px-3.5`}
                     placeholder="e.g. Neurology"
                     value={wName}
                     onChange={e => setWName(e.target.value)}
@@ -659,13 +710,14 @@ export default function AddNew() {
                   />
                 </div>
 
-                {/* Row 2 */}
+                {/* Equal 2-Column Grid with Compact Centered Boxes */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  <div className="flex flex-col items-center">
                     <label className={labelClass}>Start Date</label>
                     <input
                       type="date"
-                      className={inputClass}
+                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-2.5 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                      style={{ colorScheme: 'dark' }}
                       min="2026-01-01"
                       max="2026-12-31"
                       value={wStart}
@@ -673,11 +725,12 @@ export default function AddNew() {
                       required
                     />
                   </div>
-                  <div>
+                  <div className="flex flex-col items-center">
                     <label className={labelClass}>End Date</label>
                     <input
                       type="date"
-                      className={inputClass}
+                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-2.5 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                      style={{ colorScheme: 'dark' }}
                       min="2026-01-01"
                       max="2026-12-31"
                       value={wEnd}
@@ -687,26 +740,28 @@ export default function AddNew() {
                   </div>
                 </div>
                 {wStart && wEnd && wEnd < wStart && (
-                  <p className="text-destructive text-xs font-semibold -mt-2">End date must be after start date.</p>
+                  <p className="text-destructive text-xs font-semibold -mt-2 text-center">End date must be after start date.</p>
                 )}
 
-                {/* Row 3 */}
+                {/* Equal 2-Column Grid with Compact Centered Boxes */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  <div className="flex flex-col items-center">
                     <label className={labelClass}>Morning Time</label>
                     <input
                       type="time"
-                      className={inputClass}
+                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-2.5 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                      style={{ colorScheme: 'dark' }}
                       value={wMorning}
                       onChange={e => setWMorning(e.target.value)}
                       required
                     />
                   </div>
-                  <div>
+                  <div className="flex flex-col items-center">
                     <label className={labelClass}>Evening Time</label>
                     <input
                       type="time"
-                      className={inputClass}
+                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-2.5 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                      style={{ colorScheme: 'dark' }}
                       value={wEvening}
                       onChange={e => setWEvening(e.target.value)}
                       required
@@ -714,12 +769,11 @@ export default function AddNew() {
                   </div>
                 </div>
 
-                {/* Row 4 */}
                 <div className="border-t border-border/50 pt-4">
                   <button
                     type="submit"
                     disabled={!!(wStart && wEnd && wEnd < wStart)}
-                    className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none"
+                    className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none box-border"
                   >
                     Save Clinical Rotation
                   </button>
@@ -731,7 +785,7 @@ export default function AddNew() {
           {/* ── Tab 4: Preset Overrides ── */}
           {tab === 'presets' && (
             <motion.div key="presets" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="bg-card border border-border rounded-3xl p-6 space-y-6 shadow-sm">
+              <div className="bg-card border border-border rounded-3xl p-4 sm:p-5 space-y-6 shadow-sm">
                 <div className="border-b border-border/50 pb-3 flex items-center gap-2">
                   <Sliders className="w-5 h-5 text-primary" />
                   <div>
@@ -741,7 +795,6 @@ export default function AddNew() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Weekly Timetable Override */}
                   <div className="space-y-4">
                     <h4 className="font-bold text-sm text-primary uppercase tracking-wider flex items-center gap-2">
                       📅 Weekly Timetable Slots
@@ -763,8 +816,7 @@ export default function AddNew() {
                                 if (slot.type === 'ward' || slot.type === 'ward_replacement') return null;
 
                                 return (
-                                  <div key={slotIdx} className="grid grid-cols-1 md:grid-cols-2 gap-2.5 bg-muted/20 p-3 rounded-xl border border-border/40 text-sm">
-                                    {/* Day & Time group */}
+                                  <div key={slotIdx} className="grid grid-cols-1 md:grid-cols-2 gap-2.5 bg-muted/20 p-3 rounded-xl border border-border/40 text-sm box-border">
                                     <div className="grid grid-cols-2 gap-2">
                                       <div>
                                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Day</label>
@@ -774,7 +826,7 @@ export default function AddNew() {
                                             const newDay = parseInt(e.target.value);
                                             updatePresetTimetableSlot(dayIdx, slotIdx, slot.time, slot.subjects, newDay);
                                           }}
-                                          className="w-full bg-background border border-border rounded-xl px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                          className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border [color-scheme:dark]"
                                         >
                                           {DAYS.map((d, dIdx) => (
                                             <option key={d} value={dIdx}>{d}</option>
@@ -789,12 +841,11 @@ export default function AddNew() {
                                           onChange={(e) => {
                                             updatePresetTimetableSlot(dayIdx, slotIdx, e.target.value, slot.subjects, dayIdx);
                                           }}
-                                          className="w-full bg-background border border-border rounded-xl px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                          className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                         />
                                       </div>
                                     </div>
 
-                                    {/* Subjects list */}
                                     <div>
                                       <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Subjects & Planned Classes</label>
                                       <div className="space-y-1.5">
@@ -810,7 +861,7 @@ export default function AddNew() {
                                                   newSubjects[subIdx] = e.target.value;
                                                   updatePresetTimetableSlot(dayIdx, slotIdx, slot.time, newSubjects, dayIdx);
                                                 }}
-                                                className="flex-1 bg-background border border-border rounded-xl px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                                className="flex-1 bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                                 placeholder="Subject name"
                                               />
                                               <input
@@ -821,7 +872,7 @@ export default function AddNew() {
                                                   const newVal = parseInt(e.target.value) || 0;
                                                   updatePresetSubjectTotal(subName, newVal);
                                                 }}
-                                                className="w-14 bg-background border border-border rounded-xl px-1.5 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 text-center"
+                                                className="w-14 bg-background border border-border rounded-xl px-1.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 text-center box-border"
                                                 placeholder="Planned"
                                               />
                                             </div>
@@ -839,7 +890,6 @@ export default function AddNew() {
                     </div>
                   </div>
 
-                  {/* Ward Rotations Override */}
                   <div className="space-y-4">
                     <h4 className="font-bold text-sm text-primary uppercase tracking-wider flex items-center gap-2">
                       🏥 Clinical Ward Rotations
@@ -847,7 +897,7 @@ export default function AddNew() {
                     <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
                       {presetWardSchedule.map((ws, wsIdx) => {
                         return (
-                          <div key={wsIdx} className="bg-muted/20 p-4 rounded-2xl border border-border/40 space-y-3 text-sm">
+                          <div key={wsIdx} className="bg-muted/20 p-4 rounded-2xl border border-border/40 space-y-3 text-sm box-border">
                             <div className="flex justify-between items-center">
                               <h5 className="font-bold text-foreground text-xs uppercase tracking-wide">{ws.ward} Posting</h5>
                               <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-semibold">Preset Posting</span>
@@ -862,7 +912,8 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, e.target.value, ws.end, ws.morningTime, ws.eveningTime);
                                   }}
-                                  className="w-full bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                  style={{ colorScheme: 'dark' }}
+                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                 />
                               </div>
                               <div>
@@ -873,7 +924,8 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, ws.start, e.target.value, ws.morningTime, ws.eveningTime);
                                   }}
-                                  className="w-full bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                  style={{ colorScheme: 'dark' }}
+                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                 />
                               </div>
                             </div>
@@ -887,7 +939,7 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, ws.start, ws.end, e.target.value, ws.eveningTime);
                                   }}
-                                  className="w-full bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                   placeholder="e.g. 09:30–11:30"
                                 />
                               </div>
@@ -899,7 +951,7 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, ws.start, ws.end, ws.morningTime, e.target.value);
                                   }}
-                                  className="w-full bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                   placeholder="e.g. 07:00–09:00 PM"
                                 />
                               </div>
