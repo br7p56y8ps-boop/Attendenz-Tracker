@@ -351,12 +351,16 @@ export default function AddNew() {
                       const usedDaysInOthers = singleDays.filter((_, i) => i !== idx).map(r => r.day);
                       const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                       return (
-                        <div key={idx} className="flex items-end gap-2 w-full">
-                          {/* Day Dropdown - Compact */}
-                          <div className="w-24 md:w-28 shrink-0">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
-                              Day
-                            </label>
+                        <div key={idx} className="space-y-2 bg-muted/20 p-3 rounded-2xl border border-border/40">
+                          {/* Column Labels Header */}
+                          <div className="grid grid-cols-3 gap-2">
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Day</span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Start</span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">End</span>
+                          </div>
+
+                          {/* Inputs Grid - Strict Equal Width Columns */}
+                          <div className="grid grid-cols-3 gap-2 items-center">
                             <select
                               value={row.day}
                               onChange={e => {
@@ -364,19 +368,13 @@ export default function AddNew() {
                                 updated[idx].day = e.target.value;
                                 setSingleDays(updated);
                               }}
-                              className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold")}
+                              className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
                             >
                               {availableOptions.map(o => (
                                 <option key={o} value={o}>{o}</option>
                               ))}
                             </select>
-                          </div>
 
-                          {/* Start Time */}
-                          <div className="flex-1 min-w-0">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
-                              Start
-                            </label>
                             <input
                               type="time"
                               value={row.startTime}
@@ -385,15 +383,9 @@ export default function AddNew() {
                                 updated[idx].startTime = e.target.value;
                                 setSingleDays(updated);
                               }}
-                              className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold w-full")}
+                              className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
                             />
-                          </div>
 
-                          {/* End Time */}
-                          <div className="flex-1 min-w-0">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
-                              End
-                            </label>
                             <input
                               type="time"
                               value={row.endTime}
@@ -402,19 +394,20 @@ export default function AddNew() {
                                 updated[idx].endTime = e.target.value;
                                 setSingleDays(updated);
                               }}
-                              className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold w-full")}
+                              className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
                             />
                           </div>
 
-                          {/* Delete Action */}
                           {singleDays.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => setSingleDays(singleDays.filter((_, i) => i !== idx))}
-                              className="h-11 w-11 flex items-center justify-center bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex justify-end pt-1">
+                              <button
+                                type="button"
+                                onClick={() => setSingleDays(singleDays.filter((_, i) => i !== idx))}
+                                className="py-1.5 px-3 flex items-center gap-1.5 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all text-xs font-bold"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Remove Row
+                              </button>
+                            </div>
                           )}
                         </div>
                       );
@@ -527,7 +520,7 @@ export default function AddNew() {
                       </div>
                     </div>
 
-                    {/* Child Row 3+: Day & Time */}
+                    {/* Child Row 3+: Day & Time Grid */}
                     <div className="space-y-3">
                       <label className={labelClass}>Day & Time Schedule</label>
                       
@@ -536,12 +529,16 @@ export default function AddNew() {
                           const usedDaysInOthers = childDays.filter((_, i) => i !== idx).map(r => r.day);
                           const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                           return (
-                            <div key={idx} className="flex items-end gap-2 w-full">
-                              {/* Day Dropdown - Compact */}
-                              <div className="w-24 md:w-28 shrink-0">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
-                                  Day
-                                </label>
+                            <div key={idx} className="space-y-2 bg-muted/20 p-3 rounded-2xl border border-border/40">
+                              {/* Column Labels Header */}
+                              <div className="grid grid-cols-3 gap-2">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Day</span>
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Start</span>
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">End</span>
+                              </div>
+
+                              {/* Inputs Grid - Strict Equal Width Columns */}
+                              <div className="grid grid-cols-3 gap-2 items-center">
                                 <select
                                   value={row.day}
                                   onChange={e => {
@@ -549,19 +546,13 @@ export default function AddNew() {
                                     updated[idx].day = e.target.value;
                                     setChildDays(updated);
                                   }}
-                                  className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold")}
+                                  className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
                                 >
                                   {availableOptions.map(o => (
                                     <option key={o} value={o}>{o}</option>
                                   ))}
                                 </select>
-                              </div>
 
-                              {/* Start Time */}
-                              <div className="flex-1 min-w-0">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
-                                  Start
-                                </label>
                                 <input
                                   type="time"
                                   value={row.startTime}
@@ -570,15 +561,9 @@ export default function AddNew() {
                                     updated[idx].startTime = e.target.value;
                                     setChildDays(updated);
                                   }}
-                                  className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold w-full")}
+                                  className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
                                 />
-                              </div>
 
-                              {/* End Time */}
-                              <div className="flex-1 min-w-0">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
-                                  End
-                                </label>
                                 <input
                                   type="time"
                                   value={row.endTime}
@@ -587,19 +572,20 @@ export default function AddNew() {
                                     updated[idx].endTime = e.target.value;
                                     setChildDays(updated);
                                   }}
-                                  className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold w-full")}
+                                  className={cn(inputClass, "h-12 py-2 px-3 text-xs md:text-sm font-semibold")}
                                 />
                               </div>
 
-                              {/* Delete Action */}
                               {childDays.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => setChildDays(childDays.filter((_, i) => i !== idx))}
-                                  className="h-11 w-11 flex items-center justify-center bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                <div className="flex justify-end pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setChildDays(childDays.filter((_, i) => i !== idx))}
+                                    className="py-1.5 px-3 flex items-center gap-1.5 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all text-xs font-bold"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" /> Remove Row
+                                  </button>
+                                </div>
                               )}
                             </div>
                           );
