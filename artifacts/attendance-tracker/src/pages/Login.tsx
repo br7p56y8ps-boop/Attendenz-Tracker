@@ -262,7 +262,7 @@ export default function Login() {
                       onClick={handleForgotConfirm}
                       className="flex-1 py-3 rounded-2xl bg-red-600 text-white text-sm font-bold hover:bg-red-500 transition-colors"
                     >
-                      Delete everything
+                      Delete Everything
                     </button>
                   </div>
                 </>
