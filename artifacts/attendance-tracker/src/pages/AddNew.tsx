@@ -54,6 +54,35 @@ export default function AddNew() {
     setTimeout(() => setSuccessMsg(''), 2500);
   };
 
+  // ── Form Reset Function ──────────────────────────────────────────────────────
+  const resetAllForms = () => {
+    setSName('');
+    setSPlanned('');
+    setSAttended('');
+    setSingleDays([{ day: 'Sun', startTime: '', endTime: '' }]);
+
+    setParentName('');
+    setAlliedStep('parent_input');
+    setSavedChildren([]);
+    setCName('');
+    setCPlanned('');
+    setCAttended('');
+    setChildDays([{ day: 'Sun', startTime: '', endTime: '' }]);
+
+    setWName('');
+    setWStart('');
+    setWEnd('');
+    setWMorning('');
+    setWEvening('');
+  };
+
+  const handleTabSwitch = (newTab: Tab) => {
+    if (newTab !== tab) {
+      resetAllForms();
+      setTab(newTab);
+    }
+  };
+
   // ── 1. Single Subject State ──────────────────────────────────────────────────
   const [sName, setSName] = useState('');
   const [sPlanned, setSPlanned] = useState('');
@@ -230,7 +259,12 @@ export default function AddNew() {
 
   return (
     <Layout>
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pb-8">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-6 pb-8 touch-pan-x touch-pan-y"
+        style={{ touchAction: 'pan-x pan-y' }}
+      >
         <div>
           <p className="text-2xl font-bold text-foreground">Manage Subjects & Rotations</p>
         </div>
@@ -251,10 +285,10 @@ export default function AddNew() {
 
         {/* Tab bar */}
         <div className="flex flex-wrap md:flex-nowrap gap-1 bg-muted/60 p-1 rounded-2xl">
-          <TabButton label="Single Subject" active={tab === 'single'} onClick={() => setTab('single')} />
-          <TabButton label="Allied Subject" active={tab === 'allied'} onClick={() => setTab('allied')} />
-          <TabButton label="Hospital/Clinical Rotation" active={tab === 'ward'} onClick={() => setTab('ward')} />
-          <TabButton label="Preset Overrides" active={tab === 'presets'} onClick={() => setTab('presets')} />
+          <TabButton label="Single Subject" active={tab === 'single'} onClick={() => handleTabSwitch('single')} />
+          <TabButton label="Allied Subject" active={tab === 'allied'} onClick={() => handleTabSwitch('allied')} />
+          <TabButton label="Hospital/Clinical Rotation" active={tab === 'ward'} onClick={() => handleTabSwitch('ward')} />
+          <TabButton label="Preset Overrides" active={tab === 'presets'} onClick={() => handleTabSwitch('presets')} />
         </div>
 
         {/* ── Tab 1: Single Subject ── */}
@@ -317,8 +351,12 @@ export default function AddNew() {
                       const usedDaysInOthers = singleDays.filter((_, i) => i !== idx).map(r => r.day);
                       const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                       return (
-                        <div key={idx} className="grid grid-cols-2 gap-3 items-center">
-                          <div>
+                        <div key={idx} className="flex items-end gap-2 w-full">
+                          {/* Day Dropdown - Compact */}
+                          <div className="w-24 md:w-28 shrink-0">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
+                              Day
+                            </label>
                             <select
                               value={row.day}
                               onChange={e => {
@@ -326,50 +364,58 @@ export default function AddNew() {
                                 updated[idx].day = e.target.value;
                                 setSingleDays(updated);
                               }}
-                              className={inputClass}
+                              className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold")}
                             >
                               {availableOptions.map(o => (
                                 <option key={o} value={o}>{o}</option>
                               ))}
                             </select>
                           </div>
-                          <div className="flex items-center gap-2 flex-1">
-                            <div className="flex-1 flex flex-col gap-1">
-                              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start</label>
-                              <input
-                                type="time"
-                                value={row.startTime}
-                                onChange={e => {
-                                  const updated = [...singleDays];
-                                  updated[idx].startTime = e.target.value;
-                                  setSingleDays(updated);
-                                }}
-                                className={cn(inputClass, "py-2 px-3")}
-                              />
-                            </div>
-                            <div className="flex-1 flex flex-col gap-1">
-                              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">End</label>
-                              <input
-                                type="time"
-                                value={row.endTime}
-                                onChange={e => {
-                                  const updated = [...singleDays];
-                                  updated[idx].endTime = e.target.value;
-                                  setSingleDays(updated);
-                                }}
-                                className={cn(inputClass, "py-2 px-3")}
-                              />
-                            </div>
-                            {singleDays.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => setSingleDays(singleDays.filter((_, i) => i !== idx))}
-                                className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0 mt-5"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
+
+                          {/* Start Time */}
+                          <div className="flex-1 min-w-0">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
+                              Start
+                            </label>
+                            <input
+                              type="time"
+                              value={row.startTime}
+                              onChange={e => {
+                                const updated = [...singleDays];
+                                updated[idx].startTime = e.target.value;
+                                setSingleDays(updated);
+                              }}
+                              className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold w-full")}
+                            />
                           </div>
+
+                          {/* End Time */}
+                          <div className="flex-1 min-w-0">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
+                              End
+                            </label>
+                            <input
+                              type="time"
+                              value={row.endTime}
+                              onChange={e => {
+                                const updated = [...singleDays];
+                                updated[idx].endTime = e.target.value;
+                                setSingleDays(updated);
+                              }}
+                              className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold w-full")}
+                            />
+                          </div>
+
+                          {/* Delete Action */}
+                          {singleDays.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setSingleDays(singleDays.filter((_, i) => i !== idx))}
+                              className="h-11 w-11 flex items-center justify-center bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       );
                     })}
@@ -490,8 +536,12 @@ export default function AddNew() {
                           const usedDaysInOthers = childDays.filter((_, i) => i !== idx).map(r => r.day);
                           const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                           return (
-                            <div key={idx} className="grid grid-cols-2 gap-3 items-center">
-                              <div>
+                            <div key={idx} className="flex items-end gap-2 w-full">
+                              {/* Day Dropdown - Compact */}
+                              <div className="w-24 md:w-28 shrink-0">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
+                                  Day
+                                </label>
                                 <select
                                   value={row.day}
                                   onChange={e => {
@@ -499,50 +549,58 @@ export default function AddNew() {
                                     updated[idx].day = e.target.value;
                                     setChildDays(updated);
                                   }}
-                                  className={inputClass}
+                                  className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold")}
                                 >
                                   {availableOptions.map(o => (
                                     <option key={o} value={o}>{o}</option>
                                   ))}
                                 </select>
                               </div>
-                              <div className="flex items-center gap-2 flex-1">
-                                <div className="flex-1 flex flex-col gap-1">
-                                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Start</label>
-                                  <input
-                                    type="time"
-                                    value={row.startTime}
-                                    onChange={e => {
-                                      const updated = [...childDays];
-                                      updated[idx].startTime = e.target.value;
-                                      setChildDays(updated);
-                                    }}
-                                    className={cn(inputClass, "py-2 px-3")}
-                                  />
-                                </div>
-                                <div className="flex-1 flex flex-col gap-1">
-                                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">End</label>
-                                  <input
-                                    type="time"
-                                    value={row.endTime}
-                                    onChange={e => {
-                                      const updated = [...childDays];
-                                      updated[idx].endTime = e.target.value;
-                                      setChildDays(updated);
-                                    }}
-                                    className={cn(inputClass, "py-2 px-3")}
-                                  />
-                                </div>
-                                {childDays.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setChildDays(childDays.filter((_, i) => i !== idx))}
-                                    className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0 mt-5"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                )}
+
+                              {/* Start Time */}
+                              <div className="flex-1 min-w-0">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
+                                  Start
+                                </label>
+                                <input
+                                  type="time"
+                                  value={row.startTime}
+                                  onChange={e => {
+                                    const updated = [...childDays];
+                                    updated[idx].startTime = e.target.value;
+                                    setChildDays(updated);
+                                  }}
+                                  className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold w-full")}
+                                />
                               </div>
+
+                              {/* End Time */}
+                              <div className="flex-1 min-w-0">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1 block mb-1">
+                                  End
+                                </label>
+                                <input
+                                  type="time"
+                                  value={row.endTime}
+                                  onChange={e => {
+                                    const updated = [...childDays];
+                                    updated[idx].endTime = e.target.value;
+                                    setChildDays(updated);
+                                  }}
+                                  className={cn(inputClass, "h-11 py-2 px-2 text-xs font-semibold w-full")}
+                                />
+                              </div>
+
+                              {/* Delete Action */}
+                              {childDays.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setChildDays(childDays.filter((_, i) => i !== idx))}
+                                  className="h-11 w-11 flex items-center justify-center bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all shrink-0"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           );
                         })}
