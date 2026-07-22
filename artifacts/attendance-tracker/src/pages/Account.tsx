@@ -26,7 +26,7 @@ export default function Account() {
   const [switchStep, setSwitchStep] = useState<'warning' | 'final' | 'backup_found'>('warning');
   const [pendingMode, setPendingMode] = useState<SubjectMode | null>(null);
   
-  // Theme State (Dark / Light)
+  // Theme State (Default Dark, persistent across app)
   const [isDark, setIsDark] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const savedTheme = localStorage.getItem('theme');
@@ -37,17 +37,19 @@ export default function Account() {
   });
 
   useEffect(() => {
-    if (isDark) {
+    setIsDark(document.documentElement.classList.contains('dark'));
+  }, []);
+
+  const toggleTheme = () => {
+    const nextDark = !isDark;
+    setIsDark(nextDark);
+    if (nextDark) {
       document.documentElement.classList.add('dark');
       localStorage.setItem('theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('theme', 'light');
     }
-  }, [isDark]);
-
-  const toggleTheme = () => {
-    setIsDark(prev => !prev);
   };
 
   // Randomized Subject Rotation State
@@ -59,7 +61,6 @@ export default function Account() {
   const initiateSwitch = (newMode: SubjectMode) => {
     setPendingMode(newMode);
     
-    // Check if an internal backup exists for the destination mode
     const snapshot = localStorage.getItem(getSnapshotKey(newMode));
     if (snapshot) {
       setSwitchStep('backup_found');
@@ -70,9 +71,8 @@ export default function Account() {
   };
 
   const handleBackupAndContinue = () => {
-    // Create internal snapshot for current mode before leaving
     saveInternalSnapshot();
-    handleBackup(); // Also trigger manual export
+    handleBackup();
     setSwitchStep('final');
   };
 
@@ -105,7 +105,6 @@ export default function Account() {
       });
     }
     
-    // Switch mode
     changeSubjectMode(pendingMode);
     setShowSwitchDialog(false);
     setPendingMode(null);
@@ -116,14 +115,10 @@ export default function Account() {
   const executeSwitch = () => {
     if (!pendingMode) return;
     
-    // Clear data for mode we are LEAVING
     clearModeAttendance(subjectMode);
     clearRoutineData(subjectMode);
-
-    // Change to NEW mode
     changeSubjectMode(pendingMode);
 
-    // UI Cleanup
     setShowSwitchDialog(false);
     setPendingMode(null);
     import('sonner').then(({ toast }) => toast.success(`Switched to fresh ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine.`));
@@ -168,7 +163,7 @@ export default function Account() {
     if (allAvailableSubjects.length === 0) return;
 
     const timers = [0, 1, 2, 3].map(rowIdx => {
-      const interval = 6000 + Math.random() * 1000; // 6-7s
+      const interval = 6000 + Math.random() * 1000;
       return setInterval(() => {
         setDisplayIndices(prev => {
           const next = [...prev];
@@ -192,7 +187,7 @@ export default function Account() {
       const key = localStorage.key(i);
       if (key) {
         const val = localStorage.getItem(key) || '';
-        totalBytes += (key.length + val.length) * 2; // UTF-16 characters are 2 bytes
+        totalBytes += (key.length + val.length) * 2;
       }
     }
     setStorageSize((totalBytes / 1024).toFixed(2) + ' KB');
@@ -300,7 +295,7 @@ export default function Account() {
         
         {/* Profile Card with Center-Right Dark/Light Mode Icon Button */}
         <div className="relative flex items-center gap-4 bg-card border border-border rounded-3xl p-5 shadow-sm">
-          {/* Theme Toggle Button - Center-Right Aligned */}
+          {/* Center-Right Theme Toggle Button */}
           <button
             onClick={toggleTheme}
             className="absolute right-5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-2xl bg-muted/60 hover:bg-muted flex items-center justify-center text-foreground transition-all active:scale-95 shadow-sm border border-border/50"
@@ -333,7 +328,7 @@ export default function Account() {
             <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-lg border-2 border-card">
               <Camera className="w-3 h-3 text-primary-foreground" />
             </div>
-            {/* Photos/Gallery Optimized File Input for iOS & Android */}
+            {/* Photos/Gallery File Input for iOS & Android */}
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -414,7 +409,6 @@ export default function Account() {
                           </AnimatePresence>
                         </div>
                         <div className="h-10 w-full bg-muted/20 rounded-lg overflow-hidden relative border border-border/40">
-                          {/* Rolling Grid Background */}
                           <div className="absolute inset-0 opacity-10 pointer-events-none">
                             <svg width="100%" height="100%">
                               <defs>
