@@ -298,15 +298,15 @@ export default function Account() {
     <Layout>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pb-8">
         
-        {/* Profile Card with Top-Right Dark/Light Mode Icon Button */}
+        {/* Profile Card with Center-Right Dark/Light Mode Icon Button */}
         <div className="relative flex items-center gap-4 bg-card border border-border rounded-3xl p-5 shadow-sm">
-          {/* Theme Toggle Button */}
+          {/* Theme Toggle Button - Center-Right Aligned */}
           <button
             onClick={toggleTheme}
-            className="absolute top-4 right-4 w-9 h-9 rounded-2xl bg-muted/60 hover:bg-muted flex items-center justify-center text-foreground transition-all active:scale-95 shadow-sm border border-border/50"
+            className="absolute right-5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-2xl bg-muted/60 hover:bg-muted flex items-center justify-center text-foreground transition-all active:scale-95 shadow-sm border border-border/50"
             title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
           >
-            {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+            {isDark ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-700" />}
           </button>
 
           <div 
@@ -342,7 +342,7 @@ export default function Account() {
               accept="image/png, image/jpeg, image/jpg, image/webp, image/*"
             />
           </div>
-          <div className="pr-10">
+          <div className="pr-12">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Account</p>
             <p className="font-bold text-2xl text-foreground mt-0.5">{username}</p>
           </div>
