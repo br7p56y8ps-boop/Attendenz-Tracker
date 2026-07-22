@@ -11,8 +11,9 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-// Friday moved to the end as weekly holiday
-const DAYS_ORDER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Sat', 'Fri'];
+
+// Timetable order starting from Saturday to Friday (Holiday)
+const DAYS_ORDER = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const DAY_INDEX_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 function pad2(n: number) { return String(n).padStart(2, '0'); }
@@ -510,7 +511,7 @@ export default function CalendarPage() {
                                       </td>
                                     );
                                   }
-                                  if (day === 'Tue' || day === 'Wed' || day === 'Thu') return null; // Covered by Mon rowSpan (4 rows)
+                                  if (day === 'Tue' || day === 'Wed' || day === 'Thu') return null; // Covered by Mon rowSpan
                                   if (day === 'Sat') {
                                     return (
                                       <td key={cIdx} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
@@ -529,7 +530,7 @@ export default function CalendarPage() {
                                       </td>
                                     );
                                   }
-                                  if (day === 'Tue' || day === 'Wed') return null; // Covered by Mon rowSpan (3 rows)
+                                  if (day === 'Tue' || day === 'Wed') return null; // Covered by Mon rowSpan
                                   if (day === 'Sat') {
                                     return (
                                       <td key={cIdx} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
