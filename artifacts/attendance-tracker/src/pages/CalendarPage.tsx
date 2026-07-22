@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { HomeCard } from '@/components/HomeCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, X, Calendar as CalendarIcon, Grid } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -12,7 +11,9 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const DAYS_ORDER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// Friday moved to the end as weekly holiday
+const DAYS_ORDER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Sat', 'Fri'];
+const DAY_INDEX_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 function pad2(n: number) { return String(n).padStart(2, '0'); }
 function toDateStr(y: number, m: number, d: number) { return `${y}-${pad2(m+1)}-${pad2(d)}`; }
@@ -94,14 +95,14 @@ export default function CalendarPage() {
   // ── Retrieve scheduled classes for any specific date ───────────────────────
   const getScheduledClassesForDate = (date: Date) => {
     const dayIndex = date.getDay();
-    const todayAbbr = DAYS_ORDER[dayIndex];
+    const todayAbbr = DAYS_SHORT[dayIndex];
     const dateStr = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 
     // Get active ward for this date
     const customWard = customWards.find(w => dateStr >= w.startDate && dateStr <= w.endDate);
     const presetWardObj = subjectMode === 'preloaded' ? getCurrentPresetWard(date) : null;
     const currentWard = customWard ? customWard.name : (presetWardObj ? presetWardObj.ward : null);
-    const isWardHoliday = currentWard === 'Holiday';
+    const isWardHoliday = currentWard === 'Holiday' || todayAbbr === 'Fri';
 
     let list: Array<{ name: string; time: string; isWard: boolean; sessionId: string }> = [];
 
@@ -201,6 +202,33 @@ export default function CalendarPage() {
     return map[name] || name;
   };
 
+  // Helper to read attendance status for a conducted subject
+  const getAttendanceStatus = (dateStr: string, cl: { name: string; sessionId: string }) => {
+    const candidateKeys = [
+      `${dateStr}-${cl.sessionId}`,
+      `${dateStr}_${cl.sessionId}`,
+      `${dateStr}-${cl.name}`,
+      `${dateStr}_${cl.name}`,
+      `${dateStr}-ward-${cl.name}`,
+      `${dateStr}_ward_${cl.name}`
+    ];
+
+    for (const k of candidateKeys) {
+      if (homeSelections[k]) return homeSelections[k];
+    }
+
+    const dayRecords = recordMap[dateStr];
+    if (dayRecords && dayRecords.length > 0) {
+      const match = dayRecords.find(r => 
+        r.label.toLowerCase() === cl.name.toLowerCase() || 
+        r.label.toLowerCase() === shortenSubject(cl.name).toLowerCase()
+      );
+      if (match) return match.type;
+    }
+
+    return 'none';
+  };
+
   // ── 8.1 Weekly Timetable Display Data ──────────────────────────────────────
   const PRESET_COLUMNS = ['07:00–08:00', '08:30–09:30', '11:30–12:00', '12:00–01:00', '01:00–02:00'];
 
@@ -228,12 +256,12 @@ export default function CalendarPage() {
     });
 
     if (subjectMode === 'preloaded') {
-      DAYS_ORDER.forEach((day, dayIdx) => {
+      DAYS_ORDER.forEach((day) => {
+        const dayIdx = DAY_INDEX_MAP[day];
         const slots = presetTimetable[dayIdx] || [];
         slots.forEach(slot => {
           if (slot.type !== 'ward' && slot.type !== 'ward_replacement') {
             const time = slot.time.trim();
-            // Map preset times to the forced columns
             if (time === '07:00–08:00') grid[day]['07:00–08:00'].push(...slot.subjects);
             else if (time === '08:30–09:30') grid[day]['08:30–09:30'].push(...slot.subjects);
             else if (time === '11:30 AM–2:30 PM') {
@@ -304,6 +332,14 @@ export default function CalendarPage() {
     return processed;
   }, [timetableGrid, uniqueTimes]);
 
+  const isDayHoliday = (day: string) => {
+    if (subjectMode === 'preloaded') {
+      return day === 'Fri';
+    } else {
+      return uniqueTimes.every(t => !timetableGrid[day][t] || timetableGrid[day][t].length === 0);
+    }
+  };
+
   const wardRotationsList = useMemo(() => {
     if (subjectMode === 'preloaded') {
       return presetWardSchedule.map((ws, i) => ({
@@ -332,7 +368,7 @@ export default function CalendarPage() {
         {/* ── Monthly Calendar View ── */}
         <div className="bg-card border border-border rounded-3xl shadow-sm overflow-hidden">
           {/* Month header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-b border-border">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
             <button onClick={prevMonth} className="w-9 h-9 rounded-xl bg-muted/60 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
               <ChevronLeft className="w-5 h-5" />
             </button>
@@ -432,9 +468,12 @@ export default function CalendarPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {DAYS_ORDER.map((day, idx) => {
-                        const isToday = today.getDay() === idx;
+                      {DAYS_ORDER.map((day) => {
+                        const dayIdx = DAY_INDEX_MAP[day];
+                        const isToday = today.getDay() === dayIdx;
                         const rowData = timetableWithSpans[day];
+                        const holiday = isDayHoliday(day);
+
                         return (
                           <tr key={day} className={cn(isToday ? "bg-primary/5" : "hover:bg-muted/20")}>
                             <td className="p-1 px-1.5 font-bold text-foreground border-r border-border h-10">
@@ -445,9 +484,54 @@ export default function CalendarPage() {
                             </td>
                             {uniqueTimes.length === 0 ? (
                               <td className="p-1 text-muted-foreground text-[9px] italic">No lectures</td>
+                            ) : holiday ? (
+                              <td colSpan={uniqueTimes.length} className="p-2 text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground/60 bg-muted/10">
+                                Holiday
+                              </td>
                             ) : (
                               rowData.map((cell, cIdx) => {
+                                const timeSlot = cell.time;
+
+                                // Special Preset Merging for 11:30–12:00 (Rest)
+                                if (subjectMode === 'preloaded' && timeSlot === '11:30–12:00') {
+                                  if (day === 'Mon') {
+                                    return (
+                                      <td key={cIdx} rowSpan={3} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
+                                        Rest
+                                      </td>
+                                    );
+                                  }
+                                  if (day === 'Tue' || day === 'Wed') return null; // Covered by Mon rowSpan
+                                  if (day === 'Sat') {
+                                    return (
+                                      <td key={cIdx} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
+                                        Rest
+                                      </td>
+                                    );
+                                  }
+                                }
+
+                                // Special Preset Merging for 01:00–02:00 (Small Group Teaching)
+                                if (subjectMode === 'preloaded' && timeSlot === '01:00–02:00') {
+                                  if (day === 'Mon') {
+                                    return (
+                                      <td key={cIdx} rowSpan={3} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
+                                        Small Group Teaching
+                                      </td>
+                                    );
+                                  }
+                                  if (day === 'Tue' || day === 'Wed') return null; // Covered by Mon rowSpan
+                                  if (day === 'Sat') {
+                                    return (
+                                      <td key={cIdx} className="p-1 text-center font-semibold text-[9px] text-muted-foreground/70 border-r border-border/40 align-middle bg-muted/5">
+                                        Small Group Teaching
+                                      </td>
+                                    );
+                                  }
+                                }
+
                                 if (cell.skip) return null;
+
                                 return (
                                   <td 
                                     key={cIdx} 
@@ -455,7 +539,7 @@ export default function CalendarPage() {
                                     className="p-0.5 text-center border-r border-border/40 last:border-0"
                                   >
                                     {cell.subjects.length === 0 ? (
-                                      <span className="text-muted-foreground/10 text-[8px]">—</span>
+                                      <span className="text-muted-foreground/20 text-[9px]">—</span>
                                     ) : (
                                       <div className="flex items-center justify-center min-h-[30px] w-full px-0.5">
                                         <p 
@@ -508,7 +592,7 @@ export default function CalendarPage() {
               </div>
             </motion.div>
           ) : (
-            /* ── Case 2: When a date is selected, show attendance manager identical to Home tab ── */
+            /* ── Case 2: When a date is selected, show Read-Only Conducted Subjects & Status View ── */
             <motion.div
               key="selected_date_manager"
               initial={{ opacity: 0, y: 10 }}
@@ -519,7 +603,7 @@ export default function CalendarPage() {
               <div className="flex items-center justify-between bg-muted/40 p-4 rounded-2xl border border-border">
                 <div>
                   <p className="text-sm font-bold text-foreground">{selectedDayLabel}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Historical Attendance Manager</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Conducted Subjects & Status Log</p>
                 </div>
                 <button
                   onClick={() => setSelectedDate(null)}
@@ -531,30 +615,74 @@ export default function CalendarPage() {
               </div>
 
               {selectedDateClasses.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 bg-card border border-border rounded-3xl shadow-sm">
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center text-3xl">
+                <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 bg-card border border-border rounded-3xl p-6 shadow-sm">
+                  <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center text-2xl">
                     🌴
                   </div>
-                  <h3 className="text-xl font-extrabold tracking-tight text-foreground">
-                    Holiday / Rest Day
-                  </h3>
-                  <p className="text-muted-foreground text-sm max-w-xs leading-relaxed">
-                    Enjoy your rest day! No lectures or clinical ward postings are scheduled for this day.
-                  </p>
+                  <div>
+                    <h3 className="text-base font-bold text-foreground">Holiday / Rest Day</h3>
+                    <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                      No lectures or clinical ward postings were scheduled for this date.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 bg-amber-500/15 text-amber-500 font-bold text-[11px] rounded-full uppercase tracking-wider">
+                    Holiday
+                  </span>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {selectedDateClasses.map((cl) => (
-                    <HomeCard
-                      key={`${selectedDate}-${cl.name}-${cl.sessionId}`}
-                      subject={cl.name}
-                      time={cl.time}
-                      isWard={cl.isWard}
-                      title={cl.isWard ? `Ward Current Posting: ${cl.name}` : undefined}
-                      sessionId={cl.sessionId}
-                      dateStr={selectedDate}
-                    />
-                  ))}
+                <div className="space-y-3">
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1">
+                    Conducted Classes & Status ({selectedDateClasses.length})
+                  </div>
+                  {selectedDateClasses.map((cl, idx) => {
+                    const status = getAttendanceStatus(selectedDate, cl);
+                    return (
+                      <div
+                        key={`${selectedDate}-${cl.name}-${cl.sessionId}-${idx}`}
+                        className="bg-card border border-border rounded-2xl p-4 flex items-center justify-between shadow-sm"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-foreground text-sm">{cl.name}</span>
+                            <span className={cn(
+                              "text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md",
+                              cl.isWard ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                            )}>
+                              {cl.isWard ? "Ward Posting" : "Lecture"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{cl.time}</p>
+                        </div>
+
+                        {/* Read-Only Non-Editable Status Badge */}
+                        <div className="shrink-0 ml-3">
+                          {status === 'attended' && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500/15 text-emerald-500 border border-emerald-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              Present
+                            </span>
+                          )}
+                          {status === 'missed' && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-500/15 text-rose-500 border border-rose-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                              Missed
+                            </span>
+                          )}
+                          {status === 'off' && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-500 border border-amber-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              Off Day
+                            </span>
+                          )}
+                          {status === 'none' && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-muted text-muted-foreground border border-border">
+                              Not Recorded
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </motion.div>
