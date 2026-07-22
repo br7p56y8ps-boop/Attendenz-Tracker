@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
@@ -23,7 +24,6 @@ function AuthGate() {
     return <Login />;
   }
 
-  // Show setup/migration screen until the user makes their subject mode choice
   if (!setupDone) {
     return <SetupScreen />;
   }
@@ -43,7 +43,20 @@ function AuthGate() {
   );
 }
 
-function App() {
+export default function App() {
+  // Global Theme Sync (Default: Dark Mode)
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') {
+      document.documentElement.classList.remove('dark');
+    } else {
+      document.documentElement.classList.add('dark');
+      if (!savedTheme) {
+        localStorage.setItem('theme', 'dark');
+      }
+    }
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
@@ -58,5 +71,3 @@ function App() {
     </QueryClientProvider>
   );
 }
-
-export default App;
