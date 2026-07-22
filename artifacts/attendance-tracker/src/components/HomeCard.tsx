@@ -15,7 +15,7 @@ interface HomeCardProps {
 
 export const HomeCard = ({ subject, time, isWard = false, title, sessionId, dateStr }: HomeCardProps) => {
   const { subjects, wards, homeSelections, updateHomeSelection, preferredPercentage } = useAttendance();
-  const { customSubjects } = useCustomData(); // Fetching custom subjects to get plannedClasses
+  const { customSubjects } = useCustomData();
   const activeDateStr = dateStr || getCurrentDateStr();
   const [showECG, setShowECG] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<'off' | 'missed' | 'attended' | null>(null);
@@ -33,13 +33,13 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
   const missed = data?.missed || 0;
   const total = attended + missed;
 
-  // FIX: Look up total planned classes from customSubjects / subjects
-  const foundSubject = customSubjects?.find(
+  // FIXED: Fetch plannedClasses for BOTH Preset and Custom users
+  const customSub = customSubjects?.find(
     (s) => s.name.toLowerCase() === subject.toLowerCase()
   );
-  const totalPlannedClasses = foundSubject?.plannedClasses;
+  const totalPlannedClasses = data?.plannedClasses ?? customSub?.plannedClasses;
 
-  // Feature 1 & 2: Remaining planned classes & Finished state calculation
+  // Remaining planned classes & Finished state
   const remainingClasses = totalPlannedClasses !== undefined ? Math.max(0, totalPlannedClasses - total) : undefined;
   const isFinished = totalPlannedClasses !== undefined && totalPlannedClasses > 0 && remainingClasses === 0;
 
