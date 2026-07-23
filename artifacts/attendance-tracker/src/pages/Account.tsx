@@ -16,10 +16,6 @@ export default function Account() {
   const { subjects, wards, preferredPercentage, setPreferredPercentage, clearModeAttendance } = useAttendance();
   const { customSubjects, customWards, subjectMode, changeSubjectMode, clearRoutineData, setWhatsNewOpen, getCurrentPresetWard } = useCustomData();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const jsonFileInputRef = useRef<HTMLInputElement>(null);
-  
-  const [restoreMsg, setRestoreMsg] = useState('');
-  const [restoreSuccess, setRestoreSuccess] = useState<boolean | null>(null);
   const [copied, setCopied] = useState(false);
   const [storageSize, setStorageSize] = useState('0.00 KB');
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -235,51 +231,8 @@ export default function Account() {
   };
 
   // ── Backup ───────────────────────────────────────────────────────────────
-  const handleBackup = () => {
-    const data: Record<string, unknown> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)!;
-      const val = localStorage.getItem(key);
-      try { data[key] = JSON.parse(val!); } catch { data[key] = val; }
-    }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `attendenz-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    setRestoreSuccess(true);
-    setRestoreMsg('✓ Backup exported successfully! Keep this JSON file safe.');
-    setTimeout(() => setRestoreMsg(''), 4000);
-  };
 
   // ── Restore ──────────────────────────────────────────────────────────────
-  const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const data: Record<string, unknown> = JSON.parse(ev.target?.result as string);
-        Object.entries(data).forEach(([k, v]) => {
-          localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
-        });
-        setRestoreSuccess(true);
-        setRestoreMsg('✓ Restore successful! The page will refresh in 2 seconds to apply changes.');
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
-      } catch {
-        setRestoreSuccess(false);
-        setRestoreMsg('✗ Invalid backup file format. Please check the JSON.');
-        setTimeout(() => setRestoreMsg(''), 4000);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
 
   // ── Copy App Info ────────────────────────────────────────────────────────
   const handleCopyInfo = () => {
@@ -336,14 +289,6 @@ export default function Account() {
               onChange={handleImageChange} 
               className="hidden" 
               accept="image/png, image/jpeg, image/jpg, image/webp, image/*"
-            />
-            {/* JSON Data File Input for Restore */}
-            <input
-              type="file"
-              ref={jsonFileInputRef}
-              onChange={handleRestore}
-              className="hidden"
-              accept=".json,application/json,text/plain"
             />
           </div>
           <div className="pr-12">
@@ -555,34 +500,6 @@ export default function Account() {
             </button>
           </div>
 
-          {/* Backup Action Row */}
-          <div
-            onClick={handleBackup}
-            className="w-full bg-card border border-border rounded-2xl px-4 py-4 flex items-center gap-4 text-left hover:bg-muted/40 active:scale-[0.98] cursor-pointer transition-all"
-          >
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-primary/10 text-primary shrink-0">
-              <Download className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <p className="font-semibold text-base text-foreground">Backup Data</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Export all schedules & attendance as a JSON file</p>
-            </div>
-          </div>
-
-          {/* Restore Action Row */}
-          <div
-            onClick={() => jsonFileInputRef.current?.click()}
-            className="w-full bg-card border border-border rounded-2xl px-4 py-4 flex items-center gap-4 text-left hover:bg-muted/40 active:scale-[0.98] cursor-pointer transition-all"
-          >
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-primary/10 text-primary shrink-0">
-              <Upload className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <p className="font-semibold text-base text-foreground">Restore Backup</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Import and restore data from a saved JSON file</p>
-            </div>
-          </div>
-
           {/* What's New Trigger */}
           <div
             onClick={() => setWhatsNewOpen(true)}
@@ -596,23 +513,6 @@ export default function Account() {
               <p className="text-xs text-muted-foreground mt-0.5">Click to view the v3.6.0 (Stable) feature updates</p>
             </div>
           </div>
-
-          {/* Backup/Restore success notifications */}
-          <AnimatePresence>
-            {restoreMsg && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                className={cn(
-                  'text-xs font-semibold px-4 py-2.5 rounded-xl border mt-2',
-                  restoreSuccess ? 'bg-success/15 border-success/30 text-success' : 'bg-destructive/15 border-destructive/30 text-destructive'
-                )}
-              >
-                {restoreMsg}
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
 
         {/* App Info Card */}
