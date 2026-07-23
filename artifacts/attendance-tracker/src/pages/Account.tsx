@@ -1,10 +1,12 @@
+import { User, Camera, Trash2, KeyRound, Copy, Check, ShieldAlert, Sparkles, AlertCircle, ArrowLeft, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, LogOut, Download } from 'lucide-react';
+import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, Snapshot } from '../utils/snapshotUtils';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, Upload, LogOut, User, RefreshCw, Info, Copy, Check, Camera, Sun, Moon } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
@@ -19,6 +21,38 @@ export default function Account() {
   const [copied, setCopied] = useState(false);
   const [storageSize, setStorageSize] = useState('0.00 KB');
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [snapshotMsg, setSnapshotMsg] = useState('');
+  const [showSnapshotsList, setShowSnapshotsList] = useState(false);
+
+  useEffect(() => {
+    setSnapshots(getSnapshots());
+  }, []);
+
+  const handleTakeSnapshot = () => {
+    createSnapshot('Manual Checkpoint');
+    setSnapshots(getSnapshots());
+    setSnapshotMsg('✓ Snapshot created successfully!');
+    setTimeout(() => setSnapshotMsg(''), 3000);
+  };
+
+  const handleRestoreSnapshot = (id: string) => {
+    if (restoreSnapshot(id)) {
+      setSnapshotMsg('✓ Snapshot restored! Refreshing page...');
+      setTimeout(() => window.location.reload(), 1500);
+    } else {
+      setSnapshotMsg('✗ Failed to restore snapshot.');
+      setTimeout(() => setSnapshotMsg(''), 3000);
+    }
+  };
+
+  const handleClearCache = () => {
+    const cleared = clearLocalCache();
+    setSnapshotMsg(`✓ Cleared ${cleared} cached items successfully!`);
+    setTimeout(() => setSnapshotMsg(''), 3000);
+  };
+
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
   const [switchStep, setSwitchStep] = useState<'warning' | 'final' | 'backup_found'>('warning');
   const [pendingMode, setPendingMode] = useState<SubjectMode | null>(null);
@@ -69,7 +103,6 @@ export default function Account() {
 
   const handleBackupAndContinue = () => {
     saveInternalSnapshot();
-    handleBackup();
     setSwitchStep('final');
   };
 
@@ -499,6 +532,79 @@ export default function Account() {
               Switch to {subjectMode === 'preloaded' ? 'Custom' : 'Preset'}
             </button>
           </div>
+
+          
+          {/* Snapshots & Storage Section */}
+          <div className="w-full bg-card border border-border rounded-2xl p-4 space-y-4">
+            <div className="flex items-center justify-between border-b border-border/50 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-primary/10 text-primary">
+                  <SnapshotIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm text-foreground">Snapshots & Storage</p>
+                  <p className="text-xs text-muted-foreground">Manage local state backups & cache</p>
+                </div>
+              </div>
+              <button
+                onClick={handleTakeSnapshot}
+                className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-xl transition-all active:scale-[0.97]"
+              >
+                + Snapshot
+              </button>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setShowSnapshotsList(!showSnapshotsList)}
+                className="flex items-center justify-center gap-2 px-3 py-2 bg-muted/50 hover:bg-muted text-foreground text-xs font-medium rounded-xl transition-all"
+              >
+                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Saved ({snapshots.length})</span>
+              </button>
+              <button
+                onClick={handleClearCache}
+                className="flex items-center justify-center gap-2 px-3 py-2 bg-muted/50 hover:bg-muted text-foreground text-xs font-medium rounded-xl transition-all"
+              >
+                <Eraser className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Clear Cache</span>
+              </button>
+            </div>
+
+            {/* Snapshots List Dropdown */}
+            {showSnapshotsList && (
+              <div className="pt-2 border-t border-border/40 space-y-2">
+                {snapshots.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-2">No snapshots saved yet.</p>
+                ) : (
+                  snapshots.map(s => (
+                    <div key={s.id} className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60">
+                      <div>
+                        <p className="text-xs font-medium text-foreground">{s.label}</p>
+                        <p className="text-[10px] text-muted-foreground">{s.timestamp}</p>
+                      </div>
+                      <button
+                        onClick={() => handleRestoreSnapshot(s.id)}
+                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline px-2 py-1 rounded-lg bg-primary/10"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Restore
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Status Message Toast */}
+            {snapshotMsg && (
+              <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-1.5 rounded-lg">
+                {snapshotMsg}
+              </p>
+            )}
+          </div>
+
 
           {/* What's New Trigger */}
           <div

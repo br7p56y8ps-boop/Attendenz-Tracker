@@ -39,7 +39,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
   const customSub = customSubjects?.find(
     (s) => s.name.toLowerCase() === subject.toLowerCase()
   );
-  const totalPlannedClasses = data?.plannedClasses ?? data?.total ?? customSub?.plannedClasses ?? presetTotal;
+  const totalPlannedClasses = (data as any)?.plannedClasses ?? (data as any)?.total ?? customSub?.plannedClasses ?? presetTotal;
 
   // Remaining planned classes & Finished state
   const remainingClasses = totalPlannedClasses !== undefined ? Math.max(0, totalPlannedClasses - total) : undefined;
