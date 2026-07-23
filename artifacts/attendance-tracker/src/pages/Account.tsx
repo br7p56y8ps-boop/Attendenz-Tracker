@@ -16,6 +16,7 @@ export default function Account() {
   const { subjects, wards, preferredPercentage, setPreferredPercentage, clearModeAttendance } = useAttendance();
   const { customSubjects, customWards, subjectMode, changeSubjectMode, clearRoutineData, setWhatsNewOpen, getCurrentPresetWard } = useCustomData();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const jsonFileInputRef = useRef<HTMLInputElement>(null);
   
   const [restoreMsg, setRestoreMsg] = useState('');
   const [restoreSuccess, setRestoreSuccess] = useState<boolean | null>(null);
@@ -336,6 +337,14 @@ export default function Account() {
               className="hidden" 
               accept="image/png, image/jpeg, image/jpg, image/webp, image/*"
             />
+            {/* JSON Data File Input for Restore */}
+            <input
+              type="file"
+              ref={jsonFileInputRef}
+              onChange={handleRestore}
+              className="hidden"
+              accept="application/json,.json,text/json,text/plain,*/*"
+            />
           </div>
           <div className="pr-12">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Account</p>
@@ -562,7 +571,7 @@ export default function Account() {
 
           {/* Restore Action Row */}
           <div
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => jsonFileInputRef.current?.click()}
             className="w-full bg-card border border-border rounded-2xl px-4 py-4 flex items-center gap-4 text-left hover:bg-muted/40 active:scale-[0.98] cursor-pointer transition-all"
           >
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-primary/10 text-primary shrink-0">
