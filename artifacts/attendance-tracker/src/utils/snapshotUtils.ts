@@ -102,3 +102,77 @@ export function clearLocalCache(): number {
 
   return clearedCount;
 }
+
+
+/**
+ * Automatically create a daily snapshot in the background on app open
+ */
+export function autoSnapshotOnLoad(): void {
+  try {
+    const LAST_AUTO_KEY = 'attendenz_last_auto_snapshot_date';
+    const today = new Date().toLocaleDateString();
+    const lastAuto = localStorage.getItem(LAST_AUTO_KEY);
+
+    if (lastAuto !== today) {
+      createSnapshot(`Auto Backup (${today})`);
+      localStorage.setItem(LAST_AUTO_KEY, today);
+    }
+  } catch (err) {
+    console.error('Failed background auto-snapshot:', err);
+  }
+}
+
+
+/**
+ * Export all localStorage data as a downloadable JSON file
+ */
+export function exportDataAsJSON(): void {
+  try {
+    const backupData: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        backupData[key] = localStorage.getItem(key) || '';
+      }
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadAnchor.setAttribute("download", `attendenz_backup_${dateStr}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  } catch (err) {
+    console.error('Failed to export JSON backup:', err);
+    alert('Failed to export data backup.');
+  }
+}
+
+/**
+ * Import and restore localStorage data from an uploaded JSON file
+ */
+export function importDataFromJSON(file: File, callback: (success: boolean) => void): void {
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const content = event.target?.result as string;
+      const parsedData = JSON.parse(content);
+      
+      if (!parsedData || typeof parsedData !== 'object') {
+        throw new Error('Invalid backup file format.');
+      }
+
+      // Clear current local storage and load backup items
+      for (const [key, value] of Object.entries(parsedData)) {
+        localStorage.setItem(key, value as string);
+      }
+
+      callback(true);
+    } catch (err) {
+      console.error('Failed to parse backup file:', err);
+      callback(false);
+    }
+  };
+  reader.readAsText(file);
+}

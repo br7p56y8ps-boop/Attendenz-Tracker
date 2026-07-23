@@ -1,5 +1,5 @@
 import { User, Camera, Trash2, KeyRound, Copy, Check, ShieldAlert, Sparkles, AlertCircle, ArrowLeft, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, LogOut, Download } from 'lucide-react';
-import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, Snapshot } from '../utils/snapshotUtils';
+import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot } from '../utils/snapshotUtils';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,6 +27,7 @@ export default function Account() {
   const [showSnapshotsList, setShowSnapshotsList] = useState(false);
 
   useEffect(() => {
+    autoSnapshotOnLoad();
     setSnapshots(getSnapshots());
   }, []);
 
@@ -606,7 +607,61 @@ export default function Account() {
           </div>
 
 
-          {/* What's New Trigger */}
+          
+        {/* JSON Backup & Restore Card */}
+        <div className="bg-card rounded-2xl p-6 shadow-sm border border-border space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                <Download className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-foreground">File Backup & Restore</h2>
+                <p className="text-xs text-muted-foreground">Download a .json file of your entire history for permanent safekeeping</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            <button
+              onClick={() => exportDataAsJSON()}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-emerald-white text-sm font-medium rounded-xl transition-colors shadow-sm text-white"
+            >
+              <Download className="w-4 h-4" />
+              Export Backup (.json)
+            </button>
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-sm font-medium rounded-xl transition-colors border border-border"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Restore from File
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  importDataFromJSON(file, (success) => {
+                    if (success) {
+                      alert('Backup restored successfully! Reloading app...');
+                      window.location.reload();
+                    } else {
+                      alert('Failed to restore backup. Please ensure the file is valid.');
+                    }
+                  });
+                }
+              }}
+              accept=".json"
+              className="hidden"
+            />
+          </div>
+        </div>
+
+
+        {/* What's New Trigger */}
           <div
             onClick={() => setWhatsNewOpen(true)}
             className="w-full bg-card border border-border rounded-2xl px-4 py-4 flex items-center gap-4 text-left hover:bg-muted/40 active:scale-[0.98] cursor-pointer transition-all"
