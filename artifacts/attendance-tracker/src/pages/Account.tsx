@@ -343,7 +343,6 @@ export default function Account() {
               ref={jsonFileInputRef}
               onChange={handleRestore}
               className="hidden"
-              accept="application/json,.json"
             />
           </div>
           <div className="pr-12">
