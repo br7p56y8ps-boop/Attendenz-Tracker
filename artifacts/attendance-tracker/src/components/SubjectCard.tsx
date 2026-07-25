@@ -83,7 +83,8 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
   const remaining = Math.max(0, totalPlanned - totalConducted);
   const maxMissable = Math.floor(totalPlanned * (1 - targetPct / 100));
   const canStillMiss = Math.max(0, maxMissable - missedNum);
-  const requiredToAttend = Math.max(0, Math.ceil(totalPlanned * (targetPct / 100)) - attendedNum);
+  const rawRequired = Math.max(0, Math.ceil(totalPlanned * (targetPct / 100)) - attendedNum);
+  const requiredToAttend = rawRequired > remaining ? "Not possible" : rawRequired;
 
   const getPercentageColor = (pct: number) => {
     if (pct >= targetPct) return 'text-success';
@@ -189,7 +190,8 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
           className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/20 border border-border/40 hover:bg-muted/40 active:scale-95 transition-all cursor-pointer"
         >
           <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Req.</span>
-          <span className="text-sm font-bold text-primary">{requiredToAttend}</span>
+          <span className={cn("font-bold text-primary text-center leading-tight", rawRequired > remaining ? "text-[10px]" : "text-sm")}>{requiredToAttend}</span>
+
         </div>
       </div>
     </div>
