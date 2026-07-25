@@ -1,26 +1,313 @@
-import { User, Camera, Trash2, KeyRound, Copy, Check, ShieldAlert, Sparkles, AlertCircle, ArrowLeft, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, LogOut, Download } from 'lucide-react';
-import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot } from '../utils/snapshotUtils';
+import { User, Camera, Trash2, KeyRound, Copy, Check, Pencil, ShieldAlert, Sparkles, AlertCircle, ArrowLeft, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, LogOut, Download, ChevronDown, ChevronUp, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, HardDrive, FileSpreadsheet, Info, GraduationCap } from 'lucide-react';
+import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
+import { storageClear, storageSetItem } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { cn } from '@/lib/utils';
+import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
+import { generatePDFReport, generateExcelReport, generateCSVReport } from '@/lib/exportUtils';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
 import femaleStudentProfile from '@/assets/images/female_student_profile_1784286920737.jpg';
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
 
 export default function Account() {
-  const { username, logout, profileImage, updateProfileImage } = useAuth();
+  const { 
+    username, 
+    updateUsername,
+    logout, 
+    profileImage, 
+    updateProfileImage, 
+    isPersistentStorage,
+    requestPersistentStorage,
+    retentionPolicy
+  } = useAuth();
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(username);
+
+  useEffect(() => {
+    setNameInput(username);
+  }, [username]);
+
+  const handleSaveName = () => {
+    if (nameInput.trim()) {
+      updateUsername(nameInput.trim());
+    }
+    setIsEditingName(false);
+  };
   const { subjects, wards, preferredPercentage, setPreferredPercentage, clearModeAttendance } = useAttendance();
   const { customSubjects, customWards, subjectMode, changeSubjectMode, clearRoutineData, setWhatsNewOpen, getCurrentPresetWard } = useCustomData();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState(false);
   const [storageSize, setStorageSize] = useState('0.00 KB');
-  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
+  const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
+  const [installedVersion, setInstalledVersion] = useState<string>(() => {
+    return localStorage.getItem('att_app_version') || APP_VERSION;
+  });
+  const isUpdateAvailable = installedVersion !== LATEST_VERSION;
+
+  // Curriculum Management States
+  const [isCurriculumOpen, setIsCurriculumOpen] = useState(false);
+  const [curriculumStatus, setCurriculumStatus] = useState<'Active' | 'Completed'>(() => {
+    return (localStorage.getItem('att_curriculum_status') as 'Active' | 'Completed') || 'Active';
+  });
+
+  const handleToggleCurriculumStatus = () => {
+    const next = curriculumStatus === 'Active' ? 'Completed' : 'Active';
+    setCurriculumStatus(next);
+    localStorage.setItem('att_curriculum_status', next);
+    if (next === 'Completed') {
+      createSnapshot(`Curriculum Completed (${subjectMode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine'})`);
+      setSnapshots(getSnapshots());
+      import('sonner').then(({ toast }) => toast.success('Curriculum marked as Completed! Auto-snapshot saved.'));
+    } else {
+      import('sonner').then(({ toast }) => toast.info('Curriculum marked as Active.'));
+    }
+  };
+
+  const handleApplyUpdate = (withBackup: boolean) => {
+    if (withBackup) {
+      exportDataAsJSON();
+    }
+    localStorage.setItem('att_app_version', LATEST_VERSION);
+    localStorage.setItem('att_just_updated', 'true');
+    localStorage.removeItem('att_has_seen_welcome_v1');
+    setInstalledVersion(LATEST_VERSION);
+    setShowUpdatePrompt(false);
+    window.location.reload();
+  };
+
+  // Export Attendance Data States
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
+  const [exportScope, setExportScope] = useState<'complete' | 'subject' | 'custom' | 'semester'>('complete');
+  const [exportSelectedSubject, setExportSelectedSubject] = useState<string>('');
+  const [exportStartDate, setExportStartDate] = useState<string>('');
+  const [exportEndDate, setExportEndDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [exportSemester, setExportSemester] = useState<string>('Current Month');
+
+  // Data Protection States
+  const [isDataProtectionOpen, setIsDataProtectionOpen] = useState(false);
+  const [showStorageDetailsModal, setShowStorageDetailsModal] = useState(false);
+  const [runtimeStorageInfo, setRuntimeStorageInfo] = useState({
+    isIndexedDB: true,
+    isPersistent: false,
+    techTitle: 'IndexedDB (Local Device Storage)',
+    usedMB: '0.00 MB',
+    quotaMB: '0.00 GB'
+  });
+
+  useEffect(() => {
+    async function detectStorage() {
+      const hasIDB = typeof window !== 'undefined' && Boolean(window.indexedDB);
+      let isPersisted = false;
+      let usedStr = '0.00 MB';
+      let quotaStr = '0.00 GB';
+
+      if (navigator.storage && navigator.storage.persisted) {
+        try {
+          isPersisted = await navigator.storage.persisted();
+        } catch (e) {
+           // console.error(e);
+        }
+      }
+
+      if (navigator.storage && navigator.storage.estimate) {
+        try {
+          const est = await navigator.storage.estimate();
+          if (est.usage !== undefined) {
+            usedStr = (est.usage / (1024 * 1024)).toFixed(2) + ' MB';
+          }
+          if (est.quota !== undefined) {
+            quotaStr = (est.quota / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+          }
+        } catch (e) {
+           // console.error(e);
+        }
+      }
+
+      let techTitle = 'Standard Local Storage';
+      if (hasIDB && isPersisted) {
+        techTitle = 'IndexedDB + Persistent Storage Granted';
+      } else if (hasIDB) {
+        techTitle = 'IndexedDB (Local Device Storage)';
+      }
+
+      setRuntimeStorageInfo({
+        isIndexedDB: hasIDB,
+        isPersistent: isPersisted,
+        techTitle,
+        usedMB: usedStr,
+        quotaMB: quotaStr
+      });
+    }
+    detectStorage();
+  }, [isPersistentStorage]);
+
+  const handleExecuteExport = () => {
+    const rawItems: Array<{ name: string; category?: string; attended: number; total: number }> = [];
+
+    if (subjectMode === 'preloaded') {
+      for (const cat of CATEGORIES) {
+        for (const sub of cat.subjects) {
+          const data = subjects[sub.name] || { attended: 0, missed: 0 };
+          rawItems.push({
+            name: sub.name,
+            category: cat.name,
+            attended: data.attended,
+            total: data.attended + data.missed
+          });
+        }
+      }
+      for (const w of WARD_SUBJECTS) {
+        const data = wards[w.name] || { attended: 0, missed: 0 };
+        rawItems.push({
+          name: `${w.name} (Ward)`,
+          category: 'Clinical Wards',
+          attended: data.attended,
+          total: data.attended + data.missed
+        });
+      }
+    } else {
+      for (const cs of customSubjects) {
+        const data = subjects[cs.name] || { attended: 0, missed: 0 };
+        rawItems.push({
+          name: cs.name,
+          category: cs.category || 'Custom Subject',
+          attended: data.attended,
+          total: data.attended + data.missed
+        });
+      }
+      for (const cw of customWards) {
+        const data = wards[cw.name] || { attended: 0, missed: 0 };
+        rawItems.push({
+          name: `${cw.name} (Ward)`,
+          category: 'Custom Wards',
+          attended: data.attended,
+          total: data.attended + data.missed
+        });
+      }
+    }
+
+    let filteredItems = rawItems;
+    let filterTitle = 'Complete Attendance';
+
+    if (exportScope === 'subject' && exportSelectedSubject) {
+      filteredItems = rawItems.filter(i => i.name === exportSelectedSubject || i.name.startsWith(exportSelectedSubject));
+      filterTitle = `Subject: ${exportSelectedSubject}`;
+    } else if (exportScope === 'custom') {
+      filterTitle = `Date Range: ${exportStartDate || 'Start'} to ${exportEndDate || 'Present'}`;
+    } else if (exportScope === 'semester') {
+      filterTitle = `Academic Period: ${exportSemester}`;
+    }
+
+    if (filteredItems.length === 0) {
+      filteredItems = rawItems;
+    }
+
+    const reportItems = filteredItems.map(item => {
+      const total = item.total;
+      const attended = item.attended;
+      const pct = total > 0 ? (attended / total) * 100 : 0;
+      const target = preferredPercentage || 75;
+
+      let neededText = '0 needed';
+      if (pct < target && target < 100) {
+        const needed = Math.ceil((target * total - 100 * attended) / (100 - target));
+        neededText = `${needed > 0 ? needed : 0} needed`;
+      } else if (total > 0) {
+        neededText = 'Target Achieved';
+      } else {
+        neededText = 'No Classes Logged';
+      }
+
+      return {
+        name: item.name,
+        category: item.category,
+        attended,
+        total,
+        pct,
+        neededForTarget: neededText
+      };
+    });
+
+    const overallAttended = reportItems.reduce((acc, curr) => acc + curr.attended, 0);
+    const overallTotal = reportItems.reduce((acc, curr) => acc + curr.total, 0);
+    const overallPct = overallTotal > 0 ? (overallAttended / overallTotal) * 100 : 0;
+
+    const reportOptions = {
+      studentName: username || 'Medical Student',
+      routineMode: subjectMode === 'preloaded' ? 'MBBS 5th Year Curriculum' : 'Custom Routine Mode',
+      targetPct: preferredPercentage || 75,
+      filterTitle,
+      items: reportItems,
+      overallAttended,
+      overallTotal,
+      overallPct
+    };
+
+    if (exportFormat === 'pdf') {
+      generatePDFReport(reportOptions);
+    } else if (exportFormat === 'excel') {
+      generateExcelReport(reportOptions);
+    } else if (exportFormat === 'csv') {
+      generateCSVReport(reportOptions);
+    }
+  };
+
+  const [isBackupOpen, setIsBackupOpen] = useState(false);
+  const [isSnapshotOpen, setIsSnapshotOpen] = useState(false);
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [transferImportData, setTransferImportData] = useState<any>(null);
+  const transferFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleShareData = async () => {
+    const success = await shareDataAsJSON();
+    if (success) {
+      import('sonner').then(({ toast }) => toast.success('Transfer file ready!'));
+    } else {
+      import('sonner').then(({ toast }) => toast.error('Failed to prepare transfer file.'));
+    }
+  };
+
+  const handleTransferFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const content = event.target?.result as string;
+          const parsedData = JSON.parse(content);
+          if (!parsedData || typeof parsedData !== 'object' || Array.isArray(parsedData)) {
+            throw new Error('Invalid backup file format.');
+          }
+          setTransferImportData(parsedData);
+        } catch (err) {
+           // console.error('Failed to parse backup file:', err);
+          import('sonner').then(({ toast }) => toast.error('Invalid transfer file format.'));
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const executeTransferImport = () => {
+    if (!transferImportData) return;
+    for (const [key, value] of Object.entries(transferImportData)) {
+      if (value !== null && value !== undefined) {
+        const stringVal = typeof value === 'string' ? value : JSON.stringify(value);
+        storageSetItem(key, stringVal);
+      }
+    }
+    import('sonner').then(({ toast }) => toast.success('Data transferred successfully! Reloading...'));
+    setTimeout(() => window.location.reload(), 1500);
+  };
 
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [snapshotMsg, setSnapshotMsg] = useState('');
@@ -50,8 +337,13 @@ export default function Account() {
 
   const handleClearCache = () => {
     const cleared = clearLocalCache();
-    setSnapshotMsg(`✓ Cleared ${cleared} cached items successfully!`);
-    setTimeout(() => setSnapshotMsg(''), 3000);
+    setSnapshotMsg(`✓ Cleared ${cleared} temporary cached items safely! Attendance records & subjects remain 100% intact.`);
+    setTimeout(() => setSnapshotMsg(''), 4000);
+  };
+
+  const handleDeleteAllData = async () => {
+    await storageClear();
+    window.location.reload();
   };
 
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
@@ -146,13 +438,21 @@ export default function Account() {
   const executeSwitch = () => {
     if (!pendingMode) return;
     
-    clearModeAttendance(subjectMode);
-    clearRoutineData(subjectMode);
+    // Auto archive previous curriculum
+    const oldCurriculumName = subjectMode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine';
+    createSnapshot(`Archived Curriculum (${oldCurriculumName})`);
+    saveInternalSnapshot();
+
+    // Reset status for new curriculum
+    localStorage.setItem('att_curriculum_status', 'Active');
+    setCurriculumStatus('Active');
+
     changeSubjectMode(pendingMode);
 
     setShowSwitchDialog(false);
     setPendingMode(null);
-    import('sonner').then(({ toast }) => toast.success(`Switched to fresh ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine.`));
+    setSnapshots(getSnapshots());
+    import('sonner').then(({ toast }) => toast.success(`Switched to ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine. Previous records archived in Snapshots.`));
   };
 
   // ── Analytics Data Collection ───────────────────────────────────────────
@@ -224,13 +524,19 @@ export default function Account() {
     setStorageSize((totalBytes / 1024).toFixed(2) + ' KB');
   }, [subjects, wards, customSubjects, customWards, subjectMode]);
 
+  const handleCopyInfo = () => {
+    const text = `Attendenz Tracker\nVersion: v4.2.0 (Stable)\nUser: ${username}\nStorage Used: ${storageSize}\nDeveloper: benzavraar`;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   // ── Profile Image Logic ──────────────────────────────────────────────────
   const detectGender = (name: string): 'male' | 'female' | 'neutral' => {
     if (!name || name.length < 2) return 'neutral';
-    const n = name.toLowerCase().trim();
-    const femaleEndings = ['a', 'i', 'ee', 'ia', 'shree', 'mita', 'rina', 'lina', 'nita', 'jali', 'shikha', 'preeti', 'priya', 'sneha', 'swati'];
+    const n = name.toLowerCase();
     const femaleNames = ['mary', 'jane', 'sarah', 'fatima', 'aisha', 'zainab', 'ananya', 'ishani', 'diya', 'sana', 'nora', 'luna'];
-    
+    const femaleEndings = ['a', 'i', 'ee', 'ya', 'an'];
     if (femaleNames.some(fn => n.includes(fn))) return 'female';
     if (femaleEndings.some(fe => n.endsWith(fe))) return 'female';
     
@@ -251,526 +557,996 @@ export default function Account() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 1024 * 1024) {
-        alert('Image too large. Please select an image under 1MB.');
-        return;
-      }
-
       const reader = new FileReader();
-      reader.onloadend = () => {
-        updateProfileImage(reader.result as string);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 400; // 400x400 avatar max size
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            updateProfileImage(dataUrl);
+          }
+        };
+        img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // ── Backup ───────────────────────────────────────────────────────────────
-
-  // ── Restore ──────────────────────────────────────────────────────────────
-
-  // ── Copy App Info ────────────────────────────────────────────────────────
-  const handleCopyInfo = () => {
-    const infoText = `Developer Name: benzavraar\nRelease Version: v3.6.0 (Stable)\nSource Code URL: GitHub (Attendenz Tracker)\nOffline Storage: ${storageSize}`;
-    navigator.clipboard.writeText(infoText).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
   return (
     <Layout>
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pb-8">
-        
-        {/* Profile Card with Center-Right Dark/Light Mode Icon Button */}
-        <div className="relative flex items-center gap-4 bg-card border border-border rounded-3xl p-5 shadow-sm">
-          {/* Center-Right Theme Toggle Button */}
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-xl mx-auto space-y-6 pb-6"
+      >
+        {/* 1. Identity Card */}
+        <div className="relative flex items-center justify-between bg-card border border-border rounded-3xl p-5 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div 
+              className="relative w-16 h-16 rounded-2xl group cursor-pointer active:scale-95 transition-transform shrink-0"
+              onClick={handleImageClick}
+            >
+              <div className="w-full h-full rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden border border-primary/20 relative">
+                <AnimatePresence mode="wait">
+                  <motion.img 
+                    key={profileImage || 'default'}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    src={profileImage || getDefaultAvatar()} 
+                    className="w-full h-full object-cover" 
+                    alt="Profile" 
+                  />
+                </AnimatePresence>
+                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Camera className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              {/* Edit Badge */}
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-lg border-2 border-card">
+                <Camera className="w-3 h-3 text-primary-foreground" />
+              </div>
+              {/* Photos/Gallery File Input for iOS & Android */}
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleImageChange} 
+                className="hidden" 
+                accept="image/png, image/jpeg, image/jpg, image/webp, image/*"
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Active Account</p>
+              {isEditingName ? (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <input
+                    type="text"
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); }}
+                    className="bg-muted px-2.5 py-1 rounded-xl text-sm font-bold text-foreground outline-none border border-primary/50 focus:ring-2 focus:ring-primary/20 w-full max-w-[180px]"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleSaveName}
+                    className="w-7 h-7 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all"
+                    title="Save Name"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-0.5 group cursor-pointer" onClick={() => setIsEditingName(true)}>
+                  <p className="font-extrabold text-xl sm:text-2xl text-foreground truncate">{username}</p>
+                  <button 
+                    type="button"
+                    className="w-6 h-6 rounded-lg bg-muted/60 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-all shrink-0"
+                    title="Edit Name"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Theme Switch Toggle Button */}
           <button
             onClick={toggleTheme}
-            className="absolute right-5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-2xl bg-muted/60 hover:bg-muted flex items-center justify-center text-foreground transition-all active:scale-95 shadow-sm border border-border/50"
+            className="w-10 h-10 rounded-2xl bg-muted/60 hover:bg-muted flex items-center justify-center text-foreground transition-all active:scale-95 shadow-sm border border-border/50 shrink-0"
             title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
           >
             {isDark ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-700" />}
           </button>
-
-          <div 
-            className="relative w-16 h-16 rounded-2xl group cursor-pointer active:scale-95 transition-transform shrink-0"
-            onClick={handleImageClick}
-          >
-            <div className="w-full h-full rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden border border-primary/20 relative">
-              <AnimatePresence mode="wait">
-                <motion.img 
-                  key={profileImage || 'default'}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  src={profileImage || getDefaultAvatar()} 
-                  className="w-full h-full object-cover" 
-                  alt="Profile" 
-                />
-              </AnimatePresence>
-              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <Camera className="w-6 h-6 text-white" />
-              </div>
-            </div>
-            {/* Edit Badge */}
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-lg border-2 border-card">
-              <Camera className="w-3 h-3 text-primary-foreground" />
-            </div>
-            {/* Photos/Gallery File Input for iOS & Android */}
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleImageChange} 
-              className="hidden" 
-              accept="image/png, image/jpeg, image/jpg, image/webp, image/*"
-            />
-          </div>
-          <div className="pr-12">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Account</p>
-            <p className="font-bold text-2xl text-foreground mt-0.5">{username}</p>
-          </div>
         </div>
 
-        {/* Clinical Analytics Card */}
-        {(() => {
-          const analytics = displayIndices.map(idx => 
-            allAvailableSubjects[idx % allAvailableSubjects.length] || { name: 'Subject', pct: 100 }
-          );
-          
-          const overallPct = allAvailableSubjects.length > 0 
-            ? allAvailableSubjects.reduce((sum, item) => sum + item.pct, 0) / allAvailableSubjects.length 
-            : 100;
-          
-          return (
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">Vital Analytics</p>
-              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Global Compliance</p>
-                    <p className={cn("text-2xl font-black", 
-                      overallPct >= 80 ? "text-emerald-500" : 
-                      overallPct >= 75 ? "text-amber-500" : "text-red-500"
-                    )}>
-                      {overallPct.toFixed(1)}%
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Monitor Status</p>
-                    <div className="flex items-center gap-1.5 justify-end">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <p className="text-[10px] font-bold text-foreground">LIVE</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4-Channel ECG Monitor */}
-                <div className="space-y-4">
-                  {analytics.map((item, idx) => {
-                    const color = item.pct >= 80 ? "#10b981" : item.pct >= 75 ? "#f59e0b" : "#ef4444";
-                    const textColor = item.pct >= 80 ? "text-emerald-500" : item.pct >= 75 ? "text-amber-500" : "text-red-500";
-                    
-                    return (
-                      <div key={`${idx}-${item.name}`} className="space-y-1.5">
-                        <div className="flex justify-between items-end px-0.5 overflow-hidden h-3.5">
-                          <AnimatePresence mode="wait">
-                            <motion.span 
-                              key={item.name}
-                              initial={{ opacity: 0, y: 5 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -5 }}
-                              className="text-[10px] font-bold uppercase tracking-tight text-muted-foreground truncate max-w-[80%]"
-                            >
-                              {item.name}
-                            </motion.span>
-                          </AnimatePresence>
-                          <AnimatePresence mode="wait">
-                            <motion.span 
-                              key={`${item.name}-pct`}
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
-                              className={cn("text-[10px] font-black tabular-nums", textColor)}
-                            >
-                              {item.pct.toFixed(0)}%
-                            </motion.span>
-                          </AnimatePresence>
-                        </div>
-                        <div className="h-10 w-full bg-muted/20 rounded-lg overflow-hidden relative border border-border/40">
-                          <div className="absolute inset-0 opacity-10 pointer-events-none">
-                            <svg width="100%" height="100%">
-                              <defs>
-                                <pattern id={`grid-${idx}`} width="20" height="20" patternUnits="userSpaceOnUse">
-                                  <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" strokeWidth="0.5"/>
-                                </pattern>
-                              </defs>
-                              <rect width="100%" height="100%" fill={`url(#grid-${idx})`} />
-                            </svg>
-                          </div>
-
-                          <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 40">
-                            <defs>
-                              <linearGradient id={`grad-${idx}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                                <stop offset="0%" stopColor="transparent" />
-                                <stop offset="10%" stopColor="white" />
-                                <stop offset="90%" stopColor="white" />
-                                <stop offset="100%" stopColor="transparent" />
-                              </linearGradient>
-                            </defs>
-                            
-                            <mask id={`mask-${idx}`}>
-                              <rect x="0" y="0" width={item.pct} height="40" fill="white" />
-                            </mask>
-                            
-                            <line x1="0" y1="20" x2="100" y2="20" className="stroke-muted/30 stroke-[0.5]" />
-                            
-                            <motion.path
-                              d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 30 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 60 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 90 20 L 100 20"
-                              fill="none"
-                              stroke={color}
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              mask={`url(#mask-${idx})`}
-                              initial={{ pathLength: 0 }}
-                              animate={{ pathLength: 1 }}
-                              transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeInOut" }}
-                            />
-                            
-                            <motion.path
-                              d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 30 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 60 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 90 20 L 100 20"
-                              fill="none"
-                              stroke={color}
-                              strokeWidth="3"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              mask={`url(#mask-${idx})`}
-                              className="opacity-20 blur-[1px]"
-                              initial={{ pathLength: 0 }}
-                              animate={{ pathLength: 1 }}
-                              transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeInOut" }}
-                            />
-
-                            <line 
-                              x1={item.pct} 
-                              y1="5" 
-                              x2={item.pct} 
-                              y2="35" 
-                              stroke={color} 
-                              strokeWidth="1" 
-                              strokeDasharray="2 2"
-                              className="opacity-50"
-                            />
-                            
-                            <motion.circle
-                              cx={item.pct}
-                              cy="20"
-                              r="1.5"
-                              fill={color}
-                              animate={{ scale: [1, 2, 1], opacity: [0.5, 1, 0.5] }}
-                              transition={{ duration: 1, repeat: Infinity }}
-                            />
-                          </svg>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                
-                {/* X-Axis Percentage Labels */}
-                <div className="flex justify-between px-0.5 pt-1">
-                  {[0, 25, 50, 75, 100].map(val => (
-                    <span key={val} className="text-[8px] font-bold text-muted-foreground/50">{val}%</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Preferred Percentage Dropdown Setting */}
+        {/* 2. Preference & Statistic */}
         <div className="space-y-3">
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Settings</p>
-          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex items-center justify-between">
-            <span className="font-semibold text-base text-foreground">Preferred Percentage</span>
-            <div className="flex items-center gap-2">
-              <select
-                value={preferredPercentage}
-                onChange={(e) => setPreferredPercentage(parseInt(e.target.value, 10) || 75)}
-                className="bg-muted rounded-xl px-3 py-1.5 font-bold text-primary text-sm border border-border/50 outline-none cursor-pointer focus:ring-2 focus:ring-primary/20 transition-all"
-              >
-                {[50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].map(pct => (
-                  <option key={pct} value={pct} className="bg-card text-foreground font-bold">
-                    {pct}%
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* ── PRIMARY / ACTION GROUP ── */}
-        <div className="space-y-3">
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Actions & Preferences</p>
-          
-          {/* Quick Routine Switch */}
-          <div className="w-full bg-card border border-border rounded-2xl px-4 py-4 flex items-center justify-between hover:bg-muted/10 transition-all">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-primary/10 text-primary shrink-0">
-                <RefreshCw className="w-5 h-5" />
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Preference & Statistic</p>
+          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <span className="font-bold text-xs">%</span>
               </div>
               <div>
-                <p className="font-semibold text-base text-foreground">Routine Mode</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Currently: <span className="font-bold text-primary">{subjectMode === 'preloaded' ? 'Preset Routine' : 'Custom Routine'}</span>
-                </p>
+                <p className="font-semibold text-xs text-foreground">Preferred Percentage</p>
+                <p className="text-[10px] text-muted-foreground">Target attendance threshold</p>
               </div>
             </div>
-            <button
-              onClick={() => initiateSwitch(subjectMode === 'preloaded' ? 'custom' : 'preloaded')}
-              className="px-4 py-2 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.97] transition-all"
+            <select
+              value={preferredPercentage}
+              onChange={(e) => setPreferredPercentage(parseInt(e.target.value, 10) || 75)}
+              className="bg-muted rounded-xl px-2.5 py-1 font-bold text-primary text-xs border border-border/50 outline-none cursor-pointer focus:ring-2 focus:ring-primary/20 transition-all shrink-0"
             >
-              Switch to {subjectMode === 'preloaded' ? 'Custom' : 'Preset'}
-            </button>
+              {[50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].map(pct => (
+                <option key={pct} value={pct} className="bg-card text-foreground font-bold">
+                  {pct}%
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* 2. Curriculum Management (Collapsible Card) */}
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3 transition-all">
+          <div
+            onClick={() => setIsCurriculumOpen(!isCurriculumOpen)}
+            className="w-full flex items-center justify-between text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-xs text-foreground">Curriculum Management</h3>
+                <p className="text-[10px] text-muted-foreground">Academic progress, status & routine mode</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={cn(
+                "text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider border",
+                curriculumStatus === 'Completed'
+                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                  : "bg-primary/10 text-primary border-primary/20"
+              )}>
+                {curriculumStatus}
+              </span>
+            </div>
           </div>
 
-          
-          {/* Snapshots & Storage Section */}
-          <div className="w-full bg-card border border-border rounded-2xl p-4 space-y-4">
-            <div className="flex items-center justify-between border-b border-border/50 pb-3">
+          <AnimatePresence>
+            {isCurriculumOpen && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden pt-3 border-t border-border/40 space-y-3 text-left"
+              >
+                <div className="grid grid-cols-1 gap-2 bg-muted/30 p-3 rounded-xl border border-border/50">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Current Curriculum:</span>
+                    <span className="text-xs font-bold text-foreground">
+                      {subjectMode === 'preloaded' ? 'MBBS 5th Year Curriculum' : 'Custom Academic Routine'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-border/30">
+                    <span className="text-xs font-medium text-muted-foreground">Current Routine Mode:</span>
+                    <span className="text-xs font-bold text-primary">
+                      {subjectMode === 'preloaded' ? 'Preset Routine' : 'Custom Routine'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-border/30">
+                    <span className="text-xs font-medium text-muted-foreground">Curriculum Status:</span>
+                    <span className={cn(
+                      "text-xs font-extrabold",
+                      curriculumStatus === 'Completed' ? "text-emerald-500" : "text-primary"
+                    )}>
+                      {curriculumStatus}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleToggleCurriculumStatus}
+                    className={cn(
+                      "py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer border",
+                      curriculumStatus === 'Completed'
+                        ? "bg-muted text-foreground border-border hover:bg-muted/80"
+                        : "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500/30"
+                    )}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{curriculumStatus === 'Completed' ? 'Mark as Active' : 'Mark Curriculum as Completed'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => initiateSwitch(subjectMode === 'preloaded' ? 'custom' : 'preloaded')}
+                    className="py-2.5 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    <span>Change Curriculum</span>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* 3. Other Setting */}
+        <div className="space-y-3 pt-2">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Other Setting</p>
+
+          {/* Transfer App Data (Collapsible) */}
+          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
+            <button
+              type="button"
+              onClick={() => setIsTransferOpen(!isTransferOpen)}
+              className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer"
+            >
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-primary/10 text-primary">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                  <Send className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="font-semibold text-xs text-foreground">Transfer App Data</p>
+                  <p className="text-[10px] text-muted-foreground">Securely transfer your complete app data to another device</p>
+                </div>
+              </div>
+            </button>
+
+            <AnimatePresence>
+              {isTransferOpen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden pt-3 mt-2.5 border-t border-border/40 space-y-3"
+                >
+                  {!transferImportData ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        onClick={handleShareData}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        Send to Another Device
+                      </button>
+                      <div className="space-y-1.5">
+                        <button
+                          onClick={() => transferFileInputRef.current?.click()}
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold rounded-xl transition-colors border border-border"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Receive from Another Device
+                        </button>
+                        <p className="text-[10px] text-muted-foreground text-center leading-tight">
+                          Select the received backup (.json) file to import.
+                        </p>
+                      </div>
+                      <input
+                        type="file"
+                        ref={transferFileInputRef}
+                        onChange={handleTransferFileSelect}
+                        accept=".json"
+                        className="hidden"
+                      />
+                    </div>
+                  ) : (
+                    <div className="bg-muted/30 p-3 rounded-xl border border-border/50 text-left space-y-3">
+                      <div className="flex items-center gap-2 text-amber-500 mb-1">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <p className="text-xs font-bold">Import Data Confirmation</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        You are about to replace your current local data with the received backup.
+                        We recommend creating a Full App Backup before continuing.
+                      </p>
+                      
+                      <div className="bg-background rounded-lg border border-border/60 p-2 space-y-1.5 mt-2">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-muted-foreground">App Version</span>
+                          <span className="font-bold text-foreground">{transferImportData.att_app_version || 'Unknown'}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-muted-foreground">Routine Mode</span>
+                          <span className="font-bold text-foreground">{transferImportData.att_subject_mode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine'}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-muted-foreground">Total Snapshots</span>
+                          <span className="font-bold text-foreground">{transferImportData.attendenz_snapshots_v1 ? JSON.parse(transferImportData.attendenz_snapshots_v1).length : 0}</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-2">
+                        <button
+                          onClick={() => setTransferImportData(null)}
+                          className="w-full py-2 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={executeTransferImport}
+                          className="w-full py-2 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:opacity-90 transition-colors shadow-sm"
+                        >
+                          Replace & Import
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* 1. Snapshots & Storage (Collapsible) */}
+          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
+            <div
+              onClick={() => setIsSnapshotOpen(!isSnapshotOpen)}
+              className="w-full flex items-center justify-between text-left cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                   <SnapshotIcon className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="font-semibold text-sm text-foreground">Snapshots & Storage</p>
-                  <p className="text-xs text-muted-foreground">Manage local state backups & cache</p>
+                  <p className="font-semibold text-xs text-foreground">Snapshots & Storage</p>
+                  <p className="text-[10px] text-muted-foreground">Manage local state backups & cache</p>
                 </div>
               </div>
-              <button
-                onClick={handleTakeSnapshot}
-                className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-xl transition-all active:scale-[0.97]"
-              >
-                + Snapshot
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTakeSnapshot();
+                  }}
+                  className="px-2.5 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold rounded-xl transition-all active:scale-[0.97] shrink-0 border border-primary/20"
+                >
+                  + Snapshot
+                </button>
+              </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setShowSnapshotsList(!showSnapshotsList)}
-                className="flex items-center justify-center gap-2 px-3 py-2 bg-muted/50 hover:bg-muted text-foreground text-xs font-medium rounded-xl transition-all"
-              >
-                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                <span>Saved ({snapshots.length})</span>
-              </button>
-              <button
-                onClick={handleClearCache}
-                className="flex items-center justify-center gap-2 px-3 py-2 bg-muted/50 hover:bg-muted text-foreground text-xs font-medium rounded-xl transition-all"
-              >
-                <Eraser className="w-3.5 h-3.5 text-muted-foreground" />
-                <span>Clear Cache</span>
-              </button>
-            </div>
+            <AnimatePresence>
+              {isSnapshotOpen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden pt-3 mt-2.5 border-t border-border/40 space-y-3"
+                >
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setShowSnapshotsList(!showSnapshotsList)}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-muted/50 hover:bg-muted text-foreground text-xs font-medium rounded-xl transition-all"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span>Saved ({snapshots.length})</span>
+                    </button>
+                    <button
+                      onClick={handleClearCache}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-muted/50 hover:bg-muted text-foreground text-xs font-medium rounded-xl transition-all"
+                    >
+                      <Eraser className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span>Clear Cache</span>
+                    </button>
+                  </div>
 
-            {/* Snapshots List Dropdown */}
-            {showSnapshotsList && (
-              <div className="pt-2 border-t border-border/40 space-y-2">
-                {snapshots.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-2">No snapshots saved yet.</p>
-                ) : (
-                  snapshots.map(s => (
-                    <div key={s.id} className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60">
-                      <div>
-                        <p className="text-xs font-medium text-foreground">{s.label}</p>
-                        <p className="text-[10px] text-muted-foreground">{s.timestamp}</p>
-                      </div>
+                  {showSnapshotsList && (
+                    <div className="pt-2 border-t border-border/40 space-y-2">
+                      {snapshots.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground text-center py-2">No snapshots saved yet.</p>
+                      ) : (
+                        snapshots.map(s => (
+                          <div key={s.id} className="flex items-center justify-between p-2 rounded-xl bg-background border border-border/60">
+                            <div>
+                              <p className="text-xs font-medium text-foreground">{s.label}</p>
+                              <p className="text-[10px] text-muted-foreground">{s.timestamp}</p>
+                            </div>
+                            <button
+                              onClick={() => handleRestoreSnapshot(s.id)}
+                              className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline px-2 py-1 rounded-lg bg-primary/10"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              Restore
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {snapshotMsg && (
+                    <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-1.5 rounded-lg">
+                      {snapshotMsg}
+                    </p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* 2. File Backup & Restore (Collapsible) */}
+          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
+            <button
+              type="button"
+              onClick={() => setIsBackupOpen(!isBackupOpen)}
+              className="w-full flex items-center justify-between text-left focus:outline-none"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                  <Download className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="font-semibold text-xs text-foreground">File Backup & Restore</p>
+                  <p className="text-[10px] text-muted-foreground">Download or restore a .json backup file</p>
+                </div>
+              </div>
+            </button>
+
+            <AnimatePresence>
+              {isBackupOpen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden pt-3 mt-2.5 border-t border-border/40 space-y-2.5"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      onClick={() => exportDataAsJSON()}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Export Backup (.json)
+                    </button>
+
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold rounded-xl transition-colors border border-border"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Restore from File
+                    </button>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          importDataFromJSON(file, (success) => {
+                            if (success) {
+                              import("sonner").then(({ toast }) => toast.info('Backup restored successfully! Reloading app...'));
+                              window.location.reload();
+                            } else {
+                              import("sonner").then(({ toast }) => toast.info('Failed to restore backup. Please ensure the file is valid.'));
+                            }
+                          });
+                        }
+                      }}
+                      accept=".json"
+                      className="hidden"
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* 3. Export Attendance Data (Collapsible) */}
+          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
+            <button
+              type="button"
+              onClick={() => setIsExportOpen(!isExportOpen)}
+              className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="font-semibold text-xs text-foreground">Export Attendance Data</p>
+                  <p className="text-[10px] text-muted-foreground">Export records in PDF, Excel, or CSV formats</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+              </div>
+            </button>
+
+            <AnimatePresence>
+              {isExportOpen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden pt-3 mt-2.5 border-t border-border/40 space-y-3 text-left"
+                >
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Export your attendance records, subject statistics, and ward rotations in clean, printable formats.
+                  </p>
+
+                  {/* Format Selector */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                      Supported Formats
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
                       <button
-                        onClick={() => handleRestoreSnapshot(s.id)}
-                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline px-2 py-1 rounded-lg bg-primary/10"
+                        type="button"
+                        onClick={() => setExportFormat('pdf')}
+                        className={cn(
+                          "py-2 px-2.5 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                          exportFormat === 'pdf'
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                            : "bg-muted/40 border-border text-foreground hover:bg-muted"
+                        )}
                       >
-                        <RefreshCw className="w-3 h-3" />
-                        Restore
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>PDF (.pdf)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExportFormat('excel')}
+                        className={cn(
+                          "py-2 px-2.5 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                          exportFormat === 'excel'
+                            ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                            : "bg-muted/40 border-border text-foreground hover:bg-muted"
+                        )}
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <span>Excel (.xlsx)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExportFormat('csv')}
+                        className={cn(
+                          "py-2 px-2.5 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                          exportFormat === 'csv'
+                            ? "bg-sky-600 text-white border-sky-600 shadow-sm"
+                            : "bg-muted/40 border-border text-foreground hover:bg-muted"
+                        )}
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>CSV (.csv)</span>
                       </button>
                     </div>
-                  ))
-                )}
-              </div>
-            )}
+                  </div>
 
-            {/* Status Message Toast */}
-            {snapshotMsg && (
-              <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-1.5 rounded-lg">
-                {snapshotMsg}
-              </p>
-            )}
-          </div>
+                  {/* Scope Filter Selector */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                      Export Scope
+                    </label>
+                    <select
+                      value={exportScope}
+                      onChange={(e) => setExportScope(e.target.value as any)}
+                      className="w-full bg-muted/50 border border-border/80 rounded-xl px-3 py-2 text-xs font-bold text-foreground outline-none focus:ring-2 focus:ring-primary/20"
+                    >
+                      <option value="complete">Complete Attendance (All Subjects & Wards)</option>
+                      <option value="subject">Subject-wise Filter</option>
+                      <option value="custom">Custom Date Range</option>
+                      <option value="semester">Semester / Academic Period</option>
+                    </select>
+                  </div>
 
+                  {/* Conditional Filter Inputs */}
+                  {exportScope === 'subject' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted-foreground">Select Subject / Ward</label>
+                      <select
+                        value={exportSelectedSubject}
+                        onChange={(e) => setExportSelectedSubject(e.target.value)}
+                        className="w-full bg-muted/50 border border-border/80 rounded-xl px-3 py-2 text-xs font-semibold text-foreground outline-none"
+                      >
+                        <option value="">-- Choose Subject --</option>
+                        {subjectMode === 'preloaded' ? (
+                          <>
+                            {CATEGORIES.flatMap(c => c.subjects).map(s => (
+                              <option key={s.name} value={s.name}>{s.name}</option>
+                            ))}
+                            {WARD_SUBJECTS.map(w => (
+                              <option key={w.name} value={w.name}>{w.name} (Ward)</option>
+                            ))}
+                          </>
+                        ) : (
+                          <>
+                            {customSubjects.map(s => (
+                              <option key={s.id} value={s.name}>{s.name}</option>
+                            ))}
+                            {customWards.map(w => (
+                              <option key={w.id} value={w.name}>{w.name} (Ward)</option>
+                            ))}
+                          </>
+                        )}
+                      </select>
+                    </div>
+                  )}
 
-          
-        {/* JSON Backup & Restore Card */}
-        <div className="bg-card rounded-2xl p-6 shadow-sm border border-border space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                <Download className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-foreground">File Backup & Restore</h2>
-                <p className="text-xs text-muted-foreground">Download a .json file of your entire history for permanent safekeeping</p>
-              </div>
-            </div>
-          </div>
+                  {exportScope === 'custom' && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-muted-foreground block mb-1">Start Date</label>
+                        <input
+                          type="date"
+                          value={exportStartDate}
+                          onChange={(e) => setExportStartDate(e.target.value)}
+                          className="w-full bg-muted/50 border border-border/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-foreground"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-muted-foreground block mb-1">End Date</label>
+                        <input
+                          type="date"
+                          value={exportEndDate}
+                          onChange={(e) => setExportEndDate(e.target.value)}
+                          className="w-full bg-muted/50 border border-border/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-foreground"
+                        />
+                      </div>
+                    </div>
+                  )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-            <button
-              onClick={() => exportDataAsJSON()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-emerald-white text-sm font-medium rounded-xl transition-colors shadow-sm text-white"
-            >
-              <Download className="w-4 h-4" />
-              Export Backup (.json)
-            </button>
+                  {exportScope === 'semester' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted-foreground">Academic Period</label>
+                      <select
+                        value={exportSemester}
+                        onChange={(e) => setExportSemester(e.target.value)}
+                        className="w-full bg-muted/50 border border-border/80 rounded-xl px-3 py-2 text-xs font-semibold text-foreground outline-none"
+                      >
+                        <option value="Current Month">Current Month</option>
+                        <option value="Last 3 Months">Last 3 Months</option>
+                        <option value="Full Academic Term">Full Academic Term / Year</option>
+                      </select>
+                    </div>
+                  )}
 
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-sm font-medium rounded-xl transition-colors border border-border"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Restore from File
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  importDataFromJSON(file, (success) => {
-                    if (success) {
-                      alert('Backup restored successfully! Reloading app...');
-                      window.location.reload();
-                    } else {
-                      alert('Failed to restore backup. Please ensure the file is valid.');
-                    }
-                  });
-                }
-              }}
-              accept=".json"
-              className="hidden"
-            />
-          </div>
-        </div>
-
-
-        {/* What's New Trigger */}
-          <div
-            onClick={() => setWhatsNewOpen(true)}
-            className="w-full bg-card border border-border rounded-2xl px-4 py-4 flex items-center gap-4 text-left hover:bg-muted/40 active:scale-[0.98] cursor-pointer transition-all"
-          >
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-primary/10 shrink-0 overflow-hidden border border-primary/20">
-              <img src="/Logo.jpeg" className="w-full h-full object-cover" alt="" />
-            </div>
-            <div className="flex-1">
-              <p className="font-semibold text-base text-foreground">What's New</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Click to view the v3.6.0 (Stable) feature updates</p>
-            </div>
-          </div>
-        </div>
-
-        {/* App Info Card */}
-        <div className="space-y-3">
-          <div className="flex justify-between items-center px-1">
-            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">App Info</p>
-            <button
-              onClick={handleCopyInfo}
-              className="flex items-center gap-1.5 text-xs text-primary font-bold hover:underline"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copy Details</span>
-                </>
+                  {/* Execute Export Button */}
+                  <button
+                    type="button"
+                    onClick={handleExecuteExport}
+                    className="w-full py-3 px-4 bg-primary text-primary-foreground font-bold rounded-2xl shadow-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2 text-xs cursor-pointer mt-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Export {exportFormat.toUpperCase()} Report</span>
+                  </button>
+                </motion.div>
               )}
+            </AnimatePresence>
+          </div>
+
+          {/* 4. Data Protection (Collapsible) */}
+          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
+            <button
+              type="button"
+              onClick={() => setIsDataProtectionOpen(!isDataProtectionOpen)}
+              className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                  <Database className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="font-semibold text-xs text-foreground">Data Protection</p>
+                  <p className="text-[10px] font-bold text-emerald-500">{runtimeStorageInfo.techTitle}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+              </div>
             </button>
+
+            <AnimatePresence>
+              {isDataProtectionOpen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden pt-3 mt-2.5 border-t border-border/40 space-y-3 text-left"
+                >
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {runtimeStorageInfo.isPersistent
+                      ? "Persistent local storage is active. Your records are protected against browser cache eviction."
+                      : "Your app data is stored locally on this device."}
+                  </p>
+
+                  <div className="flex items-center justify-between bg-muted/30 p-2.5 rounded-xl border border-border/50">
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Storage Engine</p>
+                      <p className="text-xs font-bold text-foreground">IndexedDB Database (AttendenzDatabase)</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowStorageDetailsModal(true)}
+                      className="px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold border border-primary/20 transition-all cursor-pointer"
+                    >
+                      Storage Details
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex items-center gap-5">
-            <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-border/50">
-              <img src="/Logo.jpeg" alt="Attendenz Logo" className="w-full h-full object-cover" />
+          {/* 5. App Info & Update Card */}
+          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3.5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 border border-border/50 shadow-sm bg-muted/20">
+                <img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Logo" className="w-full h-full object-cover" />
+              </div>
+              <div className="text-xs space-y-0.5 text-left flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-extrabold text-foreground text-xs truncate">Attendenz Tracker</span>
+                  {isUpdateAvailable ? (
+                    <span className="text-[10px] font-extrabold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                      Update Available
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-extrabold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                      v{installedVersion} • Up to Date
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground font-medium">
+                  Developer: <strong className="text-foreground font-bold">benzavraar</strong>
+                </p>
+                <p className="text-[10px] text-muted-foreground/80 font-medium">
+                  Local Storage: {storageSize}
+                </p>
+              </div>
             </div>
-            <div className="text-sm space-y-1">
-              <p className="font-bold text-foreground">Version: v3.6.0 (Stable)</p>
-              <p className="text-xs text-muted-foreground font-medium">Offline Storage: {storageSize}</p>
-              <p className="text-xs text-muted-foreground font-medium">Developer: benzavraar</p>
+
+            <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+              <button
+                type="button"
+                onClick={() => setWhatsNewOpen(true)}
+                className="flex-1 py-2 px-3 rounded-xl bg-muted/50 hover:bg-muted text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-border/50 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                <span>What's New</span>
+              </button>
+              {isUpdateAvailable && (
+                <button
+                  type="button"
+                  onClick={() => setShowUpdatePrompt(true)}
+                  className="flex-1 py-2 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Update App</span>
+                </button>
+              )}
             </div>
           </div>
-        </div>
 
-        {/* ── VISUAL SEPARATION / HORIZONTAL LINE ── */}
-        <hr className="border-t border-border/80 my-4" />
-
-        {/* ── DESTRUCTIVE / SYSTEM GROUP ── */}
-        <div className="space-y-3">
-          <p className="text-xs font-bold uppercase tracking-widest text-destructive px-1">System & Reset</p>
-
-          {/* Logout */}
+          {/* 6. Danger Zone Card */}
           <div
-            className="w-full bg-card border border-border rounded-2xl px-4 py-4 flex flex-col gap-2 text-left opacity-60 cursor-not-allowed"
+            onClick={() => setShowDeleteDataDialog(true)}
+            className="w-full bg-destructive/10 border border-destructive/30 hover:bg-destructive/20 rounded-2xl p-4 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all shadow-sm group"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-muted text-foreground shrink-0">
-                <LogOut className="w-5 h-5" />
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-destructive/20 text-destructive shrink-0">
+                <Trash2 className="w-5 h-5 text-destructive" />
               </div>
-              <div>
-                <p className="font-semibold text-base text-foreground">Logout</p>
-                <p className="text-xs text-muted-foreground">Sign out from your offline session</p>
+              <div className="text-left">
+                <p className="font-bold text-xs text-destructive">Danger Zone: Delete All App Data</p>
+                <p className="text-[10px] text-destructive/80 font-medium">Permanently erase all attendance records & act as brand new app</p>
               </div>
             </div>
-            <p className="text-[10px] text-destructive font-medium pl-14">
-              Logout is unavailable until cloud migration is implemented.
-            </p>
+            <ChevronRight className="w-4 h-4 text-destructive/70 group-hover:translate-x-0.5 transition-transform" />
           </div>
         </div>
 
       </motion.div>
 
-      {/* Logout dialog */}
+      {/* Storage Details Modal */}
       <AnimatePresence>
-        {showLogoutDialog && (
+        {showStorageDetailsModal && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4"
-            onClick={e => { if (e.target === e.currentTarget) setShowLogoutDialog(false); }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={e => { if (e.target === e.currentTarget) setShowStorageDetailsModal(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-card border border-border rounded-3xl p-5 w-full max-w-sm shadow-2xl space-y-4 text-left"
+            >
+              <div className="flex items-center justify-between border-b border-border/50 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                    <HardDrive className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">Storage Details</h3>
+                    <p className="text-[10px] text-muted-foreground">Local System Architecture</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowStorageDetailsModal(false)}
+                  className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground text-xs font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-2.5 text-xs">
+                <div className="p-3 bg-muted/40 rounded-2xl border border-border/50 space-y-1">
+                  <p className="text-[10px] uppercase font-extrabold text-muted-foreground">Current Implementation</p>
+                  <p className="font-bold text-foreground">{runtimeStorageInfo.techTitle}</p>
+                </div>
+
+                <div className="p-3 bg-muted/40 rounded-2xl border border-border/50 space-y-1">
+                  <p className="text-[10px] uppercase font-extrabold text-muted-foreground">Persistent Storage Permission</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={cn("font-bold text-[11px]", runtimeStorageInfo.isPersistent ? "text-emerald-500" : "text-amber-500")}>
+                      {runtimeStorageInfo.isPersistent ? 'Granted ✓' : 'Not Granted (Default Browser Policy)'}
+                    </span>
+                    {!runtimeStorageInfo.isPersistent && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const granted = await requestPersistentStorage();
+                          if (granted) {
+                            setRuntimeStorageInfo(prev => ({
+                              ...prev,
+                              isPersistent: true,
+                              techTitle: 'IndexedDB + Persistent Storage Granted'
+                            }));
+                            import("sonner").then(({ toast }) => toast.info('Persistent storage granted!'));
+                          } else {
+                            import("sonner").then(({ toast }) => toast.info('Browser kept standard storage policy. Install app as PWA to grant persistent storage.'));
+                          }
+                        }}
+                        className="text-[10px] font-bold px-2.5 py-1 bg-primary text-primary-foreground rounded-lg shadow-sm cursor-pointer shrink-0"
+                      >
+                        Request Permission
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-muted/40 rounded-2xl border border-border/50 space-y-1">
+                  <p className="text-[10px] uppercase font-extrabold text-muted-foreground">Approximate Storage Used</p>
+                  <p className="font-bold text-foreground">
+                    {runtimeStorageInfo.usedMB} used of {runtimeStorageInfo.quotaMB} estimated quota
+                  </p>
+                </div>
+
+                <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 text-muted-foreground text-[11px] leading-relaxed flex items-start gap-2">
+                  <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-foreground font-bold">Privacy & Storage Note:</strong> Your attendance logs and schedules are stored 100% locally on this device. Browsers may clear un-persisted cache if device storage becomes low. Regular backups are recommended.
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowStorageDetailsModal(false)}
+                className="w-full py-2.5 bg-muted hover:bg-muted/80 text-foreground font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Update Recommendation Dialog */}
+      <AnimatePresence>
+        {showUpdatePrompt && isUpdateAvailable && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4"
+            onClick={e => { if (e.target === e.currentTarget) setShowUpdatePrompt(false); }}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 0, opacity: 1 }}
+              className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20">
+                  <Download className="w-5 h-5 text-amber-500" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-base font-bold text-foreground leading-tight">Update to v{LATEST_VERSION} (Stable)</h3>
+                  <p className="text-[11px] text-muted-foreground font-medium">Full App Backup Recommended</p>
+                </div>
+              </div>
+
+              <p className="text-muted-foreground text-xs leading-relaxed text-left">
+                We recommend creating a <strong className="text-foreground">Full App Backup</strong> before updating to ensure all your attendance records and preferences remain 100% safe.
+              </p>
+
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleApplyUpdate(true)}
+                  className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Backup & Continue</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyUpdate(false)}
+                  className="w-full py-3 rounded-2xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer"
+                >
+                  Skip Backup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowUpdatePrompt(false)}
+                  className="w-full py-2.5 text-muted-foreground text-xs font-medium hover:text-foreground transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete All Data Confirmation Dialog */}
+      <AnimatePresence>
+        {showDeleteDataDialog && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4"
+            onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}
           >
             <motion.div
               initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
-              className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+              className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4"
             >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-2xl bg-muted flex items-center justify-center">
-                  <LogOut className="w-5 h-5 text-foreground" />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-destructive/20 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5 text-destructive" />
                 </div>
-                <h3 className="text-lg font-bold text-foreground">Log out?</h3>
+                <div>
+                  <h3 className="text-lg font-bold text-foreground leading-tight">Delete All App Data?</h3>
+                  <p className="text-[11px] text-destructive font-semibold">Irreversible Action</p>
+                </div>
               </div>
-              <p className="text-muted-foreground text-sm mb-6">
-                You'll be taken to the login screen. All your data remains safely stored on this device.
+              
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                This will <strong className="text-destructive font-bold">permanently erase all your attendance records</strong>, custom subjects, timetable configurations, and local snapshots. The app will be restored to a completely brand new state.
               </p>
-              <div className="flex gap-3">
+
+              <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => setShowLogoutDialog(false)}
-                  className="flex-1 py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
+                  onClick={() => setShowDeleteDataDialog(false)}
+                  className="flex-1 py-3 rounded-2xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={logout}
-                  className="flex-1 py-3 rounded-2xl bg-foreground text-background text-sm font-bold hover:opacity-80 transition-all"
+                  onClick={handleDeleteAllData}
+                  className="flex-1 py-3 rounded-2xl bg-destructive text-destructive-foreground text-xs font-extrabold hover:bg-destructive/90 transition-all shadow-md"
                 >
-                  Log out
+                  Yes, Delete Everything
                 </button>
               </div>
             </motion.div>
@@ -788,71 +1564,38 @@ export default function Account() {
           >
             <motion.div
               initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
-              className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+              className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4"
             >
               {switchStep === 'backup_found' ? (
                 <>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
                       <RefreshCw className="w-5 h-5 text-primary" />
                     </div>
-                    <h3 className="text-lg font-bold text-foreground">Backup Found</h3>
+                    <div className="text-left">
+                      <h3 className="text-base font-bold text-foreground">Backup Found</h3>
+                      <p className="text-[11px] text-muted-foreground font-medium">Saved Routine State</p>
+                    </div>
                   </div>
-                  <p className="text-muted-foreground text-sm mb-4">
-                    A backup for your <span className="font-bold text-foreground">{pendingMode === 'preloaded' ? 'Preset' : 'Custom'} Routine</span> was found. Would you like to restore it?
+                  <p className="text-muted-foreground text-xs text-left leading-relaxed">
+                    A backup for your <strong className="text-foreground">{pendingMode === 'preloaded' ? 'Preset' : 'Custom'} Routine</strong> was found. Would you like to restore it?
                   </p>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 pt-1">
                     <button
                       onClick={handleRestoreFromSnapshot}
-                      className="w-full py-3 rounded-2xl bg-primary text-primary-foreground text-sm font-bold hover:opacity-90 transition-all"
+                      className="w-full py-3 rounded-2xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-all cursor-pointer shadow-sm"
                     >
                       Restore Backup
                     </button>
                     <button
                       onClick={() => setSwitchStep('warning')}
-                      className="w-full py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
+                      className="w-full py-2.5 rounded-2xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer"
                     >
                       Start Fresh
                     </button>
                     <button
                       onClick={() => setShowSwitchDialog(false)}
-                      className="w-full py-3 rounded-2xl text-muted-foreground text-xs font-medium hover:text-foreground transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              ) : switchStep === 'warning' ? (
-                <>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center">
-                      <RefreshCw className="w-5 h-5 text-amber-500" />
-                    </div>
-                    <h3 className="text-lg font-bold text-foreground">Switch Routine Mode?</h3>
-                  </div>
-                  <p className="text-muted-foreground text-sm mb-4">
-                    Switching routine modes will permanently remove your current routine data from the app.
-                  </p>
-                  <p className="text-muted-foreground text-sm mb-6">
-                    If you may want to return to this routine later, please create a Backup first. Your backup file will <span className="font-bold text-foreground underline decoration-primary">NOT</span> be deleted and can be restored anytime.
-                  </p>
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={handleBackupAndContinue}
-                      className="w-full py-3 rounded-2xl bg-primary text-primary-foreground text-sm font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2"
-                    >
-                      <Download className="w-4 h-4" />
-                      Backup Now
-                    </button>
-                    <button
-                      onClick={() => setSwitchStep('final')}
-                      className="w-full py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
-                    >
-                      Continue Anyway
-                    </button>
-                    <button
-                      onClick={() => setShowSwitchDialog(false)}
-                      className="w-full py-3 rounded-2xl text-muted-foreground text-xs font-medium hover:text-foreground transition-colors"
+                      className="w-full py-2 text-muted-foreground text-xs font-medium hover:text-foreground transition-colors cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -860,35 +1603,44 @@ export default function Account() {
                 </>
               ) : (
                 <>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-2xl bg-destructive/10 flex items-center justify-center">
-                      <LogOut className="w-5 h-5 text-destructive" />
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20">
+                      <ArrowRightLeft className="w-5 h-5 text-primary" />
                     </div>
-                    <h3 className="text-lg font-bold text-foreground">Final Confirmation</h3>
+                    <div className="text-left">
+                      <h3 className="text-base font-bold text-foreground leading-tight">Switch Routine Mode?</h3>
+                      <p className="text-[11px] text-muted-foreground font-medium">Start New Curriculum</p>
+                    </div>
                   </div>
-                  <div className="space-y-4 mb-6">
-                    <p className="text-muted-foreground text-sm">
-                      You are about to switch from <span className="font-bold text-foreground">{subjectMode === 'preloaded' ? 'Preset' : 'Custom'} Routine</span> → <span className="font-bold text-primary">{pendingMode === 'preloaded' ? 'Preset' : 'Custom'} Routine</span>.
+
+                  <div className="bg-muted/30 p-3.5 rounded-2xl border border-border/50 text-left space-y-2">
+                    <p className="text-xs text-foreground font-medium leading-relaxed">
+                      Changing Routine Mode will start a new curriculum.
                     </p>
-                    <p className="text-destructive/90 text-sm font-medium bg-destructive/5 p-3 rounded-xl border border-destructive/10">
-                      This will permanently erase ALL current attendance data, timetable, subjects, ward postings, statistics, and related records for the current routine stored inside the app.
-                    </p>
-                    <p className="text-muted-foreground text-xs italic">
-                      Your backup file will remain safe and can be restored later. This action cannot be undone.
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Your previous attendance records will be <strong className="text-emerald-500 font-bold">archived</strong> and remain available through Backup/Snapshots.
                     </p>
                   </div>
-                  <div className="flex gap-3">
+
+                  <p className="text-xs font-semibold text-foreground text-left">
+                    Do you want to continue?
+                  </p>
+
+                  <div className="flex flex-col gap-2 pt-1">
                     <button
-                      onClick={() => setShowSwitchDialog(false)}
-                      className="flex-1 py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
+                      type="button"
+                      onClick={executeSwitch}
+                      className="w-full py-3 rounded-2xl bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
                     >
-                      Cancel
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Continue & Switch Curriculum</span>
                     </button>
                     <button
-                      onClick={executeSwitch}
-                      className="flex-1 py-3 rounded-2xl bg-destructive text-destructive-foreground text-sm font-bold hover:opacity-90 transition-all"
+                      type="button"
+                      onClick={() => setShowSwitchDialog(false)}
+                      className="w-full py-2.5 rounded-2xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer"
                     >
-                      Switch Routine
+                      Cancel
                     </button>
                   </div>
                 </>

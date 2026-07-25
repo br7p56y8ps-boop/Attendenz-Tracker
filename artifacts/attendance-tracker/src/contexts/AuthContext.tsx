@@ -1,24 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { storageSetItem, storageRemoveItem } from '@/lib/idb';
 
 const AUTH_KEY = 'att_auth';
 const SESSION_KEY = 'att_session';
 const PROFILE_IMAGE_KEY = 'att_profile_image';
-
-// All localStorage keys owned by this app — used for targeted wipe in forgotPassword.
-// Keep this list in sync with every key used across all contexts/components.
-const ALL_APP_KEYS = [
-  'att_auth',
-  'att_session',
-  'att_profile_image',
-  'att_custom_subjects',
-  'att_custom_wards',
-  'att_whats_new_version',
-  'att_subject_mode',
-  'att_setup_done',
-  'attendance_tracker_subjects',
-  'attendance_tracker_ward',
-  'attendance_tracker_home_selections',
-] as const;
+const LAST_ACTIVE_KEY = 'att_last_active_at';
 
 /** UTF-8 safe base64 encode — btoa() alone throws on non-Latin1 characters. */
 function encodePassword(password: string): string {
@@ -32,74 +18,168 @@ function checkPassword(password: string, encoded: string): boolean {
 
 interface StoredAuth {
   username: string;
-  passwordEncoded: string; // UTF-8 safe base64
+  passwordEncoded?: string;
+  email?: string;
+}
+
+export interface DataTransferPayload {
+  subjects?: any;
+  wards?: any;
+  homeSelections?: any;
+  customSubjects?: any;
+  customWards?: any;
+  presetTimetable?: any;
+  presetWardSchedule?: any;
+  presetSubjectTotals?: any;
+  preferredPercentage?: number;
 }
 
 interface AuthContextType {
   isLoggedIn: boolean;
   hasAccount: boolean;
   username: string;
-  /** True immediately after createAccount() succeeds; used to show new-user setup vs migration prompt */
+  userEmail: string | null;
+  userPhone: string | null;
+  authMethod: 'google' | 'email' | 'phone' | 'local' | 'none';
   isNewAccount: boolean;
   profileImage: string | null;
+  lastActiveAt: string;
+  
+  // Storage & PWA Persistence
+  isPersistentStorage: boolean;
+  requestPersistentStorage: () => Promise<boolean>;
+  
+  // Auto-calculated retention policy
+  retentionPolicy: {
+    days: number;
+    reason: string;
+    hasActiveRotationOrLectures: boolean;
+  };
+  
   updateProfileImage: (image: string | null) => void;
+  
+  // Local Auth
   createAccount: (username: string, password: string) => boolean;
   login: (username: string, password: string) => boolean;
+  updateUsername: (newUsername: string) => void;
+  
   logout: () => void;
-  forgotPassword: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [hasAccount, setHasAccount] = useState(false);
-  const [username, setUsername] = useState('');
+  // Always logged in (Offline local app)
+  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [hasAccount, setHasAccount] = useState(true);
+  const [username, setUsername] = useState(() => {
+    const raw = localStorage.getItem(AUTH_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.username) return parsed.username;
+      } catch {}
+    }
+    return 'Medical Student';
+  });
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userPhone, setUserPhone] = useState<string | null>(null);
+  const [authMethod, setAuthMethod] = useState<'google' | 'email' | 'phone' | 'local' | 'none'>('local');
   const [isNewAccount, setIsNewAccount] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [isPersistentStorage, setIsPersistentStorage] = useState<boolean>(false);
 
+  const [lastActiveAt, setLastActiveAt] = useState<string>(() => {
+    return localStorage.getItem(LAST_ACTIVE_KEY) || new Date().toISOString();
+  });
+
+  // Check persistent storage status
+  useEffect(() => {
+    if (typeof window !== 'undefined' && navigator.storage && navigator.storage.persisted) {
+      navigator.storage.persisted().then(persisted => {
+        setIsPersistentStorage(persisted);
+      }).catch(() => {});
+    }
+  }, []);
+
+  const requestPersistentStorage = async (): Promise<boolean> => {
+    if (typeof window !== 'undefined' && navigator.storage && navigator.storage.persist) {
+      try {
+        const granted = await navigator.storage.persist();
+        setIsPersistentStorage(granted);
+        return granted;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  };
+
+  const updateLastActive = useCallback(() => {
+    const now = new Date().toISOString();
+    setLastActiveAt(now);
+    storageSetItem(LAST_ACTIVE_KEY, now);
+  }, []);
+
+  // Sync state on load
   useEffect(() => {
     const raw = localStorage.getItem(AUTH_KEY);
-    const storedImage = localStorage.getItem(PROFILE_IMAGE_KEY);
-    if (storedImage) setProfileImage(storedImage);
-    
     if (raw) {
       try {
         const parsed: StoredAuth = JSON.parse(raw);
         setHasAccount(true);
-        setUsername(parsed.username);
-        const session = localStorage.getItem(SESSION_KEY);
-        if (session === 'true') setIsLoggedIn(true);
-      } catch {
-        setHasAccount(false);
-      }
+        if (parsed.username) setUsername(parsed.username);
+        setUserEmail(parsed.email || null);
+      } catch {}
     }
+
+    const storedImage = localStorage.getItem(PROFILE_IMAGE_KEY);
+    if (storedImage) setProfileImage(storedImage);
   }, []);
 
+  // Retention calculation
+  const calculateRetentionPolicy = useCallback(() => {
+    return {
+      days: 365,
+      reason: 'Offline Local Storage Policy: All data is stored directly on your device with no expiration.',
+      hasActiveRotationOrLectures: true
+    };
+  }, []);
+
+  const [retentionPolicy] = useState(calculateRetentionPolicy());
+
+  // Local account creation
   const createAccount = (user: string, password: string): boolean => {
     if (!user.trim() || !password) return false;
     try {
       const stored: StoredAuth = { username: user.trim(), passwordEncoded: encodePassword(password) };
-      localStorage.setItem(AUTH_KEY, JSON.stringify(stored));
-      localStorage.setItem(SESSION_KEY, 'true');
+      storageSetItem(AUTH_KEY, JSON.stringify(stored));
+      storageSetItem(SESSION_KEY, 'true');
+      storageRemoveItem('att_setup_done');
+      storageRemoveItem('att_subject_mode');
       setHasAccount(true);
       setIsLoggedIn(true);
       setIsNewAccount(true);
       setUsername(user.trim());
+      setAuthMethod('local');
+      updateLastActive();
       return true;
     } catch { return false; }
   };
 
+  // Local login
   const login = (user: string, password: string): boolean => {
     const raw = localStorage.getItem(AUTH_KEY);
     if (!raw) return false;
     try {
       const stored: StoredAuth = JSON.parse(raw);
-      if (stored.username === user.trim() && checkPassword(password, stored.passwordEncoded)) {
-        localStorage.setItem(SESSION_KEY, 'true');
+      if (stored.username.toLowerCase() === user.trim().toLowerCase() && checkPassword(password, stored.passwordEncoded || '')) {
+        storageSetItem(SESSION_KEY, 'true');
         setIsLoggedIn(true);
         setIsNewAccount(false);
         setUsername(stored.username);
+        setAuthMethod('local');
+        updateLastActive();
         return true;
       }
     } catch { /* ignore */ }
@@ -107,26 +187,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem(SESSION_KEY);
+    storageRemoveItem(SESSION_KEY);
     setIsLoggedIn(false);
     setIsNewAccount(false);
+    setAuthMethod('none');
+  };
+
+  const updateUsername = (newUsername: string) => {
+    const trimmed = newUsername.trim() || 'Medical Student';
+    setUsername(trimmed);
+    try {
+      const raw = localStorage.getItem(AUTH_KEY);
+      let stored: StoredAuth = raw ? JSON.parse(raw) : { username: trimmed };
+      stored.username = trimmed;
+      storageSetItem(AUTH_KEY, JSON.stringify(stored));
+    } catch {
+      storageSetItem(AUTH_KEY, JSON.stringify({ username: trimmed }));
+    }
   };
 
   const updateProfileImage = (image: string | null) => {
     if (image) {
-      localStorage.setItem(PROFILE_IMAGE_KEY, image);
+      storageSetItem(PROFILE_IMAGE_KEY, image);
     } else {
-      localStorage.removeItem(PROFILE_IMAGE_KEY);
+      storageRemoveItem(PROFILE_IMAGE_KEY);
     }
     setProfileImage(image);
-  };
-
-  const forgotPassword = () => {
-    ALL_APP_KEYS.forEach(k => localStorage.removeItem(k));
-    setIsLoggedIn(false);
-    setHasAccount(false);
-    setIsNewAccount(false);
-    setUsername('');
   };
 
   return (
@@ -134,13 +220,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isLoggedIn, 
       hasAccount, 
       username, 
+      userEmail,
+      userPhone,
+      authMethod,
       isNewAccount, 
       profileImage,
+      lastActiveAt,
+      isPersistentStorage,
+      requestPersistentStorage,
+      retentionPolicy,
       updateProfileImage,
       createAccount, 
       login, 
-      logout, 
-      forgotPassword 
+      updateUsername,
+      logout
     }}>
       {children}
     </AuthContext.Provider>

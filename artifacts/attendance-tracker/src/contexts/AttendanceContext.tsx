@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
+import { storageSetItem, storageRemoveItem } from '@/lib/idb';
 
 export type AttendanceData = { attended: number; missed: number };
 export type SelectionType = 'off' | 'missed' | 'attended';
@@ -52,33 +53,33 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         }
         if (Object.keys(migrated).length !== Object.keys(raw).length ||
             Object.entries(migrated).some(([k, v]) => raw[k] !== v)) {
-          localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(migrated));
+          storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(migrated));
         }
         setHomeSelections(migrated);
       }
     } catch (e) {
-      console.error('Failed to load attendance data', e);
+       // console.error('Failed to load attendance data', e);
     }
   }, []);
 
   const savePreferredPercentage = (p: number) => {
     setPreferredPercentage(p);
-    localStorage.setItem(PREFERRED_PERCENTAGE_KEY, JSON.stringify(p));
+    storageSetItem(PREFERRED_PERCENTAGE_KEY, JSON.stringify(p));
   };
 
   const saveSubjects = (data: Record<string, AttendanceData>) => {
     setSubjects(data);
-    localStorage.setItem(SUBJECTS_KEY, JSON.stringify(data));
+    storageSetItem(SUBJECTS_KEY, JSON.stringify(data));
   };
 
   const saveWards = (data: Record<string, AttendanceData>) => {
     setWards(data);
-    localStorage.setItem(WARD_KEY, JSON.stringify(data));
+    storageSetItem(WARD_KEY, JSON.stringify(data));
   };
 
   const saveHomeSelections = (data: Record<string, SelectionType>) => {
     setHomeSelections(data);
-    localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(data));
+    storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(data));
   };
 
   const updateSubject = (subject: string, attended: number, missed: number) => {
@@ -109,7 +110,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
 
       const { [homeKey]: _removed, ...rest } = homeSelections;
       setHomeSelections(rest);
-      localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(rest));
+      storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(rest));
     } else {
       if (previous === 'attended') newAttended = Math.max(0, newAttended - 1);
       if (previous === 'missed')   newMissed   = Math.max(0, newMissed   - 1);
@@ -127,11 +128,11 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  /** Wipes all attendance data from state and localStorage. Called when starting fresh. */
+  /** Wipes all attendance data from state and IndexedDB/localStorage. Called when starting fresh. */
   const resetAllData = () => {
-    localStorage.removeItem(SUBJECTS_KEY);
-    localStorage.removeItem(WARD_KEY);
-    localStorage.removeItem(HOME_SELECTIONS_KEY);
+    storageRemoveItem(SUBJECTS_KEY);
+    storageRemoveItem(WARD_KEY);
+    storageRemoveItem(HOME_SELECTIONS_KEY);
     setSubjects({});
     setWards({});
     setHomeSelections({});
@@ -182,9 +183,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     setSubjects(newSubjects);
     setWards(newWards);
     setHomeSelections(newHomeSelections);
-    localStorage.setItem(SUBJECTS_KEY, JSON.stringify(newSubjects));
-    localStorage.setItem(WARD_KEY, JSON.stringify(newWards));
-    localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(newHomeSelections));
+    storageSetItem(SUBJECTS_KEY, JSON.stringify(newSubjects));
+    storageSetItem(WARD_KEY, JSON.stringify(newWards));
+    storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(newHomeSelections));
   };
 
   return (

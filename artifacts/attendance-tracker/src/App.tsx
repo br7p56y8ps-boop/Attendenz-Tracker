@@ -1,10 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext';
+import { initStorageAndMigrate } from '@/lib/idb';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
+import WelcomeVideoScreen from '@/components/video/WelcomeVideoScreen';
 import Home from '@/pages/Home';
 import Subjects from '@/pages/Subjects';
 import AddNew from '@/pages/AddNew';
@@ -15,17 +17,18 @@ import SetupScreen from '@/pages/SetupScreen';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
+const HAS_SEEN_WELCOME_KEY = 'att_has_seen_welcome_v1';
 
 function AuthGate() {
   const { isLoggedIn } = useAuth();
   const { setupDone } = useCustomData();
+  const justUpdated = localStorage.getItem('att_just_updated') === 'true';
 
   if (!isLoggedIn) {
     return <Login />;
   }
 
-  // Show setup/migration screen until the user makes their subject mode choice
-  if (!setupDone) {
+  if (!setupDone || justUpdated) {
     return <SetupScreen />;
   }
 
@@ -44,9 +47,33 @@ function AuthGate() {
   );
 }
 
+function MainAppFlow() {
+  const [showWelcome, setShowWelcome] = useState<boolean>(() => {
+    const justUpdated = localStorage.getItem('att_just_updated') === 'true';
+    const hasSeenWelcome = localStorage.getItem(HAS_SEEN_WELCOME_KEY) === 'true';
+    return justUpdated || !hasSeenWelcome;
+  });
+
+  if (showWelcome) {
+    return (
+      <WelcomeVideoScreen
+        onComplete={() => {
+          localStorage.setItem(HAS_SEEN_WELCOME_KEY, 'true');
+          setShowWelcome(false);
+        }}
+      />
+    );
+  }
+
+  return <AuthGate />;
+}
+
 export default function App() {
-  // Global Theme Initialization (Default: Dark Mode)
   useEffect(() => {
+    // Initialize IndexedDB local storage migration and persistence
+    initStorageAndMigrate();
+
+    // Global Theme Initialization (Default: Dark Mode)
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light') {
       document.documentElement.classList.remove('dark');
@@ -64,7 +91,7 @@ export default function App() {
         <AttendanceProvider>
           <CustomDataProvider>
             <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
-              <AuthGate />
+              <MainAppFlow />
             </WouterRouter>
           </CustomDataProvider>
         </AttendanceProvider>

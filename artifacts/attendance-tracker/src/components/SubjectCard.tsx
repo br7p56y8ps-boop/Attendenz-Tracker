@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Info, Plus, Minus, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 interface SubjectCardProps {
   subject: string;
@@ -12,17 +13,21 @@ interface SubjectCardProps {
 }
 
 export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = false }: SubjectCardProps) => {
-  const { subjects, wards, updateSubject, updateWard } = useAttendance();
+  const { subjects, wards, updateSubject, updateWard, preferredPercentage } = useAttendance();
   const dataStore = isWard ? wards : subjects;
   const updateFn = isWard ? updateWard : updateSubject;
   const key = isWard ? `ward-${subject}` : subject;
-
   const data = dataStore[key] || { attended: 0, missed: 0 };
   
-  const [localAttended, setLocalAttended] = useState(data.attended.toString());
-  const [localMissed, setLocalMissed] = useState(data.missed.toString());
+  // Keep ref of latest data for continuous stepping
+  const currentDataRef = useRef({ attended: data.attended, missed: data.missed });
+  useEffect(() => {
+    currentDataRef.current = { attended: data.attended, missed: data.missed };
+  }, [data.attended, data.missed]);
 
-  // Persist expansion state during the current session using sessionStorage
+  const [showLimitMessage, setShowLimitMessage] = useState(false);
+  const [activeStatInfo, setActiveStatInfo] = useState<'remaining' | 'missable' | 'canMiss' | 'required' | null>(null);
+
   const expansionKey = `sub_expanded_${key}`;
   const [isExpanded, setIsExpanded] = useState(() => {
     return sessionStorage.getItem(expansionKey) === 'true';
@@ -30,7 +35,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
 
   const toggleExpand = (e: React.MouseEvent) => {
     // Prevent toggling if user clicks inside inputs or buttons
-    if ((e.target as HTMLElement).closest('input') || (e.target as HTMLElement).closest('button')) {
+    if ((e.target as HTMLElement).closest('input') || (e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('[role="dialog"]')) {
       return;
     }
     const newVal = !isExpanded;
@@ -38,44 +43,55 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
     sessionStorage.setItem(expansionKey, String(newVal));
   };
 
-  useEffect(() => {
-    setLocalAttended(data.attended.toString());
-    setLocalMissed(data.missed.toString());
-  }, [data.attended, data.missed]);
+  const handleStep = (field: 'attended' | 'missed', change: number) => {
+    const current = currentDataRef.current;
+    let newAttended = current.attended;
+    let newMissed = current.missed;
+    
+    if (change > 0 && current.attended + current.missed >= totalPlanned) {
+      setShowLimitMessage(true);
+      return false;
+    }
+    
+    if (field === 'attended') {
+      newAttended += change;
+      if (newAttended < 0) return false;
+    } else {
+      newMissed += change;
+      if (newMissed < 0) return false;
+    }
+    
+    if (showLimitMessage) setShowLimitMessage(false);
+    
+    currentDataRef.current = { attended: newAttended, missed: newMissed };
+    updateFn(key, newAttended, newMissed);
+    return true;
+  };
 
-  const attendedNum = parseInt(localAttended) || 0;
-  const missedNum = parseInt(localMissed) || 0;
+  const handleTap = (e: React.MouseEvent, field: 'attended' | 'missed', change: number) => {
+    e.stopPropagation();
+    handleStep(field, change);
+  };
+
+  const attendedNum = data.attended;
+  const missedNum = data.missed;
   const totalConducted = attendedNum + missedNum;
   
-  const isError = totalConducted > totalPlanned;
   const percentage = totalConducted === 0 ? 100 : (attendedNum / totalConducted) * 100;
-  const remaining = Math.max(0, totalPlanned - attendedNum - missedNum);
-  
-  const neededToReach75 = Math.max(0, 3 * missedNum - attendedNum);
-  const canStillMiss = Math.max(0, Math.floor((attendedNum - 3 * missedNum) / 3));
+  const targetPct = preferredPercentage || 75;
 
-  const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
-
-  const handleInputChange = (field: 'attended' | 'missed', value: string) => {
-    if (value !== '' && !/^\d+$/.test(value)) return;
-    
-    if (field === 'attended') setLocalAttended(value);
-    if (field === 'missed') setLocalMissed(value);
-
-    if (timerRef.current) clearTimeout(timerRef.current);
-
-    timerRef.current = setTimeout(() => {
-      const parsedAttended = field === 'attended' ? (parseInt(value) || 0) : attendedNum;
-      const parsedMissed = field === 'missed' ? (parseInt(value) || 0) : missedNum;
-      updateFn(key, parsedAttended, parsedMissed);
-    }, 300);
-  };
+  const remaining = Math.max(0, totalPlanned - totalConducted);
+  const maxMissable = Math.floor(totalPlanned * (1 - targetPct / 100));
+  const canStillMiss = Math.max(0, maxMissable - missedNum);
+  const requiredToAttend = Math.max(0, Math.ceil(totalPlanned * (targetPct / 100)) - attendedNum);
 
   const getPercentageColor = (pct: number) => {
-    if (pct >= 75) return 'text-success';
-    if (pct >= 65) return 'text-warning';
+    if (pct >= targetPct) return 'text-success';
+    if (pct >= targetPct - 10) return 'text-warning';
     return 'text-destructive';
   };
+
+  const isMaxReached = totalConducted >= totalPlanned;
 
   const headerContent = (
     <div className="flex justify-between items-start gap-4">
@@ -99,53 +115,81 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
     </div>
   );
 
+  const Stepper = ({ field, value }: { field: 'attended' | 'missed', value: number }) => (
+    <div className="flex items-center justify-between bg-muted/30 border border-border/50 rounded-xl p-1.5 shadow-sm">
+      <span className="text-[11px] font-semibold text-muted-foreground pl-2 uppercase tracking-wide">
+        {field}
+      </span>
+      <div className="flex items-center gap-2 pr-0.5">
+        <button
+          type="button"
+          onClick={(e) => handleTap(e, field, -1)}
+          disabled={value <= 0}
+          className="w-8 h-8 rounded-lg bg-background border border-border flex items-center justify-center text-foreground hover:bg-muted active:scale-95 disabled:opacity-50 disabled:active:scale-100 transition-all select-none cursor-pointer"
+        >
+          <Minus className="w-4 h-4" />
+        </button>
+        <span className="w-6 text-center font-bold text-sm select-none">
+          {value}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => handleTap(e, field, 1)}
+          disabled={isMaxReached}
+          className="w-8 h-8 rounded-lg bg-background border border-border flex items-center justify-center text-foreground hover:bg-muted active:scale-95 disabled:opacity-50 disabled:active:scale-100 transition-all select-none cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+
   const expandedContent = (
     <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Classes Attended</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={localAttended}
-            onChange={(e) => handleInputChange('attended', e.target.value)}
-            onFocus={(e) => e.target.select()}
-            onBlur={() => { if (localAttended === '') setLocalAttended('0'); }}
-            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-base"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Classes Missed</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={localMissed}
-            onChange={(e) => handleInputChange('missed', e.target.value)}
-            onFocus={(e) => e.target.select()}
-            onBlur={() => { if (localMissed === '') setLocalMissed('0'); }}
-            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-destructive/50 transition-all text-base"
-          />
-        </div>
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Stepper field="attended" value={attendedNum} />
+        <Stepper field="missed" value={missedNum} />
       </div>
 
-      {isError && (
-        <p className="text-destructive text-sm font-medium bg-destructive/10 px-3 py-2 rounded-lg">
-          {isWard ? 'Total exceeds planned rotations' : 'Total exceeds planned classes'}
+      {showLimitMessage && (
+        <p className="text-amber-500 text-[11px] font-medium text-center bg-amber-500/10 py-1.5 px-3 rounded-lg border border-amber-500/20 transition-all">
+          Planned class limit reached.
         </p>
       )}
+      
+      {/* Metrics Row */}
+      <div className="grid grid-cols-4 gap-2 pt-3 border-t border-border/30">
+        <div 
+          onClick={(e) => { e.stopPropagation(); setActiveStatInfo('remaining'); }}
+          className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/20 border border-border/40 hover:bg-muted/40 active:scale-95 transition-all cursor-pointer"
+        >
+          <span className="text-[8px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Remaining</span>
+          <span className="text-sm font-bold text-foreground">{remaining}</span>
+        </div>
 
-      <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border/30">
-        <div className="flex flex-col">
-          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Remaining</span>
-          <span className="text-sm font-semibold">{remaining}</span>
+        <div 
+          onClick={(e) => { e.stopPropagation(); setActiveStatInfo('missable'); }}
+          className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/20 border border-border/40 hover:bg-muted/40 active:scale-95 transition-all cursor-pointer"
+        >
+          <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Missable</span>
+          <span className="text-sm font-bold text-foreground">{maxMissable}</span>
         </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Needed 75%</span>
-          <span className="text-sm font-semibold text-primary">{neededToReach75}</span>
+
+        <div 
+          onClick={(e) => { e.stopPropagation(); setActiveStatInfo('canMiss'); }}
+          className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/20 border border-border/40 hover:bg-muted/40 active:scale-95 transition-all cursor-pointer"
+        >
+          <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Can Miss</span>
+          <span className="text-sm font-bold text-success">{canStillMiss}</span>
         </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Can Miss</span>
-          <span className="text-sm font-semibold text-success">{canStillMiss}</span>
+
+        <div 
+          onClick={(e) => { e.stopPropagation(); setActiveStatInfo('required'); }}
+          className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/20 border border-border/40 hover:bg-muted/40 active:scale-95 transition-all cursor-pointer"
+        >
+          <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Req.</span>
+          <span className="text-sm font-bold text-primary">{requiredToAttend}</span>
         </div>
       </div>
     </div>
@@ -158,13 +202,47 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
     </div>
   );
 
-  if (isNested) {
-    return <div className="px-5 py-4 hover:bg-muted/10 transition-colors">{innerContent}</div>;
-  }
-
   return (
-    <div className="bg-card rounded-2xl p-5 shadow-sm border border-border hover:border-white/10 transition-all">
-      {innerContent}
-    </div>
+    <>
+      <div className={cn("bg-card rounded-2xl shadow-sm border border-border hover:border-white/10 transition-all", !isNested && "p-5", isNested && "px-5 py-4 hover:bg-muted/10 border-0 rounded-none")}>
+        {innerContent}
+      </div>
+
+      <Dialog open={activeStatInfo !== null} onOpenChange={(open) => !open && setActiveStatInfo(null)}>
+        <DialogContent className="max-w-[320px] rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+          <DialogHeader className="text-left space-y-3 pb-2">
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <Info className="w-5 h-5 text-primary" />
+              {activeStatInfo === 'remaining' && 'Remaining Classes'}
+              {activeStatInfo === 'missable' && 'Total Missable'}
+              {activeStatInfo === 'canMiss' && 'Can Miss Now'}
+              {activeStatInfo === 'required' && 'Required Classes'}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-foreground leading-relaxed">
+              {activeStatInfo === 'remaining' && (
+                <>
+                  <p className="mb-3">Remaining scheduled classes yet to be conducted.</p>
+                  <div className="bg-muted p-2 rounded-lg text-xs font-mono text-muted-foreground border border-border/50">
+                    Formula:<br/>Planned − (Attended + Missed)
+                  </div>
+                </>
+              )}
+              {activeStatInfo === 'missable' && (
+                <p>Maximum total classes that may be missed across the entire planned curriculum while still achieving the preferred attendance percentage configured in Account Settings.</p>
+              )}
+              {activeStatInfo === 'canMiss' && (
+                <>
+                  <p className="mb-2">Maximum additional remaining classes that can still be missed while still being able to achieve the preferred attendance percentage.</p>
+                  <p className="text-xs text-muted-foreground bg-muted p-2 rounded-lg border border-border/50">Already conducted classes are NOT included.</p>
+                </>
+              )}
+              {activeStatInfo === 'required' && (
+                <p>Minimum number of the remaining classes that must be attended to achieve the preferred attendance percentage configured in Account Settings.</p>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };

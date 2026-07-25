@@ -1,45 +1,48 @@
-# Attendance Tracker
+# Attendenz
 
-A medical student attendance tracker with today's timetable on the home page, per-subject editable attendance fields, ward rotation auto-detection, and full offline localStorage persistence.
-
-## Run & Operate
-
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+Offline-first attendance management app for MBBS students. Multi-account, per-user data isolation, with optional cloud sync via Cloudflare Workers.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS v4
+- **Backend**: Express (Cloudflare Workers optional) — `artifacts/api-server`
+- **Storage**: LocalStorage / IndexedDB (offline-first); Cloudflare D1 for cloud sync
+- **Monorepo**: pnpm workspaces (`pnpm-workspace.yaml`)
 
-## Where things live
+## Project Structure
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+```
+artifacts/
+  attendance-tracker/   # Main React web app (preview path: /)
+  api-server/           # Express API server (preview path: /api)
+  mockup-sandbox/       # Design/canvas preview server (preview path: /__mockup)
+lib/
+  api-client-react/     # React hooks for API
+  api-spec/             # Shared API types
+  api-zod/              # Zod schemas
+  db/                   # Database layer (Drizzle ORM)
+```
 
-## Architecture decisions
+## How to Run
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+Dependencies are managed with pnpm:
 
-## Product
+```bash
+pnpm install
+```
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Workflows start automatically:
+- **Attendance Tracker** (`artifacts/attendance-tracker: web`) — main app
+- **API Server** (`artifacts/api-server: API Server`) — backend
+- **Canvas** (`artifacts/mockup-sandbox: Component Preview Server`) — design sandbox
 
-## User preferences
+## Important Setup Notes
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- `pnpm-workspace.yaml` is required (added during Replit setup) — the root `package.json` uses npm workspace syntax which pnpm doesn't support
+- `.npmrc` has `link-workspace-packages=true` to resolve local `@workspace/*` packages
+- `pnpm.onlyBuiltDependencies` in `package.json` is required for esbuild native binaries to build
+- The attendance-tracker dev script must NOT hardcode `--port` — vite config reads `PORT` env var
 
-## Gotchas
+## User Preferences
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Keep the existing project structure and stack

@@ -1,3 +1,5 @@
+import { storageSetItem, storageRemoveItem } from '@/lib/idb';
+
 export interface Snapshot {
   id: string;
   timestamp: string;
@@ -16,7 +18,18 @@ const DATA_KEYS_TO_KEEP = [
   'custom_wards',
   'subject_mode',
   'preferred_percentage',
-  'user_profile'
+  'user_profile',
+  'att_auth',
+  'att_setup_done',
+  'att_subject_mode',
+  'att_home_selections',
+  'att_custom_subjects',
+  'att_custom_wards',
+  'att_timetable',
+  'att_ward_schedule',
+  'att_history',
+  'att_last_active_at',
+  'att_profile_image'
 ];
 
 /**
@@ -43,9 +56,9 @@ export function createSnapshot(label: string = 'Auto Snapshot'): void {
     };
 
     const updated = [newSnapshot, ...snapshots].slice(0, MAX_SNAPSHOTS);
-    localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(updated));
+    storageSetItem(SNAPSHOTS_KEY, JSON.stringify(updated));
   } catch (err) {
-    console.error('Failed to create snapshot:', err);
+     // console.error('Failed to create snapshot:', err);
   }
 }
 
@@ -71,12 +84,12 @@ export function restoreSnapshot(snapshotId: string): boolean {
     if (!target) return false;
 
     Object.entries(target.data).forEach(([k, v]) => {
-      localStorage.setItem(k, v);
+      storageSetItem(k, v);
     });
 
     return true;
   } catch (err) {
-    console.error('Failed to restore snapshot:', err);
+     // console.error('Failed to restore snapshot:', err);
     return false;
   }
 }
@@ -90,13 +103,13 @@ export function clearLocalCache(): number {
 
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key && !DATA_KEYS_TO_KEEP.includes(key) && !key.startsWith('attendenz_')) {
+    if (key && !DATA_KEYS_TO_KEEP.includes(key) && !key.startsWith('attendenz_') && !key.startsWith('att_')) {
       keysToRemove.push(key);
     }
   }
 
   keysToRemove.forEach(k => {
-    localStorage.removeItem(k);
+    storageRemoveItem(k);
     clearedCount++;
   });
 
@@ -115,18 +128,18 @@ export function autoSnapshotOnLoad(): void {
 
     if (lastAuto !== today) {
       createSnapshot(`Auto Backup (${today})`);
-      localStorage.setItem(LAST_AUTO_KEY, today);
+      storageSetItem(LAST_AUTO_KEY, today);
     }
   } catch (err) {
-    console.error('Failed background auto-snapshot:', err);
+     // console.error('Failed background auto-snapshot:', err);
   }
 }
 
 
 /**
- * Export all localStorage data as a downloadable JSON file
+ * Export all localStorage & IndexedDB data as a downloadable JSON file
  */
-export function exportDataAsJSON(): void {
+export function exportDataAsJSON(returnData: boolean = false): string | void {
   try {
     const backupData: Record<string, string> = {};
     for (let i = 0; i < localStorage.length; i++) {
@@ -135,7 +148,13 @@ export function exportDataAsJSON(): void {
         backupData[key] = localStorage.getItem(key) || '';
       }
     }
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+    
+    const jsonData = JSON.stringify(backupData, null, 2);
+    if (returnData) {
+      return jsonData;
+    }
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonData);
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href", dataStr);
     const dateStr = new Date().toISOString().split('T')[0];
@@ -144,13 +163,38 @@ export function exportDataAsJSON(): void {
     downloadAnchor.click();
     downloadAnchor.remove();
   } catch (err) {
-    console.error('Failed to export JSON backup:', err);
-    alert('Failed to export data backup.');
+     // console.error('Failed to export JSON backup:', err);
+    import("sonner").then(({ toast }) => toast.info('Failed to export data backup.'));
+  }
+}
+
+export async function shareDataAsJSON(): Promise<boolean> {
+  try {
+    const jsonData = exportDataAsJSON(true) as string;
+    const blob = new Blob([jsonData], { type: 'application/json' });
+    const dateStr = new Date().toISOString().split('T')[0];
+    const file = new File([blob], `attendenz_backup_${dateStr}.json`, { type: 'application/json' });
+
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        title: 'Attendenz Tracker Backup',
+        text: 'Here is my Attendenz Tracker app data backup.',
+        files: [file]
+      });
+      return true;
+    } else {
+      // Fallback
+      exportDataAsJSON();
+      return true;
+    }
+  } catch (err) {
+     // console.error('Failed to share:', err);
+    return false;
   }
 }
 
 /**
- * Import and restore localStorage data from an uploaded JSON file
+ * Import and restore data from an uploaded JSON file to IndexedDB and LocalStorage
  */
 export function importDataFromJSON(file: File, callback: (success: boolean) => void): void {
   const reader = new FileReader();
@@ -159,20 +203,24 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
       const content = event.target?.result as string;
       const parsedData = JSON.parse(content);
       
-      if (!parsedData || typeof parsedData !== 'object') {
+      if (!parsedData || typeof parsedData !== 'object' || Array.isArray(parsedData)) {
         throw new Error('Invalid backup file format.');
       }
 
-      // Clear current local storage and load backup items
+      // Restore items safely to IndexedDB and LocalStorage
       for (const [key, value] of Object.entries(parsedData)) {
-        localStorage.setItem(key, value as string);
+        if (value !== null && value !== undefined) {
+          const stringVal = typeof value === 'string' ? value : JSON.stringify(value);
+          storageSetItem(key, stringVal);
+        }
       }
 
       callback(true);
     } catch (err) {
-      console.error('Failed to parse backup file:', err);
+       // console.error('Failed to parse backup file:', err);
       callback(false);
     }
   };
+  reader.onerror = () => callback(false);
   reader.readAsText(file);
 }

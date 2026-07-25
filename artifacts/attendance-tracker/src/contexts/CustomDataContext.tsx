@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getCurrentDateStr } from '@/lib/utils';
+import { storageSetItem, storageRemoveItem } from '@/lib/idb';
 
 export interface CustomSubject {
   id: string;
@@ -27,7 +28,7 @@ const CUSTOM_SUBJECTS_KEY = 'att_custom_subjects';
 const CUSTOM_WARDS_KEY = 'att_custom_wards';
 const SUBJECT_MODE_KEY = 'att_subject_mode';
 const SETUP_DONE_KEY = 'att_setup_done';
-const WHATS_NEW_KEY = 'att_whats_new_v3.6.0';
+const WHATS_NEW_KEY = 'att_whats_new_v4.0.0';
 
 import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 
@@ -86,7 +87,11 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       const m = localStorage.getItem(SUBJECT_MODE_KEY) as SubjectMode | null;
       if (m === 'preloaded' || m === 'custom') setSubjectMode(m);
       const done = localStorage.getItem(SETUP_DONE_KEY);
-      if (done === 'true') setSetupDone(true);
+      if (done === 'true') {
+        setSetupDone(true);
+      } else {
+        setSetupDone(false);
+      }
 
       // Auto-trigger What's New Pop-up on First Entry for v3.6.0
       const seenWhatsNew = localStorage.getItem(WHATS_NEW_KEY);
@@ -106,19 +111,19 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   const handleSetWhatsNewOpen = (open: boolean) => {
     if (!open) {
-      localStorage.setItem(WHATS_NEW_KEY, 'true');
+      storageSetItem(WHATS_NEW_KEY, 'true');
     }
     setWhatsNewOpenState(open);
   };
 
   const saveSubjects = (data: CustomSubject[]) => {
     setCustomSubjects(data);
-    localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(data));
+    storageSetItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(data));
   };
 
   const saveWards = (data: CustomWard[]) => {
     setCustomWards(data);
-    localStorage.setItem(CUSTOM_WARDS_KEY, JSON.stringify(data));
+    storageSetItem(CUSTOM_WARDS_KEY, JSON.stringify(data));
   };
 
   const addCustomSubject = (s: Omit<CustomSubject, 'id'>) => {
@@ -145,36 +150,36 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const completeSetup = (mode: SubjectMode) => {
-    localStorage.setItem(SUBJECT_MODE_KEY, mode);
-    localStorage.setItem(SETUP_DONE_KEY, 'true');
+    storageSetItem(SUBJECT_MODE_KEY, mode);
+    storageSetItem(SETUP_DONE_KEY, 'true');
     setSubjectMode(mode);
     setSetupDone(true);
   };
 
   const startFresh = () => {
-    localStorage.removeItem(CUSTOM_SUBJECTS_KEY);
-    localStorage.removeItem(CUSTOM_WARDS_KEY);
+    storageRemoveItem(CUSTOM_SUBJECTS_KEY);
+    storageRemoveItem(CUSTOM_WARDS_KEY);
     setCustomSubjects([]);
     setCustomWards([]);
     completeSetup('custom');
   };
 
   const changeSubjectMode = (mode: SubjectMode) => {
-    localStorage.setItem(SUBJECT_MODE_KEY, mode);
+    storageSetItem(SUBJECT_MODE_KEY, mode);
     setSubjectMode(mode);
   };
 
   const clearRoutineData = (modeToClear: SubjectMode) => {
     if (modeToClear === 'preloaded') {
-      localStorage.removeItem('att_preset_timetable');
-      localStorage.removeItem('att_preset_ward_schedule');
-      localStorage.removeItem('att_preset_subject_totals');
+      storageRemoveItem('att_preset_timetable');
+      storageRemoveItem('att_preset_ward_schedule');
+      storageRemoveItem('att_preset_subject_totals');
       setPresetTimetable(TIMETABLE);
       setPresetWardSchedule(WARD_SCHEDULE.map(ws => ({ ...ws, morningTime: '09:30–11:30', eveningTime: '07:00–09:00 PM' })));
       setPresetSubjectTotals({});
     } else {
-      localStorage.removeItem(CUSTOM_SUBJECTS_KEY);
-      localStorage.removeItem(CUSTOM_WARDS_KEY);
+      storageRemoveItem(CUSTOM_SUBJECTS_KEY);
+      storageRemoveItem(CUSTOM_WARDS_KEY);
       setCustomSubjects([]);
       setCustomWards([]);
     }
@@ -251,7 +256,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setPresetTimetable(updated);
-    localStorage.setItem('att_preset_timetable', JSON.stringify(updated));
+    storageSetItem('att_preset_timetable', JSON.stringify(updated));
   };
 
   const updatePresetWardSchedule = (
@@ -271,14 +276,14 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         eveningTime: eveningTime ?? updated[index].eveningTime
       };
       setPresetWardSchedule(updated);
-      localStorage.setItem('att_preset_ward_schedule', JSON.stringify(updated));
+      storageSetItem('att_preset_ward_schedule', JSON.stringify(updated));
     }
   };
 
   const updatePresetSubjectTotal = (subjectName: string, total: number) => {
     const updated = { ...presetSubjectTotals, [subjectName]: total };
     setPresetSubjectTotals(updated);
-    localStorage.setItem('att_preset_subject_totals', JSON.stringify(updated));
+    storageSetItem('att_preset_subject_totals', JSON.stringify(updated));
   };
 
   return (

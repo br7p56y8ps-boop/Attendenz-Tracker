@@ -6,7 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
-const port = Number(process.env.PORT ?? 5173);
+const port = Number(process.env.PORT ?? 3000);
 
 if (Number.isNaN(port) || port <= 0) {
 }

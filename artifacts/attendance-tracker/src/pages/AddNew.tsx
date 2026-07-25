@@ -4,7 +4,7 @@ import { useCustomData } from '@/contexts/CustomDataContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Check, Calendar, GraduationCap, Building2, Sliders } from 'lucide-react';
+import { Plus, Trash2, Check, Calendar, GraduationCap, Building2, Sliders, BookOpen, Sparkles, Clock, Sun, CheckCircle2, Save, Stethoscope, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Tab = 'single' | 'allied' | 'ward' | 'presets';
@@ -24,13 +24,14 @@ const TabButton = ({ label, active, onClick }: { label: string; active: boolean;
 );
 
 const inputClass =
-  'w-full bg-background border border-border rounded-2xl px-3 h-11 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border';
+  'w-full bg-muted/30 border border-border/60 rounded-2xl px-3.5 h-11 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border';
 
 const labelClass =
-  'text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block min-h-[26px] flex items-end justify-center pb-1 leading-tight text-center';
+  'text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5 text-center';
 
 export default function AddNew() {
   const {
+    subjectMode,
     customSubjects,
     customWards,
     addCustomSubject,
@@ -49,6 +50,12 @@ export default function AddNew() {
 
   const [tab, setTab] = useState<Tab>('single');
   const [successMsg, setSuccessMsg] = useState('');
+
+  React.useEffect(() => {
+    if (subjectMode === 'custom' && tab === 'presets') {
+      setTab('single');
+    }
+  }, [subjectMode, tab]);
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
@@ -73,8 +80,10 @@ export default function AddNew() {
     setWName('');
     setWStart('');
     setWEnd('');
-    setWMorning('');
-    setWEvening('');
+    setWMorningStart('');
+    setWMorningEnd('');
+    setWEveningStart('');
+    setWEveningEnd('');
   };
 
   const handleTabSwitch = (newTab: Tab) => {
@@ -230,27 +239,39 @@ export default function AddNew() {
   const [wName, setWName] = useState('');
   const [wStart, setWStart] = useState('');
   const [wEnd, setWEnd] = useState('');
-  const [wMorning, setWMorning] = useState('');
-  const [wEvening, setWEvening] = useState('');
+  const [wMorningStart, setWMorningStart] = useState('');
+  const [wMorningEnd, setWMorningEnd] = useState('');
+  const [wEveningStart, setWEveningStart] = useState('');
+  const [wEveningEnd, setWEveningEnd] = useState('');
 
   const handleSaveWard = (e: React.FormEvent) => {
     e.preventDefault();
     if (!wName.trim() || !wStart || !wEnd) return;
     if (wEnd < wStart) return;
 
+    const formattedMorning = (wMorningStart && wMorningEnd)
+      ? `${wMorningStart}–${wMorningEnd}`
+      : (wMorningStart || wMorningEnd || 'Morning Ward');
+
+    const formattedEvening = (wEveningStart && wEveningEnd)
+      ? `${wEveningStart}–${wEveningEnd}`
+      : (wEveningStart || wEveningEnd || 'Evening Ward');
+
     addCustomWard({
       name: wName.trim(),
       startDate: wStart,
       endDate: wEnd,
-      morningTime: wMorning.trim() || 'Morning Ward',
-      eveningTime: wEvening.trim() || 'Evening Ward'
+      morningTime: formattedMorning,
+      eveningTime: formattedEvening
     });
 
     setWName('');
     setWStart('');
     setWEnd('');
-    setWMorning('');
-    setWEvening('');
+    setWMorningStart('');
+    setWMorningEnd('');
+    setWEveningStart('');
+    setWEveningEnd('');
     showSuccess(`Clinical Rotation "${wName.trim()}" saved ✓`);
   };
 
@@ -280,85 +301,207 @@ export default function AddNew() {
           )}
         </AnimatePresence>
 
-        {/* Tab bar */}
-        <div className="flex flex-wrap md:flex-nowrap gap-1 bg-muted/60 p-1 rounded-2xl">
-          <TabButton label="Single Subject" active={tab === 'single'} onClick={() => handleTabSwitch('single')} />
-          <TabButton label="Allied Subject" active={tab === 'allied'} onClick={() => handleTabSwitch('allied')} />
-          <TabButton label="Hospital/Clinical Rotation" active={tab === 'ward'} onClick={() => handleTabSwitch('ward')} />
-          <TabButton label="Preset Overrides" active={tab === 'presets'} onClick={() => handleTabSwitch('presets')} />
-        </div>
+        {/* Top Tab Bar - Dynamic based on Routine Mode */}
+        {subjectMode === 'custom' ? (
+          <div className="grid grid-cols-3 gap-1 sm:gap-2 bg-card/80 backdrop-blur-xl border border-border/70 p-1.5 sm:p-2 rounded-2xl shadow-sm">
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('single')}
+              className={cn(
+                'py-2 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-xs md:text-sm font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all duration-200 border cursor-pointer min-w-0',
+                tab === 'single'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md font-bold'
+                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+              )}
+            >
+              <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">Single</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('allied')}
+              className={cn(
+                'py-2 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-xs md:text-sm font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all duration-200 border cursor-pointer min-w-0',
+                tab === 'allied'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md font-bold'
+                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+              )}
+            >
+              <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">Allied</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('ward')}
+              className={cn(
+                'py-2 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-xs md:text-sm font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all duration-200 border cursor-pointer min-w-0',
+                tab === 'ward'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md font-bold'
+                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+              )}
+            >
+              <Stethoscope className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">Clinical Ward</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 bg-card/80 backdrop-blur-xl border border-border/70 p-2 rounded-2xl shadow-sm">
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('single')}
+              className={cn(
+                'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
+                tab === 'single'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
+                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+              )}
+            >
+              <GraduationCap className="w-4 h-4 shrink-0" />
+              <span className="truncate">Single Subject</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('allied')}
+              className={cn(
+                'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
+                tab === 'allied'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
+                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+              )}
+            >
+              <Building2 className="w-4 h-4 shrink-0" />
+              <span className="truncate">Allied Subject</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('ward')}
+              className={cn(
+                'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
+                tab === 'ward'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
+                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+              )}
+            >
+              <Stethoscope className="w-4 h-4 shrink-0" />
+              <span className="truncate">Clinical Rotation</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('presets')}
+              className={cn(
+                'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
+                tab === 'presets'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
+                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+              )}
+            >
+              <Sliders className="w-4 h-4 shrink-0" />
+              <span className="truncate">Preset Overrides</span>
+            </button>
+          </div>
+        )}
 
         {/* ── Tab 1: Single Subject ── */}
         <AnimatePresence mode="wait">
           {tab === 'single' && (
             <motion.div key="single" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <form onSubmit={handleSaveSingle} className="bg-card border border-border rounded-3xl p-4 sm:p-5 space-y-4 shadow-sm">
-                <div className="flex items-center gap-2 border-b border-border/50 pb-3">
-                  <GraduationCap className="w-5 h-5 text-primary" />
-                  <h3 className="font-bold text-lg text-foreground">Add New Single Subject</h3>
+              <form onSubmit={handleSaveSingle} className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-5 sm:p-6 space-y-5 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/60 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                      <GraduationCap className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground tracking-tight">Add New Single Subject</h3>
+                      <p className="text-xs text-muted-foreground">Configure subject name and weekly schedule</p>
+                    </div>
+                  </div>
+                  <Sparkles className="w-5 h-5 text-primary/40 shrink-0" />
                 </div>
 
-                {/* Row 1 */}
+                {/* Row 1: Subject Name */}
                 <div>
-                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Subject Name</label>
-                  <input
-                    className={`${inputClass} px-3.5`}
-                    placeholder="e.g. Pathology"
-                    value={sName}
-                    onChange={e => setSName(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* Row 2: Compact Centered Inputs */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col items-center">
-                    <label className={labelClass}>Total Planned Classes</label>
+                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Subject Name</label>
+                  <div className="relative flex items-center">
+                    <BookOpen className="w-4 h-4 text-primary absolute left-3.5 pointer-events-none shrink-0" />
                     <input
-                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-3 h-11 text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border"
-                      type="number"
-                      inputMode="numeric"
-                      min="1"
-                      placeholder="e.g. 40"
-                      value={sPlanned}
-                      onChange={e => setSPlanned(e.target.value)}
+                      className="w-full bg-muted/30 border border-border/70 rounded-xl pl-10 pr-3.5 h-11 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background text-xs sm:text-sm font-semibold transition-all placeholder:text-muted-foreground/50 box-border"
+                      placeholder="Pathology"
+                      value={sName}
+                      onChange={e => setSName(e.target.value)}
                       required
                     />
                   </div>
-                  <div className="flex flex-col items-center">
-                    <label className={labelClass}>Attended Classes (Optional)</label>
-                    <input
-                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-3 h-11 text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border"
-                      type="number"
-                      inputMode="numeric"
-                      min="0"
-                      placeholder="e.g. 10 (optional)"
-                      value={sAttended}
-                      onChange={e => setSAttended(e.target.value)}
-                    />
+                </div>
+
+                {/* Row 2: Fluid 2-Column Cards */}
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="bg-muted/20 border border-border/70 rounded-2xl p-3 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0 border border-primary/20">
+                      <Calendar className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <label className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-muted-foreground block truncate">Total Planned</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min="1"
+                        placeholder="40"
+                        value={sPlanned}
+                        onChange={e => setSPlanned(e.target.value)}
+                        required
+                        className="w-full bg-transparent text-foreground text-sm sm:text-base font-bold focus:outline-none placeholder:text-muted-foreground/40"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-muted/20 border border-border/70 rounded-2xl p-3 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0 border border-primary/20">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <label className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-muted-foreground block truncate">Attended</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min="0"
+                        placeholder="Optional"
+                        value={sAttended}
+                        onChange={e => setSAttended(e.target.value)}
+                        className="w-full bg-transparent text-foreground text-sm sm:text-base font-bold focus:outline-none placeholder:text-muted-foreground/40"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                {/* Row 3+ */}
-                <div className="space-y-3">
-                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Weekly Schedules</label>
+                {/* Row 3+: Weekly Schedules */}
+                <div className="pt-2 border-t border-border/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-primary shrink-0" />
+                      <label className="text-xs font-bold uppercase tracking-wider text-foreground">Weekly Schedules</label>
+                    </div>
+                    <span className="text-[11px] font-bold text-primary bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+                      {singleDays.length} {singleDays.length === 1 ? 'Day' : 'Days'}
+                    </span>
+                  </div>
                   
+                  {/* Column Headers */}
+                  <div className="grid grid-cols-3 gap-2.5 px-1 pr-11">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Day</span>
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Start Time</span>
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">End Time</span>
+                  </div>
+
                   <div className="space-y-2.5">
                     {singleDays.map((row, idx) => {
                       const usedDaysInOthers = singleDays.filter((_, i) => i !== idx).map(r => r.day);
                       const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                       return (
-                        <div key={idx} className="space-y-2 bg-muted/20 p-2.5 sm:p-3.5 rounded-2xl border border-border/40 box-border">
-                          {/* Column Headers */}
-                          <div className="grid grid-cols-3 gap-2 px-0.5">
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Day</span>
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Start</span>
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">End</span>
-                          </div>
-
-                          {/* Inputs Grid: Compact Boxes */}
-                          <div className="grid grid-cols-3 gap-2 items-center">
-                            <div className="flex flex-col items-center">
+                        <div key={idx} className="flex items-center gap-2">
+                          <div className="grid grid-cols-3 gap-2.5 flex-1 items-center">
+                            <div className="relative flex items-center">
+                              <Sun className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
                               <select
                                 value={row.day}
                                 onChange={e => {
@@ -366,7 +509,7 @@ export default function AddNew() {
                                   updated[idx].day = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                                className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
                               >
                                 {availableOptions.map(o => (
                                   <option key={o} value={o}>{o}</option>
@@ -374,7 +517,8 @@ export default function AddNew() {
                               </select>
                             </div>
 
-                            <div className="flex flex-col items-center">
+                            <div className="relative flex items-center">
+                              <Clock className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
                               <input
                                 type="time"
                                 value={row.startTime}
@@ -383,12 +527,12 @@ export default function AddNew() {
                                   updated[idx].startTime = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                style={{ colorScheme: 'dark' }}
-                                className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                                className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs sm:text-sm font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
                               />
                             </div>
 
-                            <div className="flex flex-col items-center">
+                            <div className="relative flex items-center">
+                              <Clock className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
                               <input
                                 type="time"
                                 value={row.endTime}
@@ -397,22 +541,20 @@ export default function AddNew() {
                                   updated[idx].endTime = e.target.value;
                                   setSingleDays(updated);
                                 }}
-                                style={{ colorScheme: 'dark' }}
-                                className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                                className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs sm:text-sm font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
                               />
                             </div>
                           </div>
 
                           {singleDays.length > 1 && (
-                            <div className="flex justify-end pt-1">
-                              <button
-                                type="button"
-                                onClick={() => setSingleDays(singleDays.filter((_, i) => i !== idx))}
-                                className="py-1.5 px-3 flex items-center gap-1.5 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all text-xs font-bold"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" /> Remove Row
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSingleDays(singleDays.filter((_, i) => i !== idx))}
+                              className="w-10 h-11 rounded-xl bg-destructive/10 text-destructive border border-destructive/20 flex items-center justify-center hover:bg-destructive/20 transition-all shrink-0"
+                              title="Delete row"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           )}
                         </div>
                       );
@@ -423,20 +565,23 @@ export default function AddNew() {
                     <button
                       type="button"
                       onClick={addSingleDayRow}
-                      className="py-2.5 px-4 border border-dashed border-primary/50 text-primary hover:bg-primary/5 rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 w-full transition-all mt-2 box-border"
+                      className="py-3 px-4 border-2 border-dashed border-primary/40 text-primary hover:bg-primary/5 rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 w-full transition-all mt-3 box-border"
                     >
-                      <Plus className="w-4 h-4" /> Add another Day & Time
+                      <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Plus className="w-3.5 h-3.5" />
+                      </div>
+                      <span>Add another Day & Time</span>
                     </button>
                   )}
                 </div>
 
-                {/* Final Row */}
-                <div className="border-t border-border/50 pt-4">
+                {/* Submit Row */}
+                <div className="border-t border-border/60 pt-4">
                   <button
                     type="submit"
-                    className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all box-border"
+                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-primary to-blue-600 text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-95 active:scale-[0.98] transition-all shadow-lg box-border text-sm"
                   >
-                    Save Subject
+                    <Save className="w-4 h-4" /> Save Subject
                   </button>
                 </div>
               </form>
@@ -446,23 +591,34 @@ export default function AddNew() {
           {/* ── Tab 2: Allied Subject ── */}
           {tab === 'allied' && (
             <motion.div key="allied" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="bg-card border border-border rounded-3xl p-4 sm:p-5 space-y-4 shadow-sm">
-                <div className="flex items-center gap-2 border-b border-border/50 pb-3">
-                  <Building2 className="w-5 h-5 text-primary" />
-                  <h3 className="font-bold text-lg text-foreground font-sans">Add Allied Subjects Group</h3>
+              <div className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-5 sm:p-6 space-y-5 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/60 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                      <Building2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground tracking-tight">Add Allied Subjects Group</h3>
+                      <p className="text-xs text-muted-foreground">Create parent and sub-discipline child subjects</p>
+                    </div>
+                  </div>
+                  <Sparkles className="w-5 h-5 text-primary/40 shrink-0" />
                 </div>
 
                 {/* Row 1: Parent Subject Name */}
                 <div>
-                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Parent Subject Name</label>
-                  <input
-                    className={`${inputClass} px-3.5`}
-                    placeholder="e.g. Medicine & Allied"
-                    value={parentName}
-                    onChange={e => setParentName(e.target.value)}
-                    disabled={alliedStep !== 'parent_input'}
-                    required
-                  />
+                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Parent Subject Name</label>
+                  <div className="relative flex items-center">
+                    <BookOpen className="w-4 h-4 text-primary absolute left-3.5 pointer-events-none shrink-0" />
+                    <input
+                      className="w-full bg-muted/30 border border-border/70 rounded-xl pl-10 pr-3.5 h-11 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background text-xs sm:text-sm font-semibold transition-all placeholder:text-muted-foreground/50 box-border"
+                      placeholder="Medicine & Allied"
+                      value={parentName}
+                      onChange={e => setParentName(e.target.value)}
+                      disabled={alliedStep !== 'parent_input'}
+                      required
+                    />
+                  </div>
                 </div>
 
                 {/* Step 1 */}
@@ -472,7 +628,7 @@ export default function AddNew() {
                       type="button"
                       disabled={!parentName.trim()}
                       onClick={() => setAlliedStep('child_form')}
-                      className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none box-border"
+                      className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none shadow-md box-border text-sm"
                     >
                       <Plus className="w-4 h-4" /> Add Child Subject
                     </button>
@@ -481,66 +637,94 @@ export default function AddNew() {
 
                 {/* Step 2: Child Form Block */}
                 {alliedStep === 'child_form' && (
-                  <form onSubmit={handleSaveChild} className="border-t border-border/50 pt-4 space-y-4">
-                    <h4 className="font-bold text-sm text-primary uppercase tracking-wide">New Child Subject Info</h4>
+                  <form onSubmit={handleSaveChild} className="border-t border-border/60 pt-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-xs uppercase tracking-wider text-primary bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+                        New Child Subject
+                      </h4>
+                    </div>
                     
                     <div>
-                      <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Child Subject Name</label>
-                      <input
-                        className={`${inputClass} px-3.5`}
-                        placeholder="e.g. Cardiology"
-                        value={cName}
-                        onChange={e => setCName(e.target.value)}
-                        required
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="flex flex-col items-center">
-                        <label className={labelClass}>Total Planned Classes</label>
+                      <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Child Subject Name</label>
+                      <div className="relative flex items-center">
+                        <BookOpen className="w-4 h-4 text-primary absolute left-3.5 pointer-events-none shrink-0" />
                         <input
-                          className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-3 h-11 text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border"
-                          type="number"
-                          inputMode="numeric"
-                          min="1"
-                          placeholder="e.g. 20"
-                          value={cPlanned}
-                          onChange={e => setCPlanned(e.target.value)}
+                          className="w-full bg-muted/30 border border-border/70 rounded-xl pl-10 pr-3.5 h-11 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background text-xs sm:text-sm font-semibold transition-all placeholder:text-muted-foreground/50 box-border"
+                          placeholder="Cardiology"
+                          value={cName}
+                          onChange={e => setCName(e.target.value)}
                           required
                         />
                       </div>
-                      <div className="flex flex-col items-center">
-                        <label className={labelClass}>Optional Attended Classes</label>
-                        <input
-                          className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-3 h-11 text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border"
-                          type="number"
-                          inputMode="numeric"
-                          min="0"
-                          placeholder="e.g. 5 (optional)"
-                          value={cAttended}
-                          onChange={e => setCAttended(e.target.value)}
-                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3.5">
+                      <div className="bg-muted/20 border border-border/70 rounded-2xl p-3 flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0 border border-primary/20">
+                          <Calendar className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <label className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-muted-foreground block truncate">Total Planned</label>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min="1"
+                            placeholder="20"
+                            value={cPlanned}
+                            onChange={e => setCPlanned(e.target.value)}
+                            required
+                            className="w-full bg-transparent text-foreground text-sm sm:text-base font-bold focus:outline-none placeholder:text-muted-foreground/40"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-muted/20 border border-border/70 rounded-2xl p-3 flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0 border border-primary/20">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <label className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-muted-foreground block truncate">Attended</label>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min="0"
+                            placeholder="Optional"
+                            value={cAttended}
+                            onChange={e => setCAttended(e.target.value)}
+                            className="w-full bg-transparent text-foreground text-sm sm:text-base font-bold focus:outline-none placeholder:text-muted-foreground/40"
+                          />
+                        </div>
                       </div>
                     </div>
 
                     {/* Day & Time Grid */}
-                    <div className="space-y-3">
-                      <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Day & Time Schedule</label>
+                    <div className="pt-2 border-t border-border/50 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-primary shrink-0" />
+                          <label className="text-xs font-bold uppercase tracking-wider text-foreground">Day & Time Schedule</label>
+                        </div>
+                        <span className="text-[11px] font-bold text-primary bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+                          {childDays.length} {childDays.length === 1 ? 'Day' : 'Days'}
+                        </span>
+                      </div>
                       
+                      {/* Column Headers */}
+                      <div className="grid grid-cols-3 gap-2.5 px-1 pr-11">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Day</span>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Start Time</span>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">End Time</span>
+                      </div>
+
                       <div className="space-y-2.5">
                         {childDays.map((row, idx) => {
                           const usedDaysInOthers = childDays.filter((_, i) => i !== idx).map(r => r.day);
                           const availableOptions = DAYS.filter(d => !usedDaysInOthers.includes(d));
                           return (
-                            <div key={idx} className="space-y-2 bg-muted/20 p-2.5 sm:p-3.5 rounded-2xl border border-border/40 box-border">
-                              <div className="grid grid-cols-3 gap-2 px-0.5">
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Day</span>
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">Start</span>
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider text-center">End</span>
-                              </div>
-
-                              <div className="grid grid-cols-3 gap-2 items-center">
-                                <div className="flex flex-col items-center">
+                            <div key={idx} className="flex items-center gap-2">
+                              <div className="grid grid-cols-3 gap-2.5 flex-1 items-center">
+                                <div className="relative flex items-center">
+                                  <Sun className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
                                   <select
                                     value={row.day}
                                     onChange={e => {
@@ -548,7 +732,7 @@ export default function AddNew() {
                                       updated[idx].day = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                                    className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
                                   >
                                     {availableOptions.map(o => (
                                       <option key={o} value={o}>{o}</option>
@@ -556,7 +740,8 @@ export default function AddNew() {
                                   </select>
                                 </div>
 
-                                <div className="flex flex-col items-center">
+                                <div className="relative flex items-center">
+                                  <Clock className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
                                   <input
                                     type="time"
                                     value={row.startTime}
@@ -565,12 +750,12 @@ export default function AddNew() {
                                       updated[idx].startTime = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    style={{ colorScheme: 'dark' }}
-                                    className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                                    className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs sm:text-sm font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
                                   />
                                 </div>
 
-                                <div className="flex flex-col items-center">
+                                <div className="relative flex items-center">
+                                  <Clock className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
                                   <input
                                     type="time"
                                     value={row.endTime}
@@ -579,22 +764,20 @@ export default function AddNew() {
                                       updated[idx].endTime = e.target.value;
                                       setChildDays(updated);
                                     }}
-                                    style={{ colorScheme: 'dark' }}
-                                    className="w-[85px] sm:w-[100px] bg-background border border-border rounded-xl px-1 sm:px-2 h-10 text-[11px] sm:text-xs font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
+                                    className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs sm:text-sm font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
                                   />
                                 </div>
                               </div>
 
                               {childDays.length > 1 && (
-                                <div className="flex justify-end pt-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => setChildDays(childDays.filter((_, i) => i !== idx))}
-                                    className="py-1.5 px-3 flex items-center gap-1.5 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-all text-xs font-bold"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" /> Remove Row
-                                  </button>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setChildDays(childDays.filter((_, i) => i !== idx))}
+                                  className="w-10 h-11 rounded-xl bg-destructive/10 text-destructive border border-destructive/20 flex items-center justify-center hover:bg-destructive/20 transition-all shrink-0"
+                                  title="Delete row"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               )}
                             </div>
                           );
@@ -605,9 +788,12 @@ export default function AddNew() {
                         <button
                           type="button"
                           onClick={addChildDayRow}
-                          className="py-2.5 px-4 border border-dashed border-primary/50 text-primary hover:bg-primary/5 rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 w-full transition-all mt-2 box-border"
+                          className="py-3 px-4 border-2 border-dashed border-primary/40 text-primary hover:bg-primary/5 rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 w-full transition-all mt-3 box-border"
                         >
-                          <Plus className="w-4 h-4" /> Add another Day & Time
+                          <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Plus className="w-3.5 h-3.5" />
+                          </div>
+                          <span>Add another Day & Time</span>
                         </button>
                       )}
                     </div>
@@ -615,9 +801,9 @@ export default function AddNew() {
                     <div className="pt-2">
                       <button
                         type="submit"
-                        className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-2xl hover:opacity-90 active:scale-[0.98] transition-all box-border"
+                        className="w-full py-3.5 bg-gradient-to-r from-primary to-blue-600 text-primary-foreground font-bold rounded-2xl hover:opacity-95 active:scale-[0.98] transition-all shadow-lg box-border text-sm flex items-center justify-center gap-2"
                       >
-                        Save Child Subject
+                        <Save className="w-4 h-4" /> Save Child Subject
                       </button>
                     </div>
                   </form>
@@ -625,19 +811,19 @@ export default function AddNew() {
 
                 {/* Step 3 */}
                 {alliedStep === 'actions' && (
-                  <div className="border-t border-border/50 pt-4 space-y-4">
+                  <div className="border-t border-border/60 pt-4 space-y-4">
                     {savedChildren.length > 0 && (
                       <div className="space-y-2">
                         <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Saved Child Subjects ({savedChildren.length})</p>
-                        <div className="space-y-2 bg-muted/40 p-3 rounded-2xl border border-border/60">
+                        <div className="space-y-2 bg-muted/30 p-3.5 rounded-2xl border border-border/60">
                           {savedChildren.map((child, i) => (
-                            <div key={i} className="flex justify-between items-center text-sm border-b border-border/40 pb-2 last:border-0 last:pb-0">
+                            <div key={i} className="flex justify-between items-center text-sm border-b border-border/40 pb-2.5 last:border-0 last:pb-0">
                               <div>
                                 <span className="font-semibold text-foreground">{child.name}</span>
                                 <span className="text-xs text-muted-foreground ml-2">({child.planned} planned · {child.days.map(d=>d.day).join(', ')})</span>
                               </div>
                               {child.attended > 0 && (
-                                <span className="text-xs font-semibold text-success bg-success/10 px-2 py-0.5 rounded-full">{child.attended} att</span>
+                                <span className="text-xs font-semibold text-success bg-success/10 px-2.5 py-0.5 rounded-full border border-success/20">{child.attended} att</span>
                               )}
                             </div>
                           ))}
@@ -658,7 +844,7 @@ export default function AddNew() {
                         type="button"
                         disabled={savedChildren.length < 2}
                         onClick={handleCompleteParent}
-                        className="w-full py-3.5 rounded-2xl bg-success text-success-foreground font-black flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none box-border"
+                        className="w-full py-3.5 rounded-2xl bg-success text-success-foreground font-black flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none shadow-md box-border"
                       >
                         <Check className="w-4 h-4" /> Complete Parent Subject
                       </button>
@@ -671,7 +857,7 @@ export default function AddNew() {
                 )}
 
                 {(savedChildren.length > 0 || parentName) && (
-                  <div className="border-t border-border/50 pt-4 flex justify-center">
+                  <div className="border-t border-border/50 pt-3 flex justify-center">
                     <button
                       type="button"
                       onClick={() => {
@@ -693,89 +879,146 @@ export default function AddNew() {
           {/* ── Tab 3: Ward Rotation ── */}
           {tab === 'ward' && (
             <motion.div key="ward" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <form onSubmit={handleSaveWard} className="bg-card border border-border rounded-3xl p-4 sm:p-5 space-y-4 shadow-sm">
-                <div className="flex items-center gap-2 border-b border-border/50 pb-3">
-                  <Calendar className="w-5 h-5 text-primary" />
-                  <h3 className="font-bold text-lg text-foreground">Add New Hospital/Clinical Rotation</h3>
+              <form onSubmit={handleSaveWard} className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-5 sm:p-6 space-y-5 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/60 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                      <Stethoscope className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground tracking-tight">Add Hospital/Clinical Rotation</h3>
+                      <p className="text-xs text-muted-foreground">Configure rotation dates and shift schedules</p>
+                    </div>
+                  </div>
+                  <Sparkles className="w-5 h-5 text-primary/40 shrink-0" />
                 </div>
 
                 <div>
-                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Department/Ward Name</label>
-                  <input
-                    className={`${inputClass} px-3.5`}
-                    placeholder="e.g. Neurology"
-                    value={wName}
-                    onChange={e => setWName(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* Equal 2-Column Grid with Compact Centered Boxes */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col items-center">
-                    <label className={labelClass}>Start Date</label>
+                  <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Department/Ward Name</label>
+                  <div className="relative flex items-center">
+                    <Building2 className="w-4 h-4 text-primary absolute left-3.5 pointer-events-none shrink-0" />
                     <input
-                      type="date"
-                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-2.5 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
-                      style={{ colorScheme: 'dark' }}
-                      min="2026-01-01"
-                      max="2026-12-31"
-                      value={wStart}
-                      onChange={e => setWStart(e.target.value)}
+                      className="w-full bg-muted/30 border border-border/70 rounded-xl pl-10 pr-3.5 h-11 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background text-xs sm:text-sm font-semibold transition-all placeholder:text-muted-foreground/50 box-border"
+                      placeholder="Neurology"
+                      value={wName}
+                      onChange={e => setWName(e.target.value)}
                       required
                     />
                   </div>
-                  <div className="flex flex-col items-center">
+                </div>
+
+                {/* 2-Column Dates */}
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="space-y-1">
+                    <label className={labelClass}>Start Date</label>
+                    <div className="relative flex items-center">
+                      <Calendar className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
+                      <input
+                        type="date"
+                        className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs sm:text-sm font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background box-border"
+                        min="2026-01-01"
+                        max="2026-12-31"
+                        value={wStart}
+                        onChange={e => setWStart(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
                     <label className={labelClass}>End Date</label>
-                    <input
-                      type="date"
-                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-2.5 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
-                      style={{ colorScheme: 'dark' }}
-                      min="2026-01-01"
-                      max="2026-12-31"
-                      value={wEnd}
-                      onChange={e => setWEnd(e.target.value)}
-                      required
-                    />
+                    <div className="relative flex items-center">
+                      <Calendar className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
+                      <input
+                        type="date"
+                        className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs sm:text-sm font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background box-border"
+                        min="2026-01-01"
+                        max="2026-12-31"
+                        value={wEnd}
+                        onChange={e => setWEnd(e.target.value)}
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
                 {wStart && wEnd && wEnd < wStart && (
                   <p className="text-destructive text-xs font-semibold -mt-2 text-center">End date must be after start date.</p>
                 )}
 
-                {/* Equal 2-Column Grid with Compact Centered Boxes */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col items-center">
-                    <label className={labelClass}>Morning Time</label>
-                    <input
-                      type="time"
-                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-2.5 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
-                      style={{ colorScheme: 'dark' }}
-                      value={wMorning}
-                      onChange={e => setWMorning(e.target.value)}
-                      required
-                    />
+                {/* Morning Shift Time */}
+                <div className="pt-3 border-t border-border/50 space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <Sun className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-foreground">Morning Shift Time</span>
                   </div>
-                  <div className="flex flex-col items-center">
-                    <label className={labelClass}>Evening Time</label>
-                    <input
-                      type="time"
-                      className="w-[135px] sm:w-[150px] bg-background border border-border rounded-2xl px-2.5 h-11 text-xs sm:text-sm font-medium text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 box-border [color-scheme:dark]"
-                      style={{ colorScheme: 'dark' }}
-                      value={wEvening}
-                      onChange={e => setWEvening(e.target.value)}
-                      required
-                    />
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className={labelClass}>Start Time</label>
+                      <div className="relative flex items-center">
+                        <Clock className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
+                        <input
+                          type="time"
+                          className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs sm:text-sm font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background box-border"
+                          value={wMorningStart}
+                          onChange={e => setWMorningStart(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelClass}>End Time</label>
+                      <div className="relative flex items-center">
+                        <Clock className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
+                        <input
+                          type="time"
+                          className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs sm:text-sm font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background box-border"
+                          value={wMorningEnd}
+                          onChange={e => setWMorningEnd(e.target.value)}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="border-t border-border/50 pt-4">
+                {/* Evening Shift Time */}
+                <div className="pt-3 border-t border-border/50 space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-foreground">Evening Shift Time</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className={labelClass}>Start Time</label>
+                      <div className="relative flex items-center">
+                        <Clock className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
+                        <input
+                          type="time"
+                          className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs sm:text-sm font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background box-border"
+                          value={wEveningStart}
+                          onChange={e => setWEveningStart(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelClass}>End Time</label>
+                      <div className="relative flex items-center">
+                        <Clock className="w-4 h-4 text-primary absolute left-3 pointer-events-none shrink-0" />
+                        <input
+                          type="time"
+                          className="w-full bg-muted/30 border border-border/70 rounded-xl pl-9 pr-2 h-11 text-xs sm:text-sm font-semibold text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background box-border"
+                          value={wEveningEnd}
+                          onChange={e => setWEveningEnd(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-border/60 pt-4">
                   <button
                     type="submit"
                     disabled={!!(wStart && wEnd && wEnd < wStart)}
-                    className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none box-border"
+                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-primary to-blue-600 text-primary-foreground font-bold flex items-center justify-center gap-2 hover:opacity-95 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none shadow-lg box-border text-sm"
                   >
-                    Save Clinical Rotation
+                    <Save className="w-4 h-4" /> Save Clinical Rotation
                   </button>
                 </div>
               </form>
@@ -785,13 +1028,20 @@ export default function AddNew() {
           {/* ── Tab 4: Preset Overrides ── */}
           {tab === 'presets' && (
             <motion.div key="presets" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="bg-card border border-border rounded-3xl p-4 sm:p-5 space-y-6 shadow-sm">
-                <div className="border-b border-border/50 pb-3 flex items-center gap-2">
-                  <Sliders className="w-5 h-5 text-primary" />
-                  <div>
-                    <h3 className="font-bold text-lg text-foreground">Preset Section (Preloaded Mode Overrides)</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">These settings override the default built-in Weekly Timetable and Clinical Rotations.</p>
+              <div className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-5 sm:p-6 space-y-6 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/60 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                      <Sliders className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground tracking-tight">Preset Overrides</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Presets are modeled after MBBS 5th year (may or may not match your exact schedule). Provided for convenience—you can adjust times/slots here or use custom subjects.
+                      </p>
+                    </div>
                   </div>
+                  <Sparkles className="w-5 h-5 text-primary/40 shrink-0" />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -912,7 +1162,6 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, e.target.value, ws.end, ws.morningTime, ws.eveningTime);
                                   }}
-                                  style={{ colorScheme: 'dark' }}
                                   className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                 />
                               </div>
@@ -924,7 +1173,6 @@ export default function AddNew() {
                                   onChange={(e) => {
                                     updatePresetWardSchedule(wsIdx, ws.start, e.target.value, ws.morningTime, ws.eveningTime);
                                   }}
-                                  style={{ colorScheme: 'dark' }}
                                   className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
                                 />
                               </div>

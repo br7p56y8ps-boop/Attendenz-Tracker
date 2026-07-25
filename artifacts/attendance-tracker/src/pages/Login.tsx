@@ -1,276 +1,209 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
-import { Eye, EyeOff, AlertTriangle, Trash2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-
-type Mode = 'login' | 'create';
+import { Eye, EyeOff, Lock, User, KeyRound, ShieldCheck, HardDrive, ArrowRight } from 'lucide-react';
 
 export default function Login() {
-  const { hasAccount, createAccount, login, forgotPassword } = useAuth();
-  const [mode, setMode] = useState<Mode>(hasAccount ? 'login' : 'create');
+  const { 
+    hasAccount, 
+    login, 
+    createAccount 
+  } = useAuth();
 
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [mode, setMode] = useState<'signin' | 'signup'>(hasAccount ? 'signin' : 'signup');
+  const [localUsername, setLocalUsername] = useState('');
+  const [localPassword, setLocalPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
-  const [showForgotDialog, setShowForgotDialog] = useState(false);
-  const [forgotStep, setForgotStep] = useState<1 | 2>(1);
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    if (mode === 'create') {
-      if (username.trim().length < 2) { setError('Username must be at least 2 characters.'); return; }
-      if (password.length < 4) { setError('Password must be at least 4 characters.'); return; }
-      if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
-      const ok = createAccount(username, password);
-      if (!ok) setError('Failed to create account. Please try again.');
-    } else {
-      const ok = login(username, password);
-      if (!ok) setError('Incorrect username or password.');
+    
+    if (!localUsername.trim()) {
+      setError('Please enter a username.');
+      return;
     }
-  };
 
-  const handleForgotConfirm = () => {
-    forgotPassword();
-  };
+    if (!localPassword) {
+      setError('Please enter a password.');
+      return;
+    }
 
-  const inputClass = "w-full bg-muted/40 border border-border rounded-2xl px-4 py-3.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 text-base transition-all";
+    setLoading(true);
+
+    if (mode === 'signup') {
+      if (localPassword.length < 4) {
+        setError('Password should be at least 4 characters long.');
+        setLoading(false);
+        return;
+      }
+
+      if (confirmPassword && localPassword !== confirmPassword) {
+        setError('Passwords do not match.');
+        setLoading(false);
+        return;
+      }
+
+      const ok = createAccount(localUsername.trim(), localPassword);
+      if (!ok) {
+        setError('Could not create account. Please try again.');
+      }
+    } else {
+      const ok = login(localUsername.trim(), localPassword);
+      if (!ok) {
+        setError('Incorrect username or password.');
+      }
+    }
+    setLoading(false);
+  };
 
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background px-5 py-10 relative">
-      {/* Logo / Title */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
+    <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center px-4 py-8 relative">
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="text-center mb-8 flex flex-col items-center"
+        className="w-full max-w-sm"
       >
-        <img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Icon" className="w-24 h-24 rounded-[28px] object-cover mb-4 border border-border shadow-lg" />
-        
-        <div className="relative inline-flex flex-col items-center pb-2.5 select-none">
-          <span className="font-extrabold tracking-[-0.03em] flex items-center text-4xl sm:text-5xl">
-            <span className="bg-gradient-to-b from-[#FFF5C3] via-[#E29A1F] to-[#734300] bg-clip-text text-transparent filter drop-shadow-[0_2px_12px_rgba(226,154,31,0.5)]">
-              Attend
-            </span>
-            <span className="bg-gradient-to-b from-[#4A5E75] via-[#2A3E55] to-[#101E30] dark:from-[#FFFFFF] dark:via-[#D1D9E6] dark:to-[#4A5E75] bg-clip-text text-transparent relative">
-              enz
-              <span className="absolute left-0 -bottom-2 text-[8px] md:text-[9px] text-muted-foreground tracking-[0.3em] font-light uppercase">
-                TRACKER
-              </span>
-            </span>
-          </span>
+        {/* App Logo & Branding */}
+        <div className="text-center mb-6 flex flex-col items-center">
+          <div className="w-20 h-20 rounded-3xl overflow-hidden shadow-lg border border-border mb-3 relative group">
+            <img 
+              src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} 
+              alt="Attendenz Logo" 
+              className="w-full h-full object-cover" 
+            />
+          </div>
+          <h1 className="text-2xl font-black text-foreground tracking-tight">Attendenz</h1>
+          <p className="text-xs text-muted-foreground mt-1 font-medium">
+            Medical College Attendance & Ward Tracker
+          </p>
         </div>
-        
-        <p className="text-muted-foreground text-xs tracking-wider uppercase mt-2">Lecture & Clinical Tracker</p>
-      </motion.div>
 
-      {/* Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-        className="w-full max-w-sm bg-card border border-border rounded-[28px] p-6 shadow-xl"
-      >
-        {/* Mode toggle (only if account exists) */}
-        {hasAccount && (
-          <div className="flex bg-muted rounded-2xl p-1 mb-6 border border-border">
-            {(['login', 'create'] as Mode[]).map(m => (
-              <button
-                key={m}
-                onClick={() => { setMode(m); setError(''); }}
-                className={cn(
-                  "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300",
-                  mode === m ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {m === 'login' ? 'Sign In' : 'New Account'}
-              </button>
-            ))}
+        {/* Local Storage Protection Banner */}
+        <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3 flex items-center gap-2.5">
+          <HardDrive className="w-4 h-4 text-emerald-500 shrink-0" />
+          <div className="text-left">
+            <p className="text-[11px] font-bold text-emerald-500">100% Local Device Storage</p>
+            <p className="text-[10px] text-muted-foreground leading-tight">Your data remains stored on your device only with full privacy.</p>
           </div>
-        )}
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <input
-              type="text"
-              placeholder="Username"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              autoComplete="username"
-              className={inputClass}
-            />
-          </div>
-
-          <div className="relative">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
-              className={cn(inputClass, "pr-12")}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(v => !v)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            </button>
-          </div>
-
-          {mode === 'create' && (
-            <div className="relative">
-              <input
-                type={showConfirm ? 'text' : 'password'}
-                placeholder="Confirm Password"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-                className={cn(inputClass, "pr-12")}
-              />
+        {/* Main Card */}
+        <div className="bg-card border border-border rounded-3xl p-5 shadow-xl space-y-4">
+          <div className="flex justify-center border-b border-border pb-3">
+            <div className="flex gap-4">
               <button
                 type="button"
-                onClick={() => setShowConfirm(v => !v)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => { setMode('signin'); setError(''); }}
+                className={`text-xs font-bold pb-1 border-b-2 transition-all ${
+                  mode === 'signin' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
               >
-                {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMode('signup'); setError(''); }}
+                className={`text-xs font-bold pb-1 border-b-2 transition-all ${
+                  mode === 'signup' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Create Account
               </button>
             </div>
-          )}
+          </div>
 
-          <AnimatePresence>
-            {error && (
-              <motion.p
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="text-destructive text-sm font-medium px-1"
-              >
-                {error}
-              </motion.p>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {/* Username */}
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
+                Username
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={localUsername}
+                  onChange={(e) => setLocalUsername(e.target.value)}
+                  placeholder="e.g., Alex / Dr. Smith"
+                  className="w-full bg-muted/60 rounded-xl pl-9 pr-3 py-2.5 text-xs font-medium text-foreground outline-none border border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
+                Password / PIN
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={localPassword}
+                  onChange={(e) => setLocalPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-muted/60 rounded-xl pl-9 pr-9 py-2.5 text-xs font-medium text-foreground outline-none border border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Confirm Password (if signup) */}
+            {mode === 'signup' && (
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-muted/60 rounded-xl pl-9 pr-3 py-2.5 text-xs font-medium text-foreground outline-none border border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                  />
+                </div>
+              </div>
             )}
-          </AnimatePresence>
 
-          <button
-            type="submit"
-            className="w-full py-4 rounded-2xl bg-primary text-primary-foreground font-bold text-base hover:opacity-95 active:scale-[0.98] transition-all shadow-sm mt-2"
-          >
-            {mode === 'create' ? 'Create Account' : 'Sign In'}
-          </button>
-        </form>
+            {error && (
+              <div className="p-2.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold leading-relaxed">
+                {error}
+              </div>
+            )}
 
-        {/* Offline warning */}
-        {mode === 'create' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mt-5 bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex gap-3"
-          >
-            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-            <p className="text-amber-600 dark:text-amber-200/70 text-xs leading-relaxed">
-              <span className="font-semibold text-amber-500">Offline only.</span>{' '}
-              Your credentials and all attendance data are stored locally on this device.
-              There is no recovery option — forgetting your password will permanently erase all data.
-            </p>
-          </motion.div>
-        )}
-
-        {/* Forgot password */}
-        {mode === 'login' && (
-          <button
-            onClick={() => { setShowForgotDialog(true); setForgotStep(1); }}
-            className="w-full mt-5 text-muted-foreground text-sm hover:text-foreground transition-colors"
-          >
-            Forgot password?
-          </button>
-        )}
-      </motion.div>
-
-      {/* Version Badge Footer */}
-      <p className="text-[10px] font-bold tracking-widest text-muted-foreground/40 uppercase mt-8">
-        Attendenz v3.6.0 (Stable)
-      </p>
-
-      {/* Forgot Password Dialog */}
-      <AnimatePresence>
-        {showForgotDialog && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4"
-            onClick={e => { if (e.target === e.currentTarget) setShowForgotDialog(false); }}
-          >
-            <motion.div
-              initial={{ y: 60, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 60, opacity: 0 }}
-              className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
             >
-              {forgotStep === 1 ? (
-                <>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-2xl bg-red-500/20 flex items-center justify-center">
-                      <AlertTriangle className="w-5 h-5 text-red-500" />
-                    </div>
-                    <h3 className="text-lg font-bold text-foreground">Forgot Password</h3>
-                  </div>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                    Since this app is fully offline, there is <span className="text-foreground font-semibold">no recovery option</span>.
-                    Resetting will <span className="text-red-500 font-semibold">permanently delete all your attendance data</span>.
-                  </p>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setShowForgotDialog(false)}
-                      className="flex-1 py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => setForgotStep(2)}
-                      className="flex-1 py-3 rounded-2xl bg-red-600 text-white text-sm font-bold hover:bg-red-500 transition-colors"
-                    >
-                      I understand
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-2xl bg-red-500/20 flex items-center justify-center">
-                      <Trash2 className="w-5 h-5 text-red-500" />
-                    </div>
-                    <h3 className="text-lg font-bold text-foreground">Are you absolutely sure?</h3>
-                  </div>
-                  <p className="text-muted-foreground text-sm mb-6">
-                    All data will be wiped and you'll start fresh. Consider exporting a backup first (from Account tab).
-                  </p>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setShowForgotDialog(false)}
-                      className="flex-1 py-3 rounded-2xl border border-border text-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleForgotConfirm}
-                      className="flex-1 py-3 rounded-2xl bg-red-600 text-white text-sm font-bold hover:bg-red-500 transition-colors"
-                    >
-                      Delete Everything
-                    </button>
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <span>{mode === 'signup' ? 'Create Local Account' : 'Sign In'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+
+        {/* Security & Offline Footer */}
+        <div className="mt-6 text-center space-y-1">
+          <p className="text-[11px] text-muted-foreground flex items-center justify-center gap-1.5 font-medium">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Offline First • Zero External Server Tracking</span>
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 }
