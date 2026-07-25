@@ -189,7 +189,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
           onClick={(e) => { e.stopPropagation(); setActiveStatInfo('required'); }}
           className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/20 border border-border/40 hover:bg-muted/40 active:scale-95 transition-all cursor-pointer"
         >
-          <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Req.</span>
+          <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Required</span>
          <span className={cn("font-bold text-center leading-tight",rawRequired > remaining ? "text-[10px] text-destructive" : "text-sm text-primary")}>{requiredToAttend}</span>
         </div>
       </div>
