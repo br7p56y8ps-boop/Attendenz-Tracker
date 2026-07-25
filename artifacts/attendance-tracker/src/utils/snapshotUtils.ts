@@ -154,14 +154,31 @@ export function exportDataAsJSON(returnData: boolean = false): string | void {
       return jsonData;
     }
 
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonData);
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    const dateStr = new Date().toISOString().split('T')[0];
-    downloadAnchor.setAttribute("download", `attendenz_backup_${dateStr}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+    const dateStr = new Date().toISOString().split("T")[0];
+    const blob = new Blob([jsonData], { type: "application/json" });
+    const filename = `attendenz_backup_${dateStr}.json`;
+    const file = new File([blob], filename, { type: "application/json" });
+
+    // iOS PWA Share Sheet Fix for File Backup
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({
+        files: [file],
+        title: "Attendenz Backup",
+        text: "Backup file for Attendenz-Tracker",
+      }).catch(err => {
+        if (err.name !== "AbortError") console.error("Share failed:", err);
+      });
+    } else {
+      // Desktop fallback
+      const url = URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement("a");
+      downloadAnchor.setAttribute("href", url);
+      downloadAnchor.setAttribute("download", filename);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      URL.revokeObjectURL(url);
+    }
   } catch (err) {
      // console.error('Failed to export JSON backup:', err);
     import("sonner").then(({ toast }) => toast.info('Failed to export data backup.'));
