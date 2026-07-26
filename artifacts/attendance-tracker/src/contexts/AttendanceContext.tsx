@@ -53,6 +53,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         }
         if (Object.keys(migrated).length !== Object.keys(raw).length ||
             Object.entries(migrated).some(([k, v]) => raw[k] !== v)) {
+          localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(migrated));
           storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(migrated));
         }
         setHomeSelections(migrated);
@@ -64,72 +65,114 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
 
   const savePreferredPercentage = (p: number) => {
     setPreferredPercentage(p);
+    localStorage.setItem(PREFERRED_PERCENTAGE_KEY, JSON.stringify(p));
     storageSetItem(PREFERRED_PERCENTAGE_KEY, JSON.stringify(p));
   };
 
   const saveSubjects = (data: Record<string, AttendanceData>) => {
     setSubjects(data);
+    localStorage.setItem(SUBJECTS_KEY, JSON.stringify(data));
     storageSetItem(SUBJECTS_KEY, JSON.stringify(data));
   };
 
   const saveWards = (data: Record<string, AttendanceData>) => {
     setWards(data);
+    localStorage.setItem(WARD_KEY, JSON.stringify(data));
     storageSetItem(WARD_KEY, JSON.stringify(data));
   };
 
   const saveHomeSelections = (data: Record<string, SelectionType>) => {
     setHomeSelections(data);
+    localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(data));
     storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(data));
   };
 
   const updateSubject = (subject: string, attended: number, missed: number) => {
-    saveSubjects({ ...subjects, [subject]: { attended, missed } });
+    setSubjects(prev => {
+      const updated = { ...prev, [subject]: { attended, missed } };
+      localStorage.setItem(SUBJECTS_KEY, JSON.stringify(updated));
+      storageSetItem(SUBJECTS_KEY, JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const updateWard = (ward: string, attended: number, missed: number) => {
-    saveWards({ ...wards, [ward]: { attended, missed } });
+    setWards(prev => {
+      const updated = { ...prev, [ward]: { attended, missed } };
+      localStorage.setItem(WARD_KEY, JSON.stringify(updated));
+      storageSetItem(WARD_KEY, JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const updateHomeSelection = (homeKey: string, subject: string, selection: SelectionType, isWard: boolean) => {
     const previous = homeSelections[homeKey];
 
-    let targetData = isWard ? { ...wards } : { ...subjects };
-    const current = targetData[subject] || { attended: 0, missed: 0 };
-    let newAttended = current.attended;
-    let newMissed = current.missed;
+    // Helper function to update subject/ward state immutably using latest functional state
+    const updateTargetCounts = (deltaAttended: number, deltaMissed: number) => {
+      if (isWard) {
+        setWards(prev => {
+          const current = prev[subject] || { attended: 0, missed: 0 };
+          const newAttended = Math.max(0, current.attended + deltaAttended);
+          const newMissed = Math.max(0, current.missed + deltaMissed);
+          const updated = { ...prev, [subject]: { attended: newAttended, missed: newMissed } };
+          localStorage.setItem(WARD_KEY, JSON.stringify(updated));
+          storageSetItem(WARD_KEY, JSON.stringify(updated));
+          return updated;
+        });
+      } else {
+        setSubjects(prev => {
+          const current = prev[subject] || { attended: 0, missed: 0 };
+          const newAttended = Math.max(0, current.attended + deltaAttended);
+          const newMissed = Math.max(0, current.missed + deltaMissed);
+          const updated = { ...prev, [subject]: { attended: newAttended, missed: newMissed } };
+          localStorage.setItem(SUBJECTS_KEY, JSON.stringify(updated));
+          storageSetItem(SUBJECTS_KEY, JSON.stringify(updated));
+          return updated;
+        });
+      }
+    };
 
     if (previous === selection) {
-      if (previous === 'attended') newAttended = Math.max(0, newAttended - 1);
-      if (previous === 'missed')   newMissed   = Math.max(0, newMissed   - 1);
+      // Toggle off selection
+      let dAttended = 0;
+      let dMissed = 0;
+      if (previous === 'attended') dAttended = -1;
+      if (previous === 'missed') dMissed = -1;
 
-      if (isWard) {
-        saveWards({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
-      } else {
-        saveSubjects({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
-      }
+      updateTargetCounts(dAttended, dMissed);
 
-      const { [homeKey]: _removed, ...rest } = homeSelections;
-      setHomeSelections(rest);
-      storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(rest));
+      setHomeSelections(prev => {
+        const { [homeKey]: _removed, ...rest } = prev;
+        localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(rest));
+        storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(rest));
+        return rest;
+      });
     } else {
-      if (previous === 'attended') newAttended = Math.max(0, newAttended - 1);
-      if (previous === 'missed')   newMissed   = Math.max(0, newMissed   - 1);
+      // Toggle to new selection
+      let dAttended = 0;
+      let dMissed = 0;
+      if (previous === 'attended') dAttended -= 1;
+      if (previous === 'missed') dMissed -= 1;
+      if (selection === 'attended') dAttended += 1;
+      if (selection === 'missed') dMissed += 1;
 
-      if (selection === 'attended') newAttended += 1;
-      if (selection === 'missed')   newMissed   += 1;
+      updateTargetCounts(dAttended, dMissed);
 
-      if (isWard) {
-        saveWards({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
-      } else {
-        saveSubjects({ ...targetData, [subject]: { attended: newAttended, missed: newMissed } });
-      }
-
-      saveHomeSelections({ ...homeSelections, [homeKey]: selection });
+      setHomeSelections(prev => {
+        const updated = { ...prev, [homeKey]: selection };
+        localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(updated));
+        storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(updated));
+        return updated;
+      });
     }
   };
 
   /** Wipes all attendance data from state and IndexedDB/localStorage. Called when starting fresh. */
   const resetAllData = () => {
+    localStorage.removeItem(SUBJECTS_KEY);
+    localStorage.removeItem(WARD_KEY);
+    localStorage.removeItem(HOME_SELECTIONS_KEY);
     storageRemoveItem(SUBJECTS_KEY);
     storageRemoveItem(WARD_KEY);
     storageRemoveItem(HOME_SELECTIONS_KEY);
@@ -183,6 +226,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     setSubjects(newSubjects);
     setWards(newWards);
     setHomeSelections(newHomeSelections);
+    localStorage.setItem(SUBJECTS_KEY, JSON.stringify(newSubjects));
+    localStorage.setItem(WARD_KEY, JSON.stringify(newWards));
+    localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(newHomeSelections));
     storageSetItem(SUBJECTS_KEY, JSON.stringify(newSubjects));
     storageSetItem(WARD_KEY, JSON.stringify(newWards));
     storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(newHomeSelections));
