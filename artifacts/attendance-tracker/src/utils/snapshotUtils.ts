@@ -23,6 +23,10 @@ export function formatDateDDMMYY(d: Date = new Date()): string {
 // Keys to preserve during Cache Clear
 const DATA_KEYS_TO_KEEP = [
   'attendenz_snapshots_v1',
+  'attendance_tracker_subjects',
+  'attendance_tracker_ward',
+  'attendance_tracker_home_selections',
+  'attendance_tracker_preferred_percentage',
   'attendance_data',
   'custom_subjects',
   'custom_wards',
@@ -187,7 +191,13 @@ export function clearLocalCache(): number {
 
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key && !DATA_KEYS_TO_KEEP.includes(key) && !key.startsWith('attendenz_') && !key.startsWith('att_')) {
+    if (
+      key && 
+      !DATA_KEYS_TO_KEEP.includes(key) && 
+      !key.startsWith('attendenz_') && 
+      !key.startsWith('att_') && 
+      !key.startsWith('attendance_tracker_')
+    ) {
       keysToRemove.push(key);
     }
   }
