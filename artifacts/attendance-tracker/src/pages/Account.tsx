@@ -154,6 +154,7 @@ export default function Account() {
     const rawItems: Array<{ name: string; category?: string; attended: number; total: number }> = [];
 
     if (subjectMode === 'preloaded') {
+      // Academic subjects
       for (const cat of CATEGORIES) {
         for (const sub of cat.subjects) {
           const data = subjects[sub.name] || { attended: 0, missed: 0 };
@@ -165,8 +166,9 @@ export default function Account() {
           });
         }
       }
+      // Ward rotations - FIXED: Added (Ward) suffix and proper key
       for (const w of WARD_SUBJECTS) {
-        const data = wards[w.name] || { attended: 0, missed: 0 };
+        const data = wards[`ward-${w.name}`] || { attended: 0, missed: 0 };
         rawItems.push({
           name: `${w.name} (Ward)`,
           category: 'Clinical Wards',
@@ -175,6 +177,7 @@ export default function Account() {
         });
       }
     } else {
+      // Custom subjects
       for (const cs of customSubjects) {
         const data = subjects[cs.name] || { attended: 0, missed: 0 };
         rawItems.push({
@@ -184,8 +187,9 @@ export default function Account() {
           total: data.attended + data.missed
         });
       }
+      // Custom wards - FIXED: Added (Ward) suffix and proper key
       for (const cw of customWards) {
-        const data = wards[cw.name] || { attended: 0, missed: 0 };
+        const data = wards[`ward-${cw.name}`] || { attended: 0, missed: 0 };
         rawItems.push({
           name: `${cw.name} (Ward)`,
           category: 'Custom Wards',
@@ -224,7 +228,7 @@ export default function Account() {
       } else if (total > 0) {
         neededText = 'Target Achieved';
       } else {
-        neededText = 'No Classes Logged';
+        neededText = '0 needed';
       }
 
       return {
