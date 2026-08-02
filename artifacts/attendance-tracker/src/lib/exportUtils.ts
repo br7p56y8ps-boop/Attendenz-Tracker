@@ -148,7 +148,7 @@ doc.text(`Routine Mode: `, 20, y + 16);
 doc.setFont('helvetica', 'normal');
 doc.text(routineMode, 50, y + 16);
 
-// ── Generated (with superscript ordinal and time) ──
+// ── Generated (with superscript ordinal, time, and reduced gap) ──
 const now = new Date();
 const day = now.getDate();
 const monthShort = now.toLocaleString('en-US', { month: 'short' });
@@ -165,15 +165,16 @@ const dayText = `${day}`;
 const dayX = pageWidth / 2 + 35;
 doc.text(dayText, dayX, y + 8);
 
-// Draw suffix as superscript (smaller, raised)
-const suffixX = dayX + doc.getTextWidth(dayText) + 1;
+// Draw suffix as superscript (smaller, raised) – NO extra gap after day
+const suffixX = dayX + doc.getTextWidth(dayText); // removed +1
 doc.setFontSize(6);
 doc.text(suffix, suffixX, y + 6);
 doc.setFontSize(10);
 
-// Draw month, year, and time
-const restText = ` ${monthShort} '${yearShort} at ${timeStr}`;
-doc.text(restText, suffixX + doc.getTextWidth(suffix) + 1, y + 8);
+// Draw month, year, and time – NO extra gap after suffix
+const restText = ` ${monthShort} '${yearShort} at ${timeStr}`; // starts with a space
+const restX = suffixX + doc.getTextWidth(suffix); // removed +1
+doc.text(restText, restX, y + 8);
 
 // ── Scope (with reduced font size)
 doc.setFont('helvetica', 'bold');
@@ -182,7 +183,6 @@ doc.setFont('helvetica', 'normal');
 doc.setFontSize(8);
 doc.text(filterTitle, pageWidth / 2 + 35, y + 16);
 doc.setFontSize(10);
-
 y += 32;
 
   // ── Table Drawing Helper ──
