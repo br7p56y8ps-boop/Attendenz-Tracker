@@ -242,10 +242,10 @@ export default function Account() {
       return {
         name: item.name,
         category: item.category,
-        attended,
-        total,
-        plannedTotal,
-        pct,
+        attended: attended,
+        total: total,
+        plannedTotal: plannedTotal,
+        pct: pct,
         neededForTarget: neededText
       };
     });
