@@ -5,7 +5,8 @@ export interface AttendanceReportItem {
   name: string;
   category?: string;
   attended: number;
-  total: number;
+  total: number;          // conducted classes (attended + missed)
+  plannedTotal: number;   // NEW: total planned classes
   pct: number;
   neededForTarget: string;
 }
@@ -248,7 +249,7 @@ export function generatePDFReport(options: ExportReportOptions) {
         const target = targetPct;
         const conducted = item.total;
         const attended = item.attended;
-        const totalPlanned = item.total; // Using total as planned total
+        const plannedTotal = item.plannedTotal;
         
         // Remark 1: Based on conducted classes only
         let remark1 = '';
@@ -276,17 +277,17 @@ export function generatePDFReport(options: ExportReportOptions) {
         // Remark 2: Based on total planned classes
         let remark2 = '';
         let remark2Color = [15, 23, 42];
-        if (totalPlanned > 0) {
-          const pct = (attended / totalPlanned) * 100;
+        if (plannedTotal > 0) {
+          const pct = (attended / plannedTotal) * 100;
           if (pct >= target) {
             remark2 = 'Target Achieved';
             remark2Color = [16, 185, 129]; // Green
           } else {
-            const needed = Math.ceil((target * totalPlanned - 100 * attended) / (100 - target));
-            const remaining = totalPlanned - conducted;
+            const needed = Math.ceil((target * plannedTotal - 100 * attended) / (100 - target));
+            const remaining = plannedTotal - conducted;
             if (needed > remaining) {
               remark2 = 'Better Luck Next Life';
-              remark2Color = [239, 68, 68]; // Red 😂
+              remark2Color = [239, 68, 68]; // Red
             } else if (needed > 0) {
               remark2 = `${needed} more`;
               remark2Color = [234, 179, 8]; // Yellow/Orange
@@ -449,7 +450,7 @@ export function generateExcelReport(options: ExportReportOptions) {
     const academicRows = academicItems.map(item => {
       const conducted = item.total;
       const attended = item.attended;
-      const totalPlanned = item.total;
+      const plannedTotal = item.plannedTotal;
       const target = targetPct;
       
       // Remark 1: Based on conducted classes only
@@ -468,13 +469,13 @@ export function generateExcelReport(options: ExportReportOptions) {
 
       // Remark 2: Based on total planned classes
       let remark2 = '';
-      if (totalPlanned > 0) {
-        const pct = (attended / totalPlanned) * 100;
+      if (plannedTotal > 0) {
+        const pct = (attended / plannedTotal) * 100;
         if (pct >= target) {
           remark2 = 'Target Achieved';
         } else {
-          const needed = Math.ceil((target * totalPlanned - 100 * attended) / (100 - target));
-          const remaining = totalPlanned - conducted;
+          const needed = Math.ceil((target * plannedTotal - 100 * attended) / (100 - target));
+          const remaining = plannedTotal - conducted;
           if (needed > remaining) {
             remark2 = 'Better Luck Next Life';
           } else if (needed > 0) {
@@ -522,7 +523,7 @@ export function generateExcelReport(options: ExportReportOptions) {
     const wardRows = wardItems.map(item => {
       const conducted = item.total;
       const attended = item.attended;
-      const totalPlanned = item.total;
+      const plannedTotal = item.plannedTotal;
       const target = targetPct;
       
       let remark1 = '';
@@ -539,13 +540,13 @@ export function generateExcelReport(options: ExportReportOptions) {
       }
 
       let remark2 = '';
-      if (totalPlanned > 0) {
-        const pct = (attended / totalPlanned) * 100;
+      if (plannedTotal > 0) {
+        const pct = (attended / plannedTotal) * 100;
         if (pct >= target) {
           remark2 = 'Target Achieved';
         } else {
-          const needed = Math.ceil((target * totalPlanned - 100 * attended) / (100 - target));
-          const remaining = totalPlanned - conducted;
+          const needed = Math.ceil((target * plannedTotal - 100 * attended) / (100 - target));
+          const remaining = plannedTotal - conducted;
           if (needed > remaining) {
             remark2 = 'Better Luck Next Life';
           } else if (needed > 0) {
