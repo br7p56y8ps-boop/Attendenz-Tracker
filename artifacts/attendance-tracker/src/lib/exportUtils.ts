@@ -118,36 +118,70 @@ export async function generatePDFReport(options: ExportReportOptions) {
   doc.text('Attendenz Tracker • Local Device Academic Record', pageWidth / 2, y, { align: 'center' });
   y += 12; // 2 line breaks after description
 
-  // ── 3. METADATA CARD (restored) ──
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(15, y, pageWidth - 30, 26, 3, 3, 'FD');
-  doc.setTextColor(51, 65, 85);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text(`Student Name: `, 20, y + 8);
-  doc.setFont('helvetica', 'normal');
-  doc.text(studentName || 'Medical Student', 50, y + 8);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Routine Mode: `, 20, y + 16);
-  doc.setFont('helvetica', 'normal');
-  doc.text(routineMode, 50, y + 16);
-  const nowStr = new Date().toLocaleString('en-GB', {
-  day: '2-digit',
-  month: '2-digit',
-  year: '2-digit',
-  });
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Generated: `, pageWidth / 2 + 10, y + 8);
-  doc.setFont('helvetica', 'normal');
-  doc.text(nowStr, pageWidth / 2 + 35, y + 8);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Scope: `, pageWidth / 2 + 10, y + 16);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text(filterTitle, pageWidth / 2 + 35, y + 16);
-  doc.setFontSize(10);
-  y += 32;
+    // ── Helper: get ordinal suffix (st, nd, rd, th)
+    function getOrdinalSuffix(day: number): string {
+    if (day >= 11 && day <= 13) return 'th';
+    switch (day % 10) {
+       case 1: return 'st';
+       case 2: return 'nd';
+       case 3: return 'rd';
+       default: return 'th';
+       }
+     }
+
+      // ── 3. METADATA CARD (restored) ──
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(15, y, pageWidth - 30, 26, 3, 3, 'FD');
+      doc.setTextColor(51, 65, 85);
+
+     // Student Name
+     doc.setFont('helvetica', 'bold');
+     doc.setFontSize(10);
+     doc.text(`Student Name: `, 20, y + 8);
+     doc.setFont('helvetica', 'normal');
+     doc.text(studentName || 'Medical Student', 50, y + 8);
+
+     // Routine Mode
+     doc.setFont('helvetica', 'bold');
+     doc.text(`Routine Mode: `, 20, y + 16);
+     doc.setFont('helvetica', 'normal');
+     doc.text(routineMode, 50, y + 16);
+
+    // ── Generated (with superscript ordinal) ──
+     const now = new Date();
+     const day = now.getDate();
+     const monthShort = now.toLocaleString('en-US', { month: 'short' });
+     const yearShort = now.getFullYear().toString().slice(2); // '26'
+     const suffix = getOrdinalSuffix(day);
+
+     doc.setFont('helvetica', 'bold');
+     doc.text(`Generated: `, pageWidth / 2 + 10, y + 8);
+    doc.setFont('helvetica', 'normal');
+
+           // Draw day number
+            const dayText = `${day}`;
+            const dayX = pageWidth / 2 + 35;
+            doc.text(dayText, dayX, y + 8);
+
+           // Draw suffix as superscript
+           const suffixX = dayX + doc.getTextWidth(dayText) + 1; // small gap
+           doc.setFontSize(6); // smaller
+           doc.text(suffix, suffixX, y + 6); // raise by 2mm
+           doc.setFontSize(10); // restore
+
+          // Draw month and year
+           const restText = ` ${monthShort} '${yearShort}`;
+           doc.text(restText, suffixX + doc.getTextWidth(suffix) + 1, y + 8);
+
+    // ── Scope
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Scope: `, pageWidth / 2 + 10, y + 16);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(filterTitle, pageWidth / 2 + 35, y + 16);
+    doc.setFontSize(10);
+    y += 32;
 
   // ── Table Drawing Helper ──
   const drawTable = (
