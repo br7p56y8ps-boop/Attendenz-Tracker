@@ -13,7 +13,14 @@ export function getCurrentDateStr(date: Date = new Date()) {
 }
 
 export function parseDateStr(dateStr: string) {
-  // expects YYYY-MM-DD
   const [y, m, d] = dateStr.split('-');
   return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
 }
+
+// New shared color logic
+export const pctColor = (pct: number, preferredPercentage: number) => {
+  const GREEN_OFFSET = 5;
+  if (pct >= preferredPercentage + GREEN_OFFSET) return 'var(--color-success)';
+  if (pct >= preferredPercentage) return 'var(--color-warning)';
+  return 'var(--color-destructive)';
+};
