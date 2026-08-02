@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '@/contexts/AttendanceContext';
-import { cn } from '@/lib/utils';
+import { cn, pctColor } from '@/lib/utils';
 import { ChevronDown, ChevronUp, Info, Plus, Minus, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
@@ -86,11 +86,8 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
   const rawRequired = Math.max(0, Math.ceil(totalPlanned * (targetPct / 100)) - attendedNum);
   const requiredToAttend = rawRequired > remaining ? "Not possible" : rawRequired;
 
-  const getPercentageColor = (pct: number) => {
-    if (pct >= targetPct) return 'text-success';
-    if (pct >= targetPct - 10) return 'text-warning';
-    return 'text-destructive';
-  };
+  // NEW: Use pctColor from utils with the new logic
+  const percentageColor = pctColor(percentage, preferredPercentage);
 
   const isMaxReached = totalConducted >= totalPlanned;
 
@@ -106,7 +103,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <div className={cn("text-lg font-bold", getPercentageColor(percentage))}>
+        <div className="text-lg font-bold" style={{ color: percentageColor }}>
           {totalConducted === 0 ? '--' : `${percentage.toFixed(0)}%`}
         </div>
         <div className="text-muted-foreground hover:text-foreground p-0.5">
