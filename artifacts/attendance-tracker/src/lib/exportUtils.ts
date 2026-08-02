@@ -34,6 +34,7 @@ export function generatePDFReport(options: ExportReportOptions) {
     overallPct
   } = options;
 
+  // Separate academic and ward items
   const academicItems = items.filter(item => !item.name.includes('(Ward)'));
   const wardItems = items.filter(item => item.name.includes('(Ward)'));
 
@@ -46,7 +47,7 @@ export function generatePDFReport(options: ExportReportOptions) {
   const margin = 15;
   let y = 18;
 
-  // Header
+  // ── Header ──
   doc.setFillColor(15, 23, 42);
   doc.rect(margin, y, pageWidth - margin * 2, 28, 'F');
   doc.setTextColor(255, 255, 255);
@@ -59,7 +60,7 @@ export function generatePDFReport(options: ExportReportOptions) {
   doc.text('Attendenz Tracker • Local Device Academic Record', pageWidth / 2, y + 20, { align: 'center' });
   y += 34;
 
-  // Metadata
+  // ── Metadata ──
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(margin, y, pageWidth - margin * 2, 26, 3, 3, 'FD');
@@ -84,8 +85,11 @@ export function generatePDFReport(options: ExportReportOptions) {
   doc.text(filterTitle, pageWidth / 2 + 35, y + 16);
   y += 32;
 
+  // ── Table Drawing Helper ──
   const drawTable = (title: string, tableItems: AttendanceReportItem[], startY: number, isWard: boolean = false) => {
     let currentY = startY;
+
+    // Section title
     if (isWard) {
       doc.setFillColor(239, 246, 255);
       doc.setDrawColor(191, 219, 254);
@@ -110,6 +114,7 @@ export function generatePDFReport(options: ExportReportOptions) {
       pct: margin + colWidth * 5.5
     };
 
+    // ── Main Header ──
     if (isWard) doc.setFillColor(30, 58, 138);
     else doc.setFillColor(30, 41, 59);
     doc.rect(margin, currentY, pageWidth - margin * 2, 9, 'F');
@@ -124,6 +129,7 @@ export function generatePDFReport(options: ExportReportOptions) {
     doc.text('Current %', colX.pct, currentY + 6, { align: 'center' });
     currentY += 9;
 
+    // ── Sub-Header ──
     doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
     doc.rect(margin, currentY, pageWidth - margin * 2, 7, 'F');
     doc.setTextColor(255, 255, 255);
@@ -140,10 +146,12 @@ export function generatePDFReport(options: ExportReportOptions) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
 
+    // ── Rows ──
     tableItems.forEach((item, index) => {
       if (currentY > 260) {
         doc.addPage();
         currentY = 20;
+        // Redraw headers on new page
         if (isWard) doc.setFillColor(30, 58, 138);
         else doc.setFillColor(30, 41, 59);
         doc.rect(margin, currentY, pageWidth - margin * 2, 9, 'F');
@@ -176,105 +184,171 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.setFillColor(241, 245, 249);
         doc.rect(margin, currentY, pageWidth - margin * 2, 8, 'F');
       }
-      doc.setDrawColor(226, 232, 240);
-      doc.line(margin, currentY + 8, pageWidth - margin, currentY + 8);
 
-      doc.setTextColor(15, 23, 42);
+      // ── Draw all side borders ──
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(margin, currentY, pageWidth - margin * 2, 8, 'S');
+
       const subName = item.name.length > 20 ? item.name.substring(0, 18) + '..' : item.name;
 
-      if (item.total === 0) {
+      // ── Calculate Remarks ──
+      const target = targetPct;
+      const conducted = item.total;
+      const attended = item.attended;
+      const plannedTotal = item.plannedTotal;
+
+      // For Preferred % (based on conducted classes only)
+      let remark1Text = '';
+      let remark1Color = [15, 23, 42];
+      if (conducted === 0) {
+        remark1Text = 'Yet to be Conducted';
+        remark1Color = [148, 163, 184];
+      } else {
+        const pct = (attended / conducted) * 100;
+        if (pct >= target) {
+          remark1Text = 'Target Achieved';
+          remark1Color = [16, 185, 129];
+        } else {
+          const needed = Math.ceil((target * conducted - 100 * attended) / (100 - target));
+          if (needed > 0) {
+            const classText = needed === 1 ? 'Class' : 'Classes';
+            remark1Text = `Attend next ${needed} ${classText}`;
+            remark1Color = [234, 179, 8];
+          } else {
+            remark1Text = 'Target Achieved';
+            remark1Color = [16, 185, 129];
+          }
+        }
+      }
+
+      // For Planned Classes (based on total planned classes)
+      let remark2Text = '';
+      let remark2Color = [15, 23, 42];
+      let mergeRemarks = false;
+
+      if (conducted === 0) {
+        remark2Text = 'Yet to be Conducted';
+        remark2Color = [148, 163, 184];
+        // This will be handled separately (merged across columns 2-6)
+      } else if (plannedTotal > 0) {
+        const pctPlanned = (attended / plannedTotal) * 100;
+        if (pctPlanned >= target) {
+          // Check if remark1 is also "Target Achieved" → merge both
+          if (remark1Text === 'Target Achieved') {
+            remark2Text = 'Target Achieved';
+            remark2Color = [16, 185, 129];
+            mergeRemarks = true;
+          } else {
+            remark2Text = 'Target Achieved';
+            remark2Color = [16, 185, 129];
+            mergeRemarks = false;
+          }
+        } else {
+          const needed = Math.ceil((target * plannedTotal - 100 * attended) / (100 - target));
+          const remaining = plannedTotal - conducted;
+          const canMiss = remaining - needed;
+
+          if (needed > remaining) {
+            remark2Text = 'Better Luck Next Life';
+            remark2Color = [239, 68, 68];
+            mergeRemarks = true;
+          } else if (canMiss > 0) {
+            remark2Text = `Can miss ${canMiss}`;
+            remark2Color = [234, 179, 8];
+            mergeRemarks = false;
+          } else if (canMiss === 0) {
+            const classText = remaining === 1 ? 'Class' : 'Classes';
+            remark2Text = `Must Attend remaining ${remaining} ${classText}`;
+            remark2Color = [239, 68, 68];
+            mergeRemarks = true;
+          } else {
+            remark2Text = 'Better Luck Next Life';
+            remark2Color = [239, 68, 68];
+            mergeRemarks = true;
+          }
+        }
+      } else {
+        remark2Text = 'No Planned Classes';
+        remark2Color = [148, 163, 184];
+        mergeRemarks = false;
+      }
+
+      // ── Draw Row ──
+
+      // If conducted === 0 → merge columns 2-6 with "Yet to be Conducted"
+      if (conducted === 0) {
+        doc.setTextColor(15, 23, 42);
+        doc.text(subName, colX.subject, currentY + 5.5, { align: 'center' });
+
         const mergedText = 'Yet to be Conducted';
         const startX = colX.conducted - colWidth / 2;
         const endX = colX.pct + colWidth / 2;
         const centerX = (startX + endX) / 2;
         doc.setTextColor(148, 163, 184);
         doc.setFont('helvetica', 'italic');
-        doc.text(subName, colX.subject, currentY + 5.5, { align: 'center' });
         doc.text(mergedText, centerX, currentY + 5.5, { align: 'center' });
         doc.setFont('helvetica', 'normal');
-      } else {
-        doc.text(subName, colX.subject, currentY + 5.5, { align: 'center' });
-        doc.text(String(item.total), colX.conducted, currentY + 5.5, { align: 'center' });
-        doc.text(String(item.attended), colX.present, currentY + 5.5, { align: 'center' });
+        currentY += 8;
+        return;
+      }
 
-        const target = targetPct;
-        const conducted = item.total;
-        const attended = item.attended;
-        const plannedTotal = item.plannedTotal;
+      // ── Normal row ──
+      doc.setTextColor(15, 23, 42);
+      doc.text(subName, colX.subject, currentY + 5.5, { align: 'center' });
+      doc.text(String(conducted), colX.conducted, currentY + 5.5, { align: 'center' });
+      doc.text(String(attended), colX.present, currentY + 5.5, { align: 'center' });
 
-        let remark1 = '';
-        let remark1Color = [15, 23, 42];
-        if (conducted > 0) {
-          const pct = (attended / conducted) * 100;
-          if (pct >= target) {
-            remark1 = 'Target Achieved';
-            remark1Color = [16, 185, 129];
-          } else {
-            const needed = Math.ceil((target * conducted - 100 * attended) / (100 - target));
-            if (needed > 0) {
-              remark1 = `${needed} more`;
-              remark1Color = [234, 179, 8];
-            } else {
-              remark1 = 'Target Achieved';
-              remark1Color = [16, 185, 129];
-            }
-          }
-        } else {
-          remark1 = 'Yet to be Conducted';
-          remark1Color = [148, 163, 184];
-        }
+      // ── Draw Remarks ──
+      if (mergeRemarks) {
+        // Merge both remark columns
+        const startX = colX.remark1 - colWidth / 2;
+        const endX = colX.remark2 + colWidth / 2;
+        const centerX = (startX + endX) / 2;
 
-        let remark2 = '';
-        let remark2Color = [15, 23, 42];
-        if (plannedTotal > 0) {
-          const pct = (attended / plannedTotal) * 100;
-          if (pct >= target) {
-            remark2 = 'Target Achieved';
-            remark2Color = [16, 185, 129];
-          } else {
-            const needed = Math.ceil((target * plannedTotal - 100 * attended) / (100 - target));
-            const remaining = plannedTotal - conducted;
-            if (needed > remaining) {
-              remark2 = 'Better Luck Next Life';
-              remark2Color = [239, 68, 68];
-            } else if (needed > 0) {
-              remark2 = `${needed} more`;
-              remark2Color = [234, 179, 8];
-            } else {
-              remark2 = 'Target Achieved';
-              remark2Color = [16, 185, 129];
-            }
-          }
-        } else {
-          remark2 = 'Yet to be Conducted';
-          remark2Color = [148, 163, 184];
-        }
-
-        doc.setTextColor(remark1Color[0], remark1Color[1], remark1Color[2]);
-        if (remark1 === 'Better Luck Next Life') doc.setFont('helvetica', 'bold');
-        doc.text(remark1, colX.remark1, currentY + 5.5, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-
+        // Use color from remark2 (since it's the one that triggered the merge)
         doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
-        if (remark2 === 'Better Luck Next Life') doc.setFont('helvetica', 'bold');
-        doc.text(remark2, colX.remark2, currentY + 5.5, { align: 'center' });
+        if (remark2Text === 'Better Luck Next Life' || remark2Text.includes('Must Attend')) {
+          doc.setFont('helvetica', 'bold');
+        }
+        doc.text(remark2Text, centerX, currentY + 5.5, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+      } else {
+        // Split: show both remark columns separately
+        // Remark 1
+        doc.setTextColor(remark1Color[0], remark1Color[1], remark1Color[2]);
+        if (remark1Text.includes('Attend')) {
+          doc.setFont('helvetica', 'bold');
+        }
+        doc.text(remark1Text, colX.remark1, currentY + 5.5, { align: 'center' });
         doc.setFont('helvetica', 'normal');
 
-        if (item.pct >= targetPct) {
-          doc.setTextColor(16, 185, 129);
-        } else {
-          doc.setTextColor(225, 29, 72);
+        // Remark 2
+        doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
+        if (remark2Text.includes('Can miss') || remark2Text === 'Target Achieved') {
+          doc.setFont('helvetica', 'bold');
         }
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${item.pct.toFixed(1)}%`, colX.pct, currentY + 5.5, { align: 'center' });
+        doc.text(remark2Text, colX.remark2, currentY + 5.5, { align: 'center' });
         doc.setFont('helvetica', 'normal');
       }
+
+      // ── Current % ──
+      if (item.pct >= targetPct) {
+        doc.setTextColor(16, 185, 129);
+      } else {
+        doc.setTextColor(225, 29, 72);
+      }
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${item.pct.toFixed(1)}%`, colX.pct, currentY + 5.5, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+
       currentY += 8;
     });
+
     currentY += 2;
     return currentY;
   };
 
+  // ── Draw tables ──
   if (academicItems.length > 0) {
     y = drawTable('Academic Subjects', academicItems, y, false);
     y += 6;
@@ -285,6 +359,7 @@ export function generatePDFReport(options: ExportReportOptions) {
     y += 6;
   }
 
+  // ── Summary ──
   if (y > 235) { doc.addPage(); y = 20; }
   const combinedAttended = overallAttended + wardOverallAttended;
   const combinedTotal = overallTotal + wardOverallTotal;
@@ -335,6 +410,7 @@ export function generatePDFReport(options: ExportReportOptions) {
     doc.text(wardRemark, margin + 35, summaryY + 2);
   }
   y += boxHeight + 6;
+
   doc.setDrawColor(203, 213, 225);
   doc.line(margin, 280, pageWidth - margin, 280);
   doc.setFontSize(8);
@@ -344,6 +420,7 @@ export function generatePDFReport(options: ExportReportOptions) {
   doc.save(`Attendance_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
+// ── Excel Export ──
 export function generateExcelReport(options: ExportReportOptions) {
   const { studentName, routineMode, filterTitle, items, overallAttended, overallTotal, overallPct, targetPct } = options;
   const academicItems = items.filter(item => !item.name.includes('(Ward)'));
@@ -355,23 +432,64 @@ export function generateExcelReport(options: ExportReportOptions) {
   const workbook = XLSX.utils.book_new();
 
   if (academicItems.length > 0) {
-    const rows = academicItems.map(item => ({
-      'Subject': item.name,
-      'Class Conducted': item.total === 0 ? 'Yet to be Conducted' : item.total,
-      'Present': item.total === 0 ? '' : item.attended,
-      'To Reach Preferred %': item.total === 0 ? '' : item.neededForTarget,
-      'Based on Planned Classes': (() => {
-        if (item.total === 0) return 'Yet to be Conducted';
-        const pct = (item.attended / item.plannedTotal) * 100;
-        if (pct >= targetPct) return 'Target Achieved';
-        const needed = Math.ceil((targetPct * item.plannedTotal - 100 * item.attended) / (100 - targetPct));
-        const remaining = item.plannedTotal - item.total;
-        if (needed > remaining) return 'Better Luck Next Life';
-        if (needed > 0) return `${needed} more`;
-        return 'Target Achieved';
-      })(),
-      'Current %': item.total === 0 ? '' : Number(item.pct.toFixed(1))
-    }));
+    const rows = academicItems.map(item => {
+      const conducted = item.total;
+      const attended = item.attended;
+      const plannedTotal = item.plannedTotal;
+      const target = targetPct;
+
+      let remark1 = '';
+      let remark2 = '';
+      if (conducted === 0) {
+        remark1 = 'Yet to be Conducted';
+        remark2 = 'Yet to be Conducted';
+      } else {
+        const pct = (attended / conducted) * 100;
+        if (pct >= target) {
+          remark1 = 'Target Achieved';
+        } else {
+          const needed = Math.ceil((target * conducted - 100 * attended) / (100 - target));
+          remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
+        }
+
+        if (plannedTotal > 0) {
+          const pctPlanned = (attended / plannedTotal) * 100;
+          if (pctPlanned >= target) {
+            remark2 = 'Target Achieved';
+          } else {
+            const needed = Math.ceil((target * plannedTotal - 100 * attended) / (100 - target));
+            const remaining = plannedTotal - conducted;
+            const canMiss = remaining - needed;
+            if (needed > remaining) {
+              remark2 = 'Better Luck Next Life';
+            } else if (canMiss > 0) {
+              remark2 = `Can miss ${canMiss}`;
+            } else {
+              const classText = remaining === 1 ? 'Class' : 'Classes';
+              remark2 = `Must Attend remaining ${remaining} ${classText}`;
+            }
+          }
+        } else {
+          remark2 = 'No Planned Classes';
+        }
+
+        // If both are "Target Achieved", merge them
+        if (remark1 === 'Target Achieved' && remark2 === 'Target Achieved') {
+          remark1 = 'Target Achieved';
+          remark2 = '';
+        }
+      }
+
+      return {
+        'Subject': item.name,
+        'Class Conducted': conducted === 0 ? 'Yet to be Conducted' : conducted,
+        'Present': conducted === 0 ? '' : attended,
+        'To Reach Preferred %': remark1,
+        'Based on Planned Classes': remark2,
+        'Current %': conducted === 0 ? '' : Number(item.pct.toFixed(1))
+      };
+    });
+
     rows.push({
       'Subject': 'ACADEMIC SUMMARY',
       'Class Conducted': overallTotal,
@@ -380,29 +498,70 @@ export function generateExcelReport(options: ExportReportOptions) {
       'Based on Planned Classes': overallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
       'Current %': Number(overallPct.toFixed(1))
     });
+
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 15 }, { wch: 22 }, { wch: 28 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(workbook, ws, 'Academic Subjects');
   }
 
   if (wardItems.length > 0) {
-    const rows = wardItems.map(item => ({
-      'Rotation': item.name.replace(' (Ward)', ''),
-      'Class Conducted': item.total === 0 ? 'Yet to be Conducted' : item.total,
-      'Present': item.total === 0 ? '' : item.attended,
-      'To Reach Preferred %': item.total === 0 ? '' : item.neededForTarget,
-      'Based on Planned Classes': (() => {
-        if (item.total === 0) return 'Yet to be Conducted';
-        const pct = (item.attended / item.plannedTotal) * 100;
-        if (pct >= targetPct) return 'Target Achieved';
-        const needed = Math.ceil((targetPct * item.plannedTotal - 100 * item.attended) / (100 - targetPct));
-        const remaining = item.plannedTotal - item.total;
-        if (needed > remaining) return 'Better Luck Next Life';
-        if (needed > 0) return `${needed} more`;
-        return 'Target Achieved';
-      })(),
-      'Current %': item.total === 0 ? '' : Number(item.pct.toFixed(1))
-    }));
+    const rows = wardItems.map(item => {
+      const conducted = item.total;
+      const attended = item.attended;
+      const plannedTotal = item.plannedTotal;
+      const target = targetPct;
+
+      let remark1 = '';
+      let remark2 = '';
+      if (conducted === 0) {
+        remark1 = 'Yet to be Conducted';
+        remark2 = 'Yet to be Conducted';
+      } else {
+        const pct = (attended / conducted) * 100;
+        if (pct >= target) {
+          remark1 = 'Target Achieved';
+        } else {
+          const needed = Math.ceil((target * conducted - 100 * attended) / (100 - target));
+          remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
+        }
+
+        if (plannedTotal > 0) {
+          const pctPlanned = (attended / plannedTotal) * 100;
+          if (pctPlanned >= target) {
+            remark2 = 'Target Achieved';
+          } else {
+            const needed = Math.ceil((target * plannedTotal - 100 * attended) / (100 - target));
+            const remaining = plannedTotal - conducted;
+            const canMiss = remaining - needed;
+            if (needed > remaining) {
+              remark2 = 'Better Luck Next Life';
+            } else if (canMiss > 0) {
+              remark2 = `Can miss ${canMiss}`;
+            } else {
+              const classText = remaining === 1 ? 'Class' : 'Classes';
+              remark2 = `Must Attend remaining ${remaining} ${classText}`;
+            }
+          }
+        } else {
+          remark2 = 'No Planned Classes';
+        }
+
+        if (remark1 === 'Target Achieved' && remark2 === 'Target Achieved') {
+          remark1 = 'Target Achieved';
+          remark2 = '';
+        }
+      }
+
+      return {
+        'Rotation': item.name.replace(' (Ward)', ''),
+        'Class Conducted': conducted === 0 ? 'Yet to be Conducted' : conducted,
+        'Present': conducted === 0 ? '' : attended,
+        'To Reach Preferred %': remark1,
+        'Based on Planned Classes': remark2,
+        'Current %': conducted === 0 ? '' : Number(item.pct.toFixed(1))
+      };
+    });
+
     rows.push({
       'Rotation': 'WARD ROTATIONS SUMMARY',
       'Class Conducted': wardOverallTotal,
@@ -411,6 +570,7 @@ export function generateExcelReport(options: ExportReportOptions) {
       'Based on Planned Classes': wardOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
       'Current %': Number(wardOverallPct.toFixed(1))
     });
+
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 15 }, { wch: 22 }, { wch: 28 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(workbook, ws, 'Ward Rotations');
@@ -437,6 +597,7 @@ export function generateExcelReport(options: ExportReportOptions) {
   XLSX.writeFile(workbook, `Attendance_Report_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
+// ── CSV Export ──
 export function generateCSVReport(options: ExportReportOptions) {
   const { items, overallAttended, overallTotal, overallPct } = options;
   const academicItems = items.filter(item => !item.name.includes('(Ward)'));
