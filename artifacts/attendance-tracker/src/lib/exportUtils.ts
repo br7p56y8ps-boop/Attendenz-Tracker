@@ -115,7 +115,7 @@ export function generatePDFReport(options: ExportReportOptions) {
     doc.text(title, pageWidth / 2, currentY + 6, { align: 'center' });
     currentY += 9;
 
-    // 6 logical columns: Subject, Class Conducted, Present, Remarks (colspan 2), Current %
+    // 6 logical columns
     const colWidth = (pageWidth - margin * 2) / 6;
     const colX = [
       margin,
@@ -127,66 +127,96 @@ export function generatePDFReport(options: ExportReportOptions) {
       margin + colWidth * 6,
     ];
 
-    const headerRowHeight = 9;    // top row
-    const subHeaderRowHeight = 7; // bottom row
+    const headerRowHeight = 9;
+    const subHeaderRowHeight = 7;
     const totalHeaderHeight = headerRowHeight + subHeaderRowHeight;
 
-    // ── Draw full header rectangle background (both rows) ──
+    // ── Draw header ──
     doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
     doc.rect(margin, currentY, pageWidth - margin * 2, totalHeaderHeight, 'F');
 
-    // ── Determine vertical center of the full header block ──
     const headerBlockCenterY = currentY + totalHeaderHeight / 2;
-
-    // ── Draw the rowspan=2 headers (Subject, Class Conducted, Present, Current %) ──
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
-
     const headerLabel1 = isWard ? 'Rotation' : 'Subject';
     doc.text(headerLabel1, (colX[0] + colX[1]) / 2, headerBlockCenterY, { align: 'center' });
     doc.text('Class Conducted', (colX[1] + colX[2]) / 2, headerBlockCenterY, { align: 'center' });
     doc.text('Present', (colX[2] + colX[3]) / 2, headerBlockCenterY, { align: 'center' });
     doc.text('Current %', (colX[5] + colX[6]) / 2, headerBlockCenterY, { align: 'center' });
 
-    // ── "Remarks" (colspan=2) – vertically centered inside the top row ──
-    // Top row center Y = currentY + headerRowHeight/2
     const topRowCenterY = currentY + headerRowHeight / 2;
     doc.text('Remarks', (colX[3] + colX[5]) / 2, topRowCenterY, { align: 'center' });
 
-    // ── Sub‑headers (second row) ──
     const subRowCenterY = currentY + headerRowHeight + subHeaderRowHeight / 2;
     doc.setFontSize(6.5);
     doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subRowCenterY, { align: 'center' });
     doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subRowCenterY, { align: 'center' });
 
-    // ── Draw header borders ──
+    // Borders
     doc.setDrawColor(85, 85, 85);
     doc.setLineWidth(0.4);
-
-    // Top border of header
     doc.line(margin, currentY, pageWidth - margin, currentY);
-    // Bottom border of header (full width)
     doc.line(margin, currentY + totalHeaderHeight, pageWidth - margin, currentY + totalHeaderHeight);
-    // Horizontal divider between rows – ONLY inside Remarks group (colX[3] to colX[5])
     doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
-    // Vertical borders for all columns
     for (let i = 0; i <= 6; i++) {
       doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
     }
-
     currentY += totalHeaderHeight;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setLineWidth(0.2);
 
+    // ── Sort items: split remarks first, merged remarks later ──
+    // Helper to compute if row has merged remarks (true = merged)
+    const computeIsMerged = (item: AttendanceReportItem): boolean => {
+      const conducted = item.total;
+      if (conducted === 0) return true; // "Yet to be Conducted" is merged across columns 2-6
+      const plannedTotal = item.plannedTotal;
+      const attended = item.attended;
+      const target = targetPct;
+      if (plannedTotal <= 0) return false; // "No Planned Classes" – treat as split? We'll treat as false (split) to be safe.
+
+      const totalNeeded = Math.ceil((target * plannedTotal) / 100);
+      if (attended >= totalNeeded) {
+        // Check if remark1 is also Target Achieved
+        const conductedPct = conducted > 0 ? (attended / conducted) * 100 : 0;
+        let remark1IsTarget = false;
+        if (conducted > 0 && conductedPct >= target) remark1IsTarget = true;
+        else {
+          const needed1 = Math.ceil((target * conducted) / 100) - attended;
+          remark1IsTarget = needed1 <= 0;
+        }
+        if (remark1IsTarget) return true; // both Target Achieved → merged
+        return false; // remark1 not Target Achieved, so split
+      } else {
+        const remaining = plannedTotal - conducted;
+        const neededFromRemaining = totalNeeded - attended;
+        const canMiss = remaining - neededFromRemaining;
+        if (canMiss > 0) return false; // split: "Can miss X"
+        else if (canMiss === 0) return true; // "Must Attend" → merged
+        else return true; // "Better Luck" → merged
+      }
+    };
+
+    // Build sorted array
+    const sortedItems = tableItems.map(item => ({
+      item,
+      isMerged: computeIsMerged(item)
+    }));
+    sortedItems.sort((a, b) => {
+      // split (false) first, merged (true) later
+      if (a.isMerged === b.isMerged) return 0;
+      return a.isMerged ? 1 : -1;
+    });
+
     // ── Rows ──
-    tableItems.forEach((item, index) => {
+    sortedItems.forEach(({ item, isMerged: precomputedIsMerged }, index) => {
       if (currentY > 260) {
         doc.addPage();
         currentY = 20;
-        // Redraw headers on new page (same as above)
+        // Redraw headers (same as above)
         doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
         doc.rect(margin, currentY, pageWidth - margin * 2, totalHeaderHeight, 'F');
         const hbCenter = currentY + totalHeaderHeight / 2;
@@ -228,7 +258,7 @@ export function generatePDFReport(options: ExportReportOptions) {
       const attended = item.attended;
       const plannedTotal = item.plannedTotal;
 
-      // ── Compute Remarks ──
+      // ── Compute Remarks (same as before) ──
       let remark1Text = '';
       let remark1Color = [15, 23, 42];
       if (conducted === 0) {
@@ -295,24 +325,23 @@ export function generatePDFReport(options: ExportReportOptions) {
 
       const isYetToBeConducted = conducted === 0;
 
-      // ── Draw row borders ──
+      // ── Borders ──
       doc.setDrawColor(85, 85, 85);
       doc.setLineWidth(0.3);
       doc.line(margin, currentY, pageWidth - margin, currentY);
       doc.line(margin, currentY + 8, pageWidth - margin, currentY + 8);
 
       if (isYetToBeConducted) {
-        // Merge columns 2-6 with "Yet to be Conducted"
-        // Draw only necessary vertical lines: left of subject, between subject and merged, and right edge
         doc.line(colX[0], currentY, colX[0], currentY + 8);
         doc.line(colX[1], currentY, colX[1], currentY + 8);
         doc.line(colX[6], currentY, colX[6], currentY + 8);
 
-        // Subject name in column 1 (centered vertically)
+        // Subject name is bold
+        doc.setFont('helvetica', 'bold');
         doc.setTextColor(15, 23, 42);
         doc.text(subName, (colX[0] + colX[1]) / 2, currentY + 4, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
 
-        // Merged text across columns 2-6
         const mergedText = 'Yet to be Conducted';
         const startX = colX[1];
         const endX = colX[6];
@@ -326,15 +355,6 @@ export function generatePDFReport(options: ExportReportOptions) {
       }
 
       // ── Normal row ──
-      // Determine if we need to merge remarks columns
-      const finalMerge = mergeRemarks || (remark1Text === remark2Text && remark1Text !== '');
-      // If both texts are same and not empty, we merge; also if one is empty but the other is not, we merge? No – if one is empty (e.g., after merging Target Achieved in Excel), we need to check.
-      // Actually in PDF we control the logic: merge only if they are identical OR if one is empty and the other is a single message (i.e., not two different ones).
-      // We'll use the mergeRemarks flag from above (which is set when both are Target Achieved, or Must Attend, or Better Luck).
-      // For the case where remark2 is empty because we merged in Excel, we won't have that here.
-      // So use mergeRemarks as computed.
-
-      // Draw vertical borders
       for (let i = 0; i <= 6; i++) {
         if (mergeRemarks && i >= 3 && i <= 5) continue;
         doc.line(colX[i], currentY, colX[i], currentY + 8);
@@ -344,11 +364,15 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.line(colX[5], currentY, colX[5], currentY + 8);
       }
 
-      // ── Render cell content ──
       const cellCenterY = currentY + 4;
 
+      // Subject column: bold
+      doc.setFont('helvetica', 'bold');
       doc.setTextColor(15, 23, 42);
       doc.text(subName, (colX[0] + colX[1]) / 2, cellCenterY, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+
+      // Numeric columns: normal
       doc.text(String(conducted), (colX[1] + colX[2]) / 2, cellCenterY, { align: 'center' });
       doc.text(String(attended), (colX[2] + colX[3]) / 2, cellCenterY, { align: 'center' });
 
@@ -356,7 +380,7 @@ export function generatePDFReport(options: ExportReportOptions) {
         const startX = colX[3];
         const endX = colX[5];
         const centerX = (startX + endX) / 2;
-        const displayText = remark2Text; // the merged text
+        const displayText = remark2Text;
         doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
         if (displayText === 'Better Luck Next Life' || displayText.includes('Must Attend')) {
           doc.setFont('helvetica', 'bold');
@@ -364,7 +388,6 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.text(displayText, centerX, cellCenterY, { align: 'center' });
         doc.setFont('helvetica', 'normal');
       } else {
-        // Split
         doc.setTextColor(remark1Color[0], remark1Color[1], remark1Color[2]);
         if (remark1Text.includes('Attend')) {
           doc.setFont('helvetica', 'bold');
@@ -544,7 +567,6 @@ export function generateExcelReport(options: ExportReportOptions) {
           remark2 = 'No Planned Classes';
         }
 
-        // If both are same, leave only one in the first column, second empty
         if (remark1 === remark2) {
           remark2 = '';
         }
