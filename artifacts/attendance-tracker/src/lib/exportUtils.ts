@@ -22,7 +22,71 @@ export interface ExportReportOptions {
   overallPct: number;
 }
 
-export function generatePDFReport(options: ExportReportOptions) {
+// ── Helper: load image as base64 ──
+async function loadImageAsBase64(url: string): Promise<string> {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// ── Helper: get image dimensions ──
+function getImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.width, height: img.height });
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+// ── Helper: add watermark to a page ──
+async function addWatermark(
+  doc: jsPDF,
+  pageWidth: number,
+  pageHeight: number,
+  logoBase64: string,
+  logoDimensions: { width: number; height: number }
+) {
+  // Calculate size: occupy 50% of page width and height, with 25% margin
+  const maxWidth = pageWidth * 0.5;
+  const maxHeight = pageHeight * 0.5;
+  const aspectRatio = logoDimensions.width / logoDimensions.height;
+  let drawWidth = maxWidth;
+  let drawHeight = drawWidth / aspectRatio;
+  if (drawHeight > maxHeight) {
+    drawHeight = maxHeight;
+    drawWidth = drawHeight * aspectRatio;
+  }
+  // Center position
+  const x = (pageWidth - drawWidth) / 2;
+  const y = (pageHeight - drawHeight) / 2 - 8; // shift up slightly to leave room for text
+
+  // Save current graphics state
+  doc.saveGraphicsState();
+  // Set low opacity for watermark
+  doc.setGState(new doc.GState({ opacity: 0.15 }));
+
+  // Draw logo
+  doc.addImage(logoBase64, 'JPEG', x, y, drawWidth, drawHeight);
+
+  // Draw "Attendenz" below the logo
+  const text = 'Attendenz';
+  const textY = y + drawHeight + 6; // 6mm gap
+  doc.setFontSize(24);
+  doc.setTextColor(100, 100, 100);
+  doc.setFont('helvetica', 'bold');
+  doc.text(text, pageWidth / 2, textY, { align: 'center' });
+
+  // Restore graphics state
+  doc.restoreGraphicsState();
+}
+
+export async function generatePDFReport(options: ExportReportOptions) {
   const {
     studentName,
     routineMode,
@@ -47,14 +111,39 @@ export function generatePDFReport(options: ExportReportOptions) {
   const wardOverallTotal = wardItems.reduce((acc, curr) => acc + curr.total, 0);
   const wardOverallPct = wardOverallTotal > 0 ? (wardOverallAttended / wardOverallTotal) * 100 : 0;
 
+  // ── Load logo for watermark ──
+  let logoBase64 = '';
+  let logoDimensions = { width: 1, height: 1 };
+  try {
+    logoBase64 = await loadImageAsBase64('/Logo.jpeg');
+    logoDimensions = await getImageDimensions(logoBase64);
+  } catch {
+    // If image fails, fallback to text-only watermark
+    logoBase64 = '';
+  }
+
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 15;
+  const pageHeight = doc.internal.pageSize.getHeight();
   let y = 18;
+
+  // ── Add watermark to first page ──
+  if (logoBase64) {
+    await addWatermark(doc, pageWidth, pageHeight, logoBase64, logoDimensions);
+  } else {
+    // Fallback: text watermark
+    doc.saveGraphicsState();
+    doc.setGState(new doc.GState({ opacity: 0.1 }));
+    doc.setFontSize(60);
+    doc.setTextColor(200, 200, 200);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Attendenz', pageWidth / 2, pageHeight / 2, { align: 'center' });
+    doc.restoreGraphicsState();
+  }
 
   // ── Header ──
   doc.setFillColor(15, 23, 42);
-  doc.rect(margin, y, pageWidth - margin * 2, 28, 'F');
+  doc.rect(15, y, pageWidth - 30, 28, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
@@ -68,17 +157,17 @@ export function generatePDFReport(options: ExportReportOptions) {
   // ── Metadata ──
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(margin, y, pageWidth - margin * 2, 26, 3, 3, 'FD');
+  doc.roundedRect(15, y, pageWidth - 30, 26, 3, 3, 'FD');
   doc.setTextColor(51, 65, 85);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.text(`Student Name: `, margin + 5, y + 8);
+  doc.text(`Student Name: `, 20, y + 8);
   doc.setFont('helvetica', 'normal');
-  doc.text(studentName || 'Medical Student', margin + 35, y + 8);
+  doc.text(studentName || 'Medical Student', 50, y + 8);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Routine Mode: `, margin + 5, y + 16);
+  doc.text(`Routine Mode: `, 20, y + 16);
   doc.setFont('helvetica', 'normal');
-  doc.text(routineMode, margin + 35, y + 16);
+  doc.text(routineMode, 50, y + 16);
   const nowStr = new Date().toLocaleString('en-US', {
     day: 'numeric',
     month: 'short',
@@ -97,7 +186,7 @@ export function generatePDFReport(options: ExportReportOptions) {
   y += 32;
 
   // ── Table Drawing Helper ──
-  const drawTable = (
+  const drawTable = async (
     title: string,
     tableItems: AttendanceReportItem[],
     startY: number,
@@ -109,14 +198,14 @@ export function generatePDFReport(options: ExportReportOptions) {
     // Apply sorting only for Academic section
     let sortedItems = tableItems;
     if (applySorting) {
-      // Helper to determine if row is merged
-      const computeIsMerged = (item: AttendanceReportItem): boolean => {
+      // Helper to determine if row is merged (and thus goes into merged group)
+      const computeMergeStatus = (item: AttendanceReportItem): 'split' | 'merged' | 'zero' => {
         const conducted = item.total;
-        if (conducted === 0) return true; // "Yet to be Conducted" will be placed at bottom later
+        if (conducted === 0) return 'zero';
         const plannedTotal = item.plannedTotal;
         const attended = item.attended;
         const target = targetPct;
-        if (plannedTotal <= 0) return false;
+        if (plannedTotal <= 0) return 'split'; // No Planned Classes → treat as split? We'll put in split group.
 
         const totalNeeded = Math.ceil((target * plannedTotal) / 100);
         if (attended >= totalNeeded) {
@@ -128,37 +217,37 @@ export function generatePDFReport(options: ExportReportOptions) {
             const needed1 = Math.ceil((target * conducted) / 100) - attended;
             remark1IsTarget = needed1 <= 0;
           }
-          return remark1IsTarget;
+          return remark1IsTarget ? 'merged' : 'split';
         } else {
           const remaining = plannedTotal - conducted;
           const neededFromRemaining = totalNeeded - attended;
           const canMiss = remaining - neededFromRemaining;
-          if (canMiss > 0) return false;
-          else return true; // Must Attend or Better Luck
+          if (canMiss > 0) return 'split'; // Can miss → split
+          else return 'merged'; // Must Attend or Better Luck → merged
         }
       };
 
-      // Compute status for each item
-      const withStatus = tableItems.map(item => ({
-        item,
-        isMerged: computeIsMerged(item),
-        isZero: item.total === 0
-      }));
+      // Separate into groups
+      const splitGroup: AttendanceReportItem[] = [];
+      const mergedGroup: AttendanceReportItem[] = [];
+      const zeroGroup: AttendanceReportItem[] = [];
 
-      // Sort: split (false), merged (true), then zero at bottom
-      withStatus.sort((a, b) => {
-        if (a.isZero && !b.isZero) return 1;
-        if (!a.isZero && b.isZero) return -1;
-        if (a.isZero && b.isZero) return 0;
-        // both non-zero: split first, merged later
-        if (a.isMerged === b.isMerged) return 0;
-        return a.isMerged ? 1 : -1;
-      });
+      for (const item of tableItems) {
+        const status = computeMergeStatus(item);
+        if (status === 'zero') zeroGroup.push(item);
+        else if (status === 'split') splitGroup.push(item);
+        else mergedGroup.push(item);
+      }
 
-      sortedItems = withStatus.map(entry => entry.item);
+      // Sort each non-zero group by current % descending
+      splitGroup.sort((a, b) => b.pct - a.pct);
+      mergedGroup.sort((a, b) => b.pct - a.pct);
+      // zeroGroup stays as is (original order)
+
+      sortedItems = [...splitGroup, ...mergedGroup, ...zeroGroup];
     }
 
-    // Section title
+    // ── Section title ──
     if (isWard) {
       doc.setFillColor(239, 246, 255);
       doc.setDrawColor(191, 219, 254);
@@ -166,7 +255,7 @@ export function generatePDFReport(options: ExportReportOptions) {
       doc.setFillColor(240, 253, 244);
       doc.setDrawColor(187, 247, 208);
     }
-    doc.roundedRect(margin, currentY, pageWidth - margin * 2, 9, 3, 3, 'FD');
+    doc.roundedRect(15, currentY, pageWidth - 30, 9, 3, 3, 'FD');
     doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
@@ -174,15 +263,15 @@ export function generatePDFReport(options: ExportReportOptions) {
     currentY += 9;
 
     // 6 logical columns
-    const colWidth = (pageWidth - margin * 2) / 6;
+    const colWidth = (pageWidth - 30) / 6;
     const colX = [
-      margin,
-      margin + colWidth,
-      margin + colWidth * 2,
-      margin + colWidth * 3,
-      margin + colWidth * 4,
-      margin + colWidth * 5,
-      margin + colWidth * 6,
+      15,
+      15 + colWidth,
+      15 + colWidth * 2,
+      15 + colWidth * 3,
+      15 + colWidth * 4,
+      15 + colWidth * 5,
+      15 + colWidth * 6,
     ];
 
     const headerRowHeight = 9;
@@ -191,7 +280,7 @@ export function generatePDFReport(options: ExportReportOptions) {
 
     // ── Draw header ──
     doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
-    doc.rect(margin, currentY, pageWidth - margin * 2, totalHeaderHeight, 'F');
+    doc.rect(15, currentY, pageWidth - 30, totalHeaderHeight, 'F');
 
     const headerBlockCenterY = currentY + totalHeaderHeight / 2;
     doc.setTextColor(255, 255, 255);
@@ -215,21 +304,15 @@ export function generatePDFReport(options: ExportReportOptions) {
     doc.setDrawColor(85, 85, 85);
     doc.setLineWidth(0.4);
 
-    // Top border
-    doc.line(margin, currentY, pageWidth - margin, currentY);
-    // Bottom border of header
-    doc.line(margin, currentY + totalHeaderHeight, pageWidth - margin, currentY + totalHeaderHeight);
-    // Horizontal divider between rows – only inside Remarks group (colX[3] to colX[5])
+    doc.line(15, currentY, pageWidth - 15, currentY);
+    doc.line(15, currentY + totalHeaderHeight, pageWidth - 15, currentY + totalHeaderHeight);
     doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
 
-    // Vertical lines:
-    // Draw full vertical lines for all boundaries except the one between remark sub-columns (colX[4])
+    // Vertical lines: skip colX[4] above the horizontal divider
     for (let i = 0; i <= 6; i++) {
-      // Skip colX[4] because it should only appear below the horizontal divider
       if (i === 4) continue;
       doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
     }
-    // Draw the colX[4] line only from the horizontal divider downward
     doc.line(colX[4], currentY + headerRowHeight, colX[4], currentY + totalHeaderHeight);
 
     currentY += totalHeaderHeight;
@@ -239,13 +322,26 @@ export function generatePDFReport(options: ExportReportOptions) {
     doc.setLineWidth(0.2);
 
     // ── Rows ──
-    sortedItems.forEach((item, index) => {
+    for (let idx = 0; idx < sortedItems.length; idx++) {
+      const item = sortedItems[idx];
       if (currentY > 260) {
         doc.addPage();
         currentY = 20;
+        // Add watermark to new page
+        if (logoBase64) {
+          await addWatermark(doc, pageWidth, pageHeight, logoBase64, logoDimensions);
+        } else {
+          doc.saveGraphicsState();
+          doc.setGState(new doc.GState({ opacity: 0.1 }));
+          doc.setFontSize(60);
+          doc.setTextColor(200, 200, 200);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Attendenz', pageWidth / 2, pageHeight / 2, { align: 'center' });
+          doc.restoreGraphicsState();
+        }
         // Redraw headers (same as above)
         doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
-        doc.rect(margin, currentY, pageWidth - margin * 2, totalHeaderHeight, 'F');
+        doc.rect(15, currentY, pageWidth - 30, totalHeaderHeight, 'F');
         const hbCenter = currentY + totalHeaderHeight / 2;
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
@@ -263,8 +359,8 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subCenter, { align: 'center' });
         doc.setDrawColor(85, 85, 85);
         doc.setLineWidth(0.4);
-        doc.line(margin, currentY, pageWidth - margin, currentY);
-        doc.line(margin, currentY + totalHeaderHeight, pageWidth - margin, currentY + totalHeaderHeight);
+        doc.line(15, currentY, pageWidth - 15, currentY);
+        doc.line(15, currentY + totalHeaderHeight, pageWidth - 15, currentY + totalHeaderHeight);
         doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
         for (let i = 0; i <= 6; i++) {
           if (i === 4) continue;
@@ -275,10 +371,10 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.setLineWidth(0.2);
       }
 
-      const isEven = index % 2 === 0;
+      const isEven = idx % 2 === 0;
       if (isEven) {
         doc.setFillColor(241, 245, 249);
-        doc.rect(margin, currentY, pageWidth - margin * 2, 8, 'F');
+        doc.rect(15, currentY, pageWidth - 30, 8, 'F');
       }
 
       const subName = item.name.length > 20 ? item.name.substring(0, 18) + '..' : item.name;
@@ -357,8 +453,8 @@ export function generatePDFReport(options: ExportReportOptions) {
       // ── Borders ──
       doc.setDrawColor(85, 85, 85);
       doc.setLineWidth(0.3);
-      doc.line(margin, currentY, pageWidth - margin, currentY);
-      doc.line(margin, currentY + 8, pageWidth - margin, currentY + 8);
+      doc.line(15, currentY, pageWidth - 15, currentY);
+      doc.line(15, currentY + 8, pageWidth - 15, currentY + 8);
 
       if (isYetToBeConducted) {
         doc.line(colX[0], currentY, colX[0], currentY + 8);
@@ -379,7 +475,7 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.text(mergedText, centerX, currentY + 4, { align: 'center' });
         doc.setFont('helvetica', 'normal');
         currentY += 8;
-        return;
+        continue;
       }
 
       // ── Normal row ──
@@ -439,7 +535,7 @@ export function generatePDFReport(options: ExportReportOptions) {
       doc.setFont('helvetica', 'normal');
 
       currentY += 8;
-    });
+    }
 
     currentY += 2;
     return currentY;
@@ -448,16 +544,28 @@ export function generatePDFReport(options: ExportReportOptions) {
   // ── Draw tables ──
   // Academic: apply sorting
   if (academicItems.length > 0) {
-    y = drawTable('Academic Subjects', academicItems, y, false, true);
+    y = await drawTable('Academic Subjects', academicItems, y, false, true);
     y += 6;
   }
-  // Ward: no sorting (applySorting = false)
+  // Ward: no sorting
   if (wardItems.length > 0) {
     if (y > 220) {
       doc.addPage();
       y = 20;
+      // Add watermark to new page
+      if (logoBase64) {
+        await addWatermark(doc, pageWidth, pageHeight, logoBase64, logoDimensions);
+      } else {
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.1 }));
+        doc.setFontSize(60);
+        doc.setTextColor(200, 200, 200);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Attendenz', pageWidth / 2, pageHeight / 2, { align: 'center' });
+        doc.restoreGraphicsState();
+      }
     }
-    y = drawTable('Clinical Rotations (Wards)', wardItems, y, true, false);
+    y = await drawTable('Clinical Rotations (Wards)', wardItems, y, true, false);
     y += 6;
   }
 
@@ -465,6 +573,18 @@ export function generatePDFReport(options: ExportReportOptions) {
   if (y > 235) {
     doc.addPage();
     y = 20;
+    // Add watermark to new page
+    if (logoBase64) {
+      await addWatermark(doc, pageWidth, pageHeight, logoBase64, logoDimensions);
+    } else {
+      doc.saveGraphicsState();
+      doc.setGState(new doc.GState({ opacity: 0.1 }));
+      doc.setFontSize(60);
+      doc.setTextColor(200, 200, 200);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Attendenz', pageWidth / 2, pageHeight / 2, { align: 'center' });
+      doc.restoreGraphicsState();
+    }
   }
   const combinedAttended = overallAttended + wardOverallAttended;
   const combinedTotal = overallTotal + wardOverallTotal;
@@ -485,7 +605,7 @@ export function generatePDFReport(options: ExportReportOptions) {
   const boxHeight = wardItems.length > 0 ? 44 : 26;
   doc.setFillColor(240, 253, 244);
   doc.setDrawColor(187, 247, 208);
-  doc.roundedRect(margin, y, pageWidth - margin * 2, boxHeight, 3, 3, 'FD');
+  doc.roundedRect(15, y, pageWidth - 30, boxHeight, 3, 3, 'FD');
   doc.setTextColor(21, 128, 61);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
@@ -502,23 +622,23 @@ export function generatePDFReport(options: ExportReportOptions) {
   }
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Academic Remarks: `, margin + 6, summaryY + 2);
+  doc.text(`Academic Remarks: `, 21, summaryY + 2);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(21, 128, 61);
-  doc.text(academicRemark, margin + 40, summaryY + 2);
+  doc.text(academicRemark, 55, summaryY + 2);
   summaryY += 7;
   if (wardItems.length > 0) {
     doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Ward Remarks: `, margin + 6, summaryY + 2);
+    doc.text(`Ward Remarks: `, 21, summaryY + 2);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(21, 128, 61);
-    doc.text(wardRemark, margin + 35, summaryY + 2);
+    doc.text(wardRemark, 50, summaryY + 2);
   }
   y += boxHeight + 6;
 
   doc.setDrawColor(203, 213, 225);
-  doc.line(margin, 280, pageWidth - margin, 280);
+  doc.line(15, 280, pageWidth - 15, 280);
   doc.setFontSize(8);
   doc.setTextColor(148, 163, 184);
   doc.text('Generated by Attendance Tracker • 100% Local Device Privacy', pageWidth / 2, 285, { align: 'center' });
@@ -526,7 +646,7 @@ export function generatePDFReport(options: ExportReportOptions) {
   doc.save(`Attendance_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
-// ── Excel Export ──
+// ── Excel Export (unchanged) ──
 export function generateExcelReport(options: ExportReportOptions) {
   const {
     studentName,
@@ -729,7 +849,7 @@ export function generateExcelReport(options: ExportReportOptions) {
   XLSX.writeFile(workbook, `Attendance_Report_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-// ── CSV Export ──
+// ── CSV Export (unchanged) ──
 export function generateCSVReport(options: ExportReportOptions) {
   const { items, overallAttended, overallTotal, overallPct } = options;
 
