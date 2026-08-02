@@ -66,8 +66,12 @@ export default function Subjects() {
     return { att, mis, planned, pct, conducted };
   };
 
-  const pctColor = (pct: number) =>
-    pct >= preferredPercentage ? 'var(--color-success)' : pct >= preferredPercentage - 10 ? 'var(--color-warning)' : 'var(--color-destructive)';
+       const GREEN_OFFSET = 5;
+       const pctColor = (pct: number) => {
+       if (pct >= preferredPercentage + GREEN_OFFSET) return 'var(--color-success)';
+       if (pct >= preferredPercentage) return 'var(--color-warning)';
+       return 'var(--color-destructive)';
+      };
 
   // ── Single unified expandable card for a category ──────────────────────
   const CategoryCard = ({
