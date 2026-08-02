@@ -97,8 +97,66 @@ export function generatePDFReport(options: ExportReportOptions) {
   y += 32;
 
   // ── Table Drawing Helper ──
-  const drawTable = (title: string, tableItems: AttendanceReportItem[], startY: number, isWard: boolean = false) => {
+  const drawTable = (
+    title: string,
+    tableItems: AttendanceReportItem[],
+    startY: number,
+    isWard: boolean = false,
+    applySorting: boolean = false
+  ) => {
     let currentY = startY;
+
+    // Apply sorting only for Academic section
+    let sortedItems = tableItems;
+    if (applySorting) {
+      // Helper to determine if row is merged
+      const computeIsMerged = (item: AttendanceReportItem): boolean => {
+        const conducted = item.total;
+        if (conducted === 0) return true; // "Yet to be Conducted" will be placed at bottom later
+        const plannedTotal = item.plannedTotal;
+        const attended = item.attended;
+        const target = targetPct;
+        if (plannedTotal <= 0) return false;
+
+        const totalNeeded = Math.ceil((target * plannedTotal) / 100);
+        if (attended >= totalNeeded) {
+          // Check if remark1 is also Target Achieved
+          const conductedPct = conducted > 0 ? (attended / conducted) * 100 : 0;
+          let remark1IsTarget = false;
+          if (conducted > 0 && conductedPct >= target) remark1IsTarget = true;
+          else {
+            const needed1 = Math.ceil((target * conducted) / 100) - attended;
+            remark1IsTarget = needed1 <= 0;
+          }
+          return remark1IsTarget;
+        } else {
+          const remaining = plannedTotal - conducted;
+          const neededFromRemaining = totalNeeded - attended;
+          const canMiss = remaining - neededFromRemaining;
+          if (canMiss > 0) return false;
+          else return true; // Must Attend or Better Luck
+        }
+      };
+
+      // Compute status for each item
+      const withStatus = tableItems.map(item => ({
+        item,
+        isMerged: computeIsMerged(item),
+        isZero: item.total === 0
+      }));
+
+      // Sort: split (false), merged (true), then zero at bottom
+      withStatus.sort((a, b) => {
+        if (a.isZero && !b.isZero) return 1;
+        if (!a.isZero && b.isZero) return -1;
+        if (a.isZero && b.isZero) return 0;
+        // both non-zero: split first, merged later
+        if (a.isMerged === b.isMerged) return 0;
+        return a.isMerged ? 1 : -1;
+      });
+
+      sortedItems = withStatus.map(entry => entry.item);
+    }
 
     // Section title
     if (isWard) {
@@ -153,66 +211,35 @@ export function generatePDFReport(options: ExportReportOptions) {
     doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subRowCenterY, { align: 'center' });
     doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subRowCenterY, { align: 'center' });
 
-    // Borders
+    // ── Borders ──
     doc.setDrawColor(85, 85, 85);
     doc.setLineWidth(0.4);
+
+    // Top border
     doc.line(margin, currentY, pageWidth - margin, currentY);
+    // Bottom border of header
     doc.line(margin, currentY + totalHeaderHeight, pageWidth - margin, currentY + totalHeaderHeight);
+    // Horizontal divider between rows – only inside Remarks group (colX[3] to colX[5])
     doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
+
+    // Vertical lines:
+    // Draw full vertical lines for all boundaries except the one between remark sub-columns (colX[4])
     for (let i = 0; i <= 6; i++) {
+      // Skip colX[4] because it should only appear below the horizontal divider
+      if (i === 4) continue;
       doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
     }
+    // Draw the colX[4] line only from the horizontal divider downward
+    doc.line(colX[4], currentY + headerRowHeight, colX[4], currentY + totalHeaderHeight);
+
     currentY += totalHeaderHeight;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setLineWidth(0.2);
 
-    // ── Sort items: split remarks first, merged remarks later ──
-    // Helper to compute if row has merged remarks (true = merged)
-    const computeIsMerged = (item: AttendanceReportItem): boolean => {
-      const conducted = item.total;
-      if (conducted === 0) return true; // "Yet to be Conducted" is merged across columns 2-6
-      const plannedTotal = item.plannedTotal;
-      const attended = item.attended;
-      const target = targetPct;
-      if (plannedTotal <= 0) return false; // "No Planned Classes" – treat as split? We'll treat as false (split) to be safe.
-
-      const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-      if (attended >= totalNeeded) {
-        // Check if remark1 is also Target Achieved
-        const conductedPct = conducted > 0 ? (attended / conducted) * 100 : 0;
-        let remark1IsTarget = false;
-        if (conducted > 0 && conductedPct >= target) remark1IsTarget = true;
-        else {
-          const needed1 = Math.ceil((target * conducted) / 100) - attended;
-          remark1IsTarget = needed1 <= 0;
-        }
-        if (remark1IsTarget) return true; // both Target Achieved → merged
-        return false; // remark1 not Target Achieved, so split
-      } else {
-        const remaining = plannedTotal - conducted;
-        const neededFromRemaining = totalNeeded - attended;
-        const canMiss = remaining - neededFromRemaining;
-        if (canMiss > 0) return false; // split: "Can miss X"
-        else if (canMiss === 0) return true; // "Must Attend" → merged
-        else return true; // "Better Luck" → merged
-      }
-    };
-
-    // Build sorted array
-    const sortedItems = tableItems.map(item => ({
-      item,
-      isMerged: computeIsMerged(item)
-    }));
-    sortedItems.sort((a, b) => {
-      // split (false) first, merged (true) later
-      if (a.isMerged === b.isMerged) return 0;
-      return a.isMerged ? 1 : -1;
-    });
-
     // ── Rows ──
-    sortedItems.forEach(({ item, isMerged: precomputedIsMerged }, index) => {
+    sortedItems.forEach((item, index) => {
       if (currentY > 260) {
         doc.addPage();
         currentY = 20;
@@ -240,8 +267,10 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.line(margin, currentY + totalHeaderHeight, pageWidth - margin, currentY + totalHeaderHeight);
         doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
         for (let i = 0; i <= 6; i++) {
+          if (i === 4) continue;
           doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
         }
+        doc.line(colX[4], currentY + headerRowHeight, colX[4], currentY + totalHeaderHeight);
         currentY += totalHeaderHeight;
         doc.setLineWidth(0.2);
       }
@@ -258,7 +287,7 @@ export function generatePDFReport(options: ExportReportOptions) {
       const attended = item.attended;
       const plannedTotal = item.plannedTotal;
 
-      // ── Compute Remarks (same as before) ──
+      // ── Compute Remarks ──
       let remark1Text = '';
       let remark1Color = [15, 23, 42];
       if (conducted === 0) {
@@ -336,7 +365,6 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.line(colX[1], currentY, colX[1], currentY + 8);
         doc.line(colX[6], currentY, colX[6], currentY + 8);
 
-        // Subject name is bold
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(15, 23, 42);
         doc.text(subName, (colX[0] + colX[1]) / 2, currentY + 4, { align: 'center' });
@@ -366,13 +394,11 @@ export function generatePDFReport(options: ExportReportOptions) {
 
       const cellCenterY = currentY + 4;
 
-      // Subject column: bold
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(15, 23, 42);
       doc.text(subName, (colX[0] + colX[1]) / 2, cellCenterY, { align: 'center' });
       doc.setFont('helvetica', 'normal');
 
-      // Numeric columns: normal
       doc.text(String(conducted), (colX[1] + colX[2]) / 2, cellCenterY, { align: 'center' });
       doc.text(String(attended), (colX[2] + colX[3]) / 2, cellCenterY, { align: 'center' });
 
@@ -403,7 +429,6 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.setFont('helvetica', 'normal');
       }
 
-      // Current %
       if (item.pct >= targetPct) {
         doc.setTextColor(16, 185, 129);
       } else {
@@ -421,16 +446,18 @@ export function generatePDFReport(options: ExportReportOptions) {
   };
 
   // ── Draw tables ──
+  // Academic: apply sorting
   if (academicItems.length > 0) {
-    y = drawTable('Academic Subjects', academicItems, y, false);
+    y = drawTable('Academic Subjects', academicItems, y, false, true);
     y += 6;
   }
+  // Ward: no sorting (applySorting = false)
   if (wardItems.length > 0) {
     if (y > 220) {
       doc.addPage();
       y = 20;
     }
-    y = drawTable('Clinical Rotations (Wards)', wardItems, y, true);
+    y = drawTable('Clinical Rotations (Wards)', wardItems, y, true, false);
     y += 6;
   }
 
