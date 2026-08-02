@@ -149,7 +149,7 @@ export default function Account() {
   // ============================================================
   // FIXED: handleExecuteExport – plannedTotal now passed to reportItems
   // ============================================================
-  const handleExecuteExport = () => {
+    const handleExecuteExport = async () => {
     const rawItems: Array<{ name: string; category?: string; attended: number; total: number; plannedTotal: number }> = [];
 
     if (subjectMode === 'preloaded') {
@@ -267,8 +267,8 @@ export default function Account() {
       overallPct
     };
 
-    if (exportFormat === 'pdf') {
-      generatePDFReport(reportOptions);
+      if (exportFormat === 'pdf') {
+      await generatePDFReport(reportOptions);
     } else if (exportFormat === 'excel') {
       generateExcelReport(reportOptions);
     } else if (exportFormat === 'csv') {
