@@ -147,7 +147,7 @@ export default function Account() {
   }, [isPersistentStorage]);
 
   // ============================================================
-  // FIXED: handleExecuteExport with plannedTotal properly passed
+  // FIXED: handleExecuteExport – plannedTotal now passed to reportItems
   // ============================================================
   const handleExecuteExport = () => {
     const rawItems: Array<{ name: string; category?: string; attended: number; total: number; plannedTotal: number }> = [];
@@ -222,7 +222,7 @@ export default function Account() {
     }
 
     // ============================================================
-    // CRITICAL: reportItems must include ALL fields
+    // CRITICAL FIX: reportItems MUST include plannedTotal
     // ============================================================
     const reportItems = filteredItems.map(item => {
       const total = item.total;
@@ -246,7 +246,7 @@ export default function Account() {
         category: item.category,
         attended: attended,
         total: total,
-        plannedTotal: plannedTotal,
+        plannedTotal: plannedTotal, // ← THIS WAS MISSING
         pct: pct,
         neededForTarget: neededText
       };
