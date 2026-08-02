@@ -185,18 +185,43 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // ✅ FIXED: getSubjectPlannedTotal - properly finds planned total from all sources
   const getSubjectPlannedTotal = (subjectName: string): number => {
+    // 1. Check preset overrides first (user-modified totals)
     if (presetSubjectTotals[subjectName] !== undefined) {
       return presetSubjectTotals[subjectName];
     }
+    
+    // 2. Check PRESET MODE - CATEGORIES (e.g., Surgery = 60)
     for (const cat of CATEGORIES) {
-      const sub = cat.subjects.find(s => s.name === subjectName);
-      if (sub) return sub.total;
+      for (const sub of cat.subjects) {
+        if (sub.name === subjectName) {
+          return sub.total;
+        }
+      }
     }
-    const intSub = INTEGRATED_SUBJECTS.find(s => s.name === subjectName);
-    if (intSub) return intSub.total;
-    const wardSub = WARD_SUBJECTS.find(s => s.name === subjectName);
-    if (wardSub) return wardSub.total;
+    
+    // 3. Check integrated subjects
+    for (const sub of INTEGRATED_SUBJECTS) {
+      if (sub.name === subjectName) {
+        return sub.total;
+      }
+    }
+    
+    // 4. Check ward subjects
+    for (const sub of WARD_SUBJECTS) {
+      if (sub.name === subjectName) {
+        return sub.total;
+      }
+    }
+    
+    // 5. Check CUSTOM MODE - user created subjects
+    const customSub = customSubjects.find(s => s.name === subjectName);
+    if (customSub) {
+      return customSub.plannedClasses;
+    }
+    
+    // 6. Fallback for Custom Mode users (when they add a new subject without setting planned total)
     return 40;
   };
 
@@ -218,6 +243,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const getPresetWardTotalPlanned = (wardName: string): number => {
+    // First check if there's an override in presetWardSchedule
     let count = 0;
     for (const slot of presetWardSchedule) {
       if (slot.ward !== wardName) continue;
@@ -231,6 +257,13 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         }
       } catch { /* ignore */ }
     }
+    
+    // If no schedule found, use the constant value from WARD_SUBJECTS
+    if (count === 0) {
+      const wardSub = WARD_SUBJECTS.find(w => w.name === wardName);
+      if (wardSub) return wardSub.total;
+    }
+    
     return count * 2;
   };
 
