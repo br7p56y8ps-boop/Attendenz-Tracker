@@ -5,8 +5,8 @@ export interface AttendanceReportItem {
   name: string;
   category?: string;
   attended: number;
-  total: number;
-  plannedTotal: number;
+  total: number;          // conducted classes
+  plannedTotal: number;   // total planned classes
   pct: number;
   neededForTarget: string;
 }
