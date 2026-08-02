@@ -41,7 +41,7 @@ export default function Account() {
     setIsEditingName(false);
   };
   const { subjects, wards, preferredPercentage, setPreferredPercentage, clearModeAttendance } = useAttendance();
-  const { customSubjects, customWards, subjectMode, changeSubjectMode, clearRoutineData, setWhatsNewOpen, getCurrentPresetWard } = useCustomData();
+  const { customSubjects, customWards, subjectMode, changeSubjectMode, clearRoutineData, setWhatsNewOpen, getCurrentPresetWard, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState(false);
   const [storageSize, setStorageSize] = useState('0.00 KB');
@@ -151,29 +151,33 @@ export default function Account() {
   }, [isPersistentStorage]);
 
   const handleExecuteExport = () => {
-    const rawItems: Array<{ name: string; category?: string; attended: number; total: number }> = [];
+    const rawItems: Array<{ name: string; category?: string; attended: number; total: number; plannedTotal: number }> = [];
 
     if (subjectMode === 'preloaded') {
       // Academic subjects
       for (const cat of CATEGORIES) {
         for (const sub of cat.subjects) {
           const data = subjects[sub.name] || { attended: 0, missed: 0 };
+          const plannedTotal = getSubjectPlannedTotal(sub.name) || 0;
           rawItems.push({
             name: sub.name,
             category: cat.name,
             attended: data.attended,
-            total: data.attended + data.missed
+            total: data.attended + data.missed,
+            plannedTotal: plannedTotal
           });
         }
       }
-      // Ward rotations - FIXED: Added (Ward) suffix and proper key
+      // Ward rotations
       for (const w of WARD_SUBJECTS) {
         const data = wards[`ward-${w.name}`] || { attended: 0, missed: 0 };
+        const plannedTotal = getPresetWardTotalPlanned(w.name) || 0;
         rawItems.push({
           name: `${w.name} (Ward)`,
           category: 'Clinical Wards',
           attended: data.attended,
-          total: data.attended + data.missed
+          total: data.attended + data.missed,
+          plannedTotal: plannedTotal
         });
       }
     } else {
@@ -184,17 +188,20 @@ export default function Account() {
           name: cs.name,
           category: cs.category || 'Custom Subject',
           attended: data.attended,
-          total: data.attended + data.missed
+          total: data.attended + data.missed,
+          plannedTotal: cs.plannedClasses || 0
         });
       }
-      // Custom wards - FIXED: Added (Ward) suffix and proper key
+      // Custom wards
       for (const cw of customWards) {
         const data = wards[`ward-${cw.name}`] || { attended: 0, missed: 0 };
+        const plannedTotal = getCustomWardTotalPlanned(cw.startDate, cw.endDate) || 0;
         rawItems.push({
           name: `${cw.name} (Ward)`,
           category: 'Custom Wards',
           attended: data.attended,
-          total: data.attended + data.missed
+          total: data.attended + data.missed,
+          plannedTotal: plannedTotal
         });
       }
     }
@@ -218,6 +225,7 @@ export default function Account() {
     const reportItems = filteredItems.map(item => {
       const total = item.total;
       const attended = item.attended;
+      const plannedTotal = item.plannedTotal;
       const pct = total > 0 ? (attended / total) * 100 : 0;
       const target = preferredPercentage || 75;
 
@@ -236,6 +244,7 @@ export default function Account() {
         category: item.category,
         attended,
         total,
+        plannedTotal,
         pct,
         neededForTarget: neededText
       };
