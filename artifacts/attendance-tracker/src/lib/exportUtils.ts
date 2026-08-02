@@ -115,7 +115,7 @@ export function generatePDFReport(options: ExportReportOptions) {
     doc.text(title, pageWidth / 2, currentY + 6, { align: 'center' });
     currentY += 9;
 
-    // ── 6 columns: Subject, Class Conducted, Present, Remarks (colspan 2), Current % ──
+    // 6 logical columns: Subject, Class Conducted, Present, Remarks (colspan 2), Current %
     const colWidth = (pageWidth - margin * 2) / 6;
     const colX = [
       margin,
@@ -127,53 +127,50 @@ export function generatePDFReport(options: ExportReportOptions) {
       margin + colWidth * 6,
     ];
 
-    const headerRowHeight = 9;
-    const subHeaderRowHeight = 7;
+    const headerRowHeight = 9;    // top row
+    const subHeaderRowHeight = 7; // bottom row
     const totalHeaderHeight = headerRowHeight + subHeaderRowHeight;
 
-    // ── Draw full header rectangle background ──
+    // ── Draw full header rectangle background (both rows) ──
     doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
     doc.rect(margin, currentY, pageWidth - margin * 2, totalHeaderHeight, 'F');
 
-    // ── Draw header text ──
+    // ── Determine vertical center of the full header block ──
+    const headerBlockCenterY = currentY + totalHeaderHeight / 2;
+
+    // ── Draw the rowspan=2 headers (Subject, Class Conducted, Present, Current %) ──
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-
-    // Column 1: Subject (vertically centered)
     doc.setFontSize(7.5);
-    const centerY = currentY + totalHeaderHeight / 2 + 0.5;
+
     const headerLabel1 = isWard ? 'Rotation' : 'Subject';
-    doc.text(headerLabel1, (colX[0] + colX[1]) / 2, centerY, { align: 'center' });
+    doc.text(headerLabel1, (colX[0] + colX[1]) / 2, headerBlockCenterY, { align: 'center' });
+    doc.text('Class Conducted', (colX[1] + colX[2]) / 2, headerBlockCenterY, { align: 'center' });
+    doc.text('Present', (colX[2] + colX[3]) / 2, headerBlockCenterY, { align: 'center' });
+    doc.text('Current %', (colX[5] + colX[6]) / 2, headerBlockCenterY, { align: 'center' });
 
-    // Column 2: Class Conducted (vertically centered)
-    doc.text('Class Conducted', (colX[1] + colX[2]) / 2, centerY, { align: 'center' });
+    // ── "Remarks" (colspan=2) – vertically centered inside the top row ──
+    // Top row center Y = currentY + headerRowHeight/2
+    const topRowCenterY = currentY + headerRowHeight / 2;
+    doc.text('Remarks', (colX[3] + colX[5]) / 2, topRowCenterY, { align: 'center' });
 
-    // Column 3: Present (vertically centered)
-    doc.text('Present', (colX[2] + colX[3]) / 2, centerY, { align: 'center' });
-
-    // Column 4-5: Remarks (centered across both child columns, vertically centered)
-    doc.text('Remarks', (colX[3] + colX[5]) / 2, centerY, { align: 'center' });
-
-    // Column 6: Current % (vertically centered)
-    doc.text('Current %', (colX[5] + colX[6]) / 2, centerY, { align: 'center' });
-
-    // ── Sub-header row text (only for remark child columns) ──
+    // ── Sub‑headers (second row) ──
+    const subRowCenterY = currentY + headerRowHeight + subHeaderRowHeight / 2;
     doc.setFontSize(6.5);
-    const subY = currentY + headerRowHeight + subHeaderRowHeight / 2 + 0.5;
-    doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subY, { align: 'center' });
-    doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subY, { align: 'center' });
+    doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subRowCenterY, { align: 'center' });
+    doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subRowCenterY, { align: 'center' });
 
     // ── Draw header borders ──
-    doc.setDrawColor(85, 85, 85); // darker border
+    doc.setDrawColor(85, 85, 85);
     doc.setLineWidth(0.4);
 
-    // Top border
+    // Top border of header
     doc.line(margin, currentY, pageWidth - margin, currentY);
-    // Bottom border of header
+    // Bottom border of header (full width)
     doc.line(margin, currentY + totalHeaderHeight, pageWidth - margin, currentY + totalHeaderHeight);
-    // Horizontal line between main and sub-header rows
-    doc.line(margin, currentY + headerRowHeight, pageWidth - margin, currentY + headerRowHeight);
-    // Vertical lines for all column boundaries
+    // Horizontal divider between rows – ONLY inside Remarks group (colX[3] to colX[5])
+    doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
+    // Vertical borders for all columns
     for (let i = 0; i <= 6; i++) {
       doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
     }
@@ -189,28 +186,29 @@ export function generatePDFReport(options: ExportReportOptions) {
       if (currentY > 260) {
         doc.addPage();
         currentY = 20;
-        // Redraw headers on new page
+        // Redraw headers on new page (same as above)
         doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
         doc.rect(margin, currentY, pageWidth - margin * 2, totalHeaderHeight, 'F');
+        const hbCenter = currentY + totalHeaderHeight / 2;
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
-        const cy = currentY + totalHeaderHeight / 2 + 0.5;
         const h1 = isWard ? 'Rotation' : 'Subject';
-        doc.text(h1, (colX[0] + colX[1]) / 2, cy, { align: 'center' });
-        doc.text('Class Conducted', (colX[1] + colX[2]) / 2, cy, { align: 'center' });
-        doc.text('Present', (colX[2] + colX[3]) / 2, cy, { align: 'center' });
-        doc.text('Remarks', (colX[3] + colX[5]) / 2, cy, { align: 'center' });
-        doc.text('Current %', (colX[5] + colX[6]) / 2, cy, { align: 'center' });
+        doc.text(h1, (colX[0] + colX[1]) / 2, hbCenter, { align: 'center' });
+        doc.text('Class Conducted', (colX[1] + colX[2]) / 2, hbCenter, { align: 'center' });
+        doc.text('Present', (colX[2] + colX[3]) / 2, hbCenter, { align: 'center' });
+        doc.text('Current %', (colX[5] + colX[6]) / 2, hbCenter, { align: 'center' });
+        const topCenter = currentY + headerRowHeight / 2;
+        doc.text('Remarks', (colX[3] + colX[5]) / 2, topCenter, { align: 'center' });
         doc.setFontSize(6.5);
-        const sy = currentY + headerRowHeight + subHeaderRowHeight / 2 + 0.5;
-        doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, sy, { align: 'center' });
-        doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, sy, { align: 'center' });
+        const subCenter = currentY + headerRowHeight + subHeaderRowHeight / 2;
+        doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subCenter, { align: 'center' });
+        doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subCenter, { align: 'center' });
         doc.setDrawColor(85, 85, 85);
         doc.setLineWidth(0.4);
         doc.line(margin, currentY, pageWidth - margin, currentY);
         doc.line(margin, currentY + totalHeaderHeight, pageWidth - margin, currentY + totalHeaderHeight);
-        doc.line(margin, currentY + headerRowHeight, pageWidth - margin, currentY + headerRowHeight);
+        doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
         for (let i = 0; i <= 6; i++) {
           doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
         }
@@ -230,7 +228,7 @@ export function generatePDFReport(options: ExportReportOptions) {
       const attended = item.attended;
       const plannedTotal = item.plannedTotal;
 
-      // ── Compute Remark 1 (based on conducted classes) ──
+      // ── Compute Remarks ──
       let remark1Text = '';
       let remark1Color = [15, 23, 42];
       if (conducted === 0) {
@@ -240,13 +238,13 @@ export function generatePDFReport(options: ExportReportOptions) {
         const pct = (attended / conducted) * 100;
         if (pct >= target) {
           remark1Text = 'Target Achieved';
-          remark1Color = [16, 185, 129]; // Green
+          remark1Color = [16, 185, 129];
         } else {
           const needed = Math.ceil((target * conducted) / 100) - attended;
           if (needed > 0) {
             const classText = needed === 1 ? 'Class' : 'Classes';
             remark1Text = `Attend next ${needed} ${classText}`;
-            remark1Color = [255, 165, 0]; // Orange
+            remark1Color = [255, 165, 0];
           } else {
             remark1Text = 'Target Achieved';
             remark1Color = [16, 185, 129];
@@ -254,7 +252,6 @@ export function generatePDFReport(options: ExportReportOptions) {
         }
       }
 
-      // ── Compute Remark 2 (based on total planned classes) ──
       let remark2Text = '';
       let remark2Color = [15, 23, 42];
       let mergeRemarks = false;
@@ -277,16 +274,16 @@ export function generatePDFReport(options: ExportReportOptions) {
 
           if (canMiss > 0) {
             remark2Text = `Can miss ${canMiss}`;
-            remark2Color = [255, 165, 0]; // Orange
+            remark2Color = [255, 165, 0];
             mergeRemarks = false;
           } else if (canMiss === 0) {
             const classText = remaining === 1 ? 'Class' : 'Classes';
             remark2Text = `Must Attend remaining ${remaining} ${classText}`;
-            remark2Color = [139, 0, 0]; // Dark Red
+            remark2Color = [139, 0, 0];
             mergeRemarks = true;
           } else {
             remark2Text = 'Better Luck Next Life';
-            remark2Color = [128, 0, 128]; // Purple
+            remark2Color = [128, 0, 128];
             mergeRemarks = true;
           }
         }
@@ -301,16 +298,17 @@ export function generatePDFReport(options: ExportReportOptions) {
       // ── Draw row borders ──
       doc.setDrawColor(85, 85, 85);
       doc.setLineWidth(0.3);
-      doc.line(margin, currentY, pageWidth - margin, currentY); // top
-      doc.line(margin, currentY + 8, pageWidth - margin, currentY + 8); // bottom
+      doc.line(margin, currentY, pageWidth - margin, currentY);
+      doc.line(margin, currentY + 8, pageWidth - margin, currentY + 8);
 
       if (isYetToBeConducted) {
         // Merge columns 2-6 with "Yet to be Conducted"
+        // Draw only necessary vertical lines: left of subject, between subject and merged, and right edge
         doc.line(colX[0], currentY, colX[0], currentY + 8);
         doc.line(colX[1], currentY, colX[1], currentY + 8);
         doc.line(colX[6], currentY, colX[6], currentY + 8);
 
-        // Subject name in column 1 (centered)
+        // Subject name in column 1 (centered vertically)
         doc.setTextColor(15, 23, 42);
         doc.text(subName, (colX[0] + colX[1]) / 2, currentY + 4, { align: 'center' });
 
@@ -327,7 +325,16 @@ export function generatePDFReport(options: ExportReportOptions) {
         return;
       }
 
-      // ── Normal row: draw vertical borders ──
+      // ── Normal row ──
+      // Determine if we need to merge remarks columns
+      const finalMerge = mergeRemarks || (remark1Text === remark2Text && remark1Text !== '');
+      // If both texts are same and not empty, we merge; also if one is empty but the other is not, we merge? No – if one is empty (e.g., after merging Target Achieved in Excel), we need to check.
+      // Actually in PDF we control the logic: merge only if they are identical OR if one is empty and the other is a single message (i.e., not two different ones).
+      // We'll use the mergeRemarks flag from above (which is set when both are Target Achieved, or Must Attend, or Better Luck).
+      // For the case where remark2 is empty because we merged in Excel, we won't have that here.
+      // So use mergeRemarks as computed.
+
+      // Draw vertical borders
       for (let i = 0; i <= 6; i++) {
         if (mergeRemarks && i >= 3 && i <= 5) continue;
         doc.line(colX[i], currentY, colX[i], currentY + 8);
@@ -337,32 +344,27 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.line(colX[5], currentY, colX[5], currentY + 8);
       }
 
-      // ── Render cell content (all center aligned) ──
+      // ── Render cell content ──
       const cellCenterY = currentY + 4;
 
-      // Column 1: Subject
       doc.setTextColor(15, 23, 42);
       doc.text(subName, (colX[0] + colX[1]) / 2, cellCenterY, { align: 'center' });
-
-      // Column 2: Class Conducted
       doc.text(String(conducted), (colX[1] + colX[2]) / 2, cellCenterY, { align: 'center' });
-
-      // Column 3: Present
       doc.text(String(attended), (colX[2] + colX[3]) / 2, cellCenterY, { align: 'center' });
 
-      // ── Remarks ──
       if (mergeRemarks) {
         const startX = colX[3];
         const endX = colX[5];
         const centerX = (startX + endX) / 2;
+        const displayText = remark2Text; // the merged text
         doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
-        if (remark2Text === 'Better Luck Next Life' || remark2Text.includes('Must Attend')) {
+        if (displayText === 'Better Luck Next Life' || displayText.includes('Must Attend')) {
           doc.setFont('helvetica', 'bold');
         }
-        doc.text(remark2Text, centerX, cellCenterY, { align: 'center' });
+        doc.text(displayText, centerX, cellCenterY, { align: 'center' });
         doc.setFont('helvetica', 'normal');
       } else {
-        // Remark 1
+        // Split
         doc.setTextColor(remark1Color[0], remark1Color[1], remark1Color[2]);
         if (remark1Text.includes('Attend')) {
           doc.setFont('helvetica', 'bold');
@@ -370,7 +372,6 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.text(remark1Text, (colX[3] + colX[4]) / 2, cellCenterY, { align: 'center' });
         doc.setFont('helvetica', 'normal');
 
-        // Remark 2
         doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
         if (remark2Text.includes('Can miss') || remark2Text === 'Target Achieved') {
           doc.setFont('helvetica', 'bold');
@@ -379,7 +380,7 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.setFont('helvetica', 'normal');
       }
 
-      // ── Current % ──
+      // Current %
       if (item.pct >= targetPct) {
         doc.setTextColor(16, 185, 129);
       } else {
@@ -543,8 +544,8 @@ export function generateExcelReport(options: ExportReportOptions) {
           remark2 = 'No Planned Classes';
         }
 
-        if (remark1 === 'Target Achieved' && remark2 === 'Target Achieved') {
-          remark1 = 'Target Achieved';
+        // If both are same, leave only one in the first column, second empty
+        if (remark1 === remark2) {
           remark2 = '';
         }
       }
@@ -622,8 +623,7 @@ export function generateExcelReport(options: ExportReportOptions) {
           remark2 = 'No Planned Classes';
         }
 
-        if (remark1 === 'Target Achieved' && remark2 === 'Target Achieved') {
-          remark1 = 'Target Achieved';
+        if (remark1 === remark2) {
           remark2 = '';
         }
       }
