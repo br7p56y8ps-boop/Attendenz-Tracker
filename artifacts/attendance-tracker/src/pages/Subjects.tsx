@@ -6,7 +6,7 @@ import { useAttendance } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, pctColor } from '@/lib/utils';   // <-- added pctColor import
 import { useLocation } from 'wouter';
 
 function getCustomWardTotalPlanned(startDateStr: string, endDateStr: string): number {
@@ -66,12 +66,7 @@ export default function Subjects() {
     return { att, mis, planned, pct, conducted };
   };
 
-       const GREEN_OFFSET = 5;
-       const pctColor = (pct: number) => {
-       if (pct >= preferredPercentage + GREEN_OFFSET) return 'var(--color-success)';
-       if (pct >= preferredPercentage) return 'var(--color-warning)';
-       return 'var(--color-destructive)';
-      };
+  // ── REMOVED local GREEN_OFFSET and pctColor – now imported ──────────────
 
   // ── Single unified expandable card for a category ──────────────────────
   const CategoryCard = ({
@@ -108,7 +103,7 @@ export default function Subjects() {
           </div>
           <div className="flex gap-4">
             <div>
-              <div className="text-2xl font-bold" style={{ color: pctColor(summary.pct) }}>
+              <div className="text-2xl font-bold" style={{ color: pctColor(summary.pct, preferredPercentage) }}>
                 {summary.conducted === 0 ? '--' : `${summary.pct.toFixed(1)}%`}
               </div>
               <div className="text-xs text-muted-foreground mt-0.5">Overall</div>
@@ -299,7 +294,7 @@ export default function Subjects() {
                 </div>
                 <div className="flex gap-4">
                   <div>
-                    <div className="text-2xl font-bold font-sans" style={{ color: pctColor(wardSummary.pct) }}>
+                    <div className="text-2xl font-bold font-sans" style={{ color: pctColor(wardSummary.pct, preferredPercentage) }}>
                       {wardSummary.conducted === 0 ? '--' : `${wardSummary.pct.toFixed(1)}%`}
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">Overall</div>
@@ -375,7 +370,7 @@ export default function Subjects() {
               </div>
               <div className="flex gap-4">
                 <div>
-                  <div className="text-2xl font-bold font-sans" style={{ color: pctColor(integratedSummary.pct) }}>
+                  <div className="text-2xl font-bold font-sans" style={{ color: pctColor(integratedSummary.pct, preferredPercentage) }}>
                     {integratedSummary.conducted === 0 ? '--' : `${integratedSummary.pct.toFixed(1)}%`}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">Overall</div>
