@@ -132,12 +132,10 @@ export async function generatePDFReport(options: ExportReportOptions) {
   doc.text(`Routine Mode: `, 20, y + 16);
   doc.setFont('helvetica', 'normal');
   doc.text(routineMode, 50, y + 16);
-  const nowStr = new Date().toLocaleString('en-US', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  const nowStr = new Date().toLocaleString('en-GB', {
+  day: '2-digit',
+  month: '2-digit',
+  year: '2-digit',
   });
   doc.setFont('helvetica', 'bold');
   doc.text(`Generated: `, pageWidth / 2 + 10, y + 8);
@@ -146,7 +144,9 @@ export async function generatePDFReport(options: ExportReportOptions) {
   doc.setFont('helvetica', 'bold');
   doc.text(`Scope: `, pageWidth / 2 + 10, y + 16);
   doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
   doc.text(filterTitle, pageWidth / 2 + 35, y + 16);
+  doc.setFontSize(10);
   y += 32;
 
   // ── Table Drawing Helper ──
