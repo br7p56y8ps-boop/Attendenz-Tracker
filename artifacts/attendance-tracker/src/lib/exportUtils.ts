@@ -7,7 +7,7 @@ export interface AttendanceReportItem {
   attended: number;
   total: number;
   pct: number;
-  neededForTarget: string; // e.g. "0 needed" or "3 classes needed"
+  neededForTarget: string;
 }
 
 export interface ExportReportOptions {
@@ -48,15 +48,14 @@ export function generatePDFReport(options: ExportReportOptions) {
     format: 'a4'
   });
 
-  const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
+  const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 15;
   let y = 18;
 
   // Header Box / Branding
-  doc.setFillColor(15, 23, 42); // slate-900
+  doc.setFillColor(15, 23, 42);
   doc.rect(margin, y, pageWidth - margin * 2, 28, 'F');
 
-  // Title inside box
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
@@ -64,17 +63,17 @@ export function generatePDFReport(options: ExportReportOptions) {
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(186, 230, 253); // sky-200
+  doc.setTextColor(186, 230, 253);
   doc.text('Attendenz Tracker • Local Device Academic Record', pageWidth / 2, y + 20, { align: 'center' });
 
   y += 34;
 
   // Metadata Card
-  doc.setFillColor(248, 250, 252); // slate-50
-  doc.setDrawColor(226, 232, 240); // slate-200
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
   doc.roundedRect(margin, y, pageWidth - margin * 2, 26, 3, 3, 'FD');
 
-  doc.setTextColor(51, 65, 85); // slate-700
+  doc.setTextColor(51, 65, 85);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.text(`Student Name: `, margin + 5, y + 8);
@@ -112,11 +111,11 @@ export function generatePDFReport(options: ExportReportOptions) {
     
     // Section Title
     if (isWard) {
-      doc.setFillColor(239, 246, 255); // blue-50
-      doc.setDrawColor(191, 219, 254); // blue-200
+      doc.setFillColor(239, 246, 255);
+      doc.setDrawColor(191, 219, 254);
     } else {
-      doc.setFillColor(240, 253, 244); // emerald-50
-      doc.setDrawColor(187, 247, 208); // emerald-200
+      doc.setFillColor(240, 253, 244);
+      doc.setDrawColor(187, 247, 208);
     }
     doc.roundedRect(margin, currentY, pageWidth - margin * 2, 9, 3, 3, 'FD');
     
@@ -135,7 +134,12 @@ export function generatePDFReport(options: ExportReportOptions) {
       pct: margin + 158
     };
 
-    doc.setFillColor(isWard ? 30, 58, 138 : 30, 41, 59);
+    // FIXED: Use if/else instead of ternary with multiple values
+    if (isWard) {
+      doc.setFillColor(30, 58, 138);
+    } else {
+      doc.setFillColor(30, 41, 59);
+    }
     doc.rect(margin, currentY, pageWidth - margin * 2, 9, 'F');
 
     doc.setTextColor(255, 255, 255);
@@ -213,7 +217,6 @@ export function generatePDFReport(options: ExportReportOptions) {
     y = 20;
   }
 
-  // Calculate combined summary
   const combinedAttended = overallAttended + wardOverallAttended;
   const combinedTotal = overallTotal + wardOverallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
@@ -251,7 +254,6 @@ export function generatePDFReport(options: ExportReportOptions) {
 
   y += boxHeight + 6;
 
-  // Footer Line & Text
   doc.setDrawColor(203, 213, 225);
   doc.line(margin, 280, pageWidth - margin, 280);
 
@@ -274,18 +276,15 @@ export function generateExcelReport(options: ExportReportOptions) {
     targetPct
   } = options;
 
-  // Separate academic and ward items
   const academicItems = items.filter(item => !item.name.includes('(Ward)'));
   const wardItems = items.filter(item => item.name.includes('(Ward)'));
 
-  // Calculate ward stats
   const wardOverallAttended = wardItems.reduce((acc, curr) => acc + curr.attended, 0);
   const wardOverallTotal = wardItems.reduce((acc, curr) => acc + curr.total, 0);
   const wardOverallPct = wardOverallTotal > 0 ? (wardOverallAttended / wardOverallTotal) * 100 : 0;
 
   const workbook = XLSX.utils.book_new();
 
-  // Academic Subjects Sheet
   if (academicItems.length > 0) {
     const academicRows = academicItems.map(item => ({
       'Subject / Rotation': item.name,
@@ -317,7 +316,6 @@ export function generateExcelReport(options: ExportReportOptions) {
     XLSX.utils.book_append_sheet(workbook, wsAcademic, 'Academic Subjects');
   }
 
-  // Ward Rotations Sheet
   if (wardItems.length > 0) {
     const wardRows = wardItems.map(item => ({
       'Ward / Rotation': item.name.replace(' (Ward)', ''),
@@ -349,7 +347,6 @@ export function generateExcelReport(options: ExportReportOptions) {
     XLSX.utils.book_append_sheet(workbook, wsWard, 'Ward Rotations');
   }
 
-  // Metadata Sheet
   const combinedAttended = overallAttended + wardOverallAttended;
   const combinedTotal = overallTotal + wardOverallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
@@ -383,11 +380,9 @@ export function generateExcelReport(options: ExportReportOptions) {
 export function generateCSVReport(options: ExportReportOptions) {
   const { items, overallAttended, overallTotal, overallPct } = options;
 
-  // Separate academic and ward items
   const academicItems = items.filter(item => !item.name.includes('(Ward)'));
   const wardItems = items.filter(item => item.name.includes('(Ward)'));
 
-  // Calculate ward stats
   const wardOverallAttended = wardItems.reduce((acc, curr) => acc + curr.attended, 0);
   const wardOverallTotal = wardItems.reduce((acc, curr) => acc + curr.total, 0);
   
