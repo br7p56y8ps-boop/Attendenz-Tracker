@@ -56,21 +56,21 @@ export async function generatePDFReport(options: ExportReportOptions) {
     overallPct,
   } = options;
 
-  // Remove "(Ward)" from ward item names for display
-  const processedItems = items.map(item => ({
+  // Keep original names for filtering
+  const academicItems = items.filter(item => !item.name.includes('(Ward)'));
+  const wardItems = items.filter(item => item.name.includes('(Ward)'));
+
+  // For display, remove "(Ward)" from ward names
+  const displayWardItems = wardItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/, '')
   }));
-
-  // Split Academic and Clinical
-  const academicItems = processedItems.filter(item => !item.name.includes('(Ward)'));
-  const wardItems = processedItems.filter(item => item.name.includes('(Ward)'));
 
   const wardOverallAttended = wardItems.reduce((acc, curr) => acc + curr.attended, 0);
   const wardOverallTotal = wardItems.reduce((acc, curr) => acc + curr.total, 0);
   const wardOverallPct = wardOverallTotal > 0 ? (wardOverallAttended / wardOverallTotal) * 100 : 0;
 
-  // ── Load logo for heading ──
+  // ── Load logo ──
   let logoBase64 = '';
   let logoDimensions = { width: 1, height: 1 };
   try {
@@ -85,7 +85,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
   const pageHeight = doc.internal.pageSize.getHeight();
   let y = 18;
 
-  // ── 1. LOGO (Centered, 26mm height, black border) ──
+  // ── 1. LOGO ──
   if (logoBase64) {
     const logoHeight = 26;
     const aspectRatio = logoDimensions.width / logoDimensions.height;
@@ -93,48 +93,45 @@ export async function generatePDFReport(options: ExportReportOptions) {
     const logoX = (pageWidth - logoWidth) / 2;
     const logoY = y;
 
-    // Draw black border around logo
+    // Black border
     doc.setDrawColor(0, 0, 0);
     doc.setLineWidth(0.5);
     doc.rect(logoX - 1, logoY - 1, logoWidth + 2, logoHeight + 2, 'S');
 
-    // Draw logo
     doc.addImage(logoBase64, 'JPEG', logoX, logoY, logoWidth, logoHeight);
 
-    y += logoHeight + 8; // 2 line breaks = 8mm
+    // +1 line space (increased gap from logo to title)
+    y += logoHeight + 12;
   } else {
-    // Fallback: if logo not found, skip to title
-    y += 8;
+    y += 12;
   }
 
-  // ── 2. TITLE (plain text, no colored card) ──
+  // ── 2. TITLE ──
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
   doc.text('ATTENDANCE REPORT', pageWidth / 2, y, { align: 'center' });
-  y += 8;
+  y += 6; // -1 line space (was 8, now 6)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
   doc.text('Attendenz Tracker • Local Device Academic Record', pageWidth / 2, y, { align: 'center' });
-  y += 12; // 2 line breaks after title
+  y += 12; // 2 line breaks after description
 
-  // ── 3. METADATA ──
-  doc.setFontSize(10);
+  // ── 3. METADATA CARD (restored) ──
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(15, y, pageWidth - 30, 26, 3, 3, 'FD');
   doc.setTextColor(51, 65, 85);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Student Name: `, 20, y);
+  doc.setFontSize(10);
+  doc.text(`Student Name: `, 20, y + 8);
   doc.setFont('helvetica', 'normal');
-  doc.text(studentName || 'Medical Student', 50, y);
-  y += 7;
+  doc.text(studentName || 'Medical Student', 50, y + 8);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Routine Mode: `, 20, y);
+  doc.text(`Routine Mode: `, 20, y + 16);
   doc.setFont('helvetica', 'normal');
-  doc.text(routineMode, 50, y);
-  y += 7;
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Generated: `, 20, y);
-  doc.setFont('helvetica', 'normal');
+  doc.text(routineMode, 50, y + 16);
   const nowStr = new Date().toLocaleString('en-US', {
     day: 'numeric',
     month: 'short',
@@ -142,13 +139,15 @@ export async function generatePDFReport(options: ExportReportOptions) {
     hour: '2-digit',
     minute: '2-digit',
   });
-  doc.text(nowStr, 50, y);
-  y += 7;
   doc.setFont('helvetica', 'bold');
-  doc.text(`Scope: `, 20, y);
+  doc.text(`Generated: `, pageWidth / 2 + 10, y + 8);
   doc.setFont('helvetica', 'normal');
-  doc.text(filterTitle, 50, y);
-  y += 12; // 2 line breaks
+  doc.text(nowStr, pageWidth / 2 + 35, y + 8);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Scope: `, pageWidth / 2 + 10, y + 16);
+  doc.setFont('helvetica', 'normal');
+  doc.text(filterTitle, pageWidth / 2 + 35, y + 16);
+  y += 32;
 
   // ── Table Drawing Helper ──
   const drawTable = (
@@ -160,7 +159,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
   ): number => {
     let currentY = startY;
 
-    // Apply sorting only for Academic section
     let sortedItems = tableItems;
     if (applySorting) {
       const computeMergeStatus = (item: AttendanceReportItem): 'split' | 'merged' | 'zero' => {
@@ -208,8 +206,13 @@ export async function generatePDFReport(options: ExportReportOptions) {
     }
 
     // ── Section title ──
-    doc.setFillColor(isWard ? 239 : 240, isWard ? 246 : 253, isWard ? 255 : 244);
-    doc.setDrawColor(isWard ? 191 : 187, isWard ? 219 : 247, isWard ? 254 : 208);
+    if (isWard) {
+      doc.setFillColor(239, 246, 255);
+      doc.setDrawColor(191, 219, 254);
+    } else {
+      doc.setFillColor(240, 253, 244);
+      doc.setDrawColor(187, 247, 208);
+    }
     doc.roundedRect(15, currentY, pageWidth - 30, 9, 3, 3, 'FD');
     doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica', 'bold');
@@ -318,7 +321,8 @@ export async function generatePDFReport(options: ExportReportOptions) {
         doc.rect(15, currentY, pageWidth - 30, 8, 'F');
       }
 
-      const subName = item.name.length > 20 ? item.name.substring(0, 18) + '..' : item.name;
+      const displayName = isWard ? item.name : item.name;
+      const subName = displayName.length > 20 ? displayName.substring(0, 18) + '..' : displayName;
       const target = targetPct;
       const conducted = item.total;
       const attended = item.attended;
@@ -482,20 +486,20 @@ export async function generatePDFReport(options: ExportReportOptions) {
     return currentY;
   };
 
-  // ── ACADEMIC SECTION (with sorting) ──
+  // ── ACADEMIC SECTION ──
   if (academicItems.length > 0) {
     y = drawTable('Academic Subjects', academicItems, y, false, true);
-    y += 12; // 3 line breaks after Academic section
+    y += 12; // 3 line breaks after Academic
   }
 
-  // ── CLINICAL SECTION (no sorting) ──
-  if (wardItems.length > 0) {
+  // ── CLINICAL SECTION ──
+  if (displayWardItems.length > 0) {
     if (y > 235) {
       doc.addPage();
       y = 20;
     }
-    y = drawTable('Clinical Rotations (Wards)', wardItems, y, true, false);
-    y += 8; // 2 line breaks after Clinical section
+    y = drawTable('Clinical Rotations (Wards)', displayWardItems, y, true, false);
+    y += 8; // 2 line breaks after Clinical
   }
 
   // ── SUMMARY CARD ──
@@ -565,7 +569,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
   doc.save(`Attendance_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
-// ── Excel Export (unchanged) ──
+// ── Excel Export ──
 export function generateExcelReport(options: ExportReportOptions) {
   const {
     studentName,
@@ -578,19 +582,23 @@ export function generateExcelReport(options: ExportReportOptions) {
     targetPct,
   } = options;
 
-  const processedItems = items.map(item => ({
+  // Keep original names for filtering
+  const academicItems = items.filter(item => !item.name.includes('(Ward)'));
+  const wardItems = items.filter(item => item.name.includes('(Ward)'));
+
+  // For display, remove "(Ward)" from ward names
+  const displayWardItems = wardItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/, '')
   }));
 
-  const academicItems = processedItems.filter(item => !item.name.includes('(Ward)'));
-  const wardItems = processedItems.filter(item => item.name.includes('(Ward)'));
   const wardOverallAttended = wardItems.reduce((acc, curr) => acc + curr.attended, 0);
   const wardOverallTotal = wardItems.reduce((acc, curr) => acc + curr.total, 0);
   const wardOverallPct = wardOverallTotal > 0 ? (wardOverallAttended / wardOverallTotal) * 100 : 0;
 
   const workbook = XLSX.utils.book_new();
 
+  // Academic Sheet
   if (academicItems.length > 0) {
     const rows = academicItems.map(item => {
       const conducted = item.total;
@@ -669,8 +677,9 @@ export function generateExcelReport(options: ExportReportOptions) {
     XLSX.utils.book_append_sheet(workbook, ws, 'Academic Subjects');
   }
 
-  if (wardItems.length > 0) {
-    const rows = wardItems.map(item => {
+  // Ward Sheet
+  if (displayWardItems.length > 0) {
+    const rows = displayWardItems.map(item => {
       const conducted = item.total;
       const attended = item.attended;
       const plannedTotal = item.plannedTotal;
@@ -747,6 +756,7 @@ export function generateExcelReport(options: ExportReportOptions) {
     XLSX.utils.book_append_sheet(workbook, ws, 'Ward Rotations');
   }
 
+  // Metadata sheet
   const combinedAttended = overallAttended + wardOverallAttended;
   const combinedTotal = overallTotal + wardOverallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
@@ -768,17 +778,20 @@ export function generateExcelReport(options: ExportReportOptions) {
   XLSX.writeFile(workbook, `Attendance_Report_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-// ── CSV Export (unchanged) ──
+// ── CSV Export ──
 export function generateCSVReport(options: ExportReportOptions) {
   const { items, overallAttended, overallTotal, overallPct } = options;
 
-  const processedItems = items.map(item => ({
+  // Keep original names for filtering
+  const academicItems = items.filter(item => !item.name.includes('(Ward)'));
+  const wardItems = items.filter(item => item.name.includes('(Ward)'));
+
+  // For display, remove "(Ward)" from ward names
+  const displayWardItems = wardItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/, '')
   }));
 
-  const academicItems = processedItems.filter(item => !item.name.includes('(Ward)'));
-  const wardItems = processedItems.filter(item => item.name.includes('(Ward)'));
   const wardOverallAttended = wardItems.reduce((acc, curr) => acc + curr.attended, 0);
   const wardOverallTotal = wardItems.reduce((acc, curr) => acc + curr.total, 0);
   const combinedAttended = overallAttended + wardOverallAttended;
@@ -795,6 +808,7 @@ export function generateCSVReport(options: ExportReportOptions) {
     'Current %',
   ];
   const rows: any[] = [];
+
   academicItems.forEach(i => {
     rows.push([
       'Academic',
@@ -806,7 +820,8 @@ export function generateCSVReport(options: ExportReportOptions) {
       i.total === 0 ? '' : i.pct.toFixed(1),
     ]);
   });
-  wardItems.forEach(i => {
+
+  displayWardItems.forEach(i => {
     rows.push([
       'Ward',
       `"${i.name.replace(/"/g, '""')}"`,
@@ -817,6 +832,7 @@ export function generateCSVReport(options: ExportReportOptions) {
       i.total === 0 ? '' : i.pct.toFixed(1),
     ]);
   });
+
   rows.push([
     'SUMMARY',
     '"Combined Total"',
@@ -826,6 +842,7 @@ export function generateCSVReport(options: ExportReportOptions) {
     '"Combined Summary"',
     combinedPct.toFixed(1),
   ]);
+
   const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
