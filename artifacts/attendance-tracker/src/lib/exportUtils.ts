@@ -115,6 +115,7 @@ export function generatePDFReport(options: ExportReportOptions) {
     doc.text(title, pageWidth / 2, currentY + 6, { align: 'center' });
     currentY += 9;
 
+    // ── 6 columns: Subject, Class Conducted, Present, Remarks (colspan 2), Current % ──
     const colWidth = (pageWidth - margin * 2) / 6;
     const colX = [
       margin,
@@ -130,44 +131,49 @@ export function generatePDFReport(options: ExportReportOptions) {
     const subHeaderRowHeight = 7;
     const totalHeaderHeight = headerRowHeight + subHeaderRowHeight;
 
-    // ── Main Header Row (background) ──
+    // ── Draw full header rectangle background ──
     doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
-    doc.rect(margin, currentY, pageWidth - margin * 2, headerRowHeight, 'F');
-    // Sub-header row (background)
-    doc.rect(margin, currentY + headerRowHeight, pageWidth - margin * 2, subHeaderRowHeight, 'F');
+    doc.rect(margin, currentY, pageWidth - margin * 2, totalHeaderHeight, 'F');
 
-    // ── Draw header text (vertically centered across both rows for non-remark columns) ──
+    // ── Draw header text ──
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
+
+    // Column 1: Subject (vertically centered)
     doc.setFontSize(7.5);
-
+    const centerY = currentY + totalHeaderHeight / 2 + 0.5;
     const headerLabel1 = isWard ? 'Rotation' : 'Subject';
-    const centerY = currentY + totalHeaderHeight / 2 + 1; // +1 to fine-tune
-
-    // Columns 0,1,2,5,6 – vertically centered across both rows
     doc.text(headerLabel1, (colX[0] + colX[1]) / 2, centerY, { align: 'center' });
-    doc.text('Class Conducted', (colX[1] + colX[2]) / 2, centerY, { align: 'center' });
-    doc.text('Present', (colX[2] + colX[3]) / 2, centerY, { align: 'center' });
-    doc.text('Current %', (colX[5] + colX[6]) / 2, centerY, { align: 'center' });
 
-    // "Remarks" centered over both remark columns, also vertically centered
+    // Column 2: Class Conducted (vertically centered)
+    doc.text('Class Conducted', (colX[1] + colX[2]) / 2, centerY, { align: 'center' });
+
+    // Column 3: Present (vertically centered)
+    doc.text('Present', (colX[2] + colX[3]) / 2, centerY, { align: 'center' });
+
+    // Column 4-5: Remarks (centered across both child columns, vertically centered)
     doc.text('Remarks', (colX[3] + colX[5]) / 2, centerY, { align: 'center' });
 
-    // ── Sub-header text (only for remark sub-columns) ──
+    // Column 6: Current % (vertically centered)
+    doc.text('Current %', (colX[5] + colX[6]) / 2, centerY, { align: 'center' });
+
+    // ── Sub-header row text (only for remark child columns) ──
     doc.setFontSize(6.5);
-    const subY = currentY + headerRowHeight + subHeaderRowHeight / 2 + 1;
+    const subY = currentY + headerRowHeight + subHeaderRowHeight / 2 + 0.5;
     doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subY, { align: 'center' });
     doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subY, { align: 'center' });
 
     // ── Draw header borders ──
-    doc.setDrawColor(226, 232, 240);
-    // Top border of header
+    doc.setDrawColor(85, 85, 85); // darker border
+    doc.setLineWidth(0.4);
+
+    // Top border
     doc.line(margin, currentY, pageWidth - margin, currentY);
-    // Bottom border of sub-header
+    // Bottom border of header
     doc.line(margin, currentY + totalHeaderHeight, pageWidth - margin, currentY + totalHeaderHeight);
-    // Horizontal line between main and sub header rows
+    // Horizontal line between main and sub-header rows
     doc.line(margin, currentY + headerRowHeight, pageWidth - margin, currentY + headerRowHeight);
-    // Vertical lines for all columns across both rows
+    // Vertical lines for all column boundaries
     for (let i = 0; i <= 6; i++) {
       doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
     }
@@ -176,31 +182,32 @@ export function generatePDFReport(options: ExportReportOptions) {
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
+    doc.setLineWidth(0.2);
 
     // ── Rows ──
     tableItems.forEach((item, index) => {
       if (currentY > 260) {
         doc.addPage();
         currentY = 20;
-        // Redraw headers on new page (repeat header logic)
+        // Redraw headers on new page
         doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
-        doc.rect(margin, currentY, pageWidth - margin * 2, headerRowHeight, 'F');
-        doc.rect(margin, currentY + headerRowHeight, pageWidth - margin * 2, subHeaderRowHeight, 'F');
+        doc.rect(margin, currentY, pageWidth - margin * 2, totalHeaderHeight, 'F');
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
+        const cy = currentY + totalHeaderHeight / 2 + 0.5;
         const h1 = isWard ? 'Rotation' : 'Subject';
-        const cy = currentY + totalHeaderHeight / 2 + 1;
         doc.text(h1, (colX[0] + colX[1]) / 2, cy, { align: 'center' });
         doc.text('Class Conducted', (colX[1] + colX[2]) / 2, cy, { align: 'center' });
         doc.text('Present', (colX[2] + colX[3]) / 2, cy, { align: 'center' });
-        doc.text('Current %', (colX[5] + colX[6]) / 2, cy, { align: 'center' });
         doc.text('Remarks', (colX[3] + colX[5]) / 2, cy, { align: 'center' });
+        doc.text('Current %', (colX[5] + colX[6]) / 2, cy, { align: 'center' });
         doc.setFontSize(6.5);
-        const sy = currentY + headerRowHeight + subHeaderRowHeight / 2 + 1;
+        const sy = currentY + headerRowHeight + subHeaderRowHeight / 2 + 0.5;
         doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, sy, { align: 'center' });
         doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, sy, { align: 'center' });
-        doc.setDrawColor(226, 232, 240);
+        doc.setDrawColor(85, 85, 85);
+        doc.setLineWidth(0.4);
         doc.line(margin, currentY, pageWidth - margin, currentY);
         doc.line(margin, currentY + totalHeaderHeight, pageWidth - margin, currentY + totalHeaderHeight);
         doc.line(margin, currentY + headerRowHeight, pageWidth - margin, currentY + headerRowHeight);
@@ -208,6 +215,7 @@ export function generatePDFReport(options: ExportReportOptions) {
           doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
         }
         currentY += totalHeaderHeight;
+        doc.setLineWidth(0.2);
       }
 
       const isEven = index % 2 === 0;
@@ -232,13 +240,13 @@ export function generatePDFReport(options: ExportReportOptions) {
         const pct = (attended / conducted) * 100;
         if (pct >= target) {
           remark1Text = 'Target Achieved';
-          remark1Color = [16, 185, 129];
+          remark1Color = [16, 185, 129]; // Green
         } else {
           const needed = Math.ceil((target * conducted) / 100) - attended;
           if (needed > 0) {
             const classText = needed === 1 ? 'Class' : 'Classes';
             remark1Text = `Attend next ${needed} ${classText}`;
-            remark1Color = [234, 179, 8];
+            remark1Color = [255, 165, 0]; // Orange
           } else {
             remark1Text = 'Target Achieved';
             remark1Color = [16, 185, 129];
@@ -269,16 +277,16 @@ export function generatePDFReport(options: ExportReportOptions) {
 
           if (canMiss > 0) {
             remark2Text = `Can miss ${canMiss}`;
-            remark2Color = [234, 179, 8];
+            remark2Color = [255, 165, 0]; // Orange
             mergeRemarks = false;
           } else if (canMiss === 0) {
             const classText = remaining === 1 ? 'Class' : 'Classes';
             remark2Text = `Must Attend remaining ${remaining} ${classText}`;
-            remark2Color = [239, 68, 68];
+            remark2Color = [139, 0, 0]; // Dark Red
             mergeRemarks = true;
           } else {
             remark2Text = 'Better Luck Next Life';
-            remark2Color = [239, 68, 68];
+            remark2Color = [128, 0, 128]; // Purple
             mergeRemarks = true;
           }
         }
@@ -290,34 +298,36 @@ export function generatePDFReport(options: ExportReportOptions) {
 
       const isYetToBeConducted = conducted === 0;
 
-      // ── Draw borders for this row ──
-      doc.setDrawColor(226, 232, 240);
+      // ── Draw row borders ──
+      doc.setDrawColor(85, 85, 85);
+      doc.setLineWidth(0.3);
       doc.line(margin, currentY, pageWidth - margin, currentY); // top
       doc.line(margin, currentY + 8, pageWidth - margin, currentY + 8); // bottom
 
       if (isYetToBeConducted) {
         // Merge columns 2-6 with "Yet to be Conducted"
-        doc.line(colX[0], currentY, colX[0], currentY + 8); // left of subject col
-        doc.line(colX[1], currentY, colX[1], currentY + 8); // right of subject col (left of merged)
-        doc.line(colX[6], currentY, colX[6], currentY + 8); // right edge
+        doc.line(colX[0], currentY, colX[0], currentY + 8);
+        doc.line(colX[1], currentY, colX[1], currentY + 8);
+        doc.line(colX[6], currentY, colX[6], currentY + 8);
 
+        // Subject name in column 1 (centered)
         doc.setTextColor(15, 23, 42);
-        doc.text(subName, (colX[0] + colX[1]) / 2, currentY + 5.5, { align: 'center' });
+        doc.text(subName, (colX[0] + colX[1]) / 2, currentY + 4, { align: 'center' });
 
+        // Merged text across columns 2-6
         const mergedText = 'Yet to be Conducted';
         const startX = colX[1];
         const endX = colX[6];
         const centerX = (startX + endX) / 2;
         doc.setTextColor(148, 163, 184);
         doc.setFont('helvetica', 'italic');
-        doc.text(mergedText, centerX, currentY + 5.5, { align: 'center' });
+        doc.text(mergedText, centerX, currentY + 4, { align: 'center' });
         doc.setFont('helvetica', 'normal');
         currentY += 8;
         return;
       }
 
-      // Normal row
-      // Vertical borders: skip internal lines inside merged remark area
+      // ── Normal row: draw vertical borders ──
       for (let i = 0; i <= 6; i++) {
         if (mergeRemarks && i >= 3 && i <= 5) continue;
         doc.line(colX[i], currentY, colX[i], currentY + 8);
@@ -327,57 +337,45 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.line(colX[5], currentY, colX[5], currentY + 8);
       }
 
-      // ── Render cell content ──
-      doc.setTextColor(15, 23, 42);
-      doc.text(subName, (colX[0] + colX[1]) / 2, currentY + 5.5, { align: 'center' });
-      doc.text(String(conducted), (colX[1] + colX[2]) / 2, currentY + 5.5, { align: 'center' });
-      doc.text(String(attended), (colX[2] + colX[3]) / 2, currentY + 5.5, { align: 'center' });
+      // ── Render cell content (all center aligned) ──
+      const cellCenterY = currentY + 4;
 
+      // Column 1: Subject
+      doc.setTextColor(15, 23, 42);
+      doc.text(subName, (colX[0] + colX[1]) / 2, cellCenterY, { align: 'center' });
+
+      // Column 2: Class Conducted
+      doc.text(String(conducted), (colX[1] + colX[2]) / 2, cellCenterY, { align: 'center' });
+
+      // Column 3: Present
+      doc.text(String(attended), (colX[2] + colX[3]) / 2, cellCenterY, { align: 'center' });
+
+      // ── Remarks ──
       if (mergeRemarks) {
         const startX = colX[3];
         const endX = colX[5];
         const centerX = (startX + endX) / 2;
-        const maxWidth = colX[5] - colX[3] - 2;
         doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
         if (remark2Text === 'Better Luck Next Life' || remark2Text.includes('Must Attend')) {
           doc.setFont('helvetica', 'bold');
         }
-        const lines = doc.splitTextToSize(remark2Text, maxWidth);
-        const lineHeight = 4;
-        const totalHeight = lines.length * lineHeight;
-        const startY = currentY + 4 - (totalHeight / 2);
-        lines.forEach((line: string, idx: number) => {
-          doc.text(line, centerX, startY + idx * lineHeight + 1.5, { align: 'center' });
-        });
+        doc.text(remark2Text, centerX, cellCenterY, { align: 'center' });
         doc.setFont('helvetica', 'normal');
       } else {
-        // Split remarks
-        const maxWidth1 = colX[4] - colX[3] - 2;
+        // Remark 1
         doc.setTextColor(remark1Color[0], remark1Color[1], remark1Color[2]);
         if (remark1Text.includes('Attend')) {
           doc.setFont('helvetica', 'bold');
         }
-        const lines1 = doc.splitTextToSize(remark1Text, maxWidth1);
-        const lineHeight1 = 4;
-        const totalHeight1 = lines1.length * lineHeight1;
-        const startY1 = currentY + 4 - (totalHeight1 / 2);
-        lines1.forEach((line: string, idx: number) => {
-          doc.text(line, (colX[3] + colX[4]) / 2, startY1 + idx * lineHeight1 + 1.5, { align: 'center' });
-        });
+        doc.text(remark1Text, (colX[3] + colX[4]) / 2, cellCenterY, { align: 'center' });
         doc.setFont('helvetica', 'normal');
 
-        const maxWidth2 = colX[5] - colX[4] - 2;
+        // Remark 2
         doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
         if (remark2Text.includes('Can miss') || remark2Text === 'Target Achieved') {
           doc.setFont('helvetica', 'bold');
         }
-        const lines2 = doc.splitTextToSize(remark2Text, maxWidth2);
-        const lineHeight2 = 4;
-        const totalHeight2 = lines2.length * lineHeight2;
-        const startY2 = currentY + 4 - (totalHeight2 / 2);
-        lines2.forEach((line: string, idx: number) => {
-          doc.text(line, (colX[4] + colX[5]) / 2, startY2 + idx * lineHeight2 + 1.5, { align: 'center' });
-        });
+        doc.text(remark2Text, (colX[4] + colX[5]) / 2, cellCenterY, { align: 'center' });
         doc.setFont('helvetica', 'normal');
       }
 
@@ -388,7 +386,7 @@ export function generatePDFReport(options: ExportReportOptions) {
         doc.setTextColor(225, 29, 72);
       }
       doc.setFont('helvetica', 'bold');
-      doc.text(`${item.pct.toFixed(1)}%`, (colX[5] + colX[6]) / 2, currentY + 5.5, { align: 'center' });
+      doc.text(`${item.pct.toFixed(1)}%`, (colX[5] + colX[6]) / 2, cellCenterY, { align: 'center' });
       doc.setFont('helvetica', 'normal');
 
       currentY += 8;
