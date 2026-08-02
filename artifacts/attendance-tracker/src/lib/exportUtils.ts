@@ -125,16 +125,15 @@ export function generatePDFReport(options: ExportReportOptions) {
     doc.text(title, margin + 5, currentY + 6);
     currentY += 9;
 
-    // Table Header
+    // Table Header - NEW COLUMN ORDER: Subject, Class Conducted, Present, Remarks, Current %
     const colX = {
       subject: margin + 4,
-      present: margin + 68,
-      total: margin + 92,
-      needed: margin + 115,
+      conducted: margin + 58,
+      present: margin + 82,
+      remarks: margin + 110,
       pct: margin + 158
     };
 
-    // FIXED: Use if/else instead of ternary with multiple values
     if (isWard) {
       doc.setFillColor(30, 58, 138);
     } else {
@@ -144,12 +143,12 @@ export function generatePDFReport(options: ExportReportOptions) {
 
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.text('Subject / Rotation', colX.subject, currentY + 6);
+    doc.text('Class Conducted', colX.conducted, currentY + 6);
     doc.text('Present', colX.present, currentY + 6);
-    doc.text('Total', colX.total, currentY + 6);
-    doc.text('Remaining / Needed', colX.needed, currentY + 6);
-    doc.text('%', colX.pct, currentY + 6);
+    doc.text('Remarks', colX.remarks, currentY + 6);
+    doc.text('Current %', colX.pct, currentY + 6);
 
     currentY += 9;
 
@@ -161,6 +160,18 @@ export function generatePDFReport(options: ExportReportOptions) {
       if (currentY > 260) {
         doc.addPage();
         currentY = 20;
+        // Redraw header on new page
+        doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
+        doc.rect(margin, currentY, pageWidth - margin * 2, 9, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text('Subject / Rotation', colX.subject, currentY + 6);
+        doc.text('Class Conducted', colX.conducted, currentY + 6);
+        doc.text('Present', colX.present, currentY + 6);
+        doc.text('Remarks', colX.remarks, currentY + 6);
+        doc.text('Current %', colX.pct, currentY + 6);
+        currentY += 9;
       }
 
       const isEven = index % 2 === 0;
@@ -173,20 +184,36 @@ export function generatePDFReport(options: ExportReportOptions) {
       doc.line(margin, currentY + 8, pageWidth - margin, currentY + 8);
 
       doc.setTextColor(15, 23, 42);
-      const subName = item.name.length > 32 ? item.name.substring(0, 30) + '..' : item.name;
-      doc.text(subName, colX.subject, currentY + 5.5);
-      doc.text(String(item.attended), colX.present, currentY + 5.5);
-      doc.text(String(item.total), colX.total, currentY + 5.5);
-      doc.text(item.neededForTarget, colX.needed, currentY + 5.5);
-
-      if (item.pct >= targetPct) {
-        doc.setTextColor(16, 185, 129);
+      const subName = item.name.length > 28 ? item.name.substring(0, 26) + '..' : item.name;
+      
+      // If total is 0, show "Yet to be Conducted" merged across ALL columns
+      if (item.total === 0) {
+        const mergedText = 'Yet to be Conducted';
+        const textWidth = doc.getTextWidth(mergedText);
+        // Calculate the center of all columns combined (from subject to pct)
+        const startX = colX.subject;
+        const endX = colX.pct + 15;
+        const centerX = (startX + endX) / 2;
+        doc.setTextColor(148, 163, 184);
+        doc.setFont('helvetica', 'italic');
+        doc.text(mergedText, centerX - textWidth / 2, currentY + 5.5);
+        doc.setFont('helvetica', 'normal');
       } else {
-        doc.setTextColor(225, 29, 72);
+        // Normal row with all columns
+        doc.text(subName, colX.subject, currentY + 5.5);
+        doc.text(String(item.total), colX.conducted, currentY + 5.5);
+        doc.text(String(item.attended), colX.present, currentY + 5.5);
+        doc.text(item.neededForTarget, colX.remarks, currentY + 5.5);
+
+        if (item.pct >= targetPct) {
+          doc.setTextColor(16, 185, 129);
+        } else {
+          doc.setTextColor(225, 29, 72);
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${item.pct.toFixed(1)}%`, colX.pct, currentY + 5.5);
+        doc.setFont('helvetica', 'normal');
       }
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${item.pct.toFixed(1)}%`, colX.pct, currentY + 5.5);
-      doc.setFont('helvetica', 'normal');
 
       currentY += 8;
     });
@@ -289,19 +316,19 @@ export function generateExcelReport(options: ExportReportOptions) {
     const academicRows = academicItems.map(item => ({
       'Subject / Rotation': item.name,
       'Category': item.category || 'Academic',
-      'Classes Attended': item.attended,
-      'Total Classes': item.total,
-      'Attendance (%)': Number(item.pct.toFixed(1)),
-      'Classes Needed / Remaining': item.neededForTarget
+      'Class Conducted': item.total === 0 ? 'Yet to be Conducted' : item.total,
+      'Present': item.total === 0 ? '—' : item.attended,
+      'Remarks': item.total === 0 ? 'Not Started' : item.neededForTarget,
+      'Current Percentage (%)': item.total === 0 ? '—' : Number(item.pct.toFixed(1))
     }));
 
     academicRows.push({
       'Subject / Rotation': 'ACADEMIC SUMMARY',
       'Category': filterTitle,
-      'Classes Attended': overallAttended,
-      'Total Classes': overallTotal,
-      'Attendance (%)': Number(overallPct.toFixed(1)),
-      'Classes Needed / Remaining': overallPct >= targetPct ? 'Target Achieved' : 'Action Needed'
+      'Class Conducted': overallTotal,
+      'Present': overallAttended,
+      'Remarks': overallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
+      'Current Percentage (%)': Number(overallPct.toFixed(1))
     });
 
     const wsAcademic = XLSX.utils.json_to_sheet(academicRows);
@@ -310,8 +337,8 @@ export function generateExcelReport(options: ExportReportOptions) {
       { wch: 18 },
       { wch: 18 },
       { wch: 15 },
-      { wch: 16 },
-      { wch: 28 }
+      { wch: 28 },
+      { wch: 18 }
     ];
     XLSX.utils.book_append_sheet(workbook, wsAcademic, 'Academic Subjects');
   }
@@ -320,19 +347,19 @@ export function generateExcelReport(options: ExportReportOptions) {
     const wardRows = wardItems.map(item => ({
       'Ward / Rotation': item.name.replace(' (Ward)', ''),
       'Category': item.category || 'Clinical Rotation',
-      'Classes Attended': item.attended,
-      'Total Classes': item.total,
-      'Attendance (%)': Number(item.pct.toFixed(1)),
-      'Classes Needed / Remaining': item.neededForTarget
+      'Class Conducted': item.total === 0 ? 'Yet to be Conducted' : item.total,
+      'Present': item.total === 0 ? '—' : item.attended,
+      'Remarks': item.total === 0 ? 'Not Started' : item.neededForTarget,
+      'Current Percentage (%)': item.total === 0 ? '—' : Number(item.pct.toFixed(1))
     }));
 
     wardRows.push({
       'Ward / Rotation': 'WARD ROTATIONS SUMMARY',
       'Category': 'Clinical Rotations',
-      'Classes Attended': wardOverallAttended,
-      'Total Classes': wardOverallTotal,
-      'Attendance (%)': Number(wardOverallPct.toFixed(1)),
-      'Classes Needed / Remaining': wardOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed'
+      'Class Conducted': wardOverallTotal,
+      'Present': wardOverallAttended,
+      'Remarks': wardOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
+      'Current Percentage (%)': Number(wardOverallPct.toFixed(1))
     });
 
     const wsWard = XLSX.utils.json_to_sheet(wardRows);
@@ -341,8 +368,8 @@ export function generateExcelReport(options: ExportReportOptions) {
       { wch: 18 },
       { wch: 18 },
       { wch: 15 },
-      { wch: 16 },
-      { wch: 28 }
+      { wch: 28 },
+      { wch: 18 }
     ];
     XLSX.utils.book_append_sheet(workbook, wsWard, 'Ward Rotations');
   }
@@ -390,33 +417,33 @@ export function generateCSVReport(options: ExportReportOptions) {
   const combinedTotal = overallTotal + wardOverallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
 
-  const headers = ['Type', 'Subject / Rotation', 'Classes Attended', 'Total Classes', 'Attendance Percentage (%)', 'Target Status'];
+  const headers = ['Type', 'Subject / Rotation', 'Class Conducted', 'Present', 'Remarks', 'Current Percentage (%)'];
   
   const academicRows = academicItems.map(i => [
     'Academic',
     `"${i.name.replace(/"/g, '""')}"`,
-    i.attended,
-    i.total,
-    i.pct.toFixed(1),
-    `"${i.neededForTarget}"`
+    i.total === 0 ? 'Yet to be Conducted' : i.total,
+    i.total === 0 ? '—' : i.attended,
+    i.total === 0 ? 'Not Started' : `"${i.neededForTarget}"`,
+    i.total === 0 ? '—' : i.pct.toFixed(1)
   ]);
 
   const wardRows = wardItems.map(i => [
     'Ward',
     `"${i.name.replace(/"/g, '""')}"`,
-    i.attended,
-    i.total,
-    i.pct.toFixed(1),
-    `"${i.neededForTarget}"`
+    i.total === 0 ? 'Yet to be Conducted' : i.total,
+    i.total === 0 ? '—' : i.attended,
+    i.total === 0 ? 'Not Started' : `"${i.neededForTarget}"`,
+    i.total === 0 ? '—' : i.pct.toFixed(1)
   ]);
 
   const summaryRow = [
     'SUMMARY',
     '"Combined Total"',
-    combinedAttended,
     combinedTotal,
-    combinedPct.toFixed(1),
-    '"Combined Summary"'
+    combinedAttended,
+    '"Combined Summary"',
+    combinedPct.toFixed(1)
   ];
 
   const allRows = [...academicRows, ...wardRows, summaryRow];
