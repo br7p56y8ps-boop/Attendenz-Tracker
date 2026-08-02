@@ -113,9 +113,7 @@ export default function Account() {
       if (navigator.storage && navigator.storage.persisted) {
         try {
           isPersisted = await navigator.storage.persisted();
-        } catch (e) {
-           // console.error(e);
-        }
+        } catch (e) { /* ignore */ }
       }
 
       if (navigator.storage && navigator.storage.estimate) {
@@ -127,9 +125,7 @@ export default function Account() {
           if (est.quota !== undefined) {
             quotaStr = (est.quota / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
           }
-        } catch (e) {
-           // console.error(e);
-        }
+        } catch (e) { /* ignore */ }
       }
 
       let techTitle = 'Standard Local Storage';
@@ -150,6 +146,9 @@ export default function Account() {
     detectStorage();
   }, [isPersistentStorage]);
 
+  // ============================================================
+  // FIXED: handleExecuteExport with plannedTotal properly passed
+  // ============================================================
   const handleExecuteExport = () => {
     const rawItems: Array<{ name: string; category?: string; attended: number; total: number; plannedTotal: number }> = [];
 
@@ -222,6 +221,9 @@ export default function Account() {
       filteredItems = rawItems;
     }
 
+    // ============================================================
+    // CRITICAL: reportItems must include ALL fields
+    // ============================================================
     const reportItems = filteredItems.map(item => {
       const total = item.total;
       const attended = item.attended;
@@ -302,7 +304,6 @@ export default function Account() {
           }
           setTransferImportData(parsedData);
         } catch (err) {
-           // console.error('Failed to parse backup file:', err);
           import('sonner').then(({ toast }) => toast.error('Invalid transfer file format.'));
         }
       };
@@ -552,7 +553,6 @@ export default function Account() {
     const femaleEndings = ['a', 'i', 'ee', 'ya', 'an'];
     if (femaleNames.some(fn => n.includes(fn))) return 'female';
     if (femaleEndings.some(fe => n.endsWith(fe))) return 'female';
-    
     return 'male';
   };
 
@@ -575,7 +575,7 @@ export default function Account() {
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_SIZE = 400; // 400x400 avatar max size
+          const MAX_SIZE = 400;
           let width = img.width;
           let height = img.height;
           if (width > height) {
@@ -634,11 +634,9 @@ export default function Account() {
                   <Camera className="w-6 h-6 text-white" />
                 </div>
               </div>
-              {/* Edit Badge */}
               <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-lg border-2 border-card">
                 <Camera className="w-3 h-3 text-primary-foreground" />
               </div>
-              {/* Photos/Gallery File Input for iOS & Android */}
               <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -682,7 +680,6 @@ export default function Account() {
             </div>
           </div>
 
-          {/* Theme Switch Toggle Button */}
           <button
             onClick={toggleTheme}
             className="w-10 h-10 rounded-2xl bg-muted/60 hover:bg-muted flex items-center justify-center text-foreground transition-all active:scale-95 shadow-sm border border-border/50 shrink-0"
@@ -719,7 +716,7 @@ export default function Account() {
           </div>
         </div>
 
-        {/* 2. Curriculum Management (Collapsible Card) */}
+        {/* 3. Curriculum Management */}
         <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3 transition-all">
           <div
             onClick={() => setIsCurriculumOpen(!isCurriculumOpen)}
@@ -761,14 +758,12 @@ export default function Account() {
                       {subjectMode === 'preloaded' ? 'MBBS 5th Year Curriculum' : 'Custom Academic Routine'}
                     </span>
                   </div>
-
                   <div className="flex items-center justify-between pt-1 border-t border-border/30">
                     <span className="text-xs font-medium text-muted-foreground">Current Routine Mode:</span>
                     <span className="text-xs font-bold text-primary">
                       {subjectMode === 'preloaded' ? 'Preset Routine' : 'Custom Routine'}
                     </span>
                   </div>
-
                   <div className="flex items-center justify-between pt-1 border-t border-border/30">
                     <span className="text-xs font-medium text-muted-foreground">Curriculum Status:</span>
                     <span className={cn(
@@ -794,7 +789,6 @@ export default function Account() {
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>{curriculumStatus === 'Completed' ? 'Mark as Active' : 'Mark Curriculum as Completed'}</span>
                   </button>
-
                   <button
                     type="button"
                     onClick={() => initiateSwitch(subjectMode === 'preloaded' ? 'custom' : 'preloaded')}
@@ -809,11 +803,11 @@ export default function Account() {
           </AnimatePresence>
         </div>
 
-        {/* 3. Other Setting */}
+        {/* 4. Other Settings */}
         <div className="space-y-3 pt-2">
           <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Other Setting</p>
 
-          {/* Transfer App Data (Collapsible) */}
+          {/* Transfer App Data */}
           <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
             <button
               type="button"
@@ -878,7 +872,6 @@ export default function Account() {
                         You are about to replace your current local data with the received backup.
                         We recommend creating a Full App Backup before continuing.
                       </p>
-                      
                       <div className="bg-background rounded-lg border border-border/60 p-2 space-y-1.5 mt-2">
                         <div className="flex justify-between text-[11px]">
                           <span className="text-muted-foreground">App Version</span>
@@ -893,7 +886,6 @@ export default function Account() {
                           <span className="font-bold text-foreground">{transferImportData.attendenz_snapshots_v1 ? JSON.parse(transferImportData.attendenz_snapshots_v1).length : 0}</span>
                         </div>
                       </div>
-
                       <div className="grid grid-cols-2 gap-2 pt-2">
                         <button
                           onClick={() => setTransferImportData(null)}
@@ -915,7 +907,7 @@ export default function Account() {
             </AnimatePresence>
           </div>
 
-          {/* 1. Snapshots & Storage (Collapsible) */}
+          {/* Snapshots & Storage */}
           <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
             <div
               onClick={() => setIsSnapshotOpen(!isSnapshotOpen)}
@@ -1003,7 +995,7 @@ export default function Account() {
             </AnimatePresence>
           </div>
 
-          {/* 2. File Backup & Restore (Collapsible) */}
+          {/* File Backup & Restore */}
           <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
             <button
               type="button"
@@ -1037,7 +1029,6 @@ export default function Account() {
                       <Download className="w-3.5 h-3.5" />
                       Export Backup (.json)
                     </button>
-
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold rounded-xl transition-colors border border-border"
@@ -1070,7 +1061,7 @@ export default function Account() {
             </AnimatePresence>
           </div>
 
-          {/* 3. Export Attendance Data (Collapsible) */}
+          {/* Export Attendance Data */}
           <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
             <button
               type="button"
@@ -1086,8 +1077,6 @@ export default function Account() {
                   <p className="text-[10px] text-muted-foreground">Export records in PDF, Excel, or CSV formats</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-              </div>
             </button>
 
             <AnimatePresence>
@@ -1102,7 +1091,6 @@ export default function Account() {
                     Export your attendance records, subject statistics, and ward rotations in clean, printable formats.
                   </p>
 
-                  {/* Format Selector */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
                       Supported Formats
@@ -1150,7 +1138,6 @@ export default function Account() {
                     </div>
                   </div>
 
-                  {/* Scope Filter Selector */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
                       Export Scope
@@ -1167,7 +1154,6 @@ export default function Account() {
                     </select>
                   </div>
 
-                  {/* Conditional Filter Inputs */}
                   {exportScope === 'subject' && (
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-muted-foreground">Select Subject / Ward</label>
@@ -1238,7 +1224,6 @@ export default function Account() {
                     </div>
                   )}
 
-                  {/* Execute Export Button */}
                   <button
                     type="button"
                     onClick={handleExecuteExport}
@@ -1252,7 +1237,7 @@ export default function Account() {
             </AnimatePresence>
           </div>
 
-          {/* 4. Data Protection (Collapsible) */}
+          {/* Data Protection */}
           <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
             <button
               type="button"
@@ -1267,8 +1252,6 @@ export default function Account() {
                   <p className="font-semibold text-xs text-foreground">Data Protection</p>
                   <p className="text-[10px] font-bold text-emerald-500">{runtimeStorageInfo.techTitle}</p>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
               </div>
             </button>
 
@@ -1285,7 +1268,6 @@ export default function Account() {
                       ? "Persistent local storage is active. Your records are protected against browser cache eviction."
                       : "Your app data is stored locally on this device."}
                   </p>
-
                   <div className="flex items-center justify-between bg-muted/30 p-2.5 rounded-xl border border-border/50">
                     <div className="space-y-0.5">
                       <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Storage Engine</p>
@@ -1304,7 +1286,7 @@ export default function Account() {
             </AnimatePresence>
           </div>
 
-          {/* 5. App Info & Update Card */}
+          {/* App Info & Update */}
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3.5">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 border border-border/50 shadow-sm bg-muted/20">
@@ -1354,7 +1336,7 @@ export default function Account() {
             </div>
           </div>
 
-          {/* 6. Danger Zone Card */}
+          {/* Danger Zone */}
           <div
             onClick={() => setShowDeleteDataDialog(true)}
             className="w-full bg-destructive/10 border border-destructive/30 hover:bg-destructive/20 rounded-2xl p-4 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all shadow-sm group"
@@ -1371,7 +1353,6 @@ export default function Account() {
             <ChevronRight className="w-4 h-4 text-destructive/70 group-hover:translate-x-0.5 transition-transform" />
           </div>
         </div>
-
       </motion.div>
 
       {/* Storage Details Modal */}
@@ -1403,13 +1384,11 @@ export default function Account() {
                   ✕
                 </button>
               </div>
-
               <div className="space-y-2.5 text-xs">
                 <div className="p-3 bg-muted/40 rounded-2xl border border-border/50 space-y-1">
                   <p className="text-[10px] uppercase font-extrabold text-muted-foreground">Current Implementation</p>
                   <p className="font-bold text-foreground">{runtimeStorageInfo.techTitle}</p>
                 </div>
-
                 <div className="p-3 bg-muted/40 rounded-2xl border border-border/50 space-y-1">
                   <p className="text-[10px] uppercase font-extrabold text-muted-foreground">Persistent Storage Permission</p>
                   <div className="flex items-center justify-between gap-2">
@@ -1439,14 +1418,12 @@ export default function Account() {
                     )}
                   </div>
                 </div>
-
                 <div className="p-3 bg-muted/40 rounded-2xl border border-border/50 space-y-1">
                   <p className="text-[10px] uppercase font-extrabold text-muted-foreground">Approximate Storage Used</p>
                   <p className="font-bold text-foreground">
                     {runtimeStorageInfo.usedMB} used of {runtimeStorageInfo.quotaMB} estimated quota
                   </p>
                 </div>
-
                 <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 text-muted-foreground text-[11px] leading-relaxed flex items-start gap-2">
                   <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                   <div>
@@ -1454,7 +1431,6 @@ export default function Account() {
                   </div>
                 </div>
               </div>
-
               <button
                 type="button"
                 onClick={() => setShowStorageDetailsModal(false)}
@@ -1467,7 +1443,7 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Update Recommendation Dialog */}
+      {/* Update Dialog */}
       <AnimatePresence>
         {showUpdatePrompt && isUpdateAvailable && (
           <motion.div
@@ -1488,11 +1464,9 @@ export default function Account() {
                   <p className="text-[11px] text-muted-foreground font-medium">Full App Backup Recommended</p>
                 </div>
               </div>
-
               <p className="text-muted-foreground text-xs leading-relaxed text-left">
                 We recommend creating a <strong className="text-foreground">Full App Backup</strong> before updating to ensure all your attendance records and preferences remain 100% safe.
               </p>
-
               <div className="flex flex-col gap-2 pt-1">
                 <button
                   type="button"
@@ -1522,7 +1496,7 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Delete All Data Confirmation Dialog */}
+      {/* Delete Data Dialog */}
       <AnimatePresence>
         {showDeleteDataDialog && (
           <motion.div
@@ -1543,11 +1517,9 @@ export default function Account() {
                   <p className="text-[11px] text-destructive font-semibold">Irreversible Action</p>
                 </div>
               </div>
-              
               <p className="text-muted-foreground text-xs leading-relaxed">
                 This will <strong className="text-destructive font-bold">permanently erase all your attendance records</strong>, custom subjects, timetable configurations, and local snapshots. The app will be restored to a completely brand new state.
               </p>
-
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => setShowDeleteDataDialog(false)}
@@ -1567,7 +1539,7 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Routine Switch Dialog */}
+      {/* Switch Routine Dialog */}
       <AnimatePresence>
         {showSwitchDialog && (
           <motion.div
@@ -1625,7 +1597,6 @@ export default function Account() {
                       <p className="text-[11px] text-muted-foreground font-medium">Start New Curriculum</p>
                     </div>
                   </div>
-
                   <div className="bg-muted/30 p-3.5 rounded-2xl border border-border/50 text-left space-y-2">
                     <p className="text-xs text-foreground font-medium leading-relaxed">
                       Changing Routine Mode will start a new curriculum.
@@ -1634,11 +1605,9 @@ export default function Account() {
                       Your previous attendance records will be <strong className="text-emerald-500 font-bold">archived</strong> and remain available through Backup/Snapshots.
                     </p>
                   </div>
-
                   <p className="text-xs font-semibold text-foreground text-left">
                     Do you want to continue?
                   </p>
-
                   <div className="flex flex-col gap-2 pt-1">
                     <button
                       type="button"
@@ -1662,7 +1631,6 @@ export default function Account() {
           </motion.div>
         )}
       </AnimatePresence>
-
     </Layout>
   );
 }
