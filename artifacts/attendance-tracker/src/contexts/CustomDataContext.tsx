@@ -172,28 +172,19 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // ============================================================
-  // FIXED: getSubjectPlannedTotal properly finds planned total
-  // ============================================================
+  // ORIGINAL getSubjectPlannedTotal – unchanged
   const getSubjectPlannedTotal = (subjectName: string): number => {
     if (presetSubjectTotals[subjectName] !== undefined) {
       return presetSubjectTotals[subjectName];
     }
     for (const cat of CATEGORIES) {
-      for (const sub of cat.subjects) {
-        if (sub.name === subjectName) {
-          return sub.total;
-        }
-      }
+      const sub = cat.subjects.find(s => s.name === subjectName);
+      if (sub) return sub.total;
     }
-    for (const sub of INTEGRATED_SUBJECTS) {
-      if (sub.name === subjectName) return sub.total;
-    }
-    for (const sub of WARD_SUBJECTS) {
-      if (sub.name === subjectName) return sub.total;
-    }
-    const customSub = customSubjects.find(s => s.name === subjectName);
-    if (customSub) return customSub.plannedClasses;
+    const intSub = INTEGRATED_SUBJECTS.find(s => s.name === subjectName);
+    if (intSub) return intSub.total;
+    const wardSub = WARD_SUBJECTS.find(s => s.name === subjectName);
+    if (wardSub) return wardSub.total;
     return 40;
   };
 
@@ -227,10 +218,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
           cur.setDate(cur.getDate() + 1);
         }
       } catch { /* ignore */ }
-    }
-    if (count === 0) {
-      const wardSub = WARD_SUBJECTS.find(w => w.name === wardName);
-      if (wardSub) return wardSub.total;
     }
     return count * 2;
   };
