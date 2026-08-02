@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getCurrentDateStr } from '@/lib/utils';
 import { storageSetItem, storageRemoveItem } from '@/lib/idb';
+import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 
 export interface CustomSubject {
   id: string;
@@ -30,8 +31,6 @@ const SUBJECT_MODE_KEY = 'att_subject_mode';
 const SETUP_DONE_KEY = 'att_setup_done';
 const WHATS_NEW_KEY = 'att_whats_new_v4.0.0';
 
-import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
-
 interface CustomDataContextType {
   customSubjects: CustomSubject[];
   customWards: CustomWard[];
@@ -49,8 +48,6 @@ interface CustomDataContextType {
   startFresh: () => void;
   changeSubjectMode: (mode: SubjectMode) => void;
   clearRoutineData: (mode: SubjectMode) => void;
-
-  // Preset Overrides
   presetTimetable: typeof TIMETABLE;
   presetWardSchedule: Array<{ start: string; end: string; ward: string; morningTime?: string; eveningTime?: string }>;
   presetSubjectTotals: Record<string, number>;
@@ -71,7 +68,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [setupDone, setSetupDone] = useState(false);
   const [whatsNewOpen, setWhatsNewOpenState] = useState(false);
 
-  // Preset Section Overrides
   const [presetTimetable, setPresetTimetable] = useState<typeof TIMETABLE>(TIMETABLE);
   const [presetWardSchedule, setPresetWardSchedule] = useState<Array<{ start: string; end: string; ward: string; morningTime?: string; eveningTime?: string }>>(() => {
     return WARD_SCHEDULE.map(ws => ({ ...ws, morningTime: '09:30–11:30', eveningTime: '07:00–09:00 PM' }));
@@ -87,19 +83,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       const m = localStorage.getItem(SUBJECT_MODE_KEY) as SubjectMode | null;
       if (m === 'preloaded' || m === 'custom') setSubjectMode(m);
       const done = localStorage.getItem(SETUP_DONE_KEY);
-      if (done === 'true') {
-        setSetupDone(true);
-      } else {
-        setSetupDone(false);
-      }
+      if (done === 'true') setSetupDone(true);
+      else setSetupDone(false);
 
-      // Auto-trigger What's New Pop-up on First Entry for v3.6.0
       const seenWhatsNew = localStorage.getItem(WHATS_NEW_KEY);
-      if (seenWhatsNew !== 'true') {
-        setWhatsNewOpenState(true);
-      }
+      if (seenWhatsNew !== 'true') setWhatsNewOpenState(true);
 
-      // Load presets
       const pt = localStorage.getItem('att_preset_timetable');
       if (pt) setPresetTimetable(JSON.parse(pt));
       const pws = localStorage.getItem('att_preset_ward_schedule');
@@ -110,9 +99,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const handleSetWhatsNewOpen = (open: boolean) => {
-    if (!open) {
-      storageSetItem(WHATS_NEW_KEY, 'true');
-    }
+    if (!open) storageSetItem(WHATS_NEW_KEY, 'true');
     setWhatsNewOpenState(open);
   };
 
@@ -185,14 +172,13 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // ✅ FIXED: getSubjectPlannedTotal - properly finds planned total from all sources
+  // ============================================================
+  // FIXED: getSubjectPlannedTotal properly finds planned total
+  // ============================================================
   const getSubjectPlannedTotal = (subjectName: string): number => {
-    // 1. Check preset overrides first (user-modified totals)
     if (presetSubjectTotals[subjectName] !== undefined) {
       return presetSubjectTotals[subjectName];
     }
-    
-    // 2. Check PRESET MODE - CATEGORIES (e.g., Surgery = 60)
     for (const cat of CATEGORIES) {
       for (const sub of cat.subjects) {
         if (sub.name === subjectName) {
@@ -200,28 +186,14 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     }
-    
-    // 3. Check integrated subjects
     for (const sub of INTEGRATED_SUBJECTS) {
-      if (sub.name === subjectName) {
-        return sub.total;
-      }
+      if (sub.name === subjectName) return sub.total;
     }
-    
-    // 4. Check ward subjects
     for (const sub of WARD_SUBJECTS) {
-      if (sub.name === subjectName) {
-        return sub.total;
-      }
+      if (sub.name === subjectName) return sub.total;
     }
-    
-    // 5. Check CUSTOM MODE - user created subjects
     const customSub = customSubjects.find(s => s.name === subjectName);
-    if (customSub) {
-      return customSub.plannedClasses;
-    }
-    
-    // 6. Fallback for Custom Mode users (when they add a new subject without setting planned total)
+    if (customSub) return customSub.plannedClasses;
     return 40;
   };
 
@@ -243,27 +215,23 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const getPresetWardTotalPlanned = (wardName: string): number => {
-    // First check if there's an override in presetWardSchedule
     let count = 0;
     for (const slot of presetWardSchedule) {
       if (slot.ward !== wardName) continue;
       try {
         const start = new Date(slot.start + 'T12:00:00');
-        const end   = new Date(slot.end   + 'T12:00:00');
-        const cur   = new Date(start);
+        const end = new Date(slot.end + 'T12:00:00');
+        const cur = new Date(start);
         while (cur <= end) {
           if (cur.getDay() !== 5) count++;
           cur.setDate(cur.getDate() + 1);
         }
       } catch { /* ignore */ }
     }
-    
-    // If no schedule found, use the constant value from WARD_SUBJECTS
     if (count === 0) {
       const wardSub = WARD_SUBJECTS.find(w => w.name === wardName);
       if (wardSub) return wardSub.total;
     }
-    
     return count * 2;
   };
 
@@ -277,9 +245,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     const updated = { ...presetTimetable };
     const slot = updated[currentDay]?.[slotIndex];
     if (!slot) return;
-
     const newSlot = { ...slot, time: updatedTime, subjects: updatedSubjects };
-
     if (currentDay === targetDay) {
       updated[currentDay] = [...updated[currentDay]];
       updated[currentDay][slotIndex] = newSlot;
@@ -287,7 +253,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       updated[currentDay] = updated[currentDay].filter((_, i) => i !== slotIndex);
       updated[targetDay] = [...(updated[targetDay] || []), newSlot];
     }
-
     setPresetTimetable(updated);
     storageSetItem('att_preset_timetable', JSON.stringify(updated));
   };
@@ -321,18 +286,22 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <CustomDataContext.Provider value={{
-      customSubjects, customWards, subjectMode, setupDone,
+      customSubjects,
+      customWards,
+      subjectMode,
+      setupDone,
       whatsNewOpen,
       isWhatsNewOpen: whatsNewOpen,
       setWhatsNewOpen: handleSetWhatsNewOpen,
-      addCustomSubject, removeCustomSubject,
-      addCustomWard, removeCustomWard,
+      addCustomSubject,
+      removeCustomSubject,
+      addCustomWard,
+      removeCustomWard,
       getCurrentCustomWard,
-      completeSetup, startFresh,
+      completeSetup,
+      startFresh,
       changeSubjectMode,
       clearRoutineData,
-
-      // Presets
       presetTimetable,
       presetWardSchedule,
       presetSubjectTotals,
