@@ -4,27 +4,14 @@ import { useCustomData } from '@/contexts/CustomDataContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Check, Calendar, GraduationCap, Building2, Sliders, BookOpen, Sparkles, Clock, Sun, CheckCircle2, Save, Stethoscope, Layers } from 'lucide-react';
+import { Plus, Trash2, Check, Calendar, GraduationCap, Building2, Sliders, BookOpen, Sparkles, Clock, Sun, CheckCircle2, Save, Stethoscope } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Tab = 'single' | 'allied' | 'ward' | 'presets';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const TabButton = ({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) => (
-  <button
-    onClick={onClick}
-    className={cn(
-      'flex-1 min-w-[110px] py-2 px-3 rounded-xl text-xs md:text-sm font-semibold transition-all duration-200',
-      active ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-    )}
-  >
-    {label}
-  </button>
-);
 
-const inputClass =
-  'w-full bg-muted/30 border border-border/60 rounded-2xl px-3.5 h-11 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/50 box-border';
 
 const labelClass =
   'text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5 text-center';

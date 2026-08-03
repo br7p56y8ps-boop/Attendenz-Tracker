@@ -82,7 +82,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
   let y = 18;
 
   // ── 1. LOGO ──
@@ -816,7 +815,7 @@ export function generateExcelReport(options: ExportReportOptions) {
 
 // ── CSV Export ──
 export function generateCSVReport(options: ExportReportOptions) {
-  const { items, overallAttended, overallTotal, overallPct } = options;
+  const { items, overallAttended, overallTotal } = options;
 
   // Keep original names for filtering
   const academicItems = items.filter(item => !item.name.includes('(Ward)'));

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { cn, pctColor } from '@/lib/utils';
-import { ChevronDown, ChevronUp, Info, Plus, Minus, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Info, Plus, Minus } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 interface SubjectCardProps {

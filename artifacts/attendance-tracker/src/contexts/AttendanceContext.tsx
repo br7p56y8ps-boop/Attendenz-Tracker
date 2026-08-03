@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { storageSetItem, storageRemoveItem } from '@/lib/idb';
 import { snapshotBeforeEdit, snapshotDayComplete } from '@/utils/snapshotUtils';
 
@@ -16,7 +15,6 @@ interface AttendanceContextType {
   updateWard: (ward: string, attended: number, missed: number) => void;
   updateHomeSelection: (homeKey: string, subject: string, selection: SelectionType, isWard: boolean, totalCardsOnScreen?: number) => void;
   resetAllData: () => void;
-  clearModeAttendance: (mode: 'preloaded' | 'custom') => void;
 }
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
@@ -180,63 +178,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     setHomeSelections({});
   };
 
-  const clearModeAttendance = (mode: 'preloaded' | 'custom') => {
-    snapshotBeforeEdit(`Clear ${mode}`);
-
-    const newSubjects = { ...subjects };
-    const newWards = { ...wards };
-    const newHomeSelections = { ...homeSelections };
-
-    if (mode === 'preloaded') {
-      CATEGORIES.forEach(c => {
-        c.subjects.forEach(s => {
-          delete newSubjects[s.name];
-          delete newHomeSelections[`subject-${s.name}`];
-        });
-      });
-      INTEGRATED_SUBJECTS.forEach(s => {
-        delete newSubjects[s.name];
-        delete newHomeSelections[`subject-${s.name}`];
-      });
-      WARD_SUBJECTS.forEach(w => {
-        delete newWards[`ward-${w.name}`];
-        delete newHomeSelections[`ward-${w.name}`];
-      });
-    } else {
-      const preloadedNames = new Set<string>();
-      CATEGORIES.forEach(c => c.subjects.forEach(s => preloadedNames.add(s.name)));
-      INTEGRATED_SUBJECTS.forEach(s => preloadedNames.add(s.name));
-      WARD_SUBJECTS.forEach(w => preloadedNames.add(w.name));
-
-      Object.keys(newSubjects).forEach(name => {
-        if (!preloadedNames.has(name)) {
-          delete newSubjects[name];
-          delete newHomeSelections[`subject-${name}`];
-        }
-      });
-      
-      Object.keys(newWards).forEach(key => {
-        const name = key.replace('ward-', '');
-        if (!preloadedNames.has(name)) {
-          delete newWards[key];
-          delete newHomeSelections[key];
-        }
-      });
-    }
-
-    setSubjects(newSubjects);
-    setWards(newWards);
-    setHomeSelections(newHomeSelections);
-    localStorage.setItem(SUBJECTS_KEY, JSON.stringify(newSubjects));
-    localStorage.setItem(WARD_KEY, JSON.stringify(newWards));
-    localStorage.setItem(HOME_SELECTIONS_KEY, JSON.stringify(newHomeSelections));
-    storageSetItem(SUBJECTS_KEY, JSON.stringify(newSubjects));
-    storageSetItem(WARD_KEY, JSON.stringify(newWards));
-    storageSetItem(HOME_SELECTIONS_KEY, JSON.stringify(newHomeSelections));
-  };
 
   return (
-    <AttendanceContext.Provider value={{ subjects, wards, homeSelections, preferredPercentage, setPreferredPercentage: savePreferredPercentage, updateSubject, updateWard, updateHomeSelection, resetAllData, clearModeAttendance }}>
+    <AttendanceContext.Provider value={{ subjects, wards, homeSelections, preferredPercentage, setPreferredPercentage: savePreferredPercentage, updateSubject, updateWard, updateHomeSelection, resetAllData }}>
       {children}
     </AttendanceContext.Provider>
   );
