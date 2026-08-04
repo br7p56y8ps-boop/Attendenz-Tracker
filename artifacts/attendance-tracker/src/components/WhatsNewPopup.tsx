@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { X, Sparkles, CheckCircle2, Wrench, Zap, ShieldCheck, Database, Phone, ArrowRightLeft, Sliders } from 'lucide-react';
+import { X, CheckCircle2, Wrench, Zap } from 'lucide-react';
 
 export function WhatsNewPopup() {
   const { whatsNewOpen, setWhatsNewOpen } = useCustomData();

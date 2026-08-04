@@ -7,12 +7,12 @@ import { importDataFromJSON, getSnapshots } from '../utils/snapshotUtils';
 
 export default function SetupScreen() {
   const { username, updateUsername } = useAuth();
-  const { completeSetup, setWhatsNewOpen, subjectMode } = useCustomData();
+  const { completeSetup, setWhatsNewOpen } = useCustomData();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check if previous local data exists
-  const [hasPreviousData, setHasPreviousData] = useState<boolean>(false);
+  const [, setHasPreviousData] = useState<boolean>(false);
   const [detectedMode, setDetectedMode] = useState<SubjectMode>('preloaded');
   const [showDataDetectedView, setShowDataDetectedView] = useState<boolean>(false);
 

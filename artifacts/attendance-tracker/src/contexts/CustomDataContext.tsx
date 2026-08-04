@@ -37,7 +37,6 @@ interface CustomDataContextType {
   subjectMode: SubjectMode;
   setupDone: boolean;
   whatsNewOpen: boolean;
-  isWhatsNewOpen: boolean;
   setWhatsNewOpen: (b: boolean) => void;
   addCustomSubject: (s: Omit<CustomSubject, 'id'>) => void;
   removeCustomSubject: (id: string) => void;
@@ -54,6 +53,7 @@ interface CustomDataContextType {
   getSubjectPlannedTotal: (subjectName: string) => number;
   getCurrentPresetWard: (date?: Date) => { ward: string; morningTime?: string; eveningTime?: string } | null;
   getPresetWardTotalPlanned: (wardName: string) => number;
+  getCustomWardTotalPlanned: (startDateStr: string, endDateStr: string) => number;
   updatePresetTimetableSlot: (currentDay: number, slotIndex: number, updatedTime: string, updatedSubjects: string[], targetDay: number) => void;
   updatePresetWardSchedule: (index: number, start: string, end: string, morningTime?: string, eveningTime?: string) => void;
   updatePresetSubjectTotal: (subjectName: string, total: number) => void;
@@ -222,6 +222,20 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     return count * 2;
   };
 
+  const getCustomWardTotalPlanned = (startDateStr: string, endDateStr: string): number => {
+    let count = 0;
+    try {
+      const start = new Date(startDateStr + 'T12:00:00');
+      const end = new Date(endDateStr + 'T12:00:00');
+      const cur = new Date(start);
+      while (cur <= end) {
+        if (cur.getDay() !== 5) count++;
+        cur.setDate(cur.getDate() + 1);
+      }
+    } catch { /* ignore */ }
+    return count * 2;
+  };
+
   const updatePresetTimetableSlot = (
     currentDay: number,
     slotIndex: number,
@@ -278,7 +292,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       subjectMode,
       setupDone,
       whatsNewOpen,
-      isWhatsNewOpen: whatsNewOpen,
       setWhatsNewOpen: handleSetWhatsNewOpen,
       addCustomSubject,
       removeCustomSubject,
@@ -295,6 +308,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       getSubjectPlannedTotal,
       getCurrentPresetWard,
       getPresetWardTotalPlanned,
+      getCustomWardTotalPlanned,
       updatePresetTimetableSlot,
       updatePresetWardSchedule,
       updatePresetSubjectTotal,

@@ -9,9 +9,7 @@
     "typecheck": "npm run typecheck:libs && npm run typecheck --workspaces --if-present"
   },
   "workspaces": [
-    "artifacts/*",
-    "lib/*",
-    "scripts"
+    "artifacts/attendance-tracker"
   ],
   "private": true,
   "devDependencies": {

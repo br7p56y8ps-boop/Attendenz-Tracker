@@ -5,7 +5,7 @@ import { Layout } from '@/components/Layout';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
-import { cn } from '@/lib/utils';
+
 
 // Day abbreviations matching what AddNew uses in the day-picker
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -16,7 +16,7 @@ export default function Home() {
   const todayAbbr = DAY_ABBRS[dayOfWeek];
 
   const { getCurrentCustomWard, customSubjects, subjectMode, presetTimetable, getCurrentPresetWard } = useCustomData();
-  const { subjects, wards } = useAttendance();
+  useAttendance();
   const [, setLocation] = useLocation();
 
   // Custom ward takes priority over built-in schedule

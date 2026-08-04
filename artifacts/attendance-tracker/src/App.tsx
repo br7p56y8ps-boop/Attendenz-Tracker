@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
@@ -16,7 +16,6 @@ import Login from '@/pages/Login';
 import SetupScreen from '@/pages/SetupScreen';
 import NotFound from '@/pages/not-found';
 
-const queryClient = new QueryClient();
 const HAS_SEEN_WELCOME_KEY = 'att_has_seen_welcome_v1';
 
 function AuthGate() {
@@ -86,16 +85,14 @@ export default function App() {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AttendanceProvider>
-          <CustomDataProvider>
-            <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
-              <MainAppFlow />
-            </WouterRouter>
-          </CustomDataProvider>
-        </AttendanceProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <AuthProvider>
+      <AttendanceProvider>
+        <CustomDataProvider>
+          <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
+            <MainAppFlow />
+          </WouterRouter>
+        </CustomDataProvider>
+      </AttendanceProvider>
+    </AuthProvider>
   );
 }

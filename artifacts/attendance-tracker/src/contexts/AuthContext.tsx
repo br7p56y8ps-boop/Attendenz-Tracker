@@ -39,7 +39,6 @@ interface AuthContextType {
   hasAccount: boolean;
   username: string;
   userEmail: string | null;
-  userPhone: string | null;
   authMethod: 'google' | 'email' | 'phone' | 'local' | 'none';
   isNewAccount: boolean;
   profileImage: string | null;
@@ -83,7 +82,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return 'Medical Student';
   });
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [userPhone, setUserPhone] = useState<string | null>(null);
+
   const [authMethod, setAuthMethod] = useState<'google' | 'email' | 'phone' | 'local' | 'none'>('local');
   const [isNewAccount, setIsNewAccount] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -221,7 +220,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       hasAccount, 
       username, 
       userEmail,
-      userPhone,
       authMethod,
       isNewAccount, 
       profileImage,

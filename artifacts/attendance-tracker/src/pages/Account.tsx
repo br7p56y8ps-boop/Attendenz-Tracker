@@ -1,4 +1,4 @@
-import { User, Camera, Trash2, KeyRound, Copy, Check, Pencil, ShieldAlert, Sparkles, AlertCircle, ArrowLeft, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, LogOut, Download, ChevronDown, ChevronUp, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, HardDrive, FileSpreadsheet, Info, GraduationCap } from 'lucide-react';
+import { Camera, Trash2, Check, Pencil, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, Download, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, HardDrive, FileSpreadsheet, Info, GraduationCap } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import { cn } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
-import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
+import { CATEGORIES, WARD_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport } from '@/lib/exportUtils';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
 import femaleStudentProfile from '@/assets/images/female_student_profile_1784286920737.jpg';
@@ -20,12 +20,10 @@ export default function Account() {
   const { 
     username, 
     updateUsername,
-    logout, 
     profileImage, 
     updateProfileImage, 
     isPersistentStorage,
-    requestPersistentStorage,
-    retentionPolicy
+    requestPersistentStorage
   } = useAuth();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(username);
@@ -40,10 +38,10 @@ export default function Account() {
     }
     setIsEditingName(false);
   };
-  const { subjects, wards, preferredPercentage, setPreferredPercentage, clearModeAttendance } = useAttendance();
-  const { customSubjects, customWards, subjectMode, changeSubjectMode, clearRoutineData, setWhatsNewOpen, getCurrentPresetWard, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
+  const { subjects, wards, preferredPercentage, setPreferredPercentage } = useAttendance();
+  const { customSubjects, customWards, subjectMode, changeSubjectMode, setWhatsNewOpen, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [copied, setCopied] = useState(false);
+
   const [storageSize, setStorageSize] = useState('0.00 KB');
   const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
   const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
@@ -390,8 +388,6 @@ export default function Account() {
     }
   };
 
-  // Randomized Subject Rotation State
-  const [displayIndices, setDisplayIndices] = useState([0, 1, 2, 3]);
 
   // ── Mode Switch Logic ────────────────────────────────────────────────────
   const getSnapshotKey = (mode: SubjectMode) => `att_snapshot_${mode}`;
@@ -408,10 +404,6 @@ export default function Account() {
     setShowSwitchDialog(true);
   };
 
-  const handleBackupAndContinue = () => {
-    saveInternalSnapshot();
-    setSwitchStep('final');
-  };
 
   const saveInternalSnapshot = () => {
     const data: Record<string, any> = {};
@@ -469,61 +461,7 @@ export default function Account() {
     import('sonner').then(({ toast }) => toast.success(`Switched to ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine. Previous records archived in Snapshots.`));
   };
 
-  // ── Analytics Data Collection ───────────────────────────────────────────
-  const allAvailableSubjects = React.useMemo(() => {
-    const list: { name: string; pct: number }[] = [];
-    
-    const getPct = (name: string, isWard: boolean = false) => {
-      const key = isWard ? `ward-${name}` : name;
-      const d = (isWard ? wards[key] : subjects[key]) || { attended: 0, missed: 0 };
-      const total = d.attended + d.missed;
-      return total === 0 ? 100 : (d.attended / total) * 100;
-    };
 
-    if (subjectMode === 'preloaded') {
-      CATEGORIES.forEach(c => {
-        c.subjects.forEach(s => {
-          list.push({ name: s.name, pct: getPct(s.name) });
-        });
-      });
-      INTEGRATED_SUBJECTS.forEach(s => {
-        list.push({ name: s.name, pct: getPct(s.name) });
-      });
-      WARD_SUBJECTS.forEach(w => {
-        list.push({ name: w.name, pct: getPct(w.name, true) });
-      });
-    } else {
-      customSubjects.forEach(s => {
-        list.push({ name: s.name, pct: getPct(s.name) });
-      });
-      customWards.forEach(w => {
-        list.push({ name: w.name, pct: getPct(w.name, true) });
-      });
-    }
-    return list;
-  }, [subjects, wards, customSubjects, customWards, subjectMode]);
-
-  // Rotation timers for 4 independent rows
-  useEffect(() => {
-    if (allAvailableSubjects.length === 0) return;
-
-    const timers = [0, 1, 2, 3].map(rowIdx => {
-      const interval = 6000 + Math.random() * 1000;
-      return setInterval(() => {
-        setDisplayIndices(prev => {
-          const next = [...prev];
-          let nextVal = (next[rowIdx] + 1) % allAvailableSubjects.length;
-          while (next.includes(nextVal) && allAvailableSubjects.length > 4) {
-            nextVal = (nextVal + 1) % allAvailableSubjects.length;
-          }
-          next[rowIdx] = nextVal;
-          return next;
-        });
-      }, interval);
-    });
-
-    return () => timers.forEach(t => clearInterval(t));
-  }, [allAvailableSubjects.length]);
 
   // Dynamic localStorage space used estimation
   useEffect(() => {
@@ -538,12 +476,6 @@ export default function Account() {
     setStorageSize((totalBytes / 1024).toFixed(2) + ' KB');
   }, [subjects, wards, customSubjects, customWards, subjectMode]);
 
-  const handleCopyInfo = () => {
-    const text = `Attendenz Tracker\nVersion: v4.2.0 (Stable)\nUser: ${username}\nStorage Used: ${storageSize}\nDeveloper: benzavraar`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   // ── Profile Image Logic ──────────────────────────────────────────────────
   const detectGender = (name: string): 'male' | 'female' | 'neutral' => {

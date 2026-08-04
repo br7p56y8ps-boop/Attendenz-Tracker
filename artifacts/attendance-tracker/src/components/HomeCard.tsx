@@ -21,11 +21,6 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
   const [showECG, setShowECG] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<'off' | 'missed' | 'attended' | null>(null);
   
-  // Format date: dd/mm/yy
-  const formatDate = (dateString: string) => {
-    const [y, m, d] = dateString.split('-');
-    return `${d}/${m}/${y.slice(-2)}`;
-  };
 
   const key = isWard ? `ward-${subject}` : subject;
   const data = isWard ? wards[key] : subjects[subject];

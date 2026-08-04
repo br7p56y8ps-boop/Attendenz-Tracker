@@ -6,28 +6,13 @@ import { useAttendance } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn, pctColor } from '@/lib/utils';   // <-- added pctColor import
+import { pctColor } from '@/lib/utils';   // <-- added pctColor import
 import { useLocation } from 'wouter';
 
-function getCustomWardTotalPlanned(startDateStr: string, endDateStr: string): number {
-  let count = 0;
-  try {
-    const start = new Date(startDateStr + 'T12:00:00');
-    const end   = new Date(endDateStr + 'T12:00:00');
-    const cur   = new Date(start);
-    while (cur <= end) {
-      if (cur.getDay() !== 5) count++; // exclude Friday
-      cur.setDate(cur.getDate() + 1);
-    }
-  } catch (e) {
-    // catch invalid dates
-  }
-  return count * 2;
-}
 
 export default function Subjects() {
   const { subjects, wards, preferredPercentage } = useAttendance();
-  const { customSubjects, customWards, getCurrentCustomWard, subjectMode, getSubjectPlannedTotal, getCurrentPresetWard, getPresetWardTotalPlanned } = useCustomData();
+  const { customSubjects, customWards, getCurrentCustomWard, subjectMode, getSubjectPlannedTotal, getCurrentPresetWard, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
   const [, setLocation] = useLocation();
 
   const today = new Date();
@@ -143,40 +128,6 @@ export default function Subjects() {
   };
 
   // ── Simple accordion for non-category sections (Wards, Integrated) ──────
-  const SimpleAccordion = ({
-    sectionKey,
-    header,
-    children,
-  }: {
-    sectionKey: string;
-    header: React.ReactNode;
-    children: React.ReactNode;
-  }) => {
-    const isOpen = openCategories[sectionKey] || false;
-    return (
-      <div className="flex flex-col gap-3">
-        <button
-          onClick={() => toggleCategory(sectionKey)}
-          className="bg-card rounded-2xl p-4 shadow-sm border border-border w-full text-left transition-all active:scale-[0.98]"
-        >
-          {header}
-        </button>
-        <AnimatePresence initial={false}>
-          {isOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.28, ease: 'easeInOut' }}
-              className="overflow-hidden"
-            >
-              <div className="space-y-3 pt-1">{children}</div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  };
 
   // Allied subjects grouped by category
   const alliedSubjects = customSubjects.filter(s => s.subjectType === 'allied');
@@ -189,7 +140,6 @@ export default function Subjects() {
   }, {});
 
   const integratedSummary = calcIntegratedSummary();
-  const hasAnything = subjectMode === 'preloaded' || customSubjects.length > 0 || customWards.length > 0;
 
   return (
     <Layout>
@@ -221,7 +171,7 @@ export default function Subjects() {
             subjectList={cat.subjects}
             renderChildren={() => (
               <>
-                {cat.subjects.map((sub, i) => (
+                {cat.subjects.map((sub) => (
                   <React.Fragment key={sub.name}>
                     <div className="border-t border-border" />
                     <SubjectCard subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />

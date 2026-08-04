@@ -1,4 +1,4 @@
-import { HtmlHTMLAttributes } from 'react';
+
 
 export default function NotFound() {
   return (
