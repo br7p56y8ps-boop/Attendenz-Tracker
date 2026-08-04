@@ -1,8 +1,0 @@
-uploads = []
-generated = []
-
-[[outputs]]
-id = "C0rje-Aof3KVnrDGyfgRs"
-uri = "file://artifacts/attendance-tracker-video/public/audio/bg_music.mp3"
-type = "audio"
-title = "background music"
