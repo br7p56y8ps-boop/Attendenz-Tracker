@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, getCurrentDateStr } from '@/lib/utils';
-import { CATEGORIES } from '@/lib/constants';
 import { motion, AnimatePresence } from 'framer-motion';
+import { CheckCircle2 } from 'lucide-react';
 
 interface HomeCardProps {
   subject: string;
@@ -15,8 +15,14 @@ interface HomeCardProps {
 }
 
 export const HomeCard = ({ subject, time, isWard = false, title, sessionId, dateStr }: HomeCardProps) => {
-  const { subjects, wards, homeSelections, updateHomeSelection, preferredPercentage } = useAttendance();
-  const { customSubjects } = useCustomData();
+  const { subjects, wards, homeSelections, finishedMap, updateHomeSelection, preferredPercentage } = useAttendance();
+  const {
+    customSubjects,
+    customWards,
+    getSubjectPlannedTotal,
+    getPresetWardTotalPlanned,
+    getCustomWardTotalPlanned,
+  } = useCustomData();
   const activeDateStr = dateStr || getCurrentDateStr();
   const [showECG, setShowECG] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<'off' | 'missed' | 'attended' | null>(null);
@@ -29,16 +35,31 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
   const missed = data?.missed || 0;
   const total = attended + missed;
 
-  // FIXED: Fetch plannedClasses for BOTH Preset and Custom users
-  const presetTotal = CATEGORIES.flatMap(c => c.subjects).find(s => s.name.toLowerCase() === subject.toLowerCase())?.total;
-  const customSub = customSubjects?.find(
-    (s) => s.name.toLowerCase() === subject.toLowerCase()
-  );
-  const totalPlannedClasses = (data as any)?.plannedClasses ?? (data as any)?.total ?? customSub?.plannedClasses ?? presetTotal;
+  // FIXED: Dynamically resolve plannedClasses for both Preset Overrides and Custom users
+  let totalPlannedClasses: number;
+  if (isWard) {
+    const cWard = customWards?.find(w => w.name.toLowerCase() === subject.toLowerCase());
+    if (cWard) {
+      totalPlannedClasses = getCustomWardTotalPlanned(cWard.startDate, cWard.endDate);
+    } else {
+      const presetWardCount = getPresetWardTotalPlanned(subject);
+      totalPlannedClasses = presetWardCount > 0 ? presetWardCount : getSubjectPlannedTotal(subject);
+    }
+  } else {
+    const customSub = customSubjects?.find(
+      (s) => s.name.toLowerCase() === subject.toLowerCase()
+    );
+    if (customSub) {
+      totalPlannedClasses = customSub.plannedClasses;
+    } else {
+      totalPlannedClasses = getSubjectPlannedTotal(subject);
+    }
+  }
 
-  // Remaining planned classes & Finished state
+  // Remaining planned classes & Finished state (manual toggle or remaining === 0)
   const remainingClasses = totalPlannedClasses !== undefined ? Math.max(0, totalPlannedClasses - total) : undefined;
-  const isFinished = totalPlannedClasses !== undefined && totalPlannedClasses > 0 && remainingClasses === 0;
+  const isFinishedMarked = finishedMap?.[key] || false;
+  const isFinished = isFinishedMarked || (totalPlannedClasses !== undefined && totalPlannedClasses > 0 && remainingClasses === 0);
 
   const selectionKey = sessionId ? `${activeDateStr}-${key}-${sessionId}` : `${activeDateStr}-${key}`;
   const currentSelection = homeSelections[selectionKey];
@@ -52,8 +73,6 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
   const needToAttend = Math.max(1, Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage)));
   
   const handleSelection = (selection: 'off' | 'missed' | 'attended') => {
-    if (isFinished) return;
-
     if (pendingSelection === selection) {
       updateHomeSelection(selectionKey, key, selection, isWard);
       setShowECG(true);
@@ -72,7 +91,30 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
 
   const ecgColor = percentage >= 80 ? "#10b981" : percentage >= 75 ? "#f59e0b" : "#ef4444";
 
-  const cardBg = currentSelection === 'attended'
+  const targetNeeded = totalPlannedClasses !== undefined ? Math.ceil(totalPlannedClasses * (preferredPercentage / 100)) : Math.ceil(total * (preferredPercentage / 100));
+  const isTargetMet = attended >= targetNeeded;
+
+  const getFinishedMessage = () => {
+    if (isTargetMet) {
+      return `Congrats! Achieved Target (Attended ${attended} of ${totalPlannedClasses || total})`;
+    }
+    const classesShort = Math.max(1, targetNeeded - attended);
+    if (classesShort === 1) {
+      return `Ooops!! For 1 more class, you would have been a legend!`;
+    }
+    if (classesShort % 2 === 0) {
+      return `Ooops!! Just ${classesShort} classes short! Even a med student with no sleep could have done that!`;
+    }
+    return `Ooops!! ${classesShort} more classes and you could have flexed on your batchmates!`;
+  };
+
+  const finishedCardBg = isTargetMet
+    ? 'bg-emerald-500/20 border-emerald-500/60 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-500/10 backdrop-blur-md bg-card/80'
+    : 'bg-rose-500/20 border-rose-500/60 ring-2 ring-rose-500/40 shadow-lg shadow-rose-500/10 backdrop-blur-md bg-card/80';
+
+  const cardBg = isFinished
+    ? finishedCardBg
+    : currentSelection === 'attended'
     ? 'bg-success/10 border-success/30'
     : currentSelection === 'missed'
     ? 'bg-destructive/10 border-destructive/30'
@@ -81,6 +123,14 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
     : 'bg-card border-card-border';
 
   const renderSubtitle = () => {
+    if (isFinished) {
+      return (
+        <span className={cn("font-bold text-sm", isTargetMet ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+          {getFinishedMessage()}
+        </span>
+      );
+    }
+
     if (total === 0) {
       return <span>No classes conducted yet</span>;
     }
@@ -120,19 +170,9 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
     <div 
       className={cn(
         "rounded-2xl p-5 shadow-sm border mb-4 transition-colors duration-300 relative overflow-hidden", 
-        cardBg,
-        isFinished && "opacity-40 backdrop-blur-[5px]"
+        cardBg
       )}
     >
-      {/* Finished Overlay Banner */}
-      {isFinished && (
-        <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
-          <div className="bg-destructive/90 text-destructive-foreground font-extrabold text-xs tracking-wider uppercase px-6 py-1.5 shadow-md -rotate-6 border border-destructive-foreground/20">
-            NO MORE PLANNED CLASSES!!!
-          </div>
-        </div>
-      )}
-
       <div className="flex justify-between items-start mb-2 relative z-10">
         <div className="pr-4">
           <h3 className="text-xl font-bold leading-tight text-foreground">{title || subject}</h3>
@@ -171,52 +211,67 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
       </AnimatePresence>
 
       {!dateStr && (
-        <div className="mb-5 relative z-10 text-sm font-medium text-muted-foreground">
+        <div className="mb-4 relative z-10 text-sm font-medium text-muted-foreground">
           {renderSubtitle()}
         </div>
       )}
 
-      <div className="flex gap-2 w-full relative z-10">
-        <button
-          disabled={isFinished}
-          onClick={() => handleSelection('attended')}
-          className={cn(
-            "flex-1 py-3 px-2 rounded-xl text-sm font-semibold transition-all active:scale-95 duration-200 border",
-            currentSelection === 'attended'
-              ? "bg-success/20 text-success border-success/40 shadow-sm"
-              : "bg-background/70 text-muted-foreground border-border hover:bg-success/5 hover:text-success hover:border-success/20",
-            pendingSelection === 'attended' && "ring-2 ring-success ring-offset-2 ring-offset-background"
-          )}
-        >
-          {pendingSelection === 'attended' ? (currentSelection === 'attended' ? 'Confirm Undo?' : 'Confirm?') : 'Attended'}
-        </button>
-        <button
-          disabled={isFinished}
-          onClick={() => handleSelection('missed')}
-          className={cn(
-            "flex-1 py-3 px-2 rounded-xl text-sm font-semibold transition-all active:scale-95 duration-200 border",
-            currentSelection === 'missed'
-              ? "bg-destructive/20 text-destructive border-destructive/40 shadow-sm"
-              : "bg-background/70 text-muted-foreground border-border hover:bg-destructive/5 hover:text-destructive hover:border-destructive/20",
-            pendingSelection === 'missed' && "ring-2 ring-destructive ring-offset-2 ring-offset-background"
-          )}
-        >
-          {pendingSelection === 'missed' ? (currentSelection === 'missed' ? 'Confirm Undo?' : 'Confirm?') : 'Missed'}
-        </button>
-        <button
-          disabled={isFinished}
-          onClick={() => handleSelection('off')}
-          className={cn(
-            "flex-1 py-3 px-2 rounded-xl text-sm font-semibold transition-all active:scale-95 duration-200 border",
-            currentSelection === 'off'
-              ? "bg-warning/20 text-warning border-warning/40 shadow-sm"
-              : "bg-background/70 text-muted-foreground border-border hover:bg-warning/5 hover:text-warning hover:border-warning/20",
-            pendingSelection === 'off' && "ring-2 ring-warning ring-offset-2 ring-offset-background"
-          )}
-        >
-          {pendingSelection === 'off' ? (currentSelection === 'off' ? 'Confirm Undo?' : 'Confirm?') : 'Holiday'}
-        </button>
-      </div>
+      {isFinished ? (
+        <div className={cn(
+          "w-full py-3.5 px-4 rounded-xl text-xs sm:text-sm font-black tracking-wider uppercase text-center border shadow-sm flex items-center justify-center gap-2 relative z-10",
+          isTargetMet 
+            ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/40" 
+            : "bg-rose-500/20 text-rose-600 dark:text-rose-400 border-rose-500/40"
+        )}>
+          {isTargetMet && <CheckCircle2 className="w-4 h-4 shrink-0" />}
+          <span>NO MORE PLANNED CLASSES!!!</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2 w-full relative z-10">
+          <button
+            onClick={() => handleSelection('attended')}
+            className={cn(
+              "h-11 flex items-center justify-center min-w-0 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 border cursor-pointer select-none px-1 overflow-hidden box-border",
+              currentSelection === 'attended'
+                ? "bg-success/20 text-success border-success/50 shadow-sm"
+                : "bg-background/70 text-muted-foreground border-border hover:bg-success/5 hover:text-success hover:border-success/20",
+              pendingSelection === 'attended' && "ring-2 ring-inset ring-success bg-success/30 text-success font-bold"
+            )}
+          >
+            <span className="truncate whitespace-nowrap px-0.5">
+              {pendingSelection === 'attended' ? (currentSelection === 'attended' ? 'Confirm Undo?' : 'Confirm?') : 'Attended'}
+            </span>
+          </button>
+          <button
+            onClick={() => handleSelection('missed')}
+            className={cn(
+              "h-11 flex items-center justify-center min-w-0 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 border cursor-pointer select-none px-1 overflow-hidden box-border",
+              currentSelection === 'missed'
+                ? "bg-destructive/20 text-destructive border-destructive/50 shadow-sm"
+                : "bg-background/70 text-muted-foreground border-border hover:bg-destructive/5 hover:text-destructive hover:border-destructive/20",
+              pendingSelection === 'missed' && "ring-2 ring-inset ring-destructive bg-destructive/30 text-destructive font-bold"
+            )}
+          >
+            <span className="truncate whitespace-nowrap px-0.5">
+              {pendingSelection === 'missed' ? (currentSelection === 'missed' ? 'Confirm Undo?' : 'Confirm?') : 'Missed'}
+            </span>
+          </button>
+          <button
+            onClick={() => handleSelection('off')}
+            className={cn(
+              "h-11 flex items-center justify-center min-w-0 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 border cursor-pointer select-none px-1 overflow-hidden box-border",
+              currentSelection === 'off'
+                ? "bg-warning/20 text-warning border-warning/50 shadow-sm"
+                : "bg-background/70 text-muted-foreground border-border hover:bg-warning/5 hover:text-warning hover:border-warning/20",
+              pendingSelection === 'off' && "ring-2 ring-inset ring-warning bg-warning/30 text-warning font-bold"
+            )}
+          >
+            <span className="truncate whitespace-nowrap px-0.5">
+              {pendingSelection === 'off' ? (currentSelection === 'off' ? 'Confirm Undo?' : 'Confirm?') : 'Holiday'}
+            </span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

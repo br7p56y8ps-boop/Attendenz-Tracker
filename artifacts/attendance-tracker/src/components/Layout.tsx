@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import { Heart, Stethoscope, Syringe, Calendar, Hospital } from 'lucide-react';
-import { motion, useScroll } from 'framer-motion';
+import { motion, useScroll, AnimatePresence } from 'framer-motion';
 
 const NAV_ITEMS = [
   { path: '/',          label: 'Home',     Icon: Heart },
@@ -43,16 +43,30 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
             {activeTabLabel}
           </h1>
         </div>
-        {children}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location}
+            initial={{ opacity: 0, y: 8, scale: 0.995 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.995 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
       </main>
+
+      {/* Bottom Gradient Overlay for Smooth Scrolling Fade */}
+      <div className="fixed bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none z-30" />
 
       {/* Floating Glass Bottom Tab Bar */}
       <motion.div
         animate={{ y: visible ? 0 : 120, opacity: visible ? 1 : 0 }}
         transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+        style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
         className={cn(
           "fixed bottom-6 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:right-auto md:w-full md:max-w-md",
-          "bg-card/45 backdrop-blur-2xl border border-white/10 rounded-[28px] py-2 px-3 shadow-[0_12px_40px_rgba(0,0,0,0.5)] z-40",
+          "bg-card/75 backdrop-blur-2xl border border-border/80 rounded-[28px] py-2 px-3 shadow-[0_16px_40px_rgba(0,0,0,0.35)] z-40",
           "transition-all duration-300"
         )}
       >
