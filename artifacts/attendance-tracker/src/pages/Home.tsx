@@ -59,20 +59,17 @@ export default function Home() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="space-y-6 pb-8"
+        className="space-y-4 pb-8"
       >
-        <div className="flex flex-col gap-1">
+        <div className="space-y-2">
           <p className="text-2xl font-bold text-foreground">
             {today.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
           </p>
-        </div>
-
-        <hr className="border-t border-border/60" />
-
-        <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-            Today's Schedule & Classes
-          </h2>
+          <div className="pt-2 border-t border-border/40">
+            <h2 className="text-xs font-bold tracking-wider text-muted-foreground uppercase">
+              Today's Schedule & Classes
+            </h2>
+          </div>
         </div>
 
         {!hasAnything ? (

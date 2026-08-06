@@ -1,4 +1,4 @@
-import { Camera, Trash2, Check, Pencil, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, Download, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, HardDrive, FileSpreadsheet, Info, GraduationCap } from 'lucide-react';
+import { Camera, Trash2, Check, Pencil, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, Download, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, HardDrive, FileSpreadsheet, Info, GraduationCap, X } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
@@ -51,7 +51,6 @@ export default function Account() {
   const isUpdateAvailable = installedVersion !== LATEST_VERSION;
 
   // Curriculum Management States
-  const [isCurriculumOpen, setIsCurriculumOpen] = useState(false);
   const [curriculumStatus, setCurriculumStatus] = useState<'Active' | 'Completed'>(() => {
     return (localStorage.getItem('att_curriculum_status') as 'Active' | 'Completed') || 'Active';
   });
@@ -82,7 +81,6 @@ export default function Account() {
   };
 
   // Export Attendance Data States
-  const [isExportOpen, setIsExportOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
   const [exportScope, setExportScope] = useState<'complete' | 'subject' | 'custom' | 'semester'>('complete');
   const [exportSelectedSubject, setExportSelectedSubject] = useState<string>('');
@@ -91,7 +89,6 @@ export default function Account() {
   const [exportSemester, setExportSemester] = useState<string>('Current Month');
 
   // Data Protection States
-  const [isDataProtectionOpen, setIsDataProtectionOpen] = useState(false);
   const [showStorageDetailsModal, setShowStorageDetailsModal] = useState(false);
   const [runtimeStorageInfo, setRuntimeStorageInfo] = useState({
     isIndexedDB: true,
@@ -274,9 +271,7 @@ export default function Account() {
     }
   };
 
-  const [isBackupOpen, setIsBackupOpen] = useState(false);
-  const [isSnapshotOpen, setIsSnapshotOpen] = useState(false);
-  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'transfer' | 'snapshot' | 'backup' | 'export' | 'dataProtection' | null>(null);
   const [transferImportData, setTransferImportData] = useState<any>(null);
   const transferFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -622,132 +617,72 @@ export default function Account() {
         </div>
 
         {/* 2. Preference & Statistic */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Preference & Statistic</p>
-          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <span className="font-bold text-xs">%</span>
-              </div>
-              <div>
-                <p className="font-semibold text-xs text-foreground">Preferred Percentage</p>
-                <p className="text-[10px] text-muted-foreground">Target attendance threshold</p>
-              </div>
-            </div>
-            <select
-              value={preferredPercentage}
-              onChange={(e) => setPreferredPercentage(parseInt(e.target.value, 10) || 75)}
-              className="bg-muted rounded-xl px-2.5 py-1 font-bold text-primary text-xs border border-border/50 outline-none cursor-pointer focus:ring-2 focus:ring-primary/20 transition-all shrink-0"
-            >
-              {[50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].map(pct => (
-                <option key={pct} value={pct} className="bg-card text-foreground font-bold">
-                  {pct}%
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* 3. Curriculum Management */}
-        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3 transition-all">
-          <div
-            onClick={() => setIsCurriculumOpen(!isCurriculumOpen)}
-            className="w-full flex items-center justify-between text-left cursor-pointer"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                <GraduationCap className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-xs text-foreground">Curriculum Management</h3>
-                <p className="text-[10px] text-muted-foreground">Academic progress, status & routine mode</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={cn(
-                "text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider border",
-                curriculumStatus === 'Completed'
-                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                  : "bg-primary/10 text-primary border-primary/20"
-              )}>
-                {curriculumStatus}
-              </span>
-            </div>
-          </div>
-
-          <AnimatePresence>
-            {isCurriculumOpen && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden pt-3 border-t border-border/40 space-y-3 text-left"
-              >
-                <div className="grid grid-cols-1 gap-2 bg-muted/30 p-3 rounded-xl border border-border/50">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">Current Curriculum:</span>
-                    <span className="text-xs font-bold text-foreground">
-                      {subjectMode === 'preloaded' ? 'MBBS 5th Year Curriculum' : 'Custom Academic Routine'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between pt-1 border-t border-border/30">
-                    <span className="text-xs font-medium text-muted-foreground">Current Routine Mode:</span>
-                    <span className="text-xs font-bold text-primary">
-                      {subjectMode === 'preloaded' ? 'Preset Routine' : 'Custom Routine'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between pt-1 border-t border-border/30">
-                    <span className="text-xs font-medium text-muted-foreground">Curriculum Status:</span>
-                    <span className={cn(
-                      "text-xs font-extrabold",
-                      curriculumStatus === 'Completed' ? "text-emerald-500" : "text-primary"
-                    )}>
-                      {curriculumStatus}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleToggleCurriculumStatus}
-                    className={cn(
-                      "py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer border",
-                      curriculumStatus === 'Completed'
-                        ? "bg-muted text-foreground border-border hover:bg-muted/80"
-                        : "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500/30"
-                    )}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{curriculumStatus === 'Completed' ? 'Mark as Active' : 'Mark Curriculum as Completed'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => initiateSwitch(subjectMode === 'preloaded' ? 'custom' : 'preloaded')}
-                    className="py-2.5 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                  >
-                    <ArrowRightLeft className="w-3.5 h-3.5" />
-                    <span>Change Curriculum</span>
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* 4. Other Settings */}
-        <div className="space-y-3 pt-2">
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Other Setting</p>
-
-          {/* Transfer App Data */}
-          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
+          <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
             <button
               type="button"
-              onClick={() => setIsTransferOpen(!isTransferOpen)}
-              className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer"
+              onClick={() => setActiveSettingModal('preferredPc')}
+              className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                <div className="w-8.5 h-8.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                  <span className="font-bold text-xs">%</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-xs text-foreground">Preferred Percentage</p>
+                  <p className="text-[10px] text-muted-foreground">Target attendance threshold ({preferredPercentage}%)</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider border bg-primary/10 text-primary border-primary/20">
+                  {preferredPercentage}%
+                </span>
+                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSettingModal('curriculum')}
+              className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8.5 h-8.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                  <GraduationCap className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-xs text-foreground">Curriculum Management</h3>
+                  <p className="text-[10px] text-muted-foreground">Academic progress, status & routine mode</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  "text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider border",
+                  curriculumStatus === 'Completed'
+                    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                    : "bg-primary/10 text-primary border-primary/20"
+                )}>
+                  {curriculumStatus}
+                </span>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* 3. Other Settings */}
+        <div className="space-y-2 pt-2">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Other Setting</p>
+          <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
+            {/* Transfer App Data */}
+            <button
+              type="button"
+              onClick={() => setActiveSettingModal('transfer')}
+              className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8.5 h-8.5 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
                   <Send className="w-4 h-4" />
                 </div>
                 <div>
@@ -755,98 +690,16 @@ export default function Account() {
                   <p className="text-[10px] text-muted-foreground">Securely transfer your complete app data to another device</p>
                 </div>
               </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
             </button>
 
-            <AnimatePresence>
-              {isTransferOpen && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden pt-3 mt-2.5 border-t border-border/40 space-y-3"
-                >
-                  {!transferImportData ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <button
-                        onClick={handleShareData}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        Send to Another Device
-                      </button>
-                      <div className="space-y-1.5">
-                        <button
-                          onClick={() => transferFileInputRef.current?.click()}
-                          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold rounded-xl transition-colors border border-border"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          Receive from Another Device
-                        </button>
-                        <p className="text-[10px] text-muted-foreground text-center leading-tight">
-                          Select the received backup (.json) file to import.
-                        </p>
-                      </div>
-                      <input
-                        type="file"
-                        ref={transferFileInputRef}
-                        onChange={handleTransferFileSelect}
-                        accept=".json"
-                        className="hidden"
-                      />
-                    </div>
-                  ) : (
-                    <div className="bg-muted/30 p-3 rounded-xl border border-border/50 text-left space-y-3">
-                      <div className="flex items-center gap-2 text-amber-500 mb-1">
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        <p className="text-xs font-bold">Import Data Confirmation</p>
-                      </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        You are about to replace your current local data with the received backup.
-                        We recommend creating a Full App Backup before continuing.
-                      </p>
-                      <div className="bg-background rounded-lg border border-border/60 p-2 space-y-1.5 mt-2">
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-muted-foreground">App Version</span>
-                          <span className="font-bold text-foreground">{transferImportData.att_app_version || 'Unknown'}</span>
-                        </div>
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-muted-foreground">Routine Mode</span>
-                          <span className="font-bold text-foreground">{transferImportData.att_subject_mode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine'}</span>
-                        </div>
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-muted-foreground">Total Snapshots</span>
-                          <span className="font-bold text-foreground">{transferImportData.attendenz_snapshots_v1 ? JSON.parse(transferImportData.attendenz_snapshots_v1).length : 0}</span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 pt-2">
-                        <button
-                          onClick={() => setTransferImportData(null)}
-                          className="w-full py-2 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={executeTransferImport}
-                          className="w-full py-2 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:opacity-90 transition-colors shadow-sm"
-                        >
-                          Replace & Import
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Snapshots & Storage */}
-          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
+            {/* Snapshots & Storage */}
             <div
-              onClick={() => setIsSnapshotOpen(!isSnapshotOpen)}
-              className="w-full flex items-center justify-between text-left cursor-pointer"
+              onClick={() => setActiveSettingModal('snapshot')}
+              className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <div className="w-8.5 h-8.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                   <SnapshotIcon className="w-4 h-4" />
                 </div>
                 <div>
@@ -861,81 +714,22 @@ export default function Account() {
                     e.stopPropagation();
                     handleTakeSnapshot();
                   }}
-                  className="px-2.5 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold rounded-xl transition-all active:scale-[0.97] shrink-0 border border-primary/20"
+                  className="px-2.5 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold rounded-xl transition-all active:scale-[0.97] shrink-0 border border-primary/20 cursor-pointer"
                 >
                   + Snapshot
                 </button>
+                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
               </div>
             </div>
 
-            <AnimatePresence>
-              {isSnapshotOpen && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden pt-3 mt-2.5 border-t border-border/40 space-y-3"
-                >
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => setShowSnapshotsList(!showSnapshotsList)}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-muted/50 hover:bg-muted text-foreground text-xs font-medium rounded-xl transition-all"
-                    >
-                      <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span>Saved ({snapshots.length})</span>
-                    </button>
-                    <button
-                      onClick={handleClearCache}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-muted/50 hover:bg-muted text-foreground text-xs font-medium rounded-xl transition-all"
-                    >
-                      <Eraser className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span>Clear Cache</span>
-                    </button>
-                  </div>
-
-                  {showSnapshotsList && (
-                    <div className="pt-2 border-t border-border/40 space-y-2">
-                      {snapshots.length === 0 ? (
-                        <p className="text-[11px] text-muted-foreground text-center py-2">No snapshots saved yet.</p>
-                      ) : (
-                        snapshots.map(s => (
-                          <div key={s.id} className="flex items-center justify-between p-2 rounded-xl bg-background border border-border/60">
-                            <div>
-                              <p className="text-xs font-medium text-foreground">{s.label}</p>
-                              <p className="text-[10px] text-muted-foreground">{s.timestamp}</p>
-                            </div>
-                            <button
-                              onClick={() => handleRestoreSnapshot(s.id)}
-                              className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline px-2 py-1 rounded-lg bg-primary/10"
-                            >
-                              <RefreshCw className="w-3 h-3" />
-                              Restore
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {snapshotMsg && (
-                    <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-1.5 rounded-lg">
-                      {snapshotMsg}
-                    </p>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* File Backup & Restore */}
-          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
+            {/* File Backup & Restore */}
             <button
               type="button"
-              onClick={() => setIsBackupOpen(!isBackupOpen)}
-              className="w-full flex items-center justify-between text-left focus:outline-none"
+              onClick={() => setActiveSettingModal('backup')}
+              className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                <div className="w-8.5 h-8.5 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
                   <Download className="w-4 h-4" />
                 </div>
                 <div>
@@ -943,65 +737,17 @@ export default function Account() {
                   <p className="text-[10px] text-muted-foreground">Download or restore a .json backup file</p>
                 </div>
               </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
             </button>
 
-            <AnimatePresence>
-              {isBackupOpen && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden pt-3 mt-2.5 border-t border-border/40 space-y-2.5"
-                >
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      onClick={() => exportDataAsJSON()}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      Export Backup (.json)
-                    </button>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold rounded-xl transition-colors border border-border"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Restore from File
-                    </button>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          importDataFromJSON(file, (success) => {
-                            if (success) {
-                              import("sonner").then(({ toast }) => toast.info('Backup restored successfully! Reloading app...'));
-                              window.location.reload();
-                            } else {
-                              import("sonner").then(({ toast }) => toast.info('Failed to restore backup. Please ensure the file is valid.'));
-                            }
-                          });
-                        }
-                      }}
-                      accept=".json"
-                      className="hidden"
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Export Attendance Data */}
-          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
+            {/* Export Attendance Data */}
             <button
               type="button"
-              onClick={() => setIsExportOpen(!isExportOpen)}
-              className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer"
+              onClick={() => setActiveSettingModal('export')}
+              className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                <div className="w-8.5 h-8.5 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
                   <FileText className="w-4 h-4" />
                 </div>
                 <div>
@@ -1009,175 +755,17 @@ export default function Account() {
                   <p className="text-[10px] text-muted-foreground">Export records in PDF, Excel, or CSV formats</p>
                 </div>
               </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
             </button>
 
-            <AnimatePresence>
-              {isExportOpen && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden pt-3 mt-2.5 border-t border-border/40 space-y-3 text-left"
-                >
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Export your attendance records, subject statistics, and ward rotations in clean, printable formats.
-                  </p>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
-                      Supported Formats
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setExportFormat('pdf')}
-                        className={cn(
-                          "py-2 px-2.5 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-                          exportFormat === 'pdf'
-                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                            : "bg-muted/40 border-border text-foreground hover:bg-muted"
-                        )}
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>PDF (.pdf)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setExportFormat('excel')}
-                        className={cn(
-                          "py-2 px-2.5 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-                          exportFormat === 'excel'
-                            ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                            : "bg-muted/40 border-border text-foreground hover:bg-muted"
-                        )}
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5" />
-                        <span>Excel (.xlsx)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setExportFormat('csv')}
-                        className={cn(
-                          "py-2 px-2.5 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-                          exportFormat === 'csv'
-                            ? "bg-sky-600 text-white border-sky-600 shadow-sm"
-                            : "bg-muted/40 border-border text-foreground hover:bg-muted"
-                        )}
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>CSV (.csv)</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
-                      Export Scope
-                    </label>
-                    <select
-                      value={exportScope}
-                      onChange={(e) => setExportScope(e.target.value as any)}
-                      className="w-full bg-muted/50 border border-border/80 rounded-xl px-3 py-2 text-xs font-bold text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-                    >
-                      <option value="complete">Complete Attendance (All Subjects & Wards)</option>
-                      <option value="subject">Subject-wise Filter</option>
-                      <option value="custom">Custom Date Range</option>
-                      <option value="semester">Semester / Academic Period</option>
-                    </select>
-                  </div>
-
-                  {exportScope === 'subject' && (
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground">Select Subject / Ward</label>
-                      <select
-                        value={exportSelectedSubject}
-                        onChange={(e) => setExportSelectedSubject(e.target.value)}
-                        className="w-full bg-muted/50 border border-border/80 rounded-xl px-3 py-2 text-xs font-semibold text-foreground outline-none"
-                      >
-                        <option value="">-- Choose Subject --</option>
-                        {subjectMode === 'preloaded' ? (
-                          <>
-                            {CATEGORIES.flatMap(c => c.subjects).map(s => (
-                              <option key={s.name} value={s.name}>{s.name}</option>
-                            ))}
-                            {WARD_SUBJECTS.map(w => (
-                              <option key={w.name} value={w.name}>{w.name} (Ward)</option>
-                            ))}
-                          </>
-                        ) : (
-                          <>
-                            {customSubjects.map(s => (
-                              <option key={s.id} value={s.name}>{s.name}</option>
-                            ))}
-                            {customWards.map(w => (
-                              <option key={w.id} value={w.name}>{w.name} (Ward)</option>
-                            ))}
-                          </>
-                        )}
-                      </select>
-                    </div>
-                  )}
-
-                  {exportScope === 'custom' && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-muted-foreground block mb-1">Start Date</label>
-                        <input
-                          type="date"
-                          value={exportStartDate}
-                          onChange={(e) => setExportStartDate(e.target.value)}
-                          className="w-full bg-muted/50 border border-border/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-foreground"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-muted-foreground block mb-1">End Date</label>
-                        <input
-                          type="date"
-                          value={exportEndDate}
-                          onChange={(e) => setExportEndDate(e.target.value)}
-                          className="w-full bg-muted/50 border border-border/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-foreground"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {exportScope === 'semester' && (
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground">Academic Period</label>
-                      <select
-                        value={exportSemester}
-                        onChange={(e) => setExportSemester(e.target.value)}
-                        className="w-full bg-muted/50 border border-border/80 rounded-xl px-3 py-2 text-xs font-semibold text-foreground outline-none"
-                      >
-                        <option value="Current Month">Current Month</option>
-                        <option value="Last 3 Months">Last 3 Months</option>
-                        <option value="Full Academic Term">Full Academic Term / Year</option>
-                      </select>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={handleExecuteExport}
-                    className="w-full py-3 px-4 bg-primary text-primary-foreground font-bold rounded-2xl shadow-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2 text-xs cursor-pointer mt-2"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Export {exportFormat.toUpperCase()} Report</span>
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Data Protection */}
-          <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm transition-all">
+            {/* Data Protection */}
             <button
               type="button"
-              onClick={() => setIsDataProtectionOpen(!isDataProtectionOpen)}
-              className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer"
+              onClick={() => setActiveSettingModal('dataProtection')}
+              className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                <div className="w-8.5 h-8.5 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
                   <Database className="w-4 h-4" />
                 </div>
                 <div>
@@ -1185,38 +773,561 @@ export default function Account() {
                   <p className="text-[10px] font-bold text-emerald-500">{runtimeStorageInfo.techTitle}</p>
                 </div>
               </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
             </button>
+          </div>
 
-            <AnimatePresence>
-              {isDataProtectionOpen && (
+          {/* Settings Popup Modals Overlay */}
+          <AnimatePresence>
+            {activeSettingModal && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+                onClick={() => setActiveSettingModal(null)}
+              >
                 <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden pt-3 mt-2.5 border-t border-border/40 space-y-3 text-left"
+                  initial={{ scale: 0.92, opacity: 0, y: 10 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.92, opacity: 0, y: 10 }}
+                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                  className="bg-card border border-border rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 text-left relative"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {runtimeStorageInfo.isPersistent
-                      ? "Persistent local storage is active. Your records are protected against browser cache eviction."
-                      : "Your app data is stored locally on this device."}
-                  </p>
-                  <div className="flex items-center justify-between bg-muted/30 p-2.5 rounded-xl border border-border/50">
-                    <div className="space-y-0.5">
-                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Storage Engine</p>
-                      <p className="text-xs font-bold text-foreground">IndexedDB Database (AttendenzDatabase)</p>
+                  {/* Modal Header */}
+                  <div className="flex items-center justify-between border-b border-border/50 pb-3">
+                    <div className="flex items-center gap-3">
+                      {activeSettingModal === 'preferredPc' && (
+                        <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">
+                          %
+                        </div>
+                      )}
+                      {activeSettingModal === 'curriculum' && (
+                        <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                          <GraduationCap className="w-5 h-5" />
+                        </div>
+                      )}
+                      {activeSettingModal === 'transfer' && (
+                        <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 border border-blue-500/20">
+                          <Send className="w-5 h-5" />
+                        </div>
+                      )}
+                      {activeSettingModal === 'snapshot' && (
+                        <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                          <SnapshotIcon className="w-5 h-5" />
+                        </div>
+                      )}
+                      {activeSettingModal === 'backup' && (
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 border border-emerald-500/20">
+                          <Download className="w-5 h-5" />
+                        </div>
+                      )}
+                      {activeSettingModal === 'export' && (
+                        <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                      )}
+                      {activeSettingModal === 'dataProtection' && (
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 border border-emerald-500/20">
+                          <Database className="w-5 h-5" />
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="font-bold text-base text-foreground">
+                          {activeSettingModal === 'preferredPc' && 'Preferred Percentage'}
+                          {activeSettingModal === 'curriculum' && 'Curriculum Management'}
+                          {activeSettingModal === 'transfer' && 'Transfer App Data'}
+                          {activeSettingModal === 'snapshot' && 'Snapshots & Storage'}
+                          {activeSettingModal === 'backup' && 'File Backup & Restore'}
+                          {activeSettingModal === 'export' && 'Export Attendance Data'}
+                          {activeSettingModal === 'dataProtection' && 'Data Protection'}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          {activeSettingModal === 'preferredPc' && 'Target attendance threshold percentage'}
+                          {activeSettingModal === 'curriculum' && 'Academic progress, status & routine mode'}
+                          {activeSettingModal === 'transfer' && 'Securely transfer your complete app data to another device'}
+                          {activeSettingModal === 'snapshot' && 'Manage local state backups & cache'}
+                          {activeSettingModal === 'backup' && 'Download or restore a .json backup file'}
+                          {activeSettingModal === 'export' && 'Export records in PDF, Excel, or CSV formats'}
+                          {activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}
+                        </p>
+                      </div>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setShowStorageDetailsModal(true)}
-                      className="px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold border border-primary/20 transition-all cursor-pointer"
+                      onClick={() => setActiveSettingModal(null)}
+                      className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+                      title="Close"
                     >
-                      Storage Details
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
+
+                  {/* Modal Body Content */}
+                  <div className="pt-1">
+                    {/* Preferred Percentage Body */}
+                    {activeSettingModal === 'preferredPc' && (
+                      <div className="space-y-4">
+                        <div className="bg-muted/30 p-3.5 rounded-2xl border border-border/50 space-y-2">
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Select your target attendance threshold. This percentage is used to compute required and missable classes across all subjects.
+                          </p>
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-xs font-medium text-muted-foreground">Current Target:</span>
+                            <span className="text-sm font-extrabold text-primary">{preferredPercentage}%</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block mb-2">
+                            Select Target Percentage
+                          </label>
+                          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                            {[50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].map((pct) => (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => setPreferredPercentage(pct)}
+                                className={cn(
+                                  "py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer",
+                                  preferredPercentage === pct
+                                    ? "bg-primary text-primary-foreground border-primary shadow-md scale-[1.03]"
+                                    : "bg-muted/30 hover:bg-muted/60 text-foreground border-border/60"
+                                )}
+                              >
+                                {pct}%
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="pt-2 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setActiveSettingModal(null)}
+                            className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                          >
+                            Save & Close
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Curriculum Management Body */}
+                    {activeSettingModal === 'curriculum' && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 gap-2 bg-muted/30 p-3.5 rounded-2xl border border-border/50">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-muted-foreground">Current Curriculum:</span>
+                            <span className="text-xs font-bold text-foreground">
+                              {subjectMode === 'preloaded' ? 'MBBS 5th Year Curriculum' : 'Custom Academic Routine'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between pt-1 border-t border-border/30">
+                            <span className="text-xs font-medium text-muted-foreground">Current Routine Mode:</span>
+                            <span className="text-xs font-bold text-primary">
+                              {subjectMode === 'preloaded' ? 'Preset Routine' : 'Custom Routine'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between pt-1 border-t border-border/30">
+                            <span className="text-xs font-medium text-muted-foreground">Curriculum Status:</span>
+                            <span className={cn(
+                              "text-xs font-extrabold",
+                              curriculumStatus === 'Completed' ? "text-emerald-500" : "text-primary"
+                            )}>
+                              {curriculumStatus}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={handleToggleCurriculumStatus}
+                            className={cn(
+                              "py-3 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer border",
+                              curriculumStatus === 'Completed'
+                                ? "bg-muted text-foreground border-border hover:bg-muted/80"
+                                : "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500/30"
+                            )}
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>{curriculumStatus === 'Completed' ? 'Mark as Active' : 'Mark Curriculum as Completed'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveSettingModal(null);
+                              initiateSwitch(subjectMode === 'preloaded' ? 'custom' : 'preloaded');
+                            }}
+                            className="py-3 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                          >
+                            <ArrowRightLeft className="w-4 h-4" />
+                            <span>Change Curriculum</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Transfer App Data Body */}
+                    {activeSettingModal === 'transfer' && (
+                      <div className="space-y-3">
+                        {!transferImportData ? (
+                          <div className="grid grid-cols-1 gap-2.5">
+                            <button
+                              onClick={handleShareData}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-2xl transition-colors shadow-sm cursor-pointer"
+                            >
+                              <Send className="w-4 h-4" />
+                              Send to Another Device
+                            </button>
+                            <div className="space-y-1.5">
+                              <button
+                                onClick={() => transferFileInputRef.current?.click()}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold rounded-2xl transition-colors border border-border cursor-pointer"
+                              >
+                                <Download className="w-4 h-4" />
+                                Receive from Another Device
+                              </button>
+                              <p className="text-[11px] text-muted-foreground text-center leading-tight">
+                                Select the received backup (.json) file to import.
+                              </p>
+                            </div>
+                            <input
+                              type="file"
+                              ref={transferFileInputRef}
+                              onChange={handleTransferFileSelect}
+                              accept=".json"
+                              className="hidden"
+                            />
+                          </div>
+                        ) : (
+                          <div className="bg-muted/30 p-3.5 rounded-2xl border border-border/50 text-left space-y-3">
+                            <div className="flex items-center gap-2 text-amber-500 mb-1">
+                              <AlertCircle className="w-4 h-4 shrink-0" />
+                              <p className="text-xs font-bold">Import Data Confirmation</p>
+                            </div>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                              You are about to replace your current local data with the received backup.
+                              We recommend creating a Full App Backup before continuing.
+                            </p>
+                            <div className="bg-background rounded-xl border border-border/60 p-2.5 space-y-1.5 mt-2">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-muted-foreground">App Version</span>
+                                <span className="font-bold text-foreground">{transferImportData.att_app_version || 'Unknown'}</span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-muted-foreground">Routine Mode</span>
+                                <span className="font-bold text-foreground">{transferImportData.att_subject_mode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine'}</span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-muted-foreground">Total Snapshots</span>
+                                <span className="font-bold text-foreground">{transferImportData.attendenz_snapshots_v1 ? JSON.parse(transferImportData.attendenz_snapshots_v1).length : 0}</span>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 pt-2">
+                              <button
+                                onClick={() => setTransferImportData(null)}
+                                className="w-full py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={executeTransferImport}
+                                className="w-full py-2.5 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:opacity-90 transition-colors shadow-sm cursor-pointer"
+                              >
+                                Replace & Import
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Snapshots & Storage Body */}
+                    {activeSettingModal === 'snapshot' && (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between bg-muted/30 p-2.5 rounded-xl border border-border/50">
+                          <span className="text-xs font-medium text-foreground">Create instant state snapshot</span>
+                          <button
+                            type="button"
+                            onClick={handleTakeSnapshot}
+                            className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold rounded-xl transition-all active:scale-[0.97] cursor-pointer"
+                          >
+                            + Take Snapshot
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <button
+                            onClick={() => setShowSnapshotsList(!showSnapshotsList)}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-muted hover:bg-muted/80 text-foreground text-xs font-medium rounded-xl transition-all cursor-pointer"
+                          >
+                            <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span>Saved ({snapshots.length})</span>
+                          </button>
+                          <button
+                            onClick={handleClearCache}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-muted hover:bg-muted/80 text-foreground text-xs font-medium rounded-xl transition-all cursor-pointer"
+                          >
+                            <Eraser className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span>Clear Cache</span>
+                          </button>
+                        </div>
+
+                        {showSnapshotsList && (
+                          <div className="pt-2 border-t border-border/40 space-y-2 max-h-48 overflow-y-auto">
+                            {snapshots.length === 0 ? (
+                              <p className="text-xs text-muted-foreground text-center py-2">No snapshots saved yet.</p>
+                            ) : (
+                              snapshots.map(s => (
+                                <div key={s.id} className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60">
+                                  <div>
+                                    <p className="text-xs font-medium text-foreground">{s.label}</p>
+                                    <p className="text-[10px] text-muted-foreground">{s.timestamp}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => handleRestoreSnapshot(s.id)}
+                                    className="flex items-center gap-1 text-xs font-medium text-primary hover:underline px-2.5 py-1 rounded-lg bg-primary/10 cursor-pointer"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                    Restore
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+
+                        {snapshotMsg && (
+                          <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">
+                            {snapshotMsg}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* File Backup & Restore Body */}
+                    {activeSettingModal === 'backup' && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <button
+                            onClick={() => exportDataAsJSON()}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-2xl transition-colors shadow-sm cursor-pointer"
+                          >
+                            <Download className="w-4 h-4" />
+                            Export Backup (.json)
+                          </button>
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold rounded-2xl transition-colors border border-border cursor-pointer"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                            Restore from File
+                          </button>
+                          <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                importDataFromJSON(file, (success) => {
+                                  if (success) {
+                                    import("sonner").then(({ toast }) => toast.info('Backup restored successfully! Reloading app...'));
+                                    window.location.reload();
+                                  } else {
+                                    import("sonner").then(({ toast }) => toast.info('Failed to restore backup. Please ensure the file is valid.'));
+                                  }
+                                });
+                              }
+                            }}
+                            accept=".json"
+                            className="hidden"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Export Attendance Data Body */}
+                    {activeSettingModal === 'export' && (
+                      <div className="space-y-3 text-left">
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Export your attendance records, subject statistics, and ward rotations in clean, printable formats.
+                        </p>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                            Supported Formats
+                          </label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setExportFormat('pdf')}
+                              className={cn(
+                                "py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                                exportFormat === 'pdf'
+                                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                  : "bg-muted/40 border-border text-foreground hover:bg-muted"
+                              )}
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>PDF (.pdf)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setExportFormat('excel')}
+                              className={cn(
+                                "py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                                exportFormat === 'excel'
+                                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                  : "bg-muted/40 border-border text-foreground hover:bg-muted"
+                              )}
+                            >
+                              <FileSpreadsheet className="w-3.5 h-3.5" />
+                              <span>Excel (.xlsx)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setExportFormat('csv')}
+                              className={cn(
+                                "py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                                exportFormat === 'csv'
+                                  ? "bg-sky-600 text-white border-sky-600 shadow-sm"
+                                  : "bg-muted/40 border-border text-foreground hover:bg-muted"
+                              )}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>CSV (.csv)</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                            Export Scope
+                          </label>
+                          <select
+                            value={exportScope}
+                            onChange={(e) => setExportScope(e.target.value as any)}
+                            className="w-full bg-muted/50 border border-border/80 rounded-xl px-3 py-2 text-xs font-bold text-foreground outline-none focus:ring-2 focus:ring-primary/20"
+                          >
+                            <option value="complete">Complete Attendance (All Subjects & Wards)</option>
+                            <option value="subject">Subject-wise Filter</option>
+                            <option value="custom">Custom Date Range</option>
+                            <option value="semester">Semester / Academic Period</option>
+                          </select>
+                        </div>
+
+                        {exportScope === 'subject' && (
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Select Subject / Ward</label>
+                            <select
+                              value={exportSelectedSubject}
+                              onChange={(e) => setExportSelectedSubject(e.target.value)}
+                              className="w-full bg-muted/50 border border-border/80 rounded-xl px-3 py-2 text-xs font-semibold text-foreground outline-none"
+                            >
+                              <option value="">-- Choose Subject --</option>
+                              {subjectMode === 'preloaded' ? (
+                                <>
+                                  {CATEGORIES.flatMap(c => c.subjects).map(s => (
+                                    <option key={s.name} value={s.name}>{s.name}</option>
+                                  ))}
+                                  {WARD_SUBJECTS.map(w => (
+                                    <option key={w.name} value={w.name}>{w.name} (Ward)</option>
+                                  ))}
+                                </>
+                              ) : (
+                                <>
+                                  {customSubjects.map(s => (
+                                    <option key={s.id} value={s.name}>{s.name}</option>
+                                  ))}
+                                  {customWards.map(w => (
+                                    <option key={w.id} value={w.name}>{w.name} (Ward)</option>
+                                  ))}
+                                </>
+                              )}
+                            </select>
+                          </div>
+                        )}
+
+                        {exportScope === 'custom' && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] font-bold text-muted-foreground block mb-1">Start Date</label>
+                              <input
+                                type="date"
+                                value={exportStartDate}
+                                onChange={(e) => setExportStartDate(e.target.value)}
+                                className="w-full bg-muted/50 border border-border/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-foreground"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-muted-foreground block mb-1">End Date</label>
+                              <input
+                                type="date"
+                                value={exportEndDate}
+                                onChange={(e) => setExportEndDate(e.target.value)}
+                                className="w-full bg-muted/50 border border-border/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-foreground"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {exportScope === 'semester' && (
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Academic Period</label>
+                            <select
+                              value={exportSemester}
+                              onChange={(e) => setExportSemester(e.target.value)}
+                              className="w-full bg-muted/50 border border-border/80 rounded-xl px-3 py-2 text-xs font-semibold text-foreground outline-none"
+                            >
+                              <option value="Current Month">Current Month</option>
+                              <option value="Last 3 Months">Last 3 Months</option>
+                              <option value="Full Academic Term">Full Academic Term / Year</option>
+                            </select>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={handleExecuteExport}
+                          className="w-full py-3 px-4 bg-primary text-primary-foreground font-bold rounded-2xl shadow-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2 text-xs cursor-pointer mt-2"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>Export {exportFormat.toUpperCase()} Report</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Data Protection Body */}
+                    {activeSettingModal === 'dataProtection' && (
+                      <div className="space-y-3 text-left">
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {runtimeStorageInfo.isPersistent
+                            ? "Persistent local storage is active. Your records are protected against browser cache eviction."
+                            : "Your app data is stored locally on this device."}
+                        </p>
+                        <div className="flex items-center justify-between bg-muted/30 p-3 rounded-2xl border border-border/50">
+                          <div className="space-y-0.5">
+                            <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Storage Engine</p>
+                            <p className="text-xs font-bold text-foreground">IndexedDB Database (AttendenzDatabase)</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowStorageDetailsModal(true)}
+                            className="px-3 py-2 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold border border-primary/20 transition-all cursor-pointer"
+                          >
+                            Storage Details
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* App Info & Update */}
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3.5">

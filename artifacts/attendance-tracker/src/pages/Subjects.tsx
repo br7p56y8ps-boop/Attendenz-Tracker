@@ -4,15 +4,225 @@ import { SubjectCard } from '@/components/SubjectCard';
 import { Layout } from '@/components/Layout';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { pctColor } from '@/lib/utils';   // <-- added pctColor import
+import { pctColor, cn } from '@/lib/utils';
 import { useLocation } from 'wouter';
 
+// ── SVG Circular Progress Component ──
+const CircularProgress = ({
+  percentage,
+  color,
+  size = 56,
+  strokeWidth = 5,
+}: {
+  percentage: number;
+  color: string;
+  size?: number;
+  strokeWidth?: number;
+}) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (Math.min(100, Math.max(0, percentage)) / 100) * circumference;
+
+  return (
+    <div className="relative flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="transform -rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          className="text-muted/20"
+          fill="transparent"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          fill="transparent"
+          className="transition-all duration-500 ease-out"
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+        <span className="text-xs font-extrabold leading-none" style={{ color }}>
+          {percentage === undefined || isNaN(percentage) ? '--' : `${percentage.toFixed(0)}%`}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+interface ChildDetail {
+  name: string;
+  attended: number;
+  missed: number;
+  conducted: number;
+  planned: number;
+  remaining: number;
+  pct: number;
+  requiredToAttend: number;
+  isImpossible: boolean;
+  needsAttention: boolean;
+}
+
+interface CategorySummary {
+  att: number;
+  mis: number;
+  planned: number;
+  pct: number;
+  conducted: number;
+  remainingTotal: number;
+  maxPossiblePct: number;
+  childDetails: ChildDetail[];
+  urgentList: ChildDetail[];
+  attentionList: ChildDetail[];
+}
+
+interface CategoryCardProps {
+  title: string;
+  sectionKey: string;
+  badge?: React.ReactNode;
+  subtitle?: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  summary: CategorySummary;
+  preferredPercentage: number;
+  renderChildren: () => React.ReactNode;
+}
+
+const CategoryCard = ({
+  title,
+  badge,
+  subtitle,
+  isOpen,
+  onToggle,
+  summary,
+  preferredPercentage,
+  renderChildren,
+}: CategoryCardProps) => {
+  const overallColor = pctColor(summary.pct, preferredPercentage);
+  const maxPossibleColor = pctColor(summary.maxPossiblePct, preferredPercentage);
+
+  const statusColor = summary.urgentList.length > 0
+    ? pctColor(0, preferredPercentage)
+    : summary.attentionList.length > 0
+    ? pctColor(preferredPercentage - 1, preferredPercentage)
+    : pctColor(preferredPercentage + 10, preferredPercentage);
+
+  // Parent card with defined border and subtle tint
+  const cardStyle = {
+    backgroundColor: `${overallColor}14`,
+    borderColor: `${overallColor}40`,
+  };
+
+  return (
+    <div
+      style={cardStyle}
+      className={cn(
+        "border rounded-2xl shadow-sm transition-all overflow-hidden p-4 sm:p-5 space-y-3.5",
+        isOpen ? "bg-card/90 backdrop-blur-xl border-border/80" : "hover:shadow-md"
+      )}
+    >
+      {/* Clickable Header */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full text-left transition-all active:scale-[0.99] cursor-pointer"
+      >
+        <div className="flex items-center gap-4 min-w-0">
+          <CircularProgress percentage={summary.pct} color={overallColor} size={56} strokeWidth={5} />
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg sm:text-xl font-bold text-foreground truncate">{title}</h2>
+              {badge}
+            </div>
+            {subtitle && <p className="text-xs text-primary font-semibold mt-0.5">{subtitle}</p>}
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1.5 font-medium">
+              <span>Attended: <strong className="text-foreground font-semibold">{summary.att}</strong></span>
+              <span className="opacity-40">·</span>
+              <span>Missed: <strong className="text-foreground font-semibold">{summary.mis}</strong></span>
+              <span className="opacity-40">·</span>
+              <span>Planned: <strong className="text-foreground font-semibold">{summary.planned}</strong></span>
+            </div>
+          </div>
+        </div>
+      </button>
+
+      {/* Full-width Side Message Container Box */}
+      <div className="bg-background/70 backdrop-blur-md border border-border/60 rounded-xl p-3.5 text-xs space-y-2.5 w-full shadow-sm">
+        {/* Row 1: Status */}
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-semibold text-muted-foreground shrink-0">Status:</span>
+          <span className="font-bold text-right truncate text-xs sm:text-sm" style={{ color: statusColor }}>
+            {summary.urgentList.length > 0
+              ? `🚨 Deadline Alert: ${summary.urgentList.length} unreachable`
+              : summary.attentionList.length > 0
+              ? `⚠️ Attention Needed (<${preferredPercentage}%)`
+              : `✨ All targets on track`}
+          </span>
+        </div>
+
+        {/* Row 2: Attention subjects if any */}
+        {summary.attentionList.length > 0 && (
+          <div className="flex items-start justify-between gap-3 pt-1 border-t border-border/40">
+            <span className="font-semibold text-muted-foreground shrink-0">Needs Attention:</span>
+            <div className="font-bold text-right flex flex-wrap justify-end gap-1.5">
+              {summary.attentionList.map((s, idx) => (
+                <span key={idx} style={{ color: pctColor(s.pct, preferredPercentage) }}>
+                  {s.name} ({s.pct.toFixed(0)}%){idx < summary.attentionList.length - 1 ? ',' : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Row 3: Overall Predicted Max % */}
+        <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/40">
+          <span className="font-semibold text-muted-foreground shrink-0">Predicted Max %:</span>
+          <span className="font-extrabold text-right text-sm sm:text-base" style={{ color: maxPossibleColor }}>
+            {summary.maxPossiblePct.toFixed(1)}%
+          </span>
+        </div>
+      </div>
+
+      {/* Children list */}
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: 'easeInOut' }}
+            className="overflow-hidden bg-background/40 rounded-xl p-2 space-y-1.5"
+          >
+            {renderChildren()}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 export default function Subjects() {
   const { subjects, wards, preferredPercentage } = useAttendance();
-  const { customSubjects, customWards, getCurrentCustomWard, subjectMode, getSubjectPlannedTotal, getCurrentPresetWard, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
+  const {
+    customSubjects,
+    customWards,
+    getCurrentCustomWard,
+    subjectMode,
+    getSubjectPlannedTotal,
+    getCurrentPresetWard,
+    getPresetWardTotalPlanned,
+    getCustomWardTotalPlanned,
+  } = useCustomData();
   const [, setLocation] = useLocation();
 
   const today = new Date();
@@ -27,107 +237,67 @@ export default function Subjects() {
     setOpenCategories(prev => ({ ...prev, [catName]: !prev[catName] }));
   };
 
-  const calcSummary = (subjectList: { name: string; total: number }[]) => {
+  const calcSummary = (
+    subjectList: { name: string; total?: number }[],
+    isWardGroup = false
+  ): CategorySummary => {
     let att = 0, mis = 0, planned = 0;
+    const childDetails: ChildDetail[] = [];
+    const targetPct = preferredPercentage || 75;
+
     subjectList.forEach(sub => {
-      const d = subjects[sub.name] || { attended: 0, missed: 0 };
-      att += d.attended; mis += d.missed;
-      planned += getSubjectPlannedTotal(sub.name);
+      const key = isWardGroup ? `ward-${sub.name}` : sub.name;
+      const d = (isWardGroup ? wards : subjects)[key] || { attended: 0, missed: 0 };
+
+      let p = 0;
+      if (isWardGroup) {
+        if (subjectMode === 'preloaded') {
+          p = getPresetWardTotalPlanned(sub.name);
+        } else {
+          const cWard = customWards.find(w => w.name.toLowerCase() === sub.name.toLowerCase());
+          p = cWard ? getCustomWardTotalPlanned(cWard.startDate, cWard.endDate) : (sub.total || 40);
+        }
+      } else {
+        const cSub = customSubjects.find(s => s.name.toLowerCase() === sub.name.toLowerCase());
+        p = cSub ? cSub.plannedClasses : (getSubjectPlannedTotal(sub.name) || sub.total || 40);
+      }
+
+      const conducted = d.attended + d.missed;
+      const remaining = Math.max(0, p - conducted);
+      const pct = conducted === 0 ? 100 : (d.attended / conducted) * 100;
+
+      const rawReq = Math.max(0, Math.ceil(p * (targetPct / 100)) - d.attended);
+      const isImpossible = rawReq > remaining;
+      const needsAttention = (conducted > 0 && pct < targetPct) || isImpossible;
+
+      att += d.attended;
+      mis += d.missed;
+      planned += p;
+
+      childDetails.push({
+        name: sub.name,
+        attended: d.attended,
+        missed: d.missed,
+        conducted,
+        planned: p,
+        remaining,
+        pct,
+        requiredToAttend: rawReq,
+        isImpossible,
+        needsAttention,
+      });
     });
+
     const conducted = att + mis;
     const pct = conducted === 0 ? 100 : (att / conducted) * 100;
-    return { att, mis, planned, pct, conducted };
+    const remainingTotal = Math.max(0, planned - conducted);
+    const maxPossiblePct = planned > 0 ? ((att + remainingTotal) / planned) * 100 : 100;
+
+    const urgentList = childDetails.filter(c => c.isImpossible);
+    const attentionList = childDetails.filter(c => c.needsAttention);
+
+    return { att, mis, planned, pct, conducted, remainingTotal, maxPossiblePct, childDetails, urgentList, attentionList };
   };
-
-  const calcIntegratedSummary = () => {
-    let att = 0, mis = 0, planned = 0;
-    INTEGRATED_SUBJECTS.forEach(sub => {
-      const d = subjects[sub.name] || { attended: 0, missed: 0 };
-      att += d.attended; mis += d.missed;
-      planned += getSubjectPlannedTotal(sub.name);
-    });
-    const conducted = att + mis;
-    const pct = conducted === 0 ? 100 : (att / conducted) * 100;
-    return { att, mis, planned, pct, conducted };
-  };
-
-  // ── REMOVED local GREEN_OFFSET and pctColor – now imported ──────────────
-
-  // ── Single unified expandable card for a category ──────────────────────
-  const CategoryCard = ({
-    title,
-    sectionKey,
-    subjectList,
-    badge,
-    renderChildren,
-  }: {
-    title: string;
-    sectionKey: string;
-    subjectList: { name: string; total: number }[];
-    badge?: React.ReactNode;
-    renderChildren: () => React.ReactNode;
-  }) => {
-    const isOpen = openCategories[sectionKey] || false;
-    const summary = calcSummary(subjectList);
-
-    return (
-      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-        {/* Clickable header */}
-        <button
-          onClick={() => toggleCategory(sectionKey)}
-          className="w-full p-4 text-left transition-all active:scale-[0.99]"
-        >
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <h2 className="text-xl font-bold text-foreground truncate">{title}</h2>
-              {badge}
-            </div>
-            {isOpen
-              ? <ChevronUp className="text-muted-foreground w-5 h-5 shrink-0 ml-2" />
-              : <ChevronDown className="text-muted-foreground w-5 h-5 shrink-0 ml-2" />}
-          </div>
-          <div className="flex gap-4">
-            <div>
-              <div className="text-2xl font-bold" style={{ color: pctColor(summary.pct, preferredPercentage) }}>
-                {summary.conducted === 0 ? '--' : `${summary.pct.toFixed(1)}%`}
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">Overall</div>
-            </div>
-            <div className="w-px bg-border my-1" />
-            <div className="flex-1 grid grid-cols-3 gap-2">
-              {[
-                { label: 'Attended', val: summary.att },
-                { label: 'Missed', val: summary.mis },
-                { label: 'Planned', val: summary.planned },
-              ].map(({ label, val }) => (
-                <div key={label} className="flex flex-col">
-                  <span className="text-xs text-muted-foreground">{label}</span>
-                  <span className="font-semibold text-sm">{val}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </button>
-
-        {/* Children — inside the same card, separated by dividers */}
-        <AnimatePresence initial={false}>
-          {isOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.28, ease: 'easeInOut' }}
-              className="overflow-hidden"
-            >
-              {renderChildren()}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  };
-
-  // ── Simple accordion for non-category sections (Wards, Integrated) ──────
 
   // Allied subjects grouped by category
   const alliedSubjects = customSubjects.filter(s => s.subjectType === 'allied');
@@ -138,8 +308,6 @@ export default function Subjects() {
     acc[cat].push(s);
     return acc;
   }, {});
-
-  const integratedSummary = calcIntegratedSummary();
 
   return (
     <Layout>
@@ -163,44 +331,52 @@ export default function Subjects() {
         )}
 
         {/* ── Built-in Academic Categories (preloaded mode only) ── */}
-        {subjectMode === 'preloaded' && CATEGORIES.map((cat) => (
-          <CategoryCard
-            key={cat.name}
-            title={cat.name}
-            sectionKey={cat.name}
-            subjectList={cat.subjects}
-            renderChildren={() => (
-              <>
-                {cat.subjects.map((sub) => (
-                  <React.Fragment key={sub.name}>
-                    <div className="border-t border-border" />
-                    <SubjectCard subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
-                  </React.Fragment>
-                ))}
-              </>
-            )}
-          />
-        ))}
+        {subjectMode === 'preloaded' && CATEGORIES.map((cat) => {
+          const summary = calcSummary(cat.subjects);
+          return (
+            <CategoryCard
+              key={cat.name}
+              title={cat.name}
+              sectionKey={cat.name}
+              isOpen={openCategories[cat.name] || false}
+              onToggle={() => toggleCategory(cat.name)}
+              summary={summary}
+              preferredPercentage={preferredPercentage}
+              renderChildren={() => (
+                <>
+                  {cat.subjects.map((sub) => (
+                    <SubjectCard key={sub.name} subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
+                  ))}
+                </>
+              )}
+            />
+          );
+        })}
 
         {/* ── Custom Allied Categories ── */}
-        {Object.entries(alliedCategories).map(([catName, subs]) => (
-          <CategoryCard
-            key={catName}
-            title={catName}
-            sectionKey={`allied_${catName}`}
-            subjectList={subs.map(s => ({ name: s.name, total: s.plannedClasses }))}
-            renderChildren={() => (
-              <>
-                {subs.map((s) => (
-                  <React.Fragment key={s.id}>
-                    <div className="border-t border-border" />
-                    <SubjectCard subject={s.name} totalPlanned={s.plannedClasses} isNested />
-                  </React.Fragment>
-                ))}
-              </>
-            )}
-          />
-        ))}
+        {Object.entries(alliedCategories).map(([catName, subs]) => {
+          const subjectList = subs.map(s => ({ name: s.name, total: s.plannedClasses }));
+          const summary = calcSummary(subjectList);
+          const sectionKey = `allied_${catName}`;
+          return (
+            <CategoryCard
+              key={catName}
+              title={catName}
+              sectionKey={sectionKey}
+              isOpen={openCategories[sectionKey] || false}
+              onToggle={() => toggleCategory(sectionKey)}
+              summary={summary}
+              preferredPercentage={preferredPercentage}
+              renderChildren={() => (
+                <>
+                  {subs.map((s) => (
+                    <SubjectCard key={s.id} subject={s.name} totalPlanned={s.plannedClasses} isNested />
+                  ))}
+                </>
+              )}
+            />
+          );
+        })}
 
         {/* ── Custom Single Subjects (Separate Independent Cards) ── */}
         {singleSubjects.map(s => (
@@ -209,157 +385,65 @@ export default function Subjects() {
 
         {/* ── Ward Rotations (Grouped in ONE Card) ── */}
         {(subjectMode === 'preloaded' || customWards.length > 0) && (() => {
-          // Calculate overall ward statistics
-          let att = 0, mis = 0, planned = 0;
-          if (subjectMode === 'preloaded') {
-            WARD_SUBJECTS.forEach(sub => {
-              const d = wards[`ward-${sub.name}`] || { attended: 0, missed: 0 };
-              att += d.attended;
-              mis += d.missed;
-              planned += getPresetWardTotalPlanned(sub.name);
-            });
-          } else {
-            customWards.forEach(w => {
-              const d = wards[`ward-${w.name}`] || { attended: 0, missed: 0 };
-              att += d.attended;
-              mis += d.missed;
-              planned += getCustomWardTotalPlanned(w.startDate, w.endDate);
-            });
-          }
-          const conducted = att + mis;
-          const pct = conducted === 0 ? 100 : (att / conducted) * 100;
-          const wardSummary = { att, mis, planned, pct, conducted };
+          const wardList = subjectMode === 'preloaded' 
+            ? WARD_SUBJECTS 
+            : customWards.map(w => ({ name: w.name, total: getCustomWardTotalPlanned(w.startDate, w.endDate) }));
+          const wardSummary = calcSummary(wardList, true);
 
           return (
-            <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-              <button
-                onClick={() => toggleCategory('Ward Postings')}
-                className="w-full p-4 text-left transition-all active:scale-[0.99]"
-              >
-                <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-xl font-bold text-foreground">Clinical Rotations</h2>
-                  {openCategories['Ward Postings']
-                    ? <ChevronUp className="text-muted-foreground w-5 h-5 shrink-0" />
-                    : <ChevronDown className="text-muted-foreground w-5 h-5 shrink-0" />}
-                </div>
-                <div className="flex gap-4">
-                  <div>
-                    <div className="text-2xl font-bold font-sans" style={{ color: pctColor(wardSummary.pct, preferredPercentage) }}>
-                      {wardSummary.conducted === 0 ? '--' : `${wardSummary.pct.toFixed(1)}%`}
+            <CategoryCard
+              title="Clinical Rotations"
+              sectionKey="Ward Postings"
+              subtitle={`Current Posting: ${isWardHoliday ? 'Holiday' : (activeWard || 'None Scheduled')}`}
+              isOpen={openCategories['Ward Postings'] || false}
+              onToggle={() => toggleCategory('Ward Postings')}
+              summary={wardSummary}
+              preferredPercentage={preferredPercentage}
+              renderChildren={() => (
+                <>
+                  {subjectMode === 'preloaded' && WARD_SUBJECTS.map((ward) => (
+                    <div key={ward.name} className="relative">
+                      {activeWard === ward.name && (
+                        <div className="absolute left-2 top-1 bottom-1 w-1 bg-primary rounded-full z-10" />
+                      )}
+                      <SubjectCard subject={ward.name} totalPlanned={getPresetWardTotalPlanned(ward.name)} isWard={true} isNested={true} />
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">Overall</div>
-                  </div>
-                  <div className="w-px bg-border my-1" />
-                  <div className="flex-1 grid grid-cols-3 gap-2">
-                    {[
-                      { label: 'Attended', val: wardSummary.att },
-                      { label: 'Missed', val: wardSummary.mis },
-                      { label: 'Planned', val: wardSummary.planned },
-                    ].map(({ label, val }) => (
-                      <div key={label} className="flex flex-col">
-                        <span className="text-xs text-muted-foreground">{label}</span>
-                        <span className="font-semibold text-sm">{val}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <p className="text-xs text-primary font-medium mt-3">
-                  Current Posting: {isWardHoliday ? 'Holiday' : (activeWard || 'None Scheduled')}
-                </p>
-              </button>
-              <AnimatePresence initial={false}>
-                {openCategories['Ward Postings'] && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.28, ease: 'easeInOut' }}
-                    className="overflow-hidden"
-                  >
-                    {subjectMode === 'preloaded' && WARD_SUBJECTS.map((ward) => (
-                      <React.Fragment key={ward.name}>
-                        <div className="border-t border-border" />
-                        <div className="relative">
-                          {activeWard === ward.name && (
-                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary z-10" />
-                          )}
-                          <SubjectCard subject={ward.name} totalPlanned={getPresetWardTotalPlanned(ward.name)} isWard={true} isNested={true} />
-                        </div>
-                      </React.Fragment>
-                    ))}
-                    {subjectMode === 'custom' && customWards.map((w) => (
-                      <React.Fragment key={w.id}>
-                        <div className="border-t border-border" />
-                        <div className="relative">
-                          {activeWard === w.name && (
-                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary z-10" />
-                          )}
-                          <SubjectCard subject={w.name} totalPlanned={getCustomWardTotalPlanned(w.startDate, w.endDate)} isWard={true} isNested={true} />
-                        </div>
-                      </React.Fragment>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                  ))}
+                  {subjectMode === 'custom' && customWards.map((w) => (
+                    <div key={w.id} className="relative">
+                      {activeWard === w.name && (
+                        <div className="absolute left-2 top-1 bottom-1 w-1 bg-primary rounded-full z-10" />
+                      )}
+                      <SubjectCard subject={w.name} totalPlanned={getCustomWardTotalPlanned(w.startDate, w.endDate)} isWard={true} isNested={true} />
+                    </div>
+                  ))}
+                </>
+              )}
+            />
           );
         })()}
 
         {/* ── Integrated Teaching (preloaded mode only) ── */}
-        {subjectMode === 'preloaded' && (
-          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-            <button
-              onClick={() => toggleCategory('Integrated Teaching')}
-              className="w-full p-4 text-left transition-all active:scale-[0.99]"
-            >
-              <div className="flex justify-between items-center mb-3">
-                <h2 className="text-xl font-bold text-foreground">Integrated Teaching</h2>
-                {openCategories['Integrated Teaching']
-                  ? <ChevronUp className="text-muted-foreground w-5 h-5 shrink-0" />
-                  : <ChevronDown className="text-muted-foreground w-5 h-5 shrink-0" />}
-              </div>
-              <div className="flex gap-4">
-                <div>
-                  <div className="text-2xl font-bold font-sans" style={{ color: pctColor(integratedSummary.pct, preferredPercentage) }}>
-                    {integratedSummary.conducted === 0 ? '--' : `${integratedSummary.pct.toFixed(1)}%`}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Overall</div>
-                </div>
-                <div className="w-px bg-border my-1" />
-                <div className="flex-1 grid grid-cols-3 gap-2">
-                  {[
-                    { label: 'Attended', val: integratedSummary.att },
-                    { label: 'Missed', val: integratedSummary.mis },
-                    { label: 'Planned', val: integratedSummary.planned },
-                  ].map(({ label, val }) => (
-                    <div key={label} className="flex flex-col">
-                      <span className="text-xs text-muted-foreground">{label}</span>
-                      <span className="font-semibold text-sm">{val}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </button>
-            <AnimatePresence initial={false}>
-              {openCategories['Integrated Teaching'] && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.28, ease: 'easeInOut' }}
-                  className="overflow-hidden"
-                >
+        {subjectMode === 'preloaded' && (() => {
+          const integratedSummary = calcSummary(INTEGRATED_SUBJECTS);
+          return (
+            <CategoryCard
+              title="Integrated Teaching"
+              sectionKey="Integrated Teaching"
+              isOpen={openCategories['Integrated Teaching'] || false}
+              onToggle={() => toggleCategory('Integrated Teaching')}
+              summary={integratedSummary}
+              preferredPercentage={preferredPercentage}
+              renderChildren={() => (
+                <>
                   {INTEGRATED_SUBJECTS.map(sub => (
-                    <React.Fragment key={sub.name}>
-                      <div className="border-t border-border" />
-                      <SubjectCard subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
-                    </React.Fragment>
+                    <SubjectCard key={sub.name} subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
                   ))}
-                </motion.div>
+                </>
               )}
-            </AnimatePresence>
-          </div>
-        )}
+            />
+          );
+        })()}
 
       </div>
     </Layout>

@@ -1,17 +1,87 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Layout } from '@/components/Layout';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Check, Calendar, GraduationCap, Building2, Sliders, BookOpen, Sparkles, Clock, Sun, CheckCircle2, Save, Stethoscope } from 'lucide-react';
+import { Plus, Trash2, Check, Calendar, GraduationCap, Building2, Sliders, BookOpen, Clock, Sun, CheckCircle2, Save, Stethoscope, Edit2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Tab = 'single' | 'allied' | 'ward' | 'presets';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const ALL_PRESET_SUBJECTS = [
+  'Medicine',
+  'Surgery',
+  'Orthopedics',
+  'Pediatrics',
+  'Psychiatry',
+  'Obstetrics & Gynaecology',
+  'Ophthalmology',
+  'Otolaryngology',
+  'Dermatology',
+  'Radiology',
+  'Radiotherapy',
+  'Nuclear Medicine',
+  'Physical Medicine',
+  'Neurosurgery',
+  'Urology',
+  'Pediatric Surgery',
+  'Burn & Plastic Surgery',
+  'Phase Integrated Teaching',
+  'Departmental Integrated Teaching'
+];
 
+const ALL_PRESET_WARDS = [
+  'General Surgery',
+  'Pediatrics',
+  'Internal Medicine',
+  'Dermatology',
+  'Urology',
+  'Pediatric Surgery',
+  'Burn & Plastic Surgery',
+  'Orthopaedics',
+  'Obstetrics & Gynaecology',
+  'Psychiatry',
+  'Otolaryngology',
+  'Ophthalmology',
+  'Holiday'
+];
+
+function parseTimeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const firstPart = timeStr.split('–')[0].split('-')[0].trim();
+  const match = firstPart.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!match) return 0;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const ampm = match[3]?.toUpperCase();
+  if (ampm === 'PM' && hours < 12) hours += 12;
+  if (ampm === 'AM' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+}
+
+function parseSlotToStartEnd(timeStr: string): { start: string; end: string } {
+  if (!timeStr) return { start: '08:00', end: '09:00' };
+  const parts = timeStr.split(/[–-]/).map(p => p.trim());
+  
+  const to24h = (s: string) => {
+    const match = s.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (!match) return '08:00';
+    let h = parseInt(match[1], 10);
+    const m = match[2];
+    const ampm = match[3]?.toUpperCase();
+    if (ampm === 'PM' && h < 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    return `${h.toString().padStart(2, '0')}:${m}`;
+  };
+
+  const start = parts[0] ? to24h(parts[0]) : '08:00';
+  const end = parts[1] ? to24h(parts[1]) : '09:00';
+  return { start, end };
+}
 
 const labelClass =
   'text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5 text-center';
@@ -37,12 +107,29 @@ export default function AddNew() {
 
   const [tab, setTab] = useState<Tab>('single');
   const [successMsg, setSuccessMsg] = useState('');
+  const [showOptionalSections, setShowOptionalSections] = useState(false);
+
+  // Preset Overrides state: Academic vs Clinical & selected Day
+  const [presetSection, setPresetSection] = useState<'academic' | 'clinical'>('academic');
+  const [selectedPresetDay, setSelectedPresetDay] = useState<number>(new Date().getDay());
+  const [editingAcademicSlotIdx, setEditingAcademicSlotIdx] = useState<number | null>(null);
+  const [editingWardIdx, setEditingWardIdx] = useState<number | null>(null);
+
+  const availableSubjectOptions = React.useMemo(() => {
+    return Array.from(new Set([...ALL_PRESET_SUBJECTS, ...customSubjects.map(s => s.name)])).sort();
+  }, [customSubjects]);
+
+  const availableWardOptions = React.useMemo(() => {
+    return Array.from(new Set([...ALL_PRESET_WARDS, ...customWards.map(w => w.name)])).sort();
+  }, [customWards]);
 
   React.useEffect(() => {
-    if (subjectMode === 'custom' && tab === 'presets') {
+    if (subjectMode === 'preloaded') {
+      setTab('presets');
+    } else if (tab === 'presets') {
       setTab('single');
     }
-  }, [subjectMode, tab]);
+  }, [subjectMode]);
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
@@ -297,7 +384,7 @@ export default function AddNew() {
               className={cn(
                 'py-2 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-xs md:text-sm font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all duration-200 border cursor-pointer min-w-0',
                 tab === 'single'
-                  ? 'bg-primary text-primary-foreground border-primary shadow-md font-bold'
+                  ? 'bg-primary/15 text-primary border-primary/40 shadow-sm font-bold'
                   : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
               )}
             >
@@ -310,7 +397,7 @@ export default function AddNew() {
               className={cn(
                 'py-2 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-xs md:text-sm font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all duration-200 border cursor-pointer min-w-0',
                 tab === 'allied'
-                  ? 'bg-primary text-primary-foreground border-primary shadow-md font-bold'
+                  ? 'bg-primary/15 text-primary border-primary/40 shadow-sm font-bold'
                   : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
               )}
             >
@@ -323,7 +410,7 @@ export default function AddNew() {
               className={cn(
                 'py-2 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-xs md:text-sm font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all duration-200 border cursor-pointer min-w-0',
                 tab === 'ward'
-                  ? 'bg-primary text-primary-foreground border-primary shadow-md font-bold'
+                  ? 'bg-primary/15 text-primary border-primary/40 shadow-sm font-bold'
                   : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
               )}
             >
@@ -331,60 +418,95 @@ export default function AddNew() {
               <span className="truncate">Clinical Ward</span>
             </button>
           </div>
+        ) : !showOptionalSections ? (
+          /* Preset Mode Default View: Only Preset Override visible + More Options Icon/Button on top right */
+          <div className="flex items-center justify-between bg-card/80 backdrop-blur-xl border border-border/70 p-3 sm:p-3.5 rounded-2xl shadow-sm gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                <Sliders className="w-4 h-4" />
+              </div>
+              <h3 className="font-bold text-sm text-foreground truncate">Preset Overrides</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowOptionalSections(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-all cursor-pointer shrink-0 active:scale-95"
+              title="Show extra subject creation options"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>More</span>
+            </button>
+          </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 bg-card/80 backdrop-blur-xl border border-border/70 p-2 rounded-2xl shadow-sm">
-            <button
-              type="button"
-              onClick={() => handleTabSwitch('single')}
-              className={cn(
-                'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
-                tab === 'single'
-                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
-                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
-              )}
-            >
-              <GraduationCap className="w-4 h-4 shrink-0" />
-              <span className="truncate">Single Subject</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTabSwitch('allied')}
-              className={cn(
-                'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
-                tab === 'allied'
-                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
-                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
-              )}
-            >
-              <Building2 className="w-4 h-4 shrink-0" />
-              <span className="truncate">Allied Subject</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTabSwitch('ward')}
-              className={cn(
-                'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
-                tab === 'ward'
-                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
-                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
-              )}
-            >
-              <Stethoscope className="w-4 h-4 shrink-0" />
-              <span className="truncate">Clinical Rotation</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTabSwitch('presets')}
-              className={cn(
-                'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
-                tab === 'presets'
-                  ? 'bg-primary text-primary-foreground border-primary shadow-md'
-                  : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
-              )}
-            >
-              <Sliders className="w-4 h-4 shrink-0" />
-              <span className="truncate">Preset Overrides</span>
-            </button>
+          /* Preset Mode Expanded View: Optional Sections Visible */
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Select Management Section</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOptionalSections(false);
+                  handleTabSwitch('presets');
+                }}
+                className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+              >
+                Hide Optional Sections
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 bg-card/80 backdrop-blur-xl border border-border/70 p-2 rounded-2xl shadow-sm">
+              <button
+                type="button"
+                onClick={() => handleTabSwitch('presets')}
+                className={cn(
+                  'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
+                  tab === 'presets'
+                    ? 'bg-primary/15 text-primary border-primary/40 shadow-sm font-bold'
+                    : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+                )}
+              >
+                <Sliders className="w-4 h-4 shrink-0" />
+                <span className="truncate">Preset Overrides</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTabSwitch('single')}
+                className={cn(
+                  'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
+                  tab === 'single'
+                    ? 'bg-primary/15 text-primary border-primary/40 shadow-sm font-bold'
+                    : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+                )}
+              >
+                <GraduationCap className="w-4 h-4 shrink-0" />
+                <span className="truncate">Single Subject</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTabSwitch('allied')}
+                className={cn(
+                  'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
+                  tab === 'allied'
+                    ? 'bg-primary/15 text-primary border-primary/40 shadow-sm font-bold'
+                    : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+                )}
+              >
+                <Building2 className="w-4 h-4 shrink-0" />
+                <span className="truncate">Allied Subject</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTabSwitch('ward')}
+                className={cn(
+                  'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 border cursor-pointer',
+                  tab === 'ward'
+                    ? 'bg-primary/15 text-primary border-primary/40 shadow-sm font-bold'
+                    : 'bg-muted/20 text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+                )}
+              >
+                <Stethoscope className="w-4 h-4 shrink-0" />
+                <span className="truncate">Clinical Rotation</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -392,18 +514,14 @@ export default function AddNew() {
         <AnimatePresence mode="wait">
           {tab === 'single' && (
             <motion.div key="single" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <form onSubmit={handleSaveSingle} className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-5 sm:p-6 space-y-5 shadow-xl relative overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border/60 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                      <GraduationCap className="w-6 h-6" />
+              <form onSubmit={handleSaveSingle} className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-4 sm:p-5 space-y-4 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                      <GraduationCap className="w-4 h-4" />
                     </div>
-                    <div>
-                      <h3 className="font-bold text-lg text-foreground tracking-tight">Add New Single Subject</h3>
-                      <p className="text-xs text-muted-foreground">Configure subject name and weekly schedule</p>
-                    </div>
+                    <h3 className="font-bold text-sm sm:text-base text-foreground tracking-tight truncate">Add Single Subject</h3>
                   </div>
-                  <Sparkles className="w-5 h-5 text-primary/40 shrink-0" />
                 </div>
 
                 {/* Row 1: Subject Name */}
@@ -578,18 +696,14 @@ export default function AddNew() {
           {/* ── Tab 2: Allied Subject ── */}
           {tab === 'allied' && (
             <motion.div key="allied" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-5 sm:p-6 space-y-5 shadow-xl relative overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border/60 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                      <Building2 className="w-6 h-6" />
+              <div className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-4 sm:p-5 space-y-4 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                      <Building2 className="w-4 h-4" />
                     </div>
-                    <div>
-                      <h3 className="font-bold text-lg text-foreground tracking-tight">Add Allied Subjects Group</h3>
-                      <p className="text-xs text-muted-foreground">Create parent and sub-discipline child subjects</p>
-                    </div>
+                    <h3 className="font-bold text-sm sm:text-base text-foreground tracking-tight truncate">Add Allied Subjects Group</h3>
                   </div>
-                  <Sparkles className="w-5 h-5 text-primary/40 shrink-0" />
                 </div>
 
                 {/* Row 1: Parent Subject Name */}
@@ -866,18 +980,14 @@ export default function AddNew() {
           {/* ── Tab 3: Ward Rotation ── */}
           {tab === 'ward' && (
             <motion.div key="ward" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <form onSubmit={handleSaveWard} className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-5 sm:p-6 space-y-5 shadow-xl relative overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border/60 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                      <Stethoscope className="w-6 h-6" />
+              <form onSubmit={handleSaveWard} className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-4 sm:p-5 space-y-4 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                      <Stethoscope className="w-4 h-4" />
                     </div>
-                    <div>
-                      <h3 className="font-bold text-lg text-foreground tracking-tight">Add Hospital/Clinical Rotation</h3>
-                      <p className="text-xs text-muted-foreground">Configure rotation dates and shift schedules</p>
-                    </div>
+                    <h3 className="font-bold text-sm sm:text-base text-foreground tracking-tight truncate">Add Clinical Rotation</h3>
                   </div>
-                  <Sparkles className="w-5 h-5 text-primary/40 shrink-0" />
                 </div>
 
                 <div>
@@ -1015,187 +1125,438 @@ export default function AddNew() {
           {/* ── Tab 4: Preset Overrides ── */}
           {tab === 'presets' && (
             <motion.div key="presets" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-5 sm:p-6 space-y-6 shadow-xl relative overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border/60 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                      <Sliders className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg text-foreground tracking-tight">Preset Overrides</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Presets are modeled after MBBS 5th year (may or may not match your exact schedule). Provided for convenience—you can adjust times/slots here or use custom subjects.
-                      </p>
-                    </div>
-                  </div>
-                  <Sparkles className="w-5 h-5 text-primary/40 shrink-0" />
+              <div className="bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl p-4 sm:p-5 space-y-4 shadow-xl relative overflow-hidden">
+                {/* 1. Academic vs Clinical Section Toggle */}
+                <div className="grid grid-cols-2 gap-2 bg-muted/30 p-1.5 rounded-2xl border border-border/60">
+                  <button
+                    type="button"
+                    onClick={() => setPresetSection('academic')}
+                    className={cn(
+                      "py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border",
+                      presetSection === 'academic'
+                        ? "bg-primary/15 text-primary border-primary/40 shadow-sm"
+                        : "bg-transparent text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/50"
+                    )}
+                  >
+                    <GraduationCap className="w-4 h-4 shrink-0" />
+                    <span>Academic Section</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPresetSection('clinical')}
+                    className={cn(
+                      "py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border",
+                      presetSection === 'clinical'
+                        ? "bg-primary/15 text-primary border-primary/40 shadow-sm"
+                        : "bg-transparent text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/50"
+                    )}
+                  >
+                    <Stethoscope className="w-4 h-4 shrink-0" />
+                    <span>Clinical Section</span>
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <div className="space-y-4">
-                    <h4 className="font-bold text-sm text-primary uppercase tracking-wider flex items-center gap-2">
-                      📅 Weekly Timetable Slots
-                    </h4>
-                    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 divide-y divide-border/30">
-                      {DAYS.map((dayName, dayIdx) => {
-                        const slots = presetTimetable[dayIdx] || [];
-                        const hasLecture = slots.some(s => s.type !== 'ward' && s.type !== 'ward_replacement');
-                        if (!hasLecture) return null;
+                {/* 2. Days Selector Pills (Academic section only) */}
+                {presetSection === 'academic' && (
+                  <div className="grid grid-cols-7 gap-1 sm:gap-1.5 bg-muted/20 p-1.5 rounded-2xl border border-border/50">
+                    {DAYS.map((dName, dIdx) => (
+                      <button
+                        key={dName}
+                        type="button"
+                        onClick={() => { setSelectedPresetDay(dIdx); setEditingAcademicSlotIdx(null); }}
+                        className={cn(
+                          "py-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer min-w-0 border",
+                          selectedPresetDay === dIdx
+                            ? "bg-primary/15 text-primary border-primary/40 shadow-sm scale-[1.03]"
+                            : "bg-background/50 text-muted-foreground border-transparent hover:bg-muted/60 hover:text-foreground"
+                        )}
+                      >
+                        {dName}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 3. Section Content */}
+                <div className="pt-2">
+                  {presetSection === 'academic' ? (
+                    /* ACADEMIC SECTION FOR SELECTED DAY */
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                        <h4 className="font-bold text-sm text-primary uppercase tracking-wider flex items-center gap-2">
+                          📅 {DAYS[selectedPresetDay]}'s Academic Schedule
+                        </h4>
+                        <span className="text-[11px] text-muted-foreground font-semibold">
+                          {(presetTimetable[selectedPresetDay] || []).filter(s => s.type !== 'ward' && s.type !== 'ward_replacement').length} Slots
+                        </span>
+                      </div>
+
+                      {(() => {
+                        const rawDaySlots = presetTimetable[selectedPresetDay] || [];
+                        const sortedLectureSlots = rawDaySlots
+                          .map((slot, originalSlotIdx) => ({ slot, originalSlotIdx, startMin: parseTimeToMinutes(slot.time) }))
+                          .filter(({ slot }) => slot.type !== 'ward' && slot.type !== 'ward_replacement')
+                          .sort((a, b) => a.startMin - b.startMin);
+
+                        if (sortedLectureSlots.length === 0) {
+                          return (
+                            <div className="bg-muted/20 rounded-2xl p-6 text-center border border-border/40 space-y-1">
+                              <p className="font-bold text-sm text-foreground">No Academic Classes</p>
+                              <p className="text-xs text-muted-foreground">No lecture slots configured for {DAYS[selectedPresetDay]}.</p>
+                            </div>
+                          );
+                        }
 
                         return (
-                          <div key={dayName} className="space-y-3 pt-3 first:pt-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-foreground uppercase tracking-wider">{dayName}</span>
-                              <div className="h-px flex-1 bg-border/40" />
-                            </div>
-                            <div className="space-y-3">
-                              {slots.map((slot, slotIdx) => {
-                                if (slot.type === 'ward' || slot.type === 'ward_replacement') return null;
+                          <div className="space-y-3">
+                            {sortedLectureSlots.map(({ slot }, sortedIdx) => {
+                              return (
+                                <div
+                                  key={sortedIdx}
+                                  onClick={() => setEditingAcademicSlotIdx(sortedIdx)}
+                                  className="bg-card border border-border/60 rounded-2xl p-4 shadow-sm hover:border-primary/40 transition-all flex justify-between items-center gap-3 cursor-pointer"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold font-mono text-primary">
+                                        {slot.time}
+                                      </span>
+                                    </div>
+                                    <h5 className="font-bold text-sm text-foreground truncate mt-1">
+                                      {slot.subjects.join(', ') || 'No subject set'}
+                                    </h5>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                                      {slot.subjects.map(sName => `${sName}: ${getSubjectPlannedTotal(sName)} planned`).join(' · ')}
+                                    </p>
+                                  </div>
 
-                                return (
-                                  <div key={slotIdx} className="grid grid-cols-1 md:grid-cols-2 gap-2.5 bg-muted/20 p-3 rounded-xl border border-border/40 text-sm box-border">
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <div>
-                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Day</label>
-                                        <select
-                                          value={dayIdx}
-                                          onChange={(e) => {
-                                            const newDay = parseInt(e.target.value);
-                                            updatePresetTimetableSlot(dayIdx, slotIdx, slot.time, slot.subjects, newDay);
-                                          }}
-                                          className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border [color-scheme:dark]"
-                                        >
-                                          {DAYS.map((d, dIdx) => (
-                                            <option key={d} value={dIdx}>{d}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <div>
-                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Time</label>
-                                        <input
-                                          type="text"
-                                          value={slot.time}
-                                          onChange={(e) => {
-                                            updatePresetTimetableSlot(dayIdx, slotIdx, e.target.value, slot.subjects, dayIdx);
-                                          }}
-                                          className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
-                                        />
-                                      </div>
+                                  <div className="px-3 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-bold hover:bg-primary/20 transition-all shrink-0 flex items-center gap-1.5">
+                                    <Edit2 className="w-3.5 h-3.5" /> Edit
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {/* Portaled Modal for Editing Academic Slot */}
+                            {editingAcademicSlotIdx !== null && sortedLectureSlots[editingAcademicSlotIdx] && typeof document !== 'undefined' && createPortal(
+                              <div
+                                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto"
+                                onClick={() => setEditingAcademicSlotIdx(null)}
+                              >
+                                <motion.div
+                                  initial={{ scale: 0.95, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  exit={{ scale: 0.95, opacity: 0 }}
+                                  className="bg-card border border-border rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 text-left relative"
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  {(() => {
+                                    const { slot, originalSlotIdx } = sortedLectureSlots[editingAcademicSlotIdx];
+                                    const { start: startTimeVal, end: endTimeVal } = parseSlotToStartEnd(slot.time);
+
+                                    return (
+                                      <>
+                                        <div className="flex justify-between items-center border-b border-border/50 pb-3">
+                                          <div className="flex items-center gap-2">
+                                            <GraduationCap className="w-5 h-5 text-primary" />
+                                            <h3 className="font-bold text-lg text-foreground">
+                                              Edit Academic Class ({DAYS[selectedPresetDay]})
+                                            </h3>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingAcademicSlotIdx(null)}
+                                            className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                          >
+                                            <X className="w-4 h-4" />
+                                          </button>
+                                        </div>
+
+                                        <div className="space-y-4 text-xs">
+                                          {/* Target Day */}
+                                          <div>
+                                            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
+                                              Target Day
+                                            </label>
+                                            <select
+                                              value={selectedPresetDay}
+                                              onChange={(e) => {
+                                                const newDay = parseInt(e.target.value);
+                                                updatePresetTimetableSlot(selectedPresetDay, originalSlotIdx, slot.time, slot.subjects, newDay);
+                                                setSelectedPresetDay(newDay);
+                                                setEditingAcademicSlotIdx(null);
+                                              }}
+                                              className="w-full bg-background border border-border rounded-xl px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
+                                            >
+                                              {DAYS.map((d, dIdx) => (
+                                                <option key={d} value={dIdx}>{d}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          {/* Start Time & End Time in Single Row (2 Columns) */}
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
+                                                Start Time (Clock)
+                                              </label>
+                                              <input
+                                                type="time"
+                                                value={startTimeVal}
+                                                onChange={(e) => {
+                                                  const newTimeStr = `${e.target.value}–${endTimeVal}`;
+                                                  updatePresetTimetableSlot(selectedPresetDay, originalSlotIdx, newTimeStr, slot.subjects, selectedPresetDay);
+                                                }}
+                                                className="w-full bg-background border border-border rounded-xl px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border text-center font-mono"
+                                              />
+                                            </div>
+
+                                            <div>
+                                              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
+                                                End Time (Clock)
+                                              </label>
+                                              <input
+                                                type="time"
+                                                value={endTimeVal}
+                                                onChange={(e) => {
+                                                  const newTimeStr = `${startTimeVal}–${e.target.value}`;
+                                                  updatePresetTimetableSlot(selectedPresetDay, originalSlotIdx, newTimeStr, slot.subjects, selectedPresetDay);
+                                                }}
+                                                className="w-full bg-background border border-border rounded-xl px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border text-center font-mono"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Subject & Planned Count */}
+                                          <div>
+                                            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">
+                                              Subject & Total Planned Classes
+                                            </label>
+                                            <div className="space-y-2.5">
+                                              {slot.subjects.map((subName, subIdx) => {
+                                                const plannedVal = getSubjectPlannedTotal(subName);
+                                                return (
+                                                  <div key={subIdx} className="flex gap-2 items-center">
+                                                    <select
+                                                      value={subName}
+                                                      onChange={(e) => {
+                                                        const newSubjects = [...slot.subjects];
+                                                        newSubjects[subIdx] = e.target.value;
+                                                        updatePresetTimetableSlot(selectedPresetDay, originalSlotIdx, slot.time, newSubjects, selectedPresetDay);
+                                                      }}
+                                                      className="flex-1 min-w-0 bg-background border border-border rounded-xl px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border truncate"
+                                                    >
+                                                      {availableSubjectOptions.map(opt => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                      ))}
+                                                    </select>
+
+                                                    <div className="flex items-center gap-1.5 bg-background border border-border rounded-xl px-2.5 h-10 shrink-0 box-border">
+                                                      <span className="text-[10px] text-muted-foreground font-bold shrink-0">Planned:</span>
+                                                      <input
+                                                        type="number"
+                                                        min="1"
+                                                        value={plannedVal}
+                                                        onChange={(e) => {
+                                                          const newVal = parseInt(e.target.value) || 0;
+                                                          updatePresetSubjectTotal(subName, newVal);
+                                                        }}
+                                                        className="w-12 bg-transparent text-xs font-bold text-foreground text-center focus:outline-none"
+                                                      />
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+
+                                          <div className="pt-2 flex justify-end">
+                                            <button
+                                              type="button"
+                                              onClick={() => setEditingAcademicSlotIdx(null)}
+                                              className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-md hover:opacity-90 transition-opacity cursor-pointer"
+                                            >
+                                              Done
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
+                                </motion.div>
+                              </div>,
+                              document.body
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    /* CLINICAL WARD ROTATIONS SECTION (NO DAY SELECTOR NEEDED) */
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                        <h4 className="font-bold text-sm text-primary uppercase tracking-wider flex items-center gap-2">
+                          🏥 Clinical Ward Postings
+                        </h4>
+                        <span className="text-[11px] text-muted-foreground font-semibold">
+                          {presetWardSchedule.length} Postings Configured
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {presetWardSchedule.map((ws, wsIdx) => {
+                          return (
+                            <div
+                              key={wsIdx}
+                              onClick={() => setEditingWardIdx(wsIdx)}
+                              className="bg-card border border-border/60 rounded-2xl p-4 shadow-sm hover:border-primary/40 transition-all flex justify-between items-center gap-3 cursor-pointer"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <h5 className="font-bold text-sm text-foreground truncate">{ws.ward}</h5>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  📅 {ws.start} → {ws.end}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground mt-0.5">
+                                  Shift Times: Morning {ws.morningTime || '09:30–11:30'} · Evening {ws.eveningTime || '07:00–09:00 PM'}
+                                </p>
+                              </div>
+
+                              <div className="px-3 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-bold hover:bg-primary/20 transition-all shrink-0 flex items-center gap-1.5">
+                                <Edit2 className="w-3.5 h-3.5" /> Edit
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Portaled Modal for Editing Ward Duration & Schedule */}
+                      {editingWardIdx !== null && typeof document !== 'undefined' && createPortal(
+                        <div
+                          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto"
+                          onClick={() => setEditingWardIdx(null)}
+                        >
+                          <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-card border border-border rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 text-left relative"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <div className="flex justify-between items-center border-b border-border/50 pb-3">
+                              <div className="flex items-center gap-2">
+                                <Stethoscope className="w-5 h-5 text-primary" />
+                                <h3 className="font-bold text-lg text-foreground">Edit Clinical Rotation</h3>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setEditingWardIdx(null)}
+                                className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {(() => {
+                              const ws = presetWardSchedule[editingWardIdx];
+                              if (!ws) return null;
+
+                              return (
+                                <div className="space-y-4 text-xs">
+                                  {/* Subject / Rotation Select */}
+                                  <div>
+                                    <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
+                                      Ward Rotation Subject
+                                    </label>
+                                    <select
+                                      value={ws.ward}
+                                      onChange={(e) => {
+                                        updatePresetWardSchedule(editingWardIdx, ws.start, ws.end, ws.morningTime, ws.eveningTime);
+                                        // Update ward name in state
+                                        presetWardSchedule[editingWardIdx].ward = e.target.value;
+                                      }}
+                                      className="w-full bg-background border border-border rounded-xl px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
+                                    >
+                                      {availableWardOptions.map(wOpt => (
+                                        <option key={wOpt} value={wOpt}>{wOpt}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  {/* Dates Pickers */}
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Posting Start Date</label>
+                                      <input
+                                        type="date"
+                                        value={ws.start}
+                                        onChange={(e) => {
+                                          updatePresetWardSchedule(editingWardIdx, e.target.value, ws.end, ws.morningTime, ws.eveningTime);
+                                        }}
+                                        className="w-full bg-background border border-border rounded-xl px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
+                                      />
                                     </div>
 
                                     <div>
-                                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Subjects & Planned Classes</label>
-                                      <div className="space-y-1.5">
-                                        {slot.subjects.map((subName, subIdx) => {
-                                          const plannedVal = getSubjectPlannedTotal(subName);
-                                          return (
-                                            <div key={subIdx} className="flex gap-1.5 items-center">
-                                              <input
-                                                type="text"
-                                                value={subName}
-                                                onChange={(e) => {
-                                                  const newSubjects = [...slot.subjects];
-                                                  newSubjects[subIdx] = e.target.value;
-                                                  updatePresetTimetableSlot(dayIdx, slotIdx, slot.time, newSubjects, dayIdx);
-                                                }}
-                                                className="flex-1 bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
-                                                placeholder="Subject name"
-                                              />
-                                              <input
-                                                type="number"
-                                                min="1"
-                                                value={plannedVal}
-                                                onChange={(e) => {
-                                                  const newVal = parseInt(e.target.value) || 0;
-                                                  updatePresetSubjectTotal(subName, newVal);
-                                                }}
-                                                className="w-14 bg-background border border-border rounded-xl px-1.5 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 text-center box-border"
-                                                placeholder="Planned"
-                                              />
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
+                                      <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Posting End Date</label>
+                                      <input
+                                        type="date"
+                                        value={ws.end}
+                                        onChange={(e) => {
+                                          updatePresetWardSchedule(editingWardIdx, ws.start, e.target.value, ws.morningTime, ws.eveningTime);
+                                        }}
+                                        className="w-full bg-background border border-border rounded-xl px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
+                                      />
                                     </div>
                                   </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
 
-                  <div className="space-y-4">
-                    <h4 className="font-bold text-sm text-primary uppercase tracking-wider flex items-center gap-2">
-                      🏥 Clinical Ward Rotations
-                    </h4>
-                    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-                      {presetWardSchedule.map((ws, wsIdx) => {
-                        return (
-                          <div key={wsIdx} className="bg-muted/20 p-4 rounded-2xl border border-border/40 space-y-3 text-sm box-border">
-                            <div className="flex justify-between items-center">
-                              <h5 className="font-bold text-foreground text-xs uppercase tracking-wide">{ws.ward} Posting</h5>
-                              <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-semibold">Preset Posting</span>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Start Date</label>
-                                <input
-                                  type="date"
-                                  value={ws.start}
-                                  onChange={(e) => {
-                                    updatePresetWardSchedule(wsIdx, e.target.value, ws.end, ws.morningTime, ws.eveningTime);
-                                  }}
-                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">End Date</label>
-                                <input
-                                  type="date"
-                                  value={ws.end}
-                                  onChange={(e) => {
-                                    updatePresetWardSchedule(wsIdx, ws.start, e.target.value, ws.morningTime, ws.eveningTime);
-                                  }}
-                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
-                                />
-                              </div>
-                            </div>
+                                  {/* Shift Times */}
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Morning Shift Time</label>
+                                      <input
+                                        type="text"
+                                        value={ws.morningTime || '09:30–11:30'}
+                                        onChange={(e) => {
+                                          updatePresetWardSchedule(editingWardIdx, ws.start, ws.end, e.target.value, ws.eveningTime);
+                                        }}
+                                        className="w-full bg-background border border-border rounded-xl px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
+                                        placeholder="09:30–11:30"
+                                      />
+                                    </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Morning Time</label>
-                                <input
-                                  type="text"
-                                  value={ws.morningTime || '09:30–11:30'}
-                                  onChange={(e) => {
-                                    updatePresetWardSchedule(wsIdx, ws.start, ws.end, e.target.value, ws.eveningTime);
-                                  }}
-                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
-                                  placeholder="e.g. 09:30–11:30"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Evening Time</label>
-                                <input
-                                  type="text"
-                                  value={ws.eveningTime || '07:00–09:00 PM'}
-                                  onChange={(e) => {
-                                    updatePresetWardSchedule(wsIdx, ws.start, ws.end, ws.morningTime, e.target.value);
-                                  }}
-                                  className="w-full bg-background border border-border rounded-xl px-2 h-9 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 box-border"
-                                  placeholder="e.g. 07:00–09:00 PM"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                                    <div>
+                                      <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Evening Shift Time</label>
+                                      <input
+                                        type="text"
+                                        value={ws.eveningTime || '07:00–09:00 PM'}
+                                        onChange={(e) => {
+                                          updatePresetWardSchedule(editingWardIdx, ws.start, ws.end, ws.morningTime, e.target.value);
+                                        }}
+                                        className="w-full bg-background border border-border rounded-xl px-3 h-10 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 box-border"
+                                        placeholder="07:00–09:00 PM"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="pt-2 flex justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingWardIdx(null)}
+                                      className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-md hover:opacity-90 transition-opacity cursor-pointer"
+                                    >
+                                      Done
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </motion.div>
+                        </div>,
+                        document.body
+                      )}
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </motion.div>
