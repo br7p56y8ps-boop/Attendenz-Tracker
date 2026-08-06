@@ -172,18 +172,25 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // ORIGINAL getSubjectPlannedTotal – unchanged
+  // ORIGINAL getSubjectPlannedTotal – updated to handle case-insensitive presetSubjectTotals lookup
   const getSubjectPlannedTotal = (subjectName: string): number => {
+    if (!subjectName) return 40;
     if (presetSubjectTotals[subjectName] !== undefined) {
       return presetSubjectTotals[subjectName];
     }
+    const matchKey = Object.keys(presetSubjectTotals).find(
+      k => k.toLowerCase() === subjectName.toLowerCase()
+    );
+    if (matchKey !== undefined && presetSubjectTotals[matchKey] !== undefined) {
+      return presetSubjectTotals[matchKey];
+    }
     for (const cat of CATEGORIES) {
-      const sub = cat.subjects.find(s => s.name === subjectName);
+      const sub = cat.subjects.find(s => s.name.toLowerCase() === subjectName.toLowerCase());
       if (sub) return sub.total;
     }
-    const intSub = INTEGRATED_SUBJECTS.find(s => s.name === subjectName);
+    const intSub = INTEGRATED_SUBJECTS.find(s => s.name.toLowerCase() === subjectName.toLowerCase());
     if (intSub) return intSub.total;
-    const wardSub = WARD_SUBJECTS.find(s => s.name === subjectName);
+    const wardSub = WARD_SUBJECTS.find(s => s.name.toLowerCase() === subjectName.toLowerCase());
     if (wardSub) return wardSub.total;
     return 40;
   };
