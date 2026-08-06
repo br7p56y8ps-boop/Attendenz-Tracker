@@ -9,10 +9,12 @@ interface AttendanceContextType {
   subjects: Record<string, AttendanceData>;
   wards: Record<string, AttendanceData>;
   homeSelections: Record<string, SelectionType>;
+  finishedMap: Record<string, boolean>;
   preferredPercentage: number;
   setPreferredPercentage: (p: number) => void;
   updateSubject: (subject: string, attended: number, missed: number) => void;
   updateWard: (ward: string, attended: number, missed: number) => void;
+  toggleFinished: (key: string) => void;
   updateHomeSelection: (homeKey: string, subject: string, selection: SelectionType, isWard: boolean, totalCardsOnScreen?: number) => void;
   resetAllData: () => void;
 }
@@ -23,11 +25,13 @@ const SUBJECTS_KEY = 'attendance_tracker_subjects';
 const WARD_KEY = 'attendance_tracker_ward';
 const HOME_SELECTIONS_KEY = 'attendance_tracker_home_selections';
 const PREFERRED_PERCENTAGE_KEY = 'attendance_tracker_preferred_percentage';
+const FINISHED_MAP_KEY = 'attendance_tracker_finished_map';
 
 export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
   const [subjects, setSubjects] = useState<Record<string, AttendanceData>>({});
   const [wards, setWards] = useState<Record<string, AttendanceData>>({});
   const [homeSelections, setHomeSelections] = useState<Record<string, SelectionType>>({});
+  const [finishedMap, setFinishedMap] = useState<Record<string, boolean>>({});
   const [preferredPercentage, setPreferredPercentage] = useState<number>(75);
 
   useEffect(() => {
@@ -37,6 +41,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       
       const w = localStorage.getItem(WARD_KEY);
       if (w) setWards(JSON.parse(w));
+
+      const f = localStorage.getItem(FINISHED_MAP_KEY);
+      if (f) setFinishedMap(JSON.parse(f));
       
       const p = localStorage.getItem(PREFERRED_PERCENTAGE_KEY);
       if (p) setPreferredPercentage(JSON.parse(p));
@@ -84,6 +91,16 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       const updated = { ...prev, [ward]: { attended, missed } };
       localStorage.setItem(WARD_KEY, JSON.stringify(updated));
       storageSetItem(WARD_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const toggleFinished = (key: string) => {
+    snapshotBeforeEdit(`Toggle Finished ${key}`);
+    setFinishedMap(prev => {
+      const updated = { ...prev, [key]: !prev[key] };
+      localStorage.setItem(FINISHED_MAP_KEY, JSON.stringify(updated));
+      storageSetItem(FINISHED_MAP_KEY, JSON.stringify(updated));
       return updated;
     });
   };
@@ -180,7 +197,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
 
 
   return (
-    <AttendanceContext.Provider value={{ subjects, wards, homeSelections, preferredPercentage, setPreferredPercentage: savePreferredPercentage, updateSubject, updateWard, updateHomeSelection, resetAllData }}>
+    <AttendanceContext.Provider value={{ subjects, wards, homeSelections, finishedMap, preferredPercentage, setPreferredPercentage: savePreferredPercentage, updateSubject, updateWard, toggleFinished, updateHomeSelection, resetAllData }}>
       {children}
     </AttendanceContext.Provider>
   );
