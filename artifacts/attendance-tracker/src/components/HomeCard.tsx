@@ -115,11 +115,11 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
   const cardBg = isFinished
     ? finishedCardBg
     : currentSelection === 'attended'
-    ? 'bg-success/10 border-success/30'
+    ? 'bg-emerald-500/15 border-emerald-500/60 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-500/10 backdrop-blur-md bg-card/80'
     : currentSelection === 'missed'
-    ? 'bg-destructive/10 border-destructive/30'
+    ? 'bg-rose-500/15 border-rose-500/60 ring-2 ring-rose-500/40 shadow-lg shadow-rose-500/10 backdrop-blur-md bg-card/80'
     : currentSelection === 'off'
-    ? 'bg-warning/10 border-warning/30'
+    ? 'bg-amber-500/15 border-amber-500/60 ring-2 ring-amber-500/40 shadow-lg shadow-amber-500/10 backdrop-blur-md bg-card/80'
     : 'bg-card border-card-border';
 
   const renderSubtitle = () => {
@@ -226,48 +226,71 @@ export const HomeCard = ({ subject, time, isWard = false, title, sessionId, date
           {isTargetMet && <CheckCircle2 className="w-4 h-4 shrink-0" />}
           <span>NO MORE PLANNED CLASSES!!!</span>
         </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-2 w-full relative z-10">
+      ) : currentSelection ? (
+        <div className="w-full relative z-10">
           <button
+            type="button"
+            onClick={() => handleSelection(currentSelection)}
+            className={cn(
+              "w-full h-11 flex items-center justify-center gap-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 border cursor-pointer select-none px-4 shadow-md",
+              currentSelection === 'attended' && "bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border-emerald-500/60 ring-2 ring-emerald-500/40 shadow-emerald-500/10",
+              currentSelection === 'missed' && "bg-rose-500/25 text-rose-700 dark:text-rose-300 border-rose-500/60 ring-2 ring-rose-500/40 shadow-rose-500/10",
+              currentSelection === 'off' && "bg-amber-500/25 text-amber-700 dark:text-amber-300 border-amber-500/60 ring-2 ring-amber-500/40 shadow-amber-500/10",
+              pendingSelection === currentSelection && "ring-4 scale-[0.99] font-extrabold"
+            )}
+          >
+            {pendingSelection === currentSelection ? (
+              <span className="animate-pulse">Confirm Undo?</span>
+            ) : (
+              <div className="flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-4.5 h-4.5 shrink-0" />
+                <span className="capitalize">{currentSelection === 'off' ? 'Holiday' : currentSelection}</span>
+                <span className="text-[10px] opacity-75 font-normal ml-1">(Tap to Undo)</span>
+              </div>
+            )}
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2 w-full relative z-10">
+          {/* Attended Button */}
+          <button
+            type="button"
             onClick={() => handleSelection('attended')}
             className={cn(
-              "h-11 flex items-center justify-center min-w-0 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 border cursor-pointer select-none px-1 overflow-hidden box-border",
-              currentSelection === 'attended'
-                ? "bg-success/20 text-success border-success/50 shadow-sm"
-                : "bg-background/70 text-muted-foreground border-border hover:bg-success/5 hover:text-success hover:border-success/20",
-              pendingSelection === 'attended' && "ring-2 ring-inset ring-success bg-success/30 text-success font-bold"
+              "flex-1 h-11 flex items-center justify-center min-w-0 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 border cursor-pointer select-none px-2 overflow-hidden box-border bg-background/70 text-muted-foreground border-border hover:bg-emerald-500/10 hover:text-emerald-600 hover:border-emerald-500/30",
+              pendingSelection === 'attended' && "ring-2 ring-inset ring-emerald-500 bg-emerald-500/40 text-emerald-800 dark:text-emerald-200 font-extrabold shadow-md"
             )}
           >
-            <span className="truncate whitespace-nowrap px-0.5">
-              {pendingSelection === 'attended' ? (currentSelection === 'attended' ? 'Confirm Undo?' : 'Confirm?') : 'Attended'}
+            <span className="truncate whitespace-nowrap">
+              {pendingSelection === 'attended' ? 'Confirm?' : 'Attended'}
             </span>
           </button>
+
+          {/* Missed Button */}
           <button
+            type="button"
             onClick={() => handleSelection('missed')}
             className={cn(
-              "h-11 flex items-center justify-center min-w-0 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 border cursor-pointer select-none px-1 overflow-hidden box-border",
-              currentSelection === 'missed'
-                ? "bg-destructive/20 text-destructive border-destructive/50 shadow-sm"
-                : "bg-background/70 text-muted-foreground border-border hover:bg-destructive/5 hover:text-destructive hover:border-destructive/20",
-              pendingSelection === 'missed' && "ring-2 ring-inset ring-destructive bg-destructive/30 text-destructive font-bold"
+              "flex-1 h-11 flex items-center justify-center min-w-0 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 border cursor-pointer select-none px-2 overflow-hidden box-border bg-background/70 text-muted-foreground border-border hover:bg-rose-500/10 hover:text-rose-600 hover:border-rose-500/30",
+              pendingSelection === 'missed' && "ring-2 ring-inset ring-rose-500 bg-rose-500/40 text-rose-800 dark:text-rose-200 font-extrabold shadow-md"
             )}
           >
-            <span className="truncate whitespace-nowrap px-0.5">
-              {pendingSelection === 'missed' ? (currentSelection === 'missed' ? 'Confirm Undo?' : 'Confirm?') : 'Missed'}
+            <span className="truncate whitespace-nowrap">
+              {pendingSelection === 'missed' ? 'Confirm?' : 'Missed'}
             </span>
           </button>
+
+          {/* Holiday / Off Button */}
           <button
+            type="button"
             onClick={() => handleSelection('off')}
             className={cn(
-              "h-11 flex items-center justify-center min-w-0 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 border cursor-pointer select-none px-1 overflow-hidden box-border",
-              currentSelection === 'off'
-                ? "bg-warning/20 text-warning border-warning/50 shadow-sm"
-                : "bg-background/70 text-muted-foreground border-border hover:bg-warning/5 hover:text-warning hover:border-warning/20",
-              pendingSelection === 'off' && "ring-2 ring-inset ring-warning bg-warning/30 text-warning font-bold"
+              "flex-1 h-11 flex items-center justify-center min-w-0 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 border cursor-pointer select-none px-2 overflow-hidden box-border bg-background/70 text-muted-foreground border-border hover:bg-amber-500/10 hover:text-amber-600 hover:border-amber-500/30",
+              pendingSelection === 'off' && "ring-2 ring-inset ring-amber-500 bg-amber-500/40 text-amber-800 dark:text-amber-200 font-extrabold shadow-md"
             )}
           >
-            <span className="truncate whitespace-nowrap px-0.5">
-              {pendingSelection === 'off' ? (currentSelection === 'off' ? 'Confirm Undo?' : 'Confirm?') : 'Holiday'}
+            <span className="truncate whitespace-nowrap">
+              {pendingSelection === 'off' ? 'Confirm?' : 'Holiday'}
             </span>
           </button>
         </div>
