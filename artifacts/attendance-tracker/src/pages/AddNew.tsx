@@ -550,6 +550,7 @@ export default function AddNew() {
                       <input
                         type="number"
                         inputMode="numeric"
+                        pattern="[0-9]*"
                         min="1"
                         placeholder="40"
                         value={sPlanned}
@@ -569,6 +570,7 @@ export default function AddNew() {
                       <input
                         type="number"
                         inputMode="numeric"
+                        pattern="[0-9]*"
                         min="0"
                         placeholder="Optional"
                         value={sAttended}
@@ -769,6 +771,7 @@ export default function AddNew() {
                           <input
                             type="number"
                             inputMode="numeric"
+                            pattern="[0-9]*"
                             min="1"
                             placeholder="20"
                             value={cPlanned}
@@ -788,6 +791,7 @@ export default function AddNew() {
                           <input
                             type="number"
                             inputMode="numeric"
+                            pattern="[0-9]*"
                             min="0"
                             placeholder="Optional"
                             value={cAttended}
@@ -1357,6 +1361,8 @@ export default function AddNew() {
                                                       <input
                                                         type="number"
                                                         min="1"
+                                                        inputMode="numeric"
+                                                        pattern="[0-9]*"
                                                         value={plannedVal}
                                                         onChange={(e) => {
                                                           const newVal = parseInt(e.target.value) || 0;
