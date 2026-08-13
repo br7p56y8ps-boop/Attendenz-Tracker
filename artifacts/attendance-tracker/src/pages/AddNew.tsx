@@ -314,7 +314,7 @@ export default function AddNew() {
   } = useCustomData();
   const { removeSubjectData, removeWardData, renameSubjectData, renameWardData } = useAttendance();
 
-  // Local ref for latest timetable – we keep it but now use it only for reading, not for writing
+  // Local ref for latest timetable
   const timetableRef = useRef(presetTimetable);
   useEffect(() => { timetableRef.current = presetTimetable; }, [presetTimetable]);
 
@@ -354,13 +354,12 @@ export default function AddNew() {
   const [eveStart, setEveStart] = useState('07:00 PM');
   const [eveEnd, setEveEnd] = useState('09:00 PM');
 
-  // SGT form fields
+  // SGT form fields (sgtPlanned removed)
   const [sgtClinicalSubject, setSgtClinicalSubject] = useState('');
   const [sgtName, setSgtName] = useState('');
   const [sgtStartDate, setSgtStartDate] = useState('');
   const [sgtEndDate, setSgtEndDate] = useState('');
   const [sgtRows, setSgtRows] = useState<ScheduleRow[]>([newRow([])]);
-  const [sgtPlanned, setSgtPlanned] = useState('');
 
   // ── Edit Slot state ──
   const [editSlot, setEditSlot] = useState<EditSlotState | null>(null);
@@ -378,7 +377,6 @@ export default function AddNew() {
   const [opdOpen, setOpdOpen] = useState(false);
   const [opdRename, setOpdRename] = useState<Record<string, string>>({});
   const [opdEditing, setOpdEditing] = useState<Record<string, boolean>>({});
-  // Triage section: top-level "Preset" or "Added"; secondary "Academic" or "Clinical"
   const [triageTop, setTriageTop] = useState<'preset' | 'added'>('preset');
   const [triageSub, setTriageSub] = useState<'academic' | 'clinical'>('academic');
 
@@ -467,9 +465,48 @@ export default function AddNew() {
     return allSGTs.some(s => s.name.toLowerCase() === name);
   };
 
-  // ── Helper: rename a preset academic subject (replaced – now uses context) ──
-  // This is now handled by setPresetSubjectRename in the context.
-  // The local helper is removed.
+  // ── Helper: rename a preset academic subject in timetable and totals ──
+  const renamePresetAcademicSubject = (oldName: string, newName: string) => {
+    // 1. Rename in timetable
+    const tt = timetableRef.current;
+    for (let day = 0; day < 7; day++) {
+      const slots = tt[day] || [];
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i];
+        if (slot.subjects && slot.subjects.some(s => s === oldName)) {
+          const newSubjects = slot.subjects.map(s => s === oldName ? newName : s);
+          updatePresetTimetableSlot(day, i, slot.time, newSubjects, day);
+        }
+      }
+    }
+    // 2. Move preset subject total
+    const totals = { ...presetSubjectTotals };
+    if (totals[oldName] !== undefined) {
+      totals[newName] = totals[oldName];
+      delete totals[oldName];
+      if (totals[newName] !== undefined) {
+        updatePresetSubjectTotal(newName, totals[newName]);
+        updatePresetSubjectTotal(oldName, 0);
+      }
+    }
+  };
+
+  // ── SGT planned classes auto-calculation ──
+  const computeSGTPlanned = () => {
+    if (!sgtStartDate || !sgtEndDate || sgtRows.length === 0) return 0;
+    const start = new Date(sgtStartDate + 'T12:00:00');
+    const end = new Date(sgtEndDate + 'T12:00:00');
+    let total = 0;
+    const daysSet = new Set(sgtRows.map(r => r.day));
+    const current = new Date(start);
+    while (current <= end) {
+      const dayAbbr = DAY_ABBRS[current.getDay()];
+      if (daysSet.has(dayAbbr)) total++;
+      current.setDate(current.getDate() + 1);
+    }
+    return total;
+  };
+  const computedPlanned = useMemo(() => computeSGTPlanned(), [sgtStartDate, sgtEndDate, sgtRows]);
 
   // ── Migration for existing SGTs ──
   useEffect(() => {
@@ -681,7 +718,7 @@ export default function AddNew() {
       }
       commitWard(name, wardStart, wardEnd, morningTime, eveningTime);
     } else {
-      // SGT save - allow same name as clinical subject
+      // SGT save - allow same name as clinical subject, auto-calc planned
       if (!sgtClinicalSubject) { setFormError('Select a clinical subject or create a new one.'); return; }
       let clinicalSubjectName = sgtClinicalSubject;
       if (clinicalSubjectName === CREATE_NEW) {
@@ -699,8 +736,6 @@ export default function AddNew() {
       if (sgtEndDate < sgtStartDate) { setFormError('End date must be after start date.'); return; }
       const rp = rowProblem(sgtRows);
       if (rp) { setFormError(rp); return; }
-      const pc = parseInt(sgtPlanned, 10);
-      if (isNaN(pc) || pc < 0) { setFormError('Enter valid planned classes.'); return; }
       const rows = buildRowsFromForm(sgtRows);
 
       // Duplicate check only against existing SGT subjects
@@ -709,6 +744,13 @@ export default function AddNew() {
         .map(s => s.name.toLowerCase());
       if (existingSGTNames.includes(finalSgtName.toLowerCase())) {
         setFormError(`An SGT subject named "${finalSgtName}" already exists.`);
+        return;
+      }
+
+      // Use computed planned
+      const pc = computedPlanned;
+      if (pc === 0) {
+        setFormError('No scheduled sessions found in the date range. Please check your schedules and dates.');
         return;
       }
 
@@ -734,9 +776,8 @@ export default function AddNew() {
       setSgtStartDate('');
       setSgtEndDate('');
       setSgtRows([newRow([])]);
-      setSgtPlanned('');
       setFormError(null);
-      showToast('SGT added successfully.');
+      showToast(`SGT added with ${pc} planned classes.`);
       setMoreOpen(false);
     }
   };
@@ -774,7 +815,6 @@ export default function AddNew() {
     setShowMoveForm(false);
   };
 
-  // Toggle subject selection (tap card)
   const toggleSubjectSelection = (id: string) => {
     setSelectedSubjects(prev => {
       const newSel = prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id];
@@ -783,7 +823,6 @@ export default function AddNew() {
     });
   };
 
-  // Select All (single checkbox)
   const selectAllSubjects = () => {
     if (!editSlot) return;
     if (selectedSubjects.length === editSlot.subjects.length) {
@@ -833,7 +872,6 @@ export default function AddNew() {
       return !!pa && !!pb && pa.start < pb.end && pb.start < pa.end;
     });
     if (conflictSlot && targetDay !== editSlot.day) {
-      // Inline conflict
       setSlotConflict({
         messages: [`${DAY_ABBRS[targetDay]} already has a slot at ${conflictSlot.time} with ${conflictSlot.subjects.join(', ')}.`],
         onConfirm: () => {
@@ -1090,7 +1128,6 @@ export default function AddNew() {
   const openOpd = () => {
     setOpdRename({});
     setOpdEditing({});
-    // Default: Preset + Academic (if in preset mode, else Added)
     if (subjectMode === 'preloaded') {
       setTriageTop('preset');
     } else {
@@ -1111,13 +1148,12 @@ export default function AddNew() {
   const saveOpdRename = (id: string, store: 'userAdded' | 'custom', currentName: string) => {
     const newName = opdRename[id]?.trim() || currentName;
     if (newName === currentName) { toggleOpdEdit(id); return; }
-    // Check if it's a preset subject
     const isPresetAcademic = CATEGORIES.flatMap(c => c.subjects).some(s => s.name === currentName) ||
                              INTEGRATED_SUBJECTS.some(s => s.name === currentName);
     const isPresetClinical = WARD_SUBJECTS.some(s => s.name === currentName);
     if (isPresetAcademic) {
       renameSubjectData(currentName, newName);
-      setPresetSubjectRename(currentName, newName);
+      renamePresetAcademicSubject(currentName, newName);
       showToast(`Renamed to "${newName}".`);
       toggleOpdEdit(id);
       return;
@@ -1129,7 +1165,6 @@ export default function AddNew() {
       toggleOpdEdit(id);
       return;
     }
-    // For added/custom (including SGT)
     if (isSubjectNameTaken(newName, currentName)) {
       showToast(`"${newName}" already exists.`, 'err');
       return;
@@ -1441,7 +1476,8 @@ export default function AddNew() {
       ))}
     </div>
   );
-    // ── Main render ──
+
+  // ── Main render ──
   return (
     <Layout>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pb-24">
@@ -1496,14 +1532,12 @@ export default function AddNew() {
                   {subjectMode === 'preloaded' ? presetTimetable[selDay]?.filter(s => s.type !== 'ward' && s.type !== 'ward_replacement').length || 0 : customSubjects.filter(s => s.subjectType !== 'allied-parent' && parseDayList(s.days).includes(DAY_ABBRS[selDay])).length} Slots
                 </span>
               </div>
-              {subjectMode === 'preloaded' && presetTimetable[selDay]?.map((slot, originalIdx) => {
-                if (slot.type === 'ward' || slot.type === 'ward_replacement') return null;
+              {subjectMode === 'preloaded' && presetTimetable[selDay]?.filter(s => s.type !== 'ward' && s.type !== 'ward_replacement').map((slot, idx) => {
                 const nonSGTSubjects = slot.subjects.filter(s => !isSGTSubject(s));
                 if (nonSGTSubjects.length === 0) return null;
-                // Use the override names for display
                 const displayNames = nonSGTSubjects.map(s => getPresetSubjectDisplayName(s));
                 return (
-                  <div key={`${selDay}-${originalIdx}`} className="bg-background/50 border border-border/60 rounded-xl p-3 flex items-center gap-2.5">
+                  <div key={`${selDay}-${idx}`} className="bg-background/50 border border-border/60 rounded-xl p-3 flex items-center gap-2.5">
                     <div className="min-w-0 flex-1">
                       <p className="font-mono font-bold text-primary text-xs">{canonicalizeTimeRange(slot.time)}</p>
                       <p className="font-extrabold text-foreground text-sm leading-tight truncate mt-0.5" style={{ color: getSubjectColor(displayNames[0] || '') }}>
@@ -1515,7 +1549,7 @@ export default function AddNew() {
                       {nonSGTSubjects.some(s => isUserAddedName(s)) && <div className="mt-1"><AddedBadge /></div>}
                     </div>
                     {nonSGTSubjects.length > 0 && (
-                      <button type="button" onClick={() => openEditSlot(selDay, originalIdx)} className="shrink-0 px-3 py-2 rounded-xl border border-primary/40 text-primary font-bold text-xs flex items-center gap-1.5 hover:bg-primary/10 transition-all cursor-pointer">
+                      <button type="button" onClick={() => openEditSlot(selDay, idx)} className="shrink-0 px-3 py-2 rounded-xl border border-primary/40 text-primary font-bold text-xs flex items-center gap-1.5 hover:bg-primary/10 transition-all cursor-pointer">
                         <Pencil className="w-3.5 h-3.5" /> Edit
                       </button>
                     )}
@@ -1734,7 +1768,7 @@ export default function AddNew() {
                 )}
               </>
             ) : (
-              // Clinical More (unchanged)
+              // Clinical More – with scrollable body for SGT
               <>
                 <div>
                   <label className={labelCls}>Type</label>
@@ -1786,62 +1820,70 @@ export default function AddNew() {
                     )}
                   </>
                 ) : (
-                  // SGT Form
-                  <>
-                    <div>
-                      <label className={labelCls}>Clinical Subject</label>
-                      <select value={sgtClinicalSubject} onChange={e => {
-                        const val = e.target.value;
-                        setSgtClinicalSubject(val);
-                        if (val && val !== CREATE_NEW) {
-                          setSgtName(val);
-                        } else {
-                          setSgtName('');
-                        }
-                      }} className={inputCls}>
-                        <option value="">Select clinical subject…</option>
-                        {clinicalSubjectOptions.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className={labelCls}>SGT Name</label>
-                      <input value={sgtName} onChange={e => setSgtName(e.target.value)} placeholder="e.g. Surgery" inputMode="text" className={inputCls} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div><label className={labelCls}>Placement start</label><input type="date" value={sgtStartDate} onChange={e => setSgtStartDate(e.target.value)} className={inputCls} /></div>
-                      <div><label className={labelCls}>Placement end</label><input type="date" value={sgtEndDate} onChange={e => setSgtEndDate(e.target.value)} className={inputCls} /></div>
-                    </div>
-                    <div>
-                      <label className={labelCls}>Schedules (Day + Time)</label>
-                      {renderRowList(sgtRows, updateSgtRow, removeSgtRow)}
-                      <button type="button" onClick={addSgtRow} disabled={sgtRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                        <Plus className="w-3.5 h-3.5" /> Add another day & time
-                      </button>
-                    </div>
-                    <div>
-                      <label className={labelCls}>Planned classes</label>
-                      <input type="number" inputMode="numeric" min={0} value={sgtPlanned} onChange={e => setSgtPlanned(e.target.value)} placeholder="Auto-count from rows" className={inputCls} />
-                    </div>
-                    {conflictSheet ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-amber-500">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          <p className="text-xs font-bold">Heads up — review before adding:</p>
-                        </div>
-                        {conflictSheet.messages.map((m, i) => (
-                          <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                        ))}
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                          <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
+                  // SGT Form – scrollable fields, fixed footer
+                  <div className="flex flex-col max-h-[calc(80vh-200px)]">
+                    <div className="overflow-y-auto pr-1 flex-1 space-y-3">
+                      <div>
+                        <label className={labelCls}>Clinical Subject</label>
+                        <select value={sgtClinicalSubject} onChange={e => {
+                          const val = e.target.value;
+                          setSgtClinicalSubject(val);
+                          if (val && val !== CREATE_NEW) {
+                            setSgtName(val);
+                          } else {
+                            setSgtName('');
+                          }
+                        }} className={inputCls}>
+                          <option value="">Select clinical subject…</option>
+                          {clinicalSubjectOptions.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelCls}>SGT Name</label>
+                        <input value={sgtName} onChange={e => setSgtName(e.target.value)} placeholder="e.g. Surgery" inputMode="text" className={inputCls} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div><label className={labelCls}>Placement start</label><input type="date" value={sgtStartDate} onChange={e => setSgtStartDate(e.target.value)} className={inputCls} /></div>
+                        <div><label className={labelCls}>Placement end</label><input type="date" value={sgtEndDate} onChange={e => setSgtEndDate(e.target.value)} className={inputCls} /></div>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Schedules (Day + Time)</label>
+                        {renderRowList(sgtRows, updateSgtRow, removeSgtRow)}
+                        <button type="button" onClick={addSgtRow} disabled={sgtRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
+                          <Plus className="w-3.5 h-3.5" /> Add another day & time
+                        </button>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Planned classes (auto-calculated)</label>
+                        <div className="text-sm font-bold text-primary bg-muted/30 p-2 rounded-lg border border-border/50">
+                          {computedPlanned} classes from schedules
                         </div>
                       </div>
-                    ) : (
-                      <button type="button" onClick={saveClinicalItem} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add SGT</button>
-                    )}
-                  </>
+                    </div>
+                    <div className="pt-3 border-t border-border/40 shrink-0">
+                      {conflictSheet ? (
+                        <div className="space-y-2 mb-3">
+                          <div className="flex items-center gap-2 text-amber-500">
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                            <p className="text-xs font-bold">Heads up — review before adding:</p>
+                          </div>
+                          {conflictSheet.messages.map((m, i) => (
+                            <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
+                          ))}
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
+                            <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={saveClinicalItem} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}>
+                          <Plus className="w-3.5 h-3.5" /> Add SGT
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </>
             )}
@@ -1958,54 +2000,118 @@ export default function AddNew() {
               </div>
               <Note note={note} />
               {editError && <p className={inlineErrCls}>{editError}</p>}
-
-              {editSlot.multiSelectMode ? (
-                // Multi‑subject: no individual checkboxes; cards are tappable
-                <>
-                  <div>
-                    <label className={labelCls}>Subjects in this slot</label>
-                    <div className="space-y-2">
-                      {editSlot.subjects.map(s => (
-                        <div key={s.id} className={cn(
-                          'flex items-center justify-between gap-2 p-2 rounded-lg border cursor-pointer transition-all',
-                          selectedSubjects.includes(s.id) ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background/50 hover:bg-muted/20'
-                        )} onClick={() => toggleSubjectSelection(s.id)}>
-                          <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(s.name) }}>{s.name}</span>
-                          <span className="text-[10px] text-muted-foreground">Planned: {s.planned}</span>
-                          <button type="button" onClick={(e) => {
-                            e.stopPropagation();
-                            const actualTime = canonicalTimeRange(editSlot.startTime, editSlot.endTime);
-                            setSlotRemove({
-                              subject: s.name,
-                              day: editSlot.day,
-                              index: editSlot.index,
-                              time: actualTime,
-                              start: editSlot.startTime,
-                              end: editSlot.endTime,
-                            });
-                            setSlotRemoveConfirm(true);
-                          }} className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Single Select All checkbox */}
-                    <div className="flex items-center gap-2 mt-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedSubjects.length === editSlot.subjects.length}
-                        onChange={selectAllSubjects}
-                        className="w-4 h-4 rounded border-primary/60 text-primary accent-primary focus:ring-primary/20 focus:ring-2 focus:ring-offset-0 transition-all cursor-pointer"
-                      />
-                      <label className="text-[10px] font-medium text-muted-foreground">Select All</label>
-                    </div>
+              {slotConflict ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-amber-500">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <p className="text-xs font-bold">Conflict detected:</p>
                   </div>
+                  {slotConflict.messages.map((m, i) => (
+                    <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
+                  ))}
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
+                    <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Merge anyway</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {editSlot.multiSelectMode ? (
+                    // Multi‑subject: no individual checkboxes; cards are tappable
+                    <>
+                      <div>
+                        <label className={labelCls}>Subjects in this slot</label>
+                        <div className="space-y-2">
+                          {editSlot.subjects.map(s => (
+                            <div key={s.id} className={cn(
+                              'flex items-center justify-between gap-2 p-2 rounded-lg border cursor-pointer transition-all',
+                              selectedSubjects.includes(s.id) ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background/50 hover:bg-muted/20'
+                            )} onClick={() => toggleSubjectSelection(s.id)}>
+                              <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(s.name) }}>{s.name}</span>
+                              <span className="text-[10px] text-muted-foreground">Planned: {s.planned}</span>
+                              <button type="button" onClick={(e) => {
+                                e.stopPropagation();
+                                const actualTime = canonicalTimeRange(editSlot.startTime, editSlot.endTime);
+                                setSlotRemove({
+                                  subject: s.name,
+                                  day: editSlot.day,
+                                  index: editSlot.index,
+                                  time: actualTime,
+                                  start: editSlot.startTime,
+                                  end: editSlot.endTime,
+                                });
+                                setSlotRemoveConfirm(true);
+                              }} className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Single Select All checkbox */}
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedSubjects.length === editSlot.subjects.length}
+                            onChange={selectAllSubjects}
+                            className="w-4 h-4 rounded border-primary/60 text-primary accent-primary focus:ring-primary/20 focus:ring-2 focus:ring-offset-0 transition-all cursor-pointer"
+                          />
+                          <label className="text-[10px] font-medium text-muted-foreground">Select All</label>
+                        </div>
+                      </div>
 
-                  {/* Move form appears inline when at least one selected */}
-                  {showMoveForm && selectedSubjects.length > 0 && (
-                    <div className="border-t border-border/40 pt-3 mt-3 space-y-2">
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Move selected subjects</p>
+                      {/* Move form appears inline when at least one selected */}
+                      {showMoveForm && selectedSubjects.length > 0 && (
+                        <div className="border-t border-border/40 pt-3 mt-3 space-y-2">
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Move selected subjects</p>
+                          <div>
+                            <label className={labelCls}>Target Day</label>
+                            <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
+                              {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
+                            </select>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
+                            <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
+                          </div>
+                          {selectedSubjects.map(id => {
+                            const sub = editSlot.subjects.find(s => s.id === id);
+                            if (!sub) return null;
+                            return (
+                              <div key={id} className="flex items-center gap-2">
+                                <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(sub.name) }}>{sub.name}</span>
+                                <label className="text-[10px] text-muted-foreground">Planned:</label>
+                                <input type="number" min={0} value={slotMovePlanned[id] !== undefined ? slotMovePlanned[id] : sub.planned}
+                                  onChange={e => updatePlannedForSubject(id, parseInt(e.target.value, 10) || 0)}
+                                  className="w-16 h-8 bg-background border border-border rounded-lg px-1.5 text-xs" />
+                              </div>
+                            );
+                          })}
+                          {slotConflict ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-amber-500">
+                                <AlertTriangle className="w-4 h-4 shrink-0" />
+                                <p className="text-xs font-bold">Conflict detected:</p>
+                              </div>
+                              {slotConflict.messages.map((m, i) => (
+                                <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
+                              ))}
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
+                                <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2 justify-end pt-2">
+                              <button type="button" onClick={() => { setShowMoveForm(false); setSelectedSubjects([]); setEditError(null); setSlotConflict(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
+                              <button type="button" onClick={doMoveSubjects} className={cn(btnPrimary, 'flex-1')}>Move Selected</button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    // Single‑subject: direct controls
+                    <>
                       <div>
                         <label className={labelCls}>Target Day</label>
                         <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
@@ -2016,20 +2122,18 @@ export default function AddNew() {
                         <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
                         <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
                       </div>
-                      {selectedSubjects.map(id => {
-                        const sub = editSlot.subjects.find(s => s.id === id);
-                        if (!sub) return null;
-                        return (
-                          <div key={id} className="flex items-center gap-2">
-                            <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(sub.name) }}>{sub.name}</span>
+                      <div>
+                        <label className={labelCls}>Subject</label>
+                        <div className="bg-muted/30 p-2 rounded-lg">
+                          <span className="text-xs font-bold" style={{ color: getSubjectColor(editSlot.subjects[0].name) }}>{editSlot.subjects[0].name}</span>
+                          <div className="flex items-center gap-2 mt-1">
                             <label className="text-[10px] text-muted-foreground">Planned:</label>
-                            <input type="number" min={0} value={slotMovePlanned[id] !== undefined ? slotMovePlanned[id] : sub.planned}
-                              onChange={e => updatePlannedForSubject(id, parseInt(e.target.value, 10) || 0)}
-                              className="w-16 h-8 bg-background border border-border rounded-lg px-1.5 text-xs" />
+                            <input type="number" min={0} value={slotMovePlanned[editSlot.subjects[0].id] !== undefined ? slotMovePlanned[editSlot.subjects[0].id] : editSlot.subjects[0].planned}
+                              onChange={e => updatePlannedForSubject(editSlot.subjects[0].id, parseInt(e.target.value, 10) || 0)}
+                              className="w-20 h-8 bg-background border border-border rounded-lg px-1.5 text-xs" />
                           </div>
-                        );
-                      })}
-                      {/* Inline conflict warning */}
+                        </div>
+                      </div>
                       {slotConflict ? (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-amber-500">
@@ -2045,63 +2149,17 @@ export default function AddNew() {
                           </div>
                         </div>
                       ) : (
-                        <div className="flex gap-2 justify-end pt-2">
-                          <button type="button" onClick={() => { setShowMoveForm(false); setSelectedSubjects([]); setEditError(null); setSlotConflict(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-                          <button type="button" onClick={doMoveSubjects} className={cn(btnPrimary, 'flex-1')}>Move Selected</button>
+                        <div className="flex gap-2 justify-end">
+                          <button type="button" onClick={closeEditSlot} className={btnGhost}>Cancel</button>
+                          <button type="button" onClick={() => {
+                            if (editSlot) {
+                              setSelectedSubjects([editSlot.subjects[0].id]);
+                              doMoveSubjects();
+                            }
+                          }} className={btnPrimary}>Apply</button>
                         </div>
                       )}
-                    </div>
-                  )}
-                </>
-              ) : (
-                // Single‑subject: direct controls
-                <>
-                  <div>
-                    <label className={labelCls}>Target Day</label>
-                    <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
-                      {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
-                    <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Subject</label>
-                    <div className="bg-muted/30 p-2 rounded-lg">
-                      <span className="text-xs font-bold" style={{ color: getSubjectColor(editSlot.subjects[0].name) }}>{editSlot.subjects[0].name}</span>
-                      <div className="flex items-center gap-2 mt-1">
-                        <label className="text-[10px] text-muted-foreground">Planned:</label>
-                        <input type="number" min={0} value={slotMovePlanned[editSlot.subjects[0].id] !== undefined ? slotMovePlanned[editSlot.subjects[0].id] : editSlot.subjects[0].planned}
-                          onChange={e => updatePlannedForSubject(editSlot.subjects[0].id, parseInt(e.target.value, 10) || 0)}
-                          className="w-20 h-8 bg-background border border-border rounded-lg px-1.5 text-xs" />
-                      </div>
-                    </div>
-                  </div>
-                  {slotConflict ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-amber-500">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        <p className="text-xs font-bold">Conflict detected:</p>
-                      </div>
-                      {slotConflict.messages.map((m, i) => (
-                        <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                      ))}
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                        <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2 justify-end">
-                      <button type="button" onClick={closeEditSlot} className={btnGhost}>Cancel</button>
-                      <button type="button" onClick={() => {
-                        if (editSlot) {
-                          setSelectedSubjects([editSlot.subjects[0].id]);
-                          doMoveSubjects();
-                        }
-                      }} className={btnPrimary}>Apply</button>
-                    </div>
+                    </>
                   )}
                 </>
               )}
@@ -2198,12 +2256,12 @@ export default function AddNew() {
               </button>
             </div>
 
-            {/* Subject list based on selection – with min-height to prevent modal shrinking */}
+            {/* Subject list based on selection – with min-height */}
             <div className="space-y-1 max-h-[50vh] overflow-y-auto pr-1 min-h-[150px]">
               {triageTop === 'preset' && subjectMode === 'preloaded' && (
                 <>
                   {triageSub === 'academic' ? (
-                    // Preset Academic – use getPresetSubjectDisplayName for display
+                    // Preset Academic
                     <>
                       {CATEGORIES.flatMap(c => c.subjects).map(s => (
                         <SubjectTriageCard
@@ -2247,7 +2305,7 @@ export default function AddNew() {
                       ))}
                     </>
                   ) : (
-                    // Preset Clinical – include WARD_SUBJECTS and SGT subjects, use getPresetSubjectDisplayName for ward names
+                    // Preset Clinical – includes WARD_SUBJECTS + SGT
                     <>
                       {WARD_SUBJECTS.map(w => (
                         <SubjectTriageCard
@@ -2269,7 +2327,6 @@ export default function AddNew() {
                           saveRename={saveOpdRename}
                         />
                       ))}
-                      {/* SGT subjects are listed here as well, but they are not preset – they show without "Preset" badge */}
                       {userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
                         <SubjectTriageCard
                           key={s.id}
@@ -2359,7 +2416,6 @@ export default function AddNew() {
                           saveRename={saveOpdRename}
                         />
                       ))}
-                      {/* Also list SGT subjects in Clinical */}
                       {userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
                         <SubjectTriageCard
                           key={s.id}
@@ -2394,7 +2450,6 @@ export default function AddNew() {
                   )}
                 </>
               )}
-              {/* Empty state */}
               {((triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'academic' && CATEGORIES.flatMap(c => c.subjects).length === 0 && INTEGRATED_SUBJECTS.length === 0) ||
                 (triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'clinical' && WARD_SUBJECTS.length === 0 && userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0) ||
                 (triageTop === 'added' && triageSub === 'academic' && customSubjects.filter(s => s.subjectType !== 'allied').length === 0) ||
@@ -2410,6 +2465,7 @@ export default function AddNew() {
         </OverlayModal>
 
         {/* ── Delete/Conflict/Import/Export modals ── */}
+
         <OverlayModal open={!!deleteSheet} onClose={() => setDeleteSheet(null)}>
           {deleteSheet && (
             <div className="p-4 sm:p-5 space-y-3">
