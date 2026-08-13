@@ -1,4 +1,4 @@
-import { Camera, Trash2, Check, Pencil, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, Download, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, HardDrive, FileSpreadsheet, Info, GraduationCap, X } from 'lucide-react';
+import { Camera, Trash2, Check, Pencil, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, Download, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, HardDrive, FileSpreadsheet, Info, GraduationCap, X, Upload } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
@@ -120,13 +120,44 @@ export default function Account() {
     detectStorage();
   }, [isPersistentStorage]);
 
+  // Compute SGT subject names for later use
+  const sgtSubjectNames = new Set<string>();
+  if (subjectMode === 'preloaded') {
+    userAddedSubjects.filter(s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')
+      .forEach(s => sgtSubjectNames.add(s.name));
+  } else {
+    customSubjects.filter(s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')
+      .forEach(s => sgtSubjectNames.add(s.name));
+  }
+
   const semesterRange = (period: string): { s: string; e: string } => {
     const now = new Date();
     const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (period === 'Current Month') return { s: iso(new Date(now.getFullYear(), now.getMonth(), 1)), e: iso(now) };
     if (period === 'Last 3 Months') return { s: iso(new Date(now.getFullYear(), now.getMonth() - 2, 1)), e: iso(now) };
-    return { s: '2026-01-24', e: iso(now) };
+    // Full Academic Term / Year
+    if (subjectMode === 'preloaded') {
+      return { s: '2026-01-24', e: iso(now) }; // Fixed start for preset MBBS
+    } else {
+      // Custom mode: derive start from earliest attendance record or subject/ward start date
+      let earliest = '';
+      for (const key of Object.keys(homeSelections)) {
+        const date = key.slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          if (!earliest || date < earliest) earliest = date;
+        }
+      }
+      if (!earliest && customSubjects.length) {
+        earliest = customSubjects.reduce((acc, s) => s.startDate && (!acc || s.startDate < acc) ? s.startDate : acc, '');
+      }
+      if (!earliest && customWards.length) {
+        earliest = customWards.reduce((acc, w) => w.startDate && (!acc || w.startDate < acc) ? w.startDate : acc, '');
+      }
+      if (!earliest) earliest = iso(now);
+      return { s: earliest, e: iso(now) };
+    }
   };
+
   const aggregateRangeItems = (startStr: string, endStr: string) => {
     const start = startStr || '0000-01-01';
     const end = endStr || '9999-12-31';
@@ -136,12 +167,26 @@ export default function Account() {
     };
     if (subjectMode === 'preloaded') {
       for (const cat of CATEGORIES) for (const s of cat.subjects) pushEntity(s.name, cat.name, false, getSubjectPlannedTotal(s.name));
-      for (const s of INTEGRATED_SUBJECTS) pushEntity(s.name, 'Integrated Teaching', false, getSubjectPlannedTotal(s.name));
+      for (const s of INTEGRATED_SUBJECTS) pushEntity(s.name, 'Academic', false, getSubjectPlannedTotal(s.name));
+      // SGT subjects as clinical
+      for (const ua of userAddedSubjects) {
+        if (ua.subjectType === 'allied' && ua.parentName === 'Small Group Teaching') {
+          pushEntity(ua.name, 'Clinical Wards', false, ua.plannedClasses || getSubjectPlannedTotal(ua.name));
+        } else {
+          pushEntity(ua.name, 'Added by you', false, ua.plannedClasses || getSubjectPlannedTotal(ua.name));
+        }
+      }
+      // Normal wards
       for (const w of WARD_SUBJECTS) pushEntity(w.name, 'Clinical Wards', true, getPresetWardTotalPlanned(w.name));
-      for (const ua of userAddedSubjects) pushEntity(ua.name, 'Added by you', false, ua.plannedClasses || getSubjectPlannedTotal(ua.name));
       for (const e of presetWardSchedule) pushEntity(e.ward, 'Clinical Wards', true, getPresetWardTotalPlanned(e.ward));
     } else {
-      for (const cs of customSubjects) pushEntity(cs.name, cs.category || 'Custom Subject', false, cs.plannedClasses);
+      for (const cs of customSubjects) {
+        if (cs.subjectType === 'allied' && cs.parentName === 'Small Group Teaching') {
+          pushEntity(cs.name, 'Clinical Wards', false, cs.plannedClasses || getSubjectPlannedTotal(cs.name));
+        } else {
+          pushEntity(cs.name, cs.category || 'Custom Subject', false, cs.plannedClasses);
+        }
+      }
       for (const cw of customWards) pushEntity(cw.name, 'Custom Wards', true, getCustomWardTotalPlanned(cw.startDate, cw.endDate));
     }
     const agg = new Map<string, { name: string; category: string; attended: number; missed: number; plannedTotal: number }>();
@@ -152,8 +197,11 @@ export default function Account() {
       if (sel !== 'attended' && sel !== 'missed') continue;
       const rest = key.slice(11);
       for (const e of entities) {
-        const prefixes = e.isWard ? [`ward-${e.name}`, `ward_${e.name}`] : [e.name];
-        const matched = prefixes.some(p => rest === p || rest.startsWith(p + '-') || rest.startsWith(p + '_'));
+        // Normalise names for robust matching
+        const norm = (s: string) => s.toLowerCase().replace(/[-\s]+/g, '_');
+        const prefixes = e.isWard ? [`ward-${norm(e.name)}`, `ward_${norm(e.name)}`] : [norm(e.name)];
+        const normRest = norm(rest);
+        const matched = prefixes.some(p => normRest === p || normRest.startsWith(p + '-') || normRest.startsWith(p + '_'));
         if (matched) {
           const id = `${e.isWard ? 'w' : 's'}_${e.name.toLowerCase()}`;
           const cur = agg.get(id) || { name: e.name, category: e.category, attended: 0, missed: 0, plannedTotal: e.plannedTotal };
@@ -163,9 +211,14 @@ export default function Account() {
         }
       }
     }
-    return Array.from(agg.values()).map(a => ({ name: a.name, category: a.category, attended: a.attended, total: a.attended + a.missed, plannedTotal: a.plannedTotal }));
+    // Post-process: add (SGT) tag to SGT subjects
+    return Array.from(agg.values()).map(a => ({
+      ...a,
+      name: sgtSubjectNames.has(a.name) ? `${a.name} (SGT)` : a.name,
+    }));
   };
-    const handleExecuteExport = async () => {
+
+  const handleExecuteExport = async () => {
     setExportMsg('');
     const rawItems: Array<{ name: string; category?: string; attended: number; total: number; plannedTotal: number }> = [];
     if (subjectMode === 'preloaded') {
@@ -173,6 +226,21 @@ export default function Account() {
         const data = subjects[sub.name] || { attended: 0, missed: 0 };
         rawItems.push({ name: sub.name, category: cat.name, attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(sub.name) || 0 });
       }
+      // Integrated subjects → Academic section
+      for (const s of INTEGRATED_SUBJECTS) {
+        const data = subjects[s.name] || { attended: 0, missed: 0 };
+        rawItems.push({ name: s.name, category: 'Academic', attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(s.name) || 0 });
+      }
+      // User-added subjects: SGT -> Clinical with tag, others -> Added by you
+      for (const ua of userAddedSubjects) {
+        const data = subjects[ua.name] || { attended: 0, missed: 0 };
+        if (ua.subjectType === 'allied' && ua.parentName === 'Small Group Teaching') {
+          rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || getSubjectPlannedTotal(ua.name) || 0 });
+        } else {
+          rawItems.push({ name: ua.name, category: 'Added by you', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || getSubjectPlannedTotal(ua.name) || 0 });
+        }
+      }
+      // Wards
       for (const w of WARD_SUBJECTS) {
         const data = wards[`ward-${w.name}`] || { attended: 0, missed: 0 };
         rawItems.push({ name: `${w.name} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(w.name) || 0 });
@@ -180,7 +248,11 @@ export default function Account() {
     } else {
       for (const cs of customSubjects) {
         const data = subjects[cs.name] || { attended: 0, missed: 0 };
-        rawItems.push({ name: cs.name, category: cs.category || 'Custom Subject', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || 0 });
+        if (cs.subjectType === 'allied' && cs.parentName === 'Small Group Teaching') {
+          rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || getSubjectPlannedTotal(cs.name) || 0 });
+        } else {
+          rawItems.push({ name: cs.name, category: cs.category || 'Custom Subject', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || getSubjectPlannedTotal(cs.name) || 0 });
+        }
       }
       for (const cw of customWards) {
         const data = wards[`ward-${cw.name}`] || { attended: 0, missed: 0 };
@@ -193,6 +265,11 @@ export default function Account() {
       filteredItems = rawItems.filter(i => i.name === exportSelectedSubject || i.name.startsWith(exportSelectedSubject));
       filterTitle = exportSelectedSubject;
     } else if (exportScope === 'custom') {
+      // Validate date range
+      if (exportStartDate && exportEndDate && exportStartDate > exportEndDate) {
+        setExportMsg('Start date must be before or equal to end date.');
+        return;
+      }
       filteredItems = aggregateRangeItems(exportStartDate, exportEndDate);
       const fmtNice = (iso: string) => { const d = new Date(iso + 'T12:00:00'); const day = d.getDate(); const suf = day % 10 === 1 && day !== 11 ? 'st' : day % 10 === 2 && day !== 12 ? 'nd' : day % 10 === 3 && day !== 13 ? 'rd' : 'th'; return `${day}${suf} ${d.toLocaleString('en-US', { month: 'short' })} '${String(d.getFullYear()).slice(2)}`; };
       filterTitle = `${fmtNice(exportStartDate)} – ${fmtNice(exportEndDate)}`;
@@ -208,9 +285,14 @@ export default function Account() {
       const pct = total > 0 ? (attended / total) * 100 : 0;
       const target = preferredPercentage || 75;
       let neededText = '0 needed';
-      if (pct < target && target < 100) {
-        const needed = Math.ceil((target * total - 100 * attended) / (100 - target));
-        neededText = `${needed > 0 ? needed : 0} needed`;
+      if (pct < target) {
+        if (target < 100) {
+          const needed = Math.ceil((target * total - 100 * attended) / (100 - target));
+          neededText = `${needed > 0 ? needed : 0} needed`;
+        } else {
+          // target 100% and pct < 100
+          neededText = `${total - attended} more attendances needed`;
+        }
       } else if (total > 0) neededText = 'Target Achieved';
       return { name: item.name, category: item.category, attended, total, plannedTotal, pct, neededForTarget: neededText };
     });
@@ -265,6 +347,8 @@ export default function Account() {
     for (const [key, value] of Object.entries(transferImportData)) {
       if (value !== null && value !== undefined) {
         const stringVal = typeof value === 'string' ? value : JSON.stringify(value);
+        // Write to both localStorage and IndexedDB
+        localStorage.setItem(key, stringVal);
         storageSetItem(key, stringVal);
       }
     }
@@ -939,11 +1023,15 @@ export default function Account() {
                               {subjectMode === 'preloaded' ? (
                                 <>
                                   {CATEGORIES.flatMap(c => c.subjects).map(s => (<option key={s.name} value={s.name}>{s.name}</option>))}
+                                  {INTEGRATED_SUBJECTS.map(s => (<option key={s.name} value={s.name}>{s.name}</option>))}
+                                  {userAddedSubjects.filter(s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching').map(s => (<option key={s.id} value={s.name}>{s.name} (SGT)</option>))}
+                                  {userAddedSubjects.filter(s => !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (<option key={s.id} value={s.name}>{s.name}</option>))}
                                   {WARD_SUBJECTS.map(w => (<option key={w.name} value={w.name}>{w.name} (Ward)</option>))}
                                 </>
                               ) : (
                                 <>
-                                  {customSubjects.map(s => (<option key={s.id} value={s.name}>{s.name}</option>))}
+                                  {customSubjects.filter(s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching').map(s => (<option key={s.id} value={s.name}>{s.name} (SGT)</option>))}
+                                  {customSubjects.filter(s => !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (<option key={s.id} value={s.name}>{s.name}</option>))}
                                   {customWards.map(w => (<option key={w.id} value={w.name}>{w.name} (Ward)</option>))}
                                 </>
                               )}

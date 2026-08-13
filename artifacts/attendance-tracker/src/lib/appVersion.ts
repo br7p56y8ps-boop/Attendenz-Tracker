@@ -1,5 +1,5 @@
-export const APP_VERSION = '4.3.2';
-export const LATEST_VERSION = '4.3.2';
+export const APP_VERSION = '4.3.3';
+export const LATEST_VERSION = '4.3.3';
 
 
 export interface WhatsNewItem { title: string; desc: string; }
