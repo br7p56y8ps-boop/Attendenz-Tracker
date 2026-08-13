@@ -45,7 +45,6 @@ export const INTEGRATED_SUBJECTS = [
 
 // Preset allied-parent groups — clinical-type rotations, once daily.
 export const PRESET_PARENTS = ['Small Group Teaching'];
-
 export const WARD_SUBJECTS = [
   { name: 'General Surgery', total: 60 },
   { name: 'Pediatrics', total: 60 },

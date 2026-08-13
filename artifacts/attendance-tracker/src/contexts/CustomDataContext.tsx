@@ -21,6 +21,9 @@ export interface CustomSubject {
   days: string;
   time: string;
   schedules?: Array<{ day: string; time: string }>;
+  startDate?: string;
+  endDate?: string;
+  clinicalSubject?: string;
 }
 export interface CustomWard {
   id: string;
@@ -46,6 +49,9 @@ export interface UserAddedSubject {
   days: string;
   time: string;
   schedules?: Array<{ day: string; start: string; end: string }>;
+  startDate?: string;
+  endDate?: string;
+  clinicalSubject?: string;
 }
 export interface PresetWardEntry {
   start: string;
@@ -55,6 +61,7 @@ export interface PresetWardEntry {
   eveningTime?: string;
   addedByUser?: boolean;
 }
+
 export type SubjectMode = 'preloaded' | 'custom';
 export interface SubjectTimeConflict {
   day: string;
@@ -78,6 +85,7 @@ const USER_ADDED_SUBJECTS_KEY = 'att_user_added_subjects';
 const PRESET_TIMETABLE_KEY = 'att_preset_timetable';
 const PRESET_WARD_SCHEDULE_KEY = 'att_preset_ward_schedule';
 const PRESET_SUBJECT_TOTALS_KEY = 'att_preset_subject_totals';
+const PRESET_RENAMES_KEY = 'att_preset_subject_renames';
 const DEFAULT_MORNING_TIME = '09:30 AM–11:30 AM';
 const DEFAULT_EVENING_TIME = '07:00 PM–09:00 PM';
 const genId = (prefix: string) =>
@@ -333,12 +341,13 @@ interface CustomDataContextType {
   removePresetWardEntry: (index: number) => void;
   renamePresetWard: (oldName: string, newName: string) => void;
   updatePresetTimetableSlot: (
-    currentDay: number,
-    slotIndex: number,
-    updatedTime: string,
-    updatedSubjects: string[],
-    targetDay: number
-  ) => void;
+   currentDay: number,
+   slotIndex: number,
+   updatedTime: string,
+   updatedSubjects: string[],
+   targetDay: number
+   ) => void;
+  addSubjectToSlot: (day: number, time: string, name: string) => void;
   updatePresetWardSchedule: (
     index: number,
     start: string,
@@ -374,6 +383,9 @@ interface CustomDataContextType {
   startFresh: () => void;
   changeSubjectMode: (mode: SubjectMode) => void;
   clearRoutineData: (mode: SubjectMode) => void;
+  // NEW: Preset rename override
+  getPresetSubjectDisplayName: (originalName: string) => string;
+  setPresetSubjectRename: (oldName: string, newName: string) => void;
 }
 
 const CustomDataContext = createContext<CustomDataContextType | undefined>(undefined);
@@ -393,6 +405,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const presetTimetableRef = useRef<typeof TIMETABLE>(TIMETABLE);
   const [presetWardSchedule, setPresetWardSchedule] = useState<PresetWardEntry[]>(defaultWardSchedule);
   const [presetSubjectTotals, setPresetSubjectTotals] = useState<Record<string, number>>({});
+  const [renamedPresetSubjects, setRenamedPresetSubjects] = useState<Record<string, string>>({});
 
   useEffect(() => {
     migrateStoredRoutines();
@@ -433,6 +446,10 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       if (pws) setPresetWardSchedule(JSON.parse(pws));
       const pst = localStorage.getItem(PRESET_SUBJECT_TOTALS_KEY);
       if (pst) setPresetSubjectTotals(JSON.parse(pst));
+
+      // Load renamed preset subjects
+      const renames = localStorage.getItem(PRESET_RENAMES_KEY);
+      if (renames) setRenamedPresetSubjects(JSON.parse(renames));
     } catch {
       /* ignore */
     }
@@ -468,8 +485,13 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     setPresetSubjectTotals(data);
     storageSetItem(PRESET_SUBJECT_TOTALS_KEY, JSON.stringify(data));
   };
+  const saveRenames = (data: Record<string, string>) => {
+    setRenamedPresetSubjects(data);
+    localStorage.setItem(PRESET_RENAMES_KEY, JSON.stringify(data));
+    storageSetItem(PRESET_RENAMES_KEY, JSON.stringify(data));
+  };
 
-  /* ── CUSTOM MODE ── */
+  // ── CUSTOM MODE ──
   const addCustomSubjects = (items: Array<Omit<CustomSubject, 'id'>>): CustomSubject[] => {
     const created: CustomSubject[] = items.map(it => {
       const base: CustomSubject = {
@@ -479,6 +501,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
           ? it.schedules.map(sch => ({ ...sch, time: canonicalizeTimeRange(sch.time) }))
           : it.schedules,
         id: genId('cs'),
+        startDate: (it as any).startDate,
+        endDate: (it as any).endDate,
+        clinicalSubject: (it as any).clinicalSubject,
       };
       if (base.subjectType === 'allied' && base.parentName && !base.category) {
         base.category = base.parentName;
@@ -578,6 +603,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         days: rows.map(r => r.day).join(', '),
         time: rows.length ? rowTime(rows[0]) : canonicalizeTimeRange(it.time || ''),
         schedules: storedSchedules,
+        startDate: (it as any).startDate,
+        endDate: (it as any).endDate,
+        clinicalSubject: (it as any).clinicalSubject,
         id: '',
       };
       const existingIdx = nextUserAdded.findIndex(
@@ -585,6 +613,11 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       );
       if (existingIdx !== -1) {
         record.id = nextUserAdded[existingIdx].id;
+        // Merge with existing to preserve SGT fields if not overwritten
+        const existingRec = nextUserAdded[existingIdx];
+        record.startDate = record.startDate ?? existingRec.startDate;
+        record.endDate = record.endDate ?? existingRec.endDate;
+        record.clinicalSubject = record.clinicalSubject ?? existingRec.clinicalSubject;
         nextUserAdded[existingIdx] = record;
       } else {
         record.id = genId('ua');
@@ -617,6 +650,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     if (normalized.parentName !== undefined) merged.parentName = normalized.parentName;
     if (normalized.category !== undefined) merged.category = normalized.category;
     if (normalized.plannedClasses !== undefined) merged.plannedClasses = normalized.plannedClasses;
+    if ((normalized as any).startDate !== undefined) (merged as any).startDate = (normalized as any).startDate;
+    if ((normalized as any).endDate !== undefined) (merged as any).endDate = (normalized as any).endDate;
+    if ((normalized as any).clinicalSubject !== undefined) (merged as any).clinicalSubject = (normalized as any).clinicalSubject;
     if (merged.subjectType === 'allied' && merged.parentName) merged.category = merged.parentName;
     let rows: ScheduleRowInput[];
     if (normalized.schedules !== undefined) {
@@ -747,7 +783,15 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       next[currentDay] = (next[currentDay] || []).filter((_, i) => i !== slotIndex);
       next[targetDay] = [...(next[targetDay] || []), newSlot];
     }
+    for (const k of Object.keys(next)) {
+      next[Number(k)] = next[Number(k)].filter(s => isWardSlotType(s.type) || s.subjects.length > 0);
+    }
     saveTimetable(asTimetable(next));
+  };
+  const addSubjectToSlot = (day: number, time: string, name: string) => {
+    const canon = canonicalizeTimeRange(time);
+    const tt = insertSubjectSlot(presetTimetableRef.current, name, DAY_ABBRS[day], canon);
+    saveTimetable(tt);
   };
   const updatePresetWardSchedule = (
     index: number,
@@ -766,6 +810,38 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const updatePresetSubjectTotal = (subjectName: string, total: number) => {
     saveTotals({ ...presetSubjectTotals, [subjectName]: total });
   };
+
+  // ── PRESET SUBJECT RENAME OVERRIDE ──
+  const getPresetSubjectDisplayName = (originalName: string): string => {
+    return renamedPresetSubjects[originalName] ?? originalName;
+  };
+
+  const setPresetSubjectRename = (oldName: string, newName: string) => {
+    // Update the override map
+    const nextRenames = { ...renamedPresetSubjects };
+    nextRenames[oldName] = newName;
+    saveRenames(nextRenames);
+
+    // Rewrite the timetable atomically
+    const currentTt = presetTimetableRef.current;
+    // Deep clone to avoid mutating the ref
+    const newTt: typeof TIMETABLE = JSON.parse(JSON.stringify(currentTt));
+    let changed = false;
+    for (let day = 0; day < 7; day++) {
+      const slots = newTt[day] || [];
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i];
+        if (slot.subjects && slot.subjects.some(s => s === oldName)) {
+          slot.subjects = slot.subjects.map(s => s === oldName ? newName : s);
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      saveTimetable(newTt);
+    }
+  };
+
   /* ── Setup / mode management ── */
   const completeSetup = (mode: SubjectMode) => {
     storageSetItem(SUBJECT_MODE_KEY, mode);
@@ -1032,8 +1108,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     let nextUA = userAddedSubjects.map(s => {
       const move = moves.find(m => m.store === 'userAdded' && m.id === s.id);
       if (!move) return s;
+      let updated = { ...s };
+      if (s.parentName === 'Small Group Teaching' && move.newParentName && move.newParentName !== 'Small Group Teaching') {
+        updated = { ...updated, clinicalSubject: move.newParentName };
+      }
       return {
-        ...s,
+        ...updated,
         subjectType: move.newSubjectType,
         parentName: move.newParentName,
         category: move.newSubjectType === 'allied' ? move.newParentName : undefined,
@@ -1042,8 +1122,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     let nextCS = customSubjects.map(s => {
       const move = moves.find(m => m.store === 'custom' && m.id === s.id);
       if (!move) return s;
+      let updated = { ...s };
+      if (s.parentName === 'Small Group Teaching' && move.newParentName && move.newParentName !== 'Small Group Teaching') {
+        updated = { ...updated, clinicalSubject: move.newParentName };
+      }
       return {
-        ...s,
+        ...updated,
         subjectType: move.newSubjectType,
         parentName: move.newParentName,
         category: move.newSubjectType === 'allied' ? move.newParentName : undefined,
@@ -1066,6 +1150,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     saveSubjects(nextCS);
     return moves.length;
   };
+
   return (
     <CustomDataContext.Provider
       value={{
@@ -1094,6 +1179,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         removePresetWardEntry,
         renamePresetWard,
         updatePresetTimetableSlot,
+        addSubjectToSlot,
         updatePresetWardSchedule,
         updatePresetSubjectTotal,
         getSubjectPlannedTotal,
@@ -1118,6 +1204,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         startFresh,
         changeSubjectMode,
         clearRoutineData,
+        getPresetSubjectDisplayName,
+        setPresetSubjectRename,
       }}
     >
       {children}

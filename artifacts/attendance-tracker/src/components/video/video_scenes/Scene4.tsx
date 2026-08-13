@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
 const logoImg = `${import.meta.env.BASE_URL || '/'}Logo.jpeg`;
 const TAGLINE_WORDS = ['Track', 'Smarter.', 'Stay', 'Ahead.'];
@@ -9,7 +9,6 @@ export function Scene4() {
   const [showTapHint, setShowTapHint] = useState(false);
 
   useEffect(() => {
-    // Show "Tap anywhere to continue" ~1.2s after animation completes
     const timer = setTimeout(() => {
       setShowTapHint(true);
     }, 1200);
@@ -45,34 +44,39 @@ export function Scene4() {
             transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
           />
 
+          {/* Icon with continuous 3D rotation */}
           <motion.div
             className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden border border-white/20 p-2 bg-slate-900/80 shadow-2xl backdrop-blur-md relative z-10 flex items-center justify-center"
             initial={{ scale: 0.2, opacity: 0, rotateY: -180, y: 30 }}
             animate={{ scale: 1, opacity: 1, rotateY: 0, y: 0 }}
             transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           >
-            <img
+            <motion.img
               src={logoImg}
               alt="Attendenz Logo"
-              className="w-full h-full object-cover rounded-2xl filter drop-shadow-[0_0_12px_rgba(59,130,246,0.8)]"
+              className="w-full h-full object-cover rounded-2xl filter drop-shadow-[0_0_12px_rgba(255,255,255,0.8)]"
+              animate={{ rotateY: [0, 360] }}
+              transition={{
+                duration: 20,
+                repeat: Infinity,
+                ease: 'linear',
+                delay: 0.8,
+              }}
             />
           </motion.div>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="space-y-1"
-        >
-          <h1 className="text-3xl sm:text-4xl font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-sky-300 drop-shadow-md">
-            Attendenz
-          </h1>
-          <p className="text-xs sm:text-sm font-bold tracking-[0.3em] uppercase text-amber-400 flex items-center justify-center gap-1">
-            <Sparkles className="w-3 h-3" />
-            Tracker
-          </p>
-        </motion.div>
+        {/* ATTENDENZ (centred) + TRACKER (right‑aligned under Z) */}
+        <div className="flex flex-col items-center">
+          <div className="relative">
+            <h1 className="text-3xl sm:text-4xl font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-sky-300 drop-shadow-md text-center">
+              Attendenz
+            </h1>
+            <p className="text-[10px] sm:text-xs font-bold tracking-[0.3em] uppercase text-amber-400 text-right -mt-1">
+              Tracker
+            </p>
+          </div>
+        </div>
 
         <motion.div
           className="w-12 h-0.5 bg-gradient-to-r from-transparent via-sky-400 to-transparent rounded-full"

@@ -415,10 +415,12 @@ export default function Account() {
     }
   };
 
+  // ── NEW: Combined modal state ──
+  const [backupTransferOpen, setBackupTransferOpen] = useState(false);
+
   return (
     <Layout>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl mx-auto space-y-6 pb-6">
-        {/* D1 · little description title (app bar already shows the tab name) */}
         <div>
           <h1 className="text-lg font-extrabold text-foreground leading-tight">Profile, Preferences & Data Management</h1>
         </div>
@@ -501,16 +503,24 @@ export default function Account() {
         <div className="space-y-2 pt-2">
           <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Other Setting</p>
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
-            <button type="button" onClick={() => setActiveSettingModal('transfer')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
+            {/* ── NEW merged card ── */}
+            <button
+              type="button"
+              onClick={() => setBackupTransferOpen(true)}
+              className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer"
+            >
               <div className="flex items-center gap-3">
-                <div className="w-8.5 h-8.5 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0"><Send className="w-4 h-4" /></div>
+                <div className="w-8.5 h-8.5 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 border border-blue-500/20">
+                  <Database className="w-4 h-4" />
+                </div>
                 <div>
-                  <p className="font-semibold text-xs text-foreground">Transfer App Data</p>
-                  <p className="text-[10px] text-muted-foreground">Securely transfer your complete app data to another device</p>
+                  <p className="font-semibold text-xs text-foreground">Backup / Transfer</p>
+                  <p className="text-[10px] text-muted-foreground">Backup, restore, or transfer your complete app data.</p>
                 </div>
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
             </button>
+
             <div onClick={() => setActiveSettingModal('snapshot')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
               <div className="flex items-center gap-3">
                 <div className="w-8.5 h-8.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"><SnapshotIcon className="w-4 h-4" /></div>
@@ -524,16 +534,7 @@ export default function Account() {
                 <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
               </div>
             </div>
-            <button type="button" onClick={() => setActiveSettingModal('backup')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="w-8.5 h-8.5 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0"><Download className="w-4 h-4" /></div>
-                <div>
-                  <p className="font-semibold text-xs text-foreground">File Backup & Restore</p>
-                  <p className="text-[10px] text-muted-foreground">Download or restore a .json backup file</p>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            </button>
+
             <button type="button" onClick={() => setActiveSettingModal('export')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
               <div className="flex items-center gap-3">
                 <div className="w-8.5 h-8.5 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0"><FileText className="w-4 h-4" /></div>
@@ -556,7 +557,152 @@ export default function Account() {
             </button>
           </div>
 
-          {/* Settings Popup Modals Overlay */}
+          {/* ── NEW combined modal ── */}
+          <AnimatePresence>
+            {backupTransferOpen && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+                onClick={() => setBackupTransferOpen(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.92, opacity: 0, y: 10 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.92, opacity: 0, y: 10 }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                  className="bg-card border border-border rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 text-left relative"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between border-b border-border/50 pb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground">Backup / Transfer</h3>
+                      <p className="text-[10px] text-muted-foreground">Backup, restore, or transfer your complete app data.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBackupTransferOpen(false)}
+                      className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {busy && <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{busy}</p>}
+
+                  {/* ── Backup / Transfer Section ── */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                      <Send className="w-3.5 h-3.5" /> Backup / Transfer
+                    </p>
+                    <div className="space-y-2">
+                      <button
+                        onClick={handleShareData}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                      >
+                        <Send className="w-4 h-4" /> Send to Another Device
+                      </button>
+                      <button
+                        onClick={() => {
+                          setBusy('Backing up…');
+                          setTimeout(() => {
+                            exportDataAsJSON();
+                            setBusy(null);
+                            import('sonner').then(({ toast }) => toast.success('Backup downloaded.'));
+                          }, 400);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                      >
+                        <Upload className="w-4 h-4" /> Export Backup (.json)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ── Restore Section ── */}
+                  <div className="border-t border-border/40 pt-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5" /> Restore Data
+                    </p>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => transferFileInputRef.current?.click()}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold transition-colors border border-border cursor-pointer"
+                      >
+                        <Download className="w-4 h-4" /> Receive from Another Device
+                      </button>
+                      <button
+                        onClick={() => backupFileInputRef.current?.click()}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold transition-colors border border-border cursor-pointer"
+                      >
+                        <RefreshCw className="w-4 h-4" /> Restore from File
+                      </button>
+                      {/* Hidden file inputs */}
+                      <input
+                        type="file"
+                        ref={transferFileInputRef}
+                        onChange={handleTransferFileSelect}
+                        accept=".json"
+                        className="hidden"
+                      />
+                      <input
+                        type="file"
+                        ref={backupFileInputRef}
+                        accept=".json"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            importDataFromJSON(file, (success) => {
+                              if (success) {
+                                import('sonner').then(({ toast }) => toast.info('Backup restored successfully! Reloading app...'));
+                                setLocation('/');
+                                window.location.reload();
+                              } else {
+                                import('sonner').then(({ toast }) => toast.info('Failed to restore backup. Please ensure the file is valid.'));
+                              }
+                            });
+                          }
+                          e.target.value = '';
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {transferImportData && (
+                    <div className="bg-muted/30 p-3.5 rounded-2xl border border-border/50 text-left space-y-3">
+                      <div className="flex items-center gap-2 text-amber-500 mb-1">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <p className="text-xs font-bold">Import Data Confirmation</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">You are about to replace your current local data with the received backup. We recommend creating a Full App Backup before continuing.</p>
+                      <div className="bg-background rounded-xl border border-border/60 p-2.5 space-y-1.5 mt-2">
+                        <div className="flex justify-between text-xs"><span className="text-muted-foreground">App Version</span><span className="font-bold text-foreground">{transferImportData.att_app_version || 'Unknown'}</span></div>
+                        <div className="flex justify-between text-xs"><span className="text-muted-foreground">Routine Mode</span><span className="font-bold text-foreground">{transferImportData.att_subject_mode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine'}</span></div>
+                        <div className="flex justify-between text-xs"><span className="text-muted-foreground">Total Snapshots</span><span className="font-bold text-foreground">{transferImportData.attendenz_snapshots_v1 ? JSON.parse(transferImportData.attendenz_snapshots_v1).length : 0}</span></div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 pt-2">
+                        <button onClick={() => setTransferImportData(null)} className="w-full py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
+                        <button onClick={executeTransferImport} className="w-full py-2.5 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:opacity-90 transition-colors shadow-sm cursor-pointer">Replace & Import</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setBackupTransferOpen(false)}
+                      className="px-4 py-2 rounded-xl bg-muted/40 text-foreground font-bold text-xs border border-border hover:bg-muted transition-all cursor-pointer"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ── Existing modals (unchanged) ── */}
           <AnimatePresence>
             {activeSettingModal && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto" onClick={() => setActiveSettingModal(null)}>
@@ -981,7 +1127,7 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Updating… overlay: live dots, blurred bg, ~5–6 s */}
+      {/* Updating… overlay */}
       <AnimatePresence>
         {updatingNow && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-center justify-center p-4">
@@ -994,7 +1140,7 @@ export default function Account() {
           )}
         </AnimatePresence>
 
-      {/* Delete-All dialog (plain words) */}
+      {/* Delete-All dialog */}
       <AnimatePresence>
         {showDeleteDataDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
@@ -1028,7 +1174,7 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-            {/* Switch Routine Dialog */}
+      {/* Switch Routine Dialog */}
       <AnimatePresence>
         {showSwitchDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowSwitchDialog(false); }}>
@@ -1076,7 +1222,7 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Round-5 · confirm before preferred-% change */}
+      {/* Round-5 confirm before preferred-% change */}
       <AnimatePresence>
         {pendingPct !== null && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
@@ -1092,7 +1238,7 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Round-5 · confirm before mark-complete */}
+      {/* confirm before mark-complete */}
       <AnimatePresence>
         {confirmMarkComplete && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
@@ -1108,7 +1254,7 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Round-5 · confirm before snapshot restore */}
+      {/* confirm before snapshot restore */}
       <AnimatePresence>
         {snapshotToRestore && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
@@ -1126,4 +1272,3 @@ export default function Account() {
     </Layout>
   );
 }
-

@@ -21,7 +21,7 @@ export default function WelcomeVideoScreen({ onComplete }: WelcomeVideoScreenPro
   return (
     <motion.div
       onClick={handleTap}
-      className="fixed inset-0 z-50 bg-slate-950 text-white overflow-hidden cursor-pointer select-none"
+      className="fixed inset-0 z-50 bg-neutral-900 text-white overflow-hidden cursor-pointer select-none"
       initial={{ opacity: 0 }}
       animate={{ opacity: isExiting ? 0 : 1 }}
       exit={{ opacity: 0 }}

@@ -385,24 +385,20 @@ pendingSelection === currentSelection &&
 {pendingSelection === currentSelection ? (
 <span className="animate-pulse">Confirm Undo?</span>
 ) : (
-<div className="flex items-center justify-center gap-2">
-<CheckCircle2 className="w-4.5 h-4.5 shrink-0" />
-<span className="capitalize">
-{currentSelection === 'off' ? 'Holiday' : currentSelection}
-</span>
-<span className="text-[10px] opacity-75 font-normal ml-1">
-(Tap to Undo)
-</span>
+<div className="flex items-center justify-center gap-2 flex-wrap">
+  <CheckCircle2 className="w-4.5 h-4.5 shrink-0" />
+  <span className="capitalize">
+    {currentSelection === 'off' ? 'Holiday' : currentSelection}
+  </span>
+  {(currentSelection === 'attended' || currentSelection === 'missed') && totalPlannedClasses !== undefined && (
+    <span className="text-[10px] font-extrabold ml-1">
+      <span className={currentSelection === 'attended' ? 'text-emerald-500' : 'text-rose-500'}>Class {total}</span>
+      <span className="opacity-90">/{totalPlannedClasses}</span>
+    </span>
+  )}
 </div>
 )}
 </button>
-{(currentSelection === 'attended' || currentSelection === 'missed') && totalPlannedClasses !== undefined && (
-<p className="text-center mt-1.5">
-<span className="text-[11px] font-extrabold text-foreground bg-primary/20 px-1.5 py-0.5 rounded">
-Class {total}/{totalPlannedClasses}
-</span>
-</p>
-)}
 </div>
 );
 }
@@ -489,16 +485,17 @@ style={effectiveMode !== 'today' ? { borderColor: subjectColor } : undefined}
 {/* Header */}
 {effectiveMode === 'past' ? (
 <div className="flex items-center justify-between gap-3 mb-2 relative z-10">
-<div className="min-w-0 flex-1 space-y-1.5">
+<div className="min-w-0 flex-1 space-y-1">
 <div className="flex items-baseline gap-2 flex-wrap">
 <h3 className="text-xl font-bold leading-tight truncate" style={{ color: subjectColor }}>
 {title || subject}
 </h3>
-<span className="text-sm font-semibold" style={{ color: subjectColor }}>({time})</span>
 {tag && (
 <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{tag}</span>
 )}
 </div>
+<p className="text-sm font-semibold text-muted-foreground">({time})</p>
+<div className="flex items-center gap-2 flex-wrap">
 {(() => {
 const sel = currentSelection;
 const tagInfo = sel === 'attended'
@@ -515,12 +512,11 @@ return (
 );
 })()}
 {currentSelection && (currentSelection === 'attended' || currentSelection === 'missed') && pastCounts && (
-<p className="text-center w-full">
-<span className="text-[11px] font-extrabold text-foreground bg-primary/20 px-1.5 py-0.5 rounded">
-Class {pastCounts.conducted}/{totalPlannedClasses ?? pastCounts.conducted}
+<span className="text-[11px] font-extrabold text-foreground">
+Class <span className={currentSelection === 'attended' ? 'text-emerald-500' : 'text-rose-500'}>{pastCounts.conducted}</span>/{totalPlannedClasses ?? pastCounts.conducted}
 </span>
-</p>
 )}
+</div>
 </div>
 <div className={cn('text-lg font-bold min-w-max self-center', pastPct === null ? 'text-muted-foreground' : getPercentageColor(pastPct))}>
 {pastPct === null ? '—' : `${pastPct.toFixed(0)}%`}

@@ -219,7 +219,13 @@ const dayEntries = useMemo<DayEntry[]>(() => {
 const entries: DayEntry[] = [];
 const mode: 'today' | 'past' | 'future' = isTodaySelected ? 'today' : isPast ? 'past' : 'future';
 if (subjectMode === 'preloaded') {
+const sgtNames = new Set(
+userAddedSubjects
+.filter(u => u.subjectType === 'allied' && u.parentName && PRESET_PARENTS.includes(u.parentName))
+.map(u => u.name.toLowerCase())
+);
 schedule.forEach((slot, idx) => {
+
 if (slot.type === 'ward' || slot.type === 'ward_replacement') {
 const effectiveTime =
 slot.type === 'ward_replacement'
@@ -250,6 +256,7 @@ pastSelection: isPast
 return;
 }
 slot.subjects.forEach((subject, subIdx) => {
+if (sgtNames.has(subject.toLowerCase())) return; // SGT children render only via their tagged card
 entries.push({
 id: `${idx}-${subIdx}`,
 time: slot.time,
@@ -270,8 +277,9 @@ if (subjectMode === 'preloaded') {
 userAddedSubjects.forEach(u => {
 if (u.subjectType !== 'allied' || !u.parentName || !PRESET_PARENTS.includes(u.parentName)) return;
 const anyU = u as any;
-if (!anyU.startDate || !anyU.endDate) return;
+if (anyU.startDate && anyU.endDate) {
 if (selectedDateStr < anyU.startDate || selectedDateStr > anyU.endDate) return;
+}
 const sch = (u.schedules || []).find((s: any) => s.day === selectedTodayAbbr);
 if (!sch) return;
 const time = `${sch.start}–${sch.end}`;
@@ -448,7 +456,7 @@ isCenter ? "text-primary-foreground" : "text-foreground",
 !isCenter && "font-semibold"
 )}
 >
-{day}
+{day} {month}
 </span>
 <span
 className={cn(
@@ -456,7 +464,7 @@ className={cn(
 isCenter ? "text-primary-foreground/80" : "text-muted-foreground"
 )}
 >
-{month}
+{DAY_ABBRS[date.getDay()]}
 </span>
 </div>
 );
@@ -514,7 +522,7 @@ transition={{ duration: 4, repeat: Infinity }}
 <BookOpen className="w-5 h-5 text-primary" />
 </div>
 </motion.div>
-<h3 className="text-4xl font-extrabold tracking-tight text-white mb-2">Holiday</h3>
+<h3 className="text-4xl font-extrabold tracking-tight text-foreground mb-2">Detox Day</h3>
 {subjectMode === 'custom' && customSubjects.length === 0 ? (
 <p className="text-muted-foreground text-sm max-w-xs leading-relaxed px-4">
 No subjects added yet.{' '}
