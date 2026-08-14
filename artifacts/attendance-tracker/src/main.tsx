@@ -29,32 +29,14 @@ if ('serviceWorker' in navigator) {
   window.setInterval(checkForUpdate, 60000);
 }
 
-/* Account's Update button calls this: swap the shell; caller controls timing/reload */
+/* Account's Update button calls this: updates the cached shell directly, no SW activation */
 (window as any).attendenzApplyPwaUpdate = async () => {
   localStorage.removeItem('att_pwa_update_ready');
   try {
-    const reg = await navigator.serviceWorker.getRegistration();
-    if (reg?.waiting) {
-      reg.waiting.postMessage({ type: 'ATT_UPDATE_APPROVED' });
-    } else if (reg?.installing) {
-      reg.installing.postMessage({ type: 'ATT_UPDATE_APPROVED' });
-    } else if (reg?.active) {
-      reg.active.postMessage({ type: 'ATT_UPDATE_APPROVED' });
-    }
-
-    // Wait for the service worker to tell us it has updated
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(resolve, 10000);
-      const onMessage = (event: MessageEvent) => {
-        if (event.data && event.data.type === 'ATT_SW_UPDATED') {
-          clearTimeout(timeout);
-          navigator.serviceWorker.removeEventListener('message', onMessage);
-          resolve();
-        }
-      };
-      navigator.serviceWorker.addEventListener('message', onMessage);
-    });
-  } catch { /* fall through */ }
+    const cache = await caches.open('attendenz-shell-v1');
+    const fresh = await fetch(`${base}index.html`, { cache: 'no-store' });
+    if (fresh.ok) await cache.put(`${base}index.html`, fresh);
+  } catch { /* fallback: reload may still show old version */ }
 };
 
 createRoot(document.getElementById('root')!).render(<App />);
