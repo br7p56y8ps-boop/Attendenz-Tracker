@@ -6,6 +6,8 @@ import { useCustomData } from '@/contexts/CustomDataContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
+import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
+import { ArrowUpCircle, X } from 'lucide-react';
 
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -30,6 +32,23 @@ export default function Home() {
   const { customSubjects, customWards, subjectMode, presetTimetable, getCurrentPresetWard } = useCustomData();
   const { homeSelections } = useAttendance();
   const [, setLocation] = useLocation();
+
+  /* ── Update notice (manual update) ── */
+  const [installedVersion] = useState<string>(() => localStorage.getItem('att_app_version') || APP_VERSION);
+  const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
+  const [serverVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
+  const [serverSummary] = useState<string>(() => localStorage.getItem('att_pwa_update_summary') || '');
+  useEffect(() => {
+    const on = () => setPwaReady(true);
+    window.addEventListener('attendenz:update-ready', on);
+    return () => window.removeEventListener('attendenz:update-ready', on);
+  }, []);
+  const isUpdateAvailable = installedVersion !== LATEST_VERSION || pwaReady;
+  const [updateNoticeDismissed, setUpdateNoticeDismissed] = useState<boolean>(
+    () => sessionStorage.getItem('att_update_notice_dismissed') === 'true'
+  );
+  const [updateInfoOpen, setUpdateInfoOpen] = useState(false);
+  const showUpdatePill = isUpdateAvailable && !updateNoticeDismissed;
 
   // Earliest recorded date
   const earliestDateStr = useMemo(() => {
@@ -203,7 +222,30 @@ export default function Home() {
   });
 
   return (
-    <Layout>
+    <Layout
+      headerRight={showUpdatePill ? (
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setUpdateInfoOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-500 text-[10px] font-extrabold uppercase tracking-wide hover:bg-amber-500/25 transition-all cursor-pointer"
+          >
+            <ArrowUpCircle className="w-3.5 h-3.5" />
+            <span>Update Available · v{serverVersion}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setUpdateNoticeDismissed(true);
+              sessionStorage.setItem('att_update_notice_dismissed', 'true');
+            }}
+            className="w-5 h-5 rounded-full bg-muted/60 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      ) : undefined}
+    >
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -274,7 +316,6 @@ export default function Home() {
                     >
                       {month}
                     </span>
-                    {/* Blue dot removed */}
                   </div>
                 );
               })}
