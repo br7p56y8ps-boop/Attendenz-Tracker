@@ -551,6 +551,76 @@ export default function Home() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* ── Update info modal ── */}
+        <AnimatePresence>
+          {updateInfoOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] flex items-center justify-center p-4"
+              onClick={() => setUpdateInfoOpen(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.92, opacity: 0, y: 10 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.92, opacity: 0, y: 10 }}
+                className="bg-card border border-border rounded-3xl p-5 w-full max-w-sm shadow-2xl space-y-3"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-extrabold text-foreground">
+                    New Version Available <span className="text-emerald-400">(v{serverVersion})</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setUpdateInfoOpen(false)}
+                    className="w-7 h-7 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  {serverSummary || 'Bug fixes and refinements are ready to install.'}
+                </p>
+                <div className="bg-muted/30 border border-border/50 rounded-xl p-3 space-y-1">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-1">
+                    How to Update
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    1. Go to <strong className="text-foreground">Settings Tab</strong>
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    2. Scroll to <strong className="text-foreground">App Info</strong>
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    3. Click <strong className="text-foreground">Update App</strong>
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUpdateInfoOpen(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer"
+                  >
+                    Remind Later
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUpdateInfoOpen(false);
+                      setLocation('/account');
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all cursor-pointer"
+                  >
+                    Go to Account
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </Layout>
   );
