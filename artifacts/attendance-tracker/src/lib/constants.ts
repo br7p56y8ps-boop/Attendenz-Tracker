@@ -1,3 +1,5 @@
+import { D, registerPresetSubjects } from '@/lib/utils';
+
 export const CATEGORIES = [
   {
     name: 'Medicine & Allied',
@@ -41,6 +43,8 @@ export const INTEGRATED_SUBJECTS = [
   { name: 'Departmental Integrated Teaching', total: 36 },
 ];
 
+// Preset allied-parent groups — clinical-type rotations, once daily.
+export const PRESET_PARENTS = ['Small Group Teaching'];
 export const WARD_SUBJECTS = [
   { name: 'General Surgery', total: 60 },
   { name: 'Pediatrics', total: 60 },
@@ -56,69 +60,71 @@ export const WARD_SUBJECTS = [
   { name: 'Ophthalmology', total: 60 },
 ];
 
+// B5: dates authored in human dd/mm/yy via D(); stored value is yyyy-mm-dd.
 export const WARD_SCHEDULE = [
-  { start: '2026-01-24', end: '2026-02-27', ward: 'General Surgery' },
-  { start: '2026-02-28', end: '2026-03-13', ward: 'Pediatrics' },
-  { start: '2026-03-14', end: '2026-03-27', ward: 'Holiday' },
-  { start: '2026-03-28', end: '2026-04-10', ward: 'Pediatrics' },
-  { start: '2026-04-11', end: '2026-05-22', ward: 'Internal Medicine' },
-  { start: '2026-05-23', end: '2026-06-05', ward: 'Holiday' },
-  { start: '2026-06-06', end: '2026-06-12', ward: 'Internal Medicine' },
-  { start: '2026-06-13', end: '2026-06-26', ward: 'Dermatology' },
-  { start: '2026-06-27', end: '2026-07-03', ward: 'Urology' },
-  { start: '2026-07-04', end: '2026-07-10', ward: 'Pediatric Surgery' },
-  { start: '2026-07-11', end: '2026-07-17', ward: 'Burn & Plastic Surgery' },
-  { start: '2026-07-18', end: '2026-08-07', ward: 'Orthopaedics' },
-  { start: '2026-08-08', end: '2026-09-18', ward: 'Obstetrics & Gynaecology' },
-  { start: '2026-09-19', end: '2026-10-02', ward: 'Psychiatry' },
-  { start: '2026-10-03', end: '2026-10-16', ward: 'Otolaryngology' },
-  { start: '2026-10-17', end: '2026-10-23', ward: 'Holiday' },
-  { start: '2026-10-24', end: '2026-11-06', ward: 'Ophthalmology' },
+  { start: D('24/01/26'), end: D('27/02/26'), ward: 'General Surgery' },
+  { start: D('28/02/26'), end: D('13/03/26'), ward: 'Pediatrics' },
+  { start: D('14/03/26'), end: D('27/03/26'), ward: 'Holiday' },
+  { start: D('28/03/26'), end: D('10/04/26'), ward: 'Pediatrics' },
+  { start: D('11/04/26'), end: D('22/05/26'), ward: 'Internal Medicine' },
+  { start: D('23/05/26'), end: D('05/06/26'), ward: 'Holiday' },
+  { start: D('06/06/26'), end: D('12/06/26'), ward: 'Internal Medicine' },
+  { start: D('13/06/26'), end: D('26/06/26'), ward: 'Dermatology' },
+  { start: D('27/06/26'), end: D('03/07/26'), ward: 'Urology' },
+  { start: D('04/07/26'), end: D('10/07/26'), ward: 'Pediatric Surgery' },
+  { start: D('11/07/26'), end: D('17/07/26'), ward: 'Burn & Plastic Surgery' },
+  { start: D('18/07/26'), end: D('07/08/26'), ward: 'Orthopaedics' },
+  { start: D('08/08/26'), end: D('18/09/26'), ward: 'Obstetrics & Gynaecology' },
+  { start: D('19/09/26'), end: D('02/10/26'), ward: 'Psychiatry' },
+  { start: D('03/10/26'), end: D('16/10/26'), ward: 'Otolaryngology' },
+  { start: D('17/10/26'), end: D('23/10/26'), ward: 'Holiday' },
+  { start: D('24/10/26'), end: D('06/11/26'), ward: 'Ophthalmology' },
 ];
 
+// B1/B2: all times stored & displayed in canonical "hh:mm AM–hh:mm PM" form.
 export const TIMETABLE: Record<number, Array<{time: string, type: string, subjects: string[]}>> = {
   0: [ // Sunday
-    { time: '07:00–08:00', type: 'lecture', subjects: ['Orthopedics', 'Dermatology'] },
-    { time: '08:30–09:30', type: 'lecture', subjects: ['Surgery'] },
-    { time: '09:30–11:30', type: 'ward', subjects: [] },
-    { time: '11:30 AM–2:30 PM', type: 'integrated', subjects: ['Phase Integrated Teaching'] },
-    { time: '07:00–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
+    { time: '07:00 AM–08:00 AM', type: 'lecture', subjects: ['Orthopedics', 'Dermatology'] },
+    { time: '08:30 AM–09:30 AM', type: 'lecture', subjects: ['Surgery'] },
+    { time: '09:30 AM–11:30 AM', type: 'ward', subjects: [] },
+    { time: '11:30 AM–02:30 PM', type: 'integrated', subjects: ['Phase Integrated Teaching'] },
+    { time: '07:00 PM–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
   ],
   1: [ // Monday
-    { time: '07:00–08:00', type: 'lecture', subjects: ['Surgery'] },
-    { time: '08:30–09:30', type: 'lecture', subjects: ['Obstetrics & Gynaecology'] },
-    { time: '09:30–11:30', type: 'ward', subjects: [] },
-    { time: '12:00–01:00', type: 'lecture', subjects: ['Orthopedics', 'Burn & Plastic Surgery'] },
-    { time: '07:00–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
+    { time: '07:00 AM–08:00 AM', type: 'lecture', subjects: ['Surgery'] },
+    { time: '08:30 AM–09:30 AM', type: 'lecture', subjects: ['Obstetrics & Gynaecology'] },
+    { time: '09:30 AM–11:30 AM', type: 'ward', subjects: [] },
+    { time: '12:00 PM–01:00 PM', type: 'lecture', subjects: ['Orthopedics', 'Burn & Plastic Surgery'] },
+    { time: '07:00 PM–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
   ],
   2: [ // Tuesday
-    { time: '07:00–08:00', type: 'lecture', subjects: ['Medicine'] },
-    { time: '08:30–09:30', type: 'lecture', subjects: ['Ophthalmology', 'Radiology', 'Radiotherapy'] },
-    { time: '09:30–11:30', type: 'ward', subjects: [] },
-    { time: '12:00–01:00', type: 'lecture', subjects: ['Dermatology', 'Psychiatry', 'Physical Medicine'] },
-    { time: '07:00–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
+    { time: '07:00 AM–08:00 AM', type: 'lecture', subjects: ['Medicine'] },
+    { time: '08:30 AM–09:30 AM', type: 'lecture', subjects: ['Ophthalmology', 'Radiology', 'Radiotherapy'] },
+    { time: '09:30 AM–11:30 AM', type: 'ward', subjects: [] },
+    { time: '12:00 PM–01:00 PM', type: 'lecture', subjects: ['Dermatology', 'Psychiatry', 'Physical Medicine'] },
+    { time: '07:00 PM–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
   ],
   3: [ // Wednesday
-    { time: '07:00–08:00', type: 'lecture', subjects: ['Ophthalmology', 'Pediatrics'] },
-    { time: '08:30–09:30', type: 'lecture', subjects: ['Pediatric Surgery', 'Urology', 'Nuclear Medicine'] },
-    { time: '09:30–11:30', type: 'ward', subjects: [] },
-    { time: '12:00–01:00', type: 'lecture', subjects: ['Medicine'] },
-    { time: '07:00–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
+    { time: '07:00 AM–08:00 AM', type: 'lecture', subjects: ['Ophthalmology', 'Pediatrics'] },
+    { time: '08:30 AM–09:30 AM', type: 'lecture', subjects: ['Pediatric Surgery', 'Urology', 'Nuclear Medicine'] },
+    { time: '09:30 AM–11:30 AM', type: 'ward', subjects: [] },
+    { time: '12:00 PM–01:00 PM', type: 'lecture', subjects: ['Medicine'] },
+    { time: '07:00 PM–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
   ],
   4: [ // Thursday
-    { time: '07:00–08:00', type: 'lecture', subjects: ['Otolaryngology', 'Psychiatry'] },
-    { time: '09:30–11:30', type: 'ward', subjects: [] },
-    { time: '12:00–02:00', type: 'integrated', subjects: ['Departmental Integrated Teaching'] },
-    { time: '07:00–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
+    { time: '07:00 AM–08:00 AM', type: 'lecture', subjects: ['Otolaryngology', 'Psychiatry'] },
+    { time: '09:30 AM–11:30 AM', type: 'ward', subjects: [] },
+    { time: '12:00 PM–02:00 PM', type: 'integrated', subjects: ['Departmental Integrated Teaching'] },
+    { time: '07:00 PM–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
   ],
   5: [ // Friday
   ],
   6: [ // Saturday
-    { time: '07:00–08:00', type: 'lecture', subjects: ['Obstetrics & Gynaecology'] },
-    { time: '08:30–09:30', type: 'lecture', subjects: ['Medicine'] },
-    { time: '09:30–11:30', type: 'ward', subjects: [] },
-    { time: '12:00–01:00', type: 'lecture', subjects: ['Otolaryngology', 'Pediatrics', 'Neurosurgery'] },
-    { time: '07:00–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
+    { time: '07:00 AM–08:00 AM', type: 'lecture', subjects: ['Obstetrics & Gynaecology'] },
+    { time: '08:30 AM–09:30 AM', type: 'lecture', subjects: ['Medicine'] },
+    { time: '09:30 AM–11:30 AM', type: 'ward', subjects: [] },
+    { time: '12:00 PM–01:00 PM', type: 'lecture', subjects: ['Otolaryngology', 'Pediatrics', 'Neurosurgery'] },
+    { time: '07:00 PM–09:00 PM', type: 'ward_replacement', subjects: ['Ward Replacement'] },
   ]
 };
 
@@ -158,3 +164,12 @@ export function getCurrentWard(date: Date = new Date()): string | null {
   }
   return null;
 }
+
+/* B6: register the ordered preset subject list so getSubjectColor() assigns
+the fixed palette order to preset subjects (custom names hash stably).
+Registration order: academic categories → integrated → wards. */
+registerPresetSubjects([
+  ...CATEGORIES.flatMap(c => c.subjects.map(s => s.name)),
+  ...INTEGRATED_SUBJECTS.map(s => s.name),
+  ...WARD_SUBJECTS.map(s => s.name),
+]);

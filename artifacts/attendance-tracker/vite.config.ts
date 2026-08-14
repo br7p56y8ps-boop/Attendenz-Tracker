@@ -18,8 +18,11 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+
     VitePWA({
-      registerType: 'autoUpdate',
+
+      registerType: 'prompt',
+      filename: 'gen-sw.js', 
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
         name: 'Attendenz Tracker',

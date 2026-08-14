@@ -5,14 +5,14 @@ import { Heart, Stethoscope, Syringe, Calendar, Hospital } from 'lucide-react';
 import { motion, useScroll, AnimatePresence } from 'framer-motion';
 
 const NAV_ITEMS = [
-  { path: '/',          label: 'Home',     Icon: Heart },
-  { path: '/subjects',  label: 'Subjects', Icon: Stethoscope },
-  { path: '/add-new',   label: 'Add New',  Icon: Syringe },
-  { path: '/calendar',  label: 'Calendar', Icon: Calendar },
-  { path: '/account',   label: 'Account',  Icon: Hospital },
+  { path: '/',          label: 'Home',      Icon: Heart },
+  { path: '/subjects',  label: 'Subjects',  Icon: Stethoscope },
+  { path: '/add-new',   label: 'Manage',    Icon: Syringe },
+  { path: '/calendar',  label: 'Timetable', Icon: Calendar },
+  { path: '/account',   label: 'Settings',  Icon: Hospital },
 ] as const;
 
-export const Layout = ({ children }: { children: React.ReactNode }) => {
+export const Layout = ({ children, headerRight }: { children: React.ReactNode; headerRight?: React.ReactNode }) => {
   const [location, setLocation] = useLocation();
   const { scrollY } = useScroll();
   const [visible, setVisible] = useState(true);
@@ -42,6 +42,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
             {activeTabLabel}
           </h1>
+          {headerRight}
         </div>
         <AnimatePresence mode="wait">
           <motion.div
@@ -55,10 +56,8 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
           </motion.div>
         </AnimatePresence>
       </main>
-
       {/* Bottom Gradient Overlay for Smooth Scrolling Fade */}
       <div className="fixed bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none z-30" />
-
       {/* Floating Glass Bottom Tab Bar */}
       <motion.div
         animate={{ y: visible ? 0 : 120, opacity: visible ? 1 : 0 }}

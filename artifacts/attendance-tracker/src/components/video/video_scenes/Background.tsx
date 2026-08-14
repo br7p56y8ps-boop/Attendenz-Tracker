@@ -80,7 +80,7 @@ export function Background({ scene }: { scene: number }) {
   }, []);
 
   return (
-    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-slate-950">
+    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-neutral-900">
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-70" />
 
       <motion.div

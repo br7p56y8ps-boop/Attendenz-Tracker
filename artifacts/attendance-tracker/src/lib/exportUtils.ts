@@ -13,6 +13,7 @@ export interface AttendanceReportItem {
 
 export interface ExportReportOptions {
   studentName: string;
+  profileImage?: string;
   routineMode: string;
   targetPct: number;
   filterTitle: string;
@@ -128,61 +129,67 @@ function getOrdinalSuffix(day: number): string {
   }
 }
 
-// ── 3. METADATA CARD ──
-doc.setFillColor(248, 250, 252);
-doc.setDrawColor(226, 232, 240);
-doc.roundedRect(15, y, pageWidth - 30, 26, 3, 3, 'FD');
-doc.setTextColor(51, 65, 85);
+// ── 3. METADATA CARD (text-sensitive chart header — sizes to content, centered, no dead space) ──
+  const pad = 4;
+  const rowH = 8;
+  const photoW = 32;
+  const gapPV = 5;
+  const gapLV = 4;
+  const now = new Date();
+  const day = now.getDate();
+  const suf = getOrdinalSuffix(day);
+  const timeStr = now.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase();
+  const rows: Array<[string, string]> = [
+    ['Name:', studentName || 'Medical Student'],
+    ['Routine Mode:', routineMode],
+    ['Exported:', `${day}${suf} ${now.toLocaleString('en-US', { month: 'short' })} ${now.getFullYear()} at ${timeStr}`],
+    ['Scope:', filterTitle],
+  ];
+  const maxPageW = pageWidth - 30;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  let labelW = 0;
+  rows.forEach(([l]) => { labelW = Math.max(labelW, doc.getTextWidth(l)); });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+  let valueW = 0;
+  rows.forEach(([, v]) => { valueW = Math.max(valueW, doc.getTextWidth(v)); });
+  const fixedW = 3 + photoW + gapPV + labelW + gapLV;
+  const availForValue = maxPageW - fixedW - pad;
+  let usedValueW = valueW;
+  let extraLines = 0;
+  if (valueW > availForValue) {
+    usedValueW = availForValue;
+    rows.forEach(([, v]) => { extraLines += doc.splitTextToSize(v, availForValue).length - 1; });
+  }
+  const cardH = Math.max(photoW + 6, (4 + extraLines) * rowH + pad * 2);
+  const cardW = Math.min(maxPageW, fixedW + usedValueW + pad);
+  const cardX = (pageWidth - cardW) / 2;
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(cardX, y, cardW, cardH, 3, 3, 'FD');
+  let photoBase64 = '';
+  try {
+    const src = options.profileImage;
+    if (src) photoBase64 = src.startsWith('data:') ? src : await loadImageAsBase64(src);
+  } catch { photoBase64 = ''; }
+  const py = y + (cardH - photoW) / 2;
+  if (photoBase64) {
+    doc.setDrawColor(203, 213, 225);
+    doc.roundedRect(cardX + 3, py, photoW, photoW, 2, 2, 'S');
+    doc.addImage(photoBase64, 'JPEG', cardX + 3, py, photoW, photoW);
+  }
+  const labelX = cardX + 3 + photoW + gapPV;
+  const valueX = labelX + labelW + gapLV;
+  let ry = y + pad + 5;
+  rows.forEach(([label, value]) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(51, 65, 85);
+    doc.text(label, labelX, ry);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(71, 85, 105);
+    const lines = usedValueW < valueW ? doc.splitTextToSize(value, usedValueW) : [value];
+    doc.text(lines, valueX, ry);
+    ry += rowH * lines.length;
+  });
+  y += cardH + 6;
 
-// Student Name
-doc.setFont('helvetica', 'bold');
-doc.setFontSize(10);
-doc.text(`Student Name: `, 20, y + 8);
-doc.setFont('helvetica', 'normal');
-doc.text(studentName || 'Medical Student', 50, y + 8);
-
-// Routine Mode
-doc.setFont('helvetica', 'bold');
-doc.text(`Routine Mode: `, 20, y + 16);
-doc.setFont('helvetica', 'normal');
-doc.text(routineMode, 50, y + 16);
-
-// ── Generated (with superscript ordinal, time, and reduced gap) ──
-const now = new Date();
-const day = now.getDate();
-const monthShort = now.toLocaleString('en-US', { month: 'short' });
-const yearShort = now.getFullYear().toString().slice(2);
-const suffix = getOrdinalSuffix(day);
-const timeStr = now.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-doc.setFont('helvetica', 'bold');
-doc.text(`Generated: `, pageWidth / 2 + 10, y + 8);
-doc.setFont('helvetica', 'normal');
-
-// Draw day number
-const dayText = `${day}`;
-const dayX = pageWidth / 2 + 35;
-doc.text(dayText, dayX, y + 8);
-
-// Draw suffix as superscript (smaller, raised) – NO extra gap after day
-const suffixX = dayX + doc.getTextWidth(dayText); // removed +1
-doc.setFontSize(6);
-doc.text(suffix, suffixX, y + 6);
-doc.setFontSize(10);
-
-// Draw month, year, and time – NO extra gap after suffix
-const restText = ` ${monthShort} '${yearShort} at ${timeStr}`; // starts with a space
-const restX = suffixX + doc.getTextWidth(suffix); // removed +1
-doc.text(restText, restX, y + 8);
-
-// ── Scope (with reduced font size)
-doc.setFont('helvetica', 'bold');
-doc.text(`Scope: `, pageWidth / 2 + 10, y + 16);
-doc.setFont('helvetica', 'normal');
-doc.setFontSize(8);
-doc.text(filterTitle, pageWidth / 2 + 35, y + 16);
-doc.setFontSize(10);
-y += 32;
 
   // ── Table Drawing Helper ──
   const drawTable = (

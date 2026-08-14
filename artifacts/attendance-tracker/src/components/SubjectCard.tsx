@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useAttendance } from '@/contexts/AttendanceContext';
-import { cn, pctColor } from '@/lib/utils';
+import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
+import { useCustomData } from '@/contexts/CustomDataContext';
+import { cn, pctColor, getSubjectColor } from '@/lib/utils';
+import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { ChevronRight, Info, Plus, Minus, X, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -11,16 +13,45 @@ interface SubjectCardProps {
   isWard?: boolean;
   /** When true, removes the outer card wrapper so this can live inside a parent card */
   isNested?: boolean;
+  /** A6 · True when this ward/rotation is the currently active posting → "Ongoing" badge */
+  isActiveWard?: boolean;
+  /** SGT-specific props */
+  isSGT?: boolean;
+  sgtId?: string;
 }
 
-export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = false }: SubjectCardProps) => {
+export const SubjectCard = ({
+  subject,
+  totalPlanned,
+  isWard = false,
+  isNested = false,
+  isActiveWard = false,
+  isSGT = false,
+  sgtId,
+}: SubjectCardProps) => {
   const { subjects, wards, finishedMap, updateSubject, updateWard, toggleFinished, preferredPercentage } = useAttendance();
+  const {
+    subjectMode,
+    customSubjects,
+    customWards,
+    userAddedSubjects,
+    getSubjectPlannedTotal,
+    getPresetWardTotalPlanned,
+    getCustomWardTotalPlanned,
+  } = useCustomData();
+
+  // Build canonical attendance key
+  const attendanceKey = isSGT && sgtId
+    ? getSGTKey(sgtId)
+    : isWard
+      ? `ward-${subject}`
+      : subject;
+
   const dataStore = isWard ? wards : subjects;
   const updateFn = isWard ? updateWard : updateSubject;
-  const key = isWard ? `ward-${subject}` : subject;
-  const data = dataStore[key] || { attended: 0, missed: 0 };
-  const isMarkedFinished = finishedMap?.[key] || false;
-  
+  const data = dataStore[attendanceKey] || { attended: 0, missed: 0 };
+  const isMarkedFinished = finishedMap?.[attendanceKey] || false;
+
   // Keep ref of latest data for continuous stepping
   const currentDataRef = useRef({ attended: data.attended, missed: data.missed });
   useEffect(() => {
@@ -29,12 +60,34 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
 
   const [showLimitMessage, setShowLimitMessage] = useState(false);
   const [activeStatInfo, setActiveStatInfo] = useState<'remaining' | 'missable' | 'canMiss' | 'required' | null>(null);
-
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Close on Escape + lock background scroll while the details modal is open
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsModalOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    lockScroll();
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      unlockScroll();
+    };
+  }, [isModalOpen]);
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setActiveStatInfo(null);
+    setShowLimitMessage(false);
+  };
+
   const openModal = (e: React.MouseEvent) => {
-    // Prevent toggling if user clicks inside inputs or buttons
-    if ((e.target as HTMLElement).closest('input') || (e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('[role="dialog"]')) {
+    if (
+      (e.target as HTMLElement).closest('input') ||
+      (e.target as HTMLElement).closest('button') ||
+      (e.target as HTMLElement).closest('[role="dialog"]')
+    ) {
       return;
     }
     setIsModalOpen(true);
@@ -44,12 +97,10 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
     const current = currentDataRef.current;
     let newAttended = current.attended;
     let newMissed = current.missed;
-    
     if (change > 0 && current.attended + current.missed >= totalPlanned) {
       setShowLimitMessage(true);
       return false;
     }
-    
     if (field === 'attended') {
       newAttended += change;
       if (newAttended < 0) return false;
@@ -57,11 +108,9 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
       newMissed += change;
       if (newMissed < 0) return false;
     }
-    
     if (showLimitMessage) setShowLimitMessage(false);
-    
     currentDataRef.current = { attended: newAttended, missed: newMissed };
-    updateFn(key, newAttended, newMissed);
+    updateFn(attendanceKey, newAttended, newMissed);
     return true;
   };
 
@@ -73,31 +122,68 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
   const attendedNum = data.attended;
   const missedNum = data.missed;
   const totalConducted = attendedNum + missedNum;
-  
   const percentage = totalConducted === 0 ? 100 : (attendedNum / totalConducted) * 100;
   const targetPct = preferredPercentage || 75;
-
   const remaining = Math.max(0, totalPlanned - totalConducted);
   const maxMissable = Math.floor(totalPlanned * (1 - targetPct / 100));
   const canStillMiss = Math.max(0, maxMissable - missedNum);
   const rawRequired = Math.max(0, Math.ceil(totalPlanned * (targetPct / 100)) - attendedNum);
   const requiredToAttend = rawRequired > remaining ? "Not possible" : rawRequired;
-
   const percentageColor = pctColor(percentage, preferredPercentage);
-
   const isMaxReached = totalConducted >= totalPlanned;
+
+  // ── Planned classes (honours user-added items in both modes) ─────────────
+  let originalPlannedClasses: number | undefined;
+  if (isWard) {
+    if (subjectMode === 'preloaded') {
+      const presetWardCount = getPresetWardTotalPlanned(subject);
+      originalPlannedClasses = presetWardCount > 0 ? presetWardCount : getSubjectPlannedTotal(subject);
+    } else {
+      const cWard = customWards?.find(w => w.name.toLowerCase() === subject.toLowerCase());
+      originalPlannedClasses = cWard
+        ? getCustomWardTotalPlanned(cWard.startDate, cWard.endDate)
+        : getPresetWardTotalPlanned(subject);
+    }
+  } else {
+    if (isSGT && sgtId) {
+      const sgtSub =
+        subjectMode === 'preloaded'
+          ? userAddedSubjects?.find(s => s.id === sgtId)
+          : customSubjects?.find(s => s.id === sgtId);
+      originalPlannedClasses = sgtSub ? sgtSub.plannedClasses : getSubjectPlannedTotal(subject);
+    } else if (subjectMode === 'preloaded') {
+      const uaSub = userAddedSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase());
+      originalPlannedClasses = uaSub ? uaSub.plannedClasses : getSubjectPlannedTotal(subject);
+    } else {
+      const customSub = customSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase());
+      originalPlannedClasses = customSub ? customSub.plannedClasses : getSubjectPlannedTotal(subject);
+    }
+  }
 
   // Card background and border color-matched to Current Percentage color
   const cardStyle = {
-    backgroundColor: `${percentageColor}14`, // subtle tint
-    borderColor: `${percentageColor}38`,     // border accent
+    backgroundColor: `${percentageColor}14`,
+    borderColor: `${percentageColor}38`,
   };
+
+  // B6 · deterministic shared subject color for titles
+  const subjectColor = getSubjectColor(subject);
+
+  const ongoingBadge = isActiveWard ? (
+    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 whitespace-nowrap">
+      Ongoing
+    </span>
+  ) : null;
 
   const headerContent = (
     <div className="flex justify-between items-center gap-3">
-      {/* Left side: Title + Planned · Attended · Missed · Remaining */}
       <div className="min-w-0 flex-1">
-        <h4 className="font-semibold text-foreground text-sm sm:text-base leading-tight truncate">{subject}</h4>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h4 className="font-semibold text-sm sm:text-base leading-tight truncate" style={{ color: subjectColor }}>
+            {subject}
+          </h4>
+          {ongoingBadge}
+        </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-1 font-medium">
           <span>Planned: <strong className="text-foreground font-semibold">{totalPlanned}</strong></span>
           <span className="opacity-40">·</span>
@@ -108,8 +194,6 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
           <span>Remaining: <strong className="text-foreground font-semibold">{remaining}</strong></span>
         </div>
       </div>
-
-      {/* Right side: Percentage number */}
       <div className="flex items-center gap-2 shrink-0">
         <div className="text-base sm:text-lg font-extrabold tracking-tight" style={{ color: percentageColor }}>
           {totalConducted === 0 ? '--' : `${percentage.toFixed(0)}%`}
@@ -156,16 +240,14 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
         <Stepper field="attended" value={attendedNum} />
         <Stepper field="missed" value={missedNum} />
       </div>
-
       {showLimitMessage && (
         <p className="text-amber-500 text-[11px] font-medium text-center bg-amber-500/10 py-1.5 px-3 rounded-lg border border-amber-500/20 transition-all">
           Planned class limit reached.
         </p>
       )}
-      
       {/* Metrics Row */}
       <div className="grid grid-cols-4 gap-2 pt-3 border-t border-border/30">
-        <div 
+        <div
           onClick={(e) => { e.stopPropagation(); setActiveStatInfo(prev => prev === 'remaining' ? null : 'remaining'); }}
           className={cn(
             "flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer",
@@ -175,8 +257,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
           <span className="text-[8px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Remaining</span>
           <span className="text-sm font-bold text-foreground">{remaining}</span>
         </div>
-
-        <div 
+        <div
           onClick={(e) => { e.stopPropagation(); setActiveStatInfo(prev => prev === 'missable' ? null : 'missable'); }}
           className={cn(
             "flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer",
@@ -186,8 +267,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
           <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Missable</span>
           <span className="text-sm font-bold text-foreground">{maxMissable}</span>
         </div>
-
-        <div 
+        <div
           onClick={(e) => { e.stopPropagation(); setActiveStatInfo(prev => prev === 'canMiss' ? null : 'canMiss'); }}
           className={cn(
             "flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer",
@@ -197,8 +277,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
           <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">Can Miss</span>
           <span className="text-sm font-bold text-success">{canStillMiss}</span>
         </div>
-
-        <div 
+        <div
           onClick={(e) => { e.stopPropagation(); setActiveStatInfo(prev => prev === 'required' ? null : 'required'); }}
           className={cn(
             "flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer",
@@ -209,7 +288,6 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
           <span className={cn("font-bold text-center leading-tight", rawRequired > remaining ? "text-[10px] text-destructive" : "text-sm text-primary")}>{requiredToAttend}</span>
         </div>
       </div>
-
       {/* Inline Stat Explanation Card inside the same modal below the 4 containers */}
       <AnimatePresence>
         {activeStatInfo && (
@@ -236,7 +314,6 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
                   <X className="w-3 h-3" />
                 </button>
               </div>
-
               <div className="text-muted-foreground leading-relaxed text-[11px]">
                 {activeStatInfo === 'remaining' && (
                   <>
@@ -263,7 +340,6 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
           </motion.div>
         )}
       </AnimatePresence>
-
       {/* Mark Completed Button (ONLY for Ward/Clinical Rotation subjects) */}
       {isWard && (
         <div className="pt-2">
@@ -271,7 +347,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              toggleFinished(key);
+              toggleFinished(attendanceKey);
             }}
             className={cn(
               "w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95",
@@ -290,19 +366,20 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
 
   return (
     <>
-      <div 
+      <div
         onClick={openModal}
         style={cardStyle}
         className={cn(
-          "rounded-2xl border transition-all cursor-pointer select-none hover:shadow-sm", 
-          !isNested && "p-4 sm:p-5 shadow-sm", 
-          isNested && "p-3.5 sm:p-4 my-1 mx-2 sm:mx-3 rounded-xl hover:brightness-95"
+          "rounded-2xl border transition-all cursor-pointer select-none hover:shadow-sm",
+          !isNested && "p-4 sm:p-5 shadow-sm",
+          isNested && "p-3.5 sm:p-4 my-1 mx-2 sm:mx-3 rounded-xl hover:brightness-95",
+          isActiveWard && !isNested && "ring-1 ring-emerald-500/40"
         )}
       >
         {headerContent}
       </div>
 
-      {/* Modal / Popup Overlay for Subject Details - Portaled to Body */}
+      {/* Modal / Popup Overlay for Subject Details - Portaled to Body. */}
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {isModalOpen && (
@@ -311,20 +388,26 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto"
-              onClick={() => setIsModalOpen(false)}
+              onClick={closeModal}
             >
               <motion.div
                 initial={{ scale: 0.92, opacity: 0, y: 10 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.92, opacity: 0, y: 10 }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                role="dialog"
+                aria-modal="true"
+                aria-label={`${subject} details`}
                 className="bg-card border border-border rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-left relative"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Modal Header */}
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">
                   <div>
-                    <h3 className="text-xl font-bold text-foreground leading-tight">{subject}</h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-xl font-bold leading-tight" style={{ color: subjectColor }}>{subject}</h3>
+                      {ongoingBadge}
+                    </div>
                     <p className="text-muted-foreground text-xs mt-1">
                       {isWard ? 'Clinical Rotation' : 'Lecture'} · Planned: {totalPlanned}
                     </p>
@@ -338,7 +421,7 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
                     </div>
                     <button
                       type="button"
-                      onClick={() => setIsModalOpen(false)}
+                      onClick={closeModal}
                       className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                       title="Close"
                     >
@@ -346,7 +429,6 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
                     </button>
                   </div>
                 </div>
-
                 {/* Modal Body */}
                 {modalDetailsContent}
               </motion.div>
@@ -358,3 +440,4 @@ export const SubjectCard = ({ subject, totalPlanned, isWard = false, isNested = 
     </>
   );
 };
+

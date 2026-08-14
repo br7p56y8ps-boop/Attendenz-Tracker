@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { useAttendance } from '@/contexts/AttendanceContext';
+import React, { useState, useRef, useEffect } from 'react';
+import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { cn, getCurrentDateStr } from '@/lib/utils';
+import { cn, getCurrentDateStr, getSubjectColor } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -17,6 +17,9 @@ interface HomeCardProps {
   dateStr?: string;
   mode?: 'today' | 'past' | 'future';
   pastSelection?: string;
+  /** SGT-specific props */
+  isSGT?: boolean;
+  sgtId?: string;
 }
 
 // ── Shortened subject map (identical to Calendar) ─────────────────────────────
@@ -68,29 +71,40 @@ export const HomeCard = ({
   dateStr,
   mode,
   pastSelection,
+  isSGT = false,
+  sgtId,
 }: HomeCardProps) => {
   const { subjects, wards, homeSelections, finishedMap, updateHomeSelection, preferredPercentage } =
     useAttendance();
   const {
+    subjectMode,
     customSubjects,
     customWards,
+    userAddedSubjects,
     getSubjectPlannedTotal,
     getPresetWardTotalPlanned,
     getCustomWardTotalPlanned,
   } = useCustomData();
+
   const activeDateStr = dateStr || getCurrentDateStr();
   const [showECG, setShowECG] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<'off' | 'missed' | 'attended' | null>(
     null
   );
 
-  const key = isWard ? `ward-${subject}` : subject;
-  const data = isWard ? wards[key] : subjects[subject];
+  // Build the canonical attendance key
+  const attendanceKey = isSGT && sgtId
+    ? getSGTKey(sgtId)
+    : isWard
+      ? `ward-${subject}`
+      : subject;
+
+  const data = isWard ? wards[attendanceKey] : subjects[attendanceKey];
   const attended = data?.attended || 0;
   const missed = data?.missed || 0;
   const total = attended + missed;
 
-  // ── Planned classes ────────────────────────────────────────────────────────
+  // ── Planned classes (honours user-added items in both modes) ─────────────
   let originalPlannedClasses: number | undefined;
   if (isWard) {
     const cWard = customWards?.find(w => w.name.toLowerCase() === subject.toLowerCase());
@@ -102,11 +116,22 @@ export const HomeCard = ({
         presetWardCount > 0 ? presetWardCount : getSubjectPlannedTotal(subject);
     }
   } else {
-    const customSub = customSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase());
-    originalPlannedClasses = customSub ? customSub.plannedClasses : getSubjectPlannedTotal(subject);
+    if (isSGT && sgtId) {
+      const sgtSub =
+        subjectMode === 'preloaded'
+          ? userAddedSubjects?.find(s => s.id === sgtId)
+          : customSubjects?.find(s => s.id === sgtId);
+      originalPlannedClasses = sgtSub ? sgtSub.plannedClasses : getSubjectPlannedTotal(subject);
+    } else if (subjectMode === 'preloaded') {
+      const uaSub = userAddedSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase());
+      originalPlannedClasses = uaSub ? uaSub.plannedClasses : getSubjectPlannedTotal(subject);
+    } else {
+      const customSub = customSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase());
+      originalPlannedClasses = customSub ? customSub.plannedClasses : getSubjectPlannedTotal(subject);
+    }
   }
 
-  const isFinishedMarked = finishedMap?.[key] || false;
+  const isFinishedMarked = finishedMap?.[attendanceKey] || false;
   const totalPlannedClasses = isFinishedMarked
     ? total > 0
       ? total
@@ -119,8 +144,8 @@ export const HomeCard = ({
     (totalPlannedClasses !== undefined && totalPlannedClasses > 0 && remainingClasses === 0);
 
   const selectionKey = sessionId
-    ? `${activeDateStr}-${key}-${sessionId}`
-    : `${activeDateStr}-${key}`;
+    ? `${activeDateStr}-${attendanceKey}-${sessionId}`
+    : `${activeDateStr}-${attendanceKey}`;
 
   // ── Effective mode ──
   const effectiveMode =
@@ -137,6 +162,7 @@ export const HomeCard = ({
     }
     candidates.push(`${activeDateStr}-${subject}`, `${activeDateStr}_${subject}`);
     candidates.push(`${activeDateStr}-${short}`, `${activeDateStr}_${short}`);
+
     if (isWard) {
       candidates.push(
         `${activeDateStr}-ward-${subject}`,
@@ -149,13 +175,30 @@ export const HomeCard = ({
         );
       }
     }
+
+    // SGT old + new formats
+    if (isSGT && sgtId) {
+      candidates.push(
+        `${activeDateStr}-sgt:${sgtId}`,
+        `${activeDateStr}_sgt:${sgtId}`,
+        `${activeDateStr}-${subject}-sgt-${sgtId}`,
+        `${activeDateStr}_${subject}_sgt_${sgtId}`
+      );
+      if (sessionId) {
+        candidates.push(
+          `${activeDateStr}-sgt:${sgtId}-${sessionId}`,
+          `${activeDateStr}_sgt:${sgtId}_${sessionId}`
+        );
+      }
+    }
+
     if (sessionId) {
       candidates.push(
-        `${activeDateStr}-${key}-${sessionId}`,
-        `${activeDateStr}_${key}_${sessionId}`
+        `${activeDateStr}-${attendanceKey}-${sessionId}`,
+        `${activeDateStr}_${attendanceKey}_${sessionId}`
       );
     }
-    candidates.push(`${activeDateStr}-${key}`, `${activeDateStr}_${key}`);
+    candidates.push(`${activeDateStr}-${attendanceKey}`, `${activeDateStr}_${attendanceKey}`);
 
     for (const c of candidates) {
       if (homeSelections[c]) return homeSelections[c];
@@ -166,7 +209,6 @@ export const HomeCard = ({
       const parsed = parseSelectionKey(fullKey);
       if (!parsed) continue;
       if (parsed.date !== activeDateStr) continue;
-
       if (
         parsed.label.toLowerCase() === subject.toLowerCase() ||
         parsed.label.toLowerCase() === short.toLowerCase()
@@ -174,20 +216,90 @@ export const HomeCard = ({
         return value;
       }
     }
-
     return pastSelection;
   };
 
   const currentSelection =
     effectiveMode === 'past' ? getPastAttendance() : homeSelections[selectionKey];
-
   const percentage = total === 0 ? 100 : (attended / total) * 100;
+
+  // ── Past: counts as-of the selected date (true history) ────────────────────
+  const restMatches = (rest: string): boolean => {
+    const r = rest.toLowerCase();
+    const norms = [subject.toLowerCase(), shortenSubject(subject).toLowerCase(), attendanceKey.toLowerCase()];
+    if (isSGT && sgtId) {
+      norms.push(`sgt:${sgtId.toLowerCase()}`);
+      norms.push(`sgt:${sgtId.toLowerCase()}`);
+    }
+    if (norms.some(n => r === n)) return true;
+    if (sessionId && (r === sessionId || r === `${attendanceKey.toLowerCase()}-${sessionId}` || r === `${subject.toLowerCase()}-${sessionId}`)) return true;
+    if (norms.some(n => r.startsWith(n + '-') || r.startsWith(n + '_'))) return true;
+    if (isWard && (r === `ward-${subject.toLowerCase()}` || r.startsWith(`ward-${subject.toLowerCase()}-`) || r === `ward ${subject.toLowerCase()}`)) return true;
+    return false;
+  };
+
+  const pastCounts = (() => {
+    if (effectiveMode !== 'past') return null;
+    let att = 0, mis = 0;
+    for (const [fullKey, value] of Object.entries(homeSelections)) {
+      const date = fullKey.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > activeDateStr) continue;
+      if (value !== 'attended' && value !== 'missed') continue;
+      if (!restMatches(fullKey.slice(11))) continue;
+      if (value === 'attended') att += 1; else mis += 1;
+    }
+    return { att, mis, conducted: att + mis };
+  })();
+
+  const pastPct = pastCounts && pastCounts.conducted > 0
+    ? (pastCounts.att / pastCounts.conducted) * 100
+    : null;
+
+  // ── Future: what-if slider (preview only; resets on date change / out of view) ──
+  const [whatIf, setWhatIf] = useState<-1 | 0 | 1>(0);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const sliderRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setWhatIf(0); }, [activeDateStr]);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el || effectiveMode !== 'future') return;
+    const obs = new IntersectionObserver(entries => {
+      for (const en of entries) if (!en.isIntersecting) setWhatIf(0);
+    }, { threshold: 0.2 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [effectiveMode]);
+
+  const attPreview = total === 0 ? 100 : ((attended + 1) / (total + 1)) * 100;
+  const missPreview = total === 0 ? 0 : (attended / (total + 1)) * 100;
+  const previewPct = whatIf === 1 ? attPreview : whatIf === -1 ? missPreview : percentage;
+
+  const posFromX = (clientX: number): -1 | 0 | 1 => {
+    const el = sliderRef.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    const f = (clientX - r.left) / r.width;
+    return f < 1 / 3 ? -1 : f < 2 / 3 ? 0 : 1;
+  };
+
+  const onSliderDown = (e: React.PointerEvent) => {
+    setWhatIf(posFromX(e.clientX));
+    const move = (ev: PointerEvent) => setWhatIf(posFromX(ev.clientX));
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   // ── Attendance action ──────────────────────────────────────────────────────
   const handleSelection = (selection: 'off' | 'missed' | 'attended') => {
     if (effectiveMode !== 'today' || isFinished) return;
     if (pendingSelection === selection) {
-      updateHomeSelection(selectionKey, key, selection, isWard);
+      updateHomeSelection(selectionKey, attendanceKey, selection, isWard);
       setShowECG(true);
       setTimeout(() => setShowECG(false), 3000);
       setPendingSelection(null);
@@ -207,13 +319,15 @@ export const HomeCard = ({
   const ecgColor =
     percentage >= 80 ? '#10b981' : percentage >= 75 ? '#f59e0b' : '#ef4444';
 
+  // B6 · deterministic shared subject color for titles
+  const subjectColor = getSubjectColor(subject);
+
   // ── OLD FINISHED MESSAGE (today only) ────────────────────────────────────
   const getFinishedMessage = () => {
     const targetNeeded = totalPlannedClasses !== undefined
       ? Math.ceil(totalPlannedClasses * (preferredPercentage / 100))
       : Math.ceil(total * (preferredPercentage / 100));
     const isTargetMet = attended >= targetNeeded;
-
     if (isTargetMet) {
       return `Congrats! Achieved Target (Attended ${attended} of ${totalPlannedClasses || total})`;
     }
@@ -238,7 +352,6 @@ export const HomeCard = ({
         );
       }
       if (total === 0) return <span>No classes conducted yet</span>;
-
       const canMissCount = Math.max(
         0,
         Math.floor((attended * 100) / preferredPercentage - total)
@@ -247,7 +360,6 @@ export const HomeCard = ({
         1,
         Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage))
       );
-
       if (percentage < preferredPercentage) {
         if (remainingClasses !== undefined && needToAttend > remainingClasses) {
           const maxPossiblePct = Math.round(
@@ -266,7 +378,6 @@ export const HomeCard = ({
           </span>
         );
       }
-
       if (canMissCount > 0) {
         return (
           <span>
@@ -276,16 +387,13 @@ export const HomeCard = ({
           </span>
         );
       }
-
       return (
         <span className="text-muted-foreground">
           At target limit. Do not miss next class
         </span>
       );
     }
-
     if (effectiveMode === 'past') return null;
-
     if (effectiveMode === 'future') {
       if (isFinished) {
         return (
@@ -294,36 +402,27 @@ export const HomeCard = ({
           </span>
         );
       }
-      const attPct = total === 0 ? 100 : ((attended + 1) / (total + 1)) * 100;
-      const missPct = total === 0 ? 0 : (attended / (total + 1)) * 100;
-      const offPct = total === 0 ? 100 : percentage;
-      return (
-        <div className="text-xs font-medium text-muted-foreground space-y-0.5">
-          <div>If attended → {Math.round(attPct)}%</div>
-          <div>If missed → {Math.round(missPct)}%</div>
-          <div>If off → {Math.round(offPct)}%</div>
-        </div>
-      );
+      return null;
     }
-
     return null;
   };
 
-  // ── Card background (past mode still reacts to currentSelection) ─────────────
+  // ── Card background ───────────────────────────────────────────────────────
   const finishedTargetMet = totalPlannedClasses
     ? attended >= Math.ceil(totalPlannedClasses * (preferredPercentage / 100))
     : true;
+
   const cardBg = isFinished
     ? finishedTargetMet
       ? 'bg-emerald-500/20 border-emerald-500/60 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-500/10 backdrop-blur-md bg-card/80'
       : 'bg-rose-500/20 border-rose-500/60 ring-2 ring-rose-500/40 shadow-lg shadow-rose-500/10 backdrop-blur-md bg-card/80'
     : currentSelection === 'attended'
-    ? 'bg-emerald-500/15 border-emerald-500/60 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-500/10 backdrop-blur-md bg-card/80'
-    : currentSelection === 'missed'
-    ? 'bg-rose-500/15 border-rose-500/60 ring-2 ring-rose-500/40 shadow-lg shadow-rose-500/10 backdrop-blur-md bg-card/80'
-    : currentSelection === 'off'
-    ? 'bg-amber-500/15 border-amber-500/60 ring-2 ring-amber-500/40 shadow-lg shadow-amber-500/10 backdrop-blur-md bg-card/80'
-    : 'bg-card border-card-border';
+      ? 'bg-emerald-500/15 border-emerald-500/60 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-500/10 backdrop-blur-md bg-card/80'
+      : currentSelection === 'missed'
+        ? 'bg-rose-500/15 border-rose-500/60 ring-2 ring-rose-500/40 shadow-lg shadow-rose-500/10 backdrop-blur-md bg-card/80'
+        : currentSelection === 'off'
+          ? 'bg-amber-500/15 border-amber-500/60 ring-2 ring-amber-500/40 shadow-lg shadow-amber-500/10 backdrop-blur-md bg-card/80'
+          : 'bg-card border-card-border';
 
   // ── Render buttons / bottom area ──────────────────────────────────────────
   const renderBottom = () => {
@@ -365,14 +464,17 @@ export const HomeCard = ({
               {pendingSelection === currentSelection ? (
                 <span className="animate-pulse">Confirm Undo?</span>
               ) : (
-                <div className="flex items-center justify-center gap-2">
+                <div className="flex items-center justify-center gap-2 flex-wrap">
                   <CheckCircle2 className="w-4.5 h-4.5 shrink-0" />
                   <span className="capitalize">
                     {currentSelection === 'off' ? 'Holiday' : currentSelection}
                   </span>
-                  <span className="text-[10px] opacity-75 font-normal ml-1">
-                    (Tap to Undo)
-                  </span>
+                  {(currentSelection === 'attended' || currentSelection === 'missed') && totalPlannedClasses !== undefined && (
+                    <span className="text-[10px] font-extrabold ml-1">
+                      <span className={currentSelection === 'attended' ? 'text-emerald-500' : 'text-rose-500'}>Class {total}</span>
+                      <span className="opacity-90">/{totalPlannedClasses}</span>
+                    </span>
+                  )}
                 </div>
               )}
             </button>
@@ -425,82 +527,126 @@ export const HomeCard = ({
       );
     }
 
-    // ── PAST – unified muted text style ──────────────────────────────────────
-    if (effectiveMode === 'past') {
-      let message = '';
-      if (currentSelection) {
-        const label = currentSelection === 'off' ? 'Holiday' : currentSelection;
-        message = label.charAt(0).toUpperCase() + label.slice(1);
-      } else if (isFinished) {
-        message = 'There were no Planned Class!!';
-      } else {
-        message = 'Not marked';
-      }
+    if (effectiveMode === 'past') return null;
 
+    if (effectiveMode === 'future' && !isFinished) {
       return (
-        <div className="w-full relative z-10">
-          <p className="text-sm font-medium text-muted-foreground text-center py-2">
-            {message}
-          </p>
+        <div className="w-full relative z-10 select-none" style={{ touchAction: 'none' }}>
+          <div
+            ref={sliderRef}
+            onPointerDown={onSliderDown}
+            className="relative h-11 rounded-xl border border-border bg-background/70 overflow-hidden cursor-pointer"
+          >
+            <div className="absolute inset-0 flex items-center justify-between px-3 text-[10px] font-bold uppercase tracking-wider pointer-events-none">
+              <span className="text-rose-500">Missed</span>
+              <span className="text-muted-foreground">Off</span>
+              <span className="text-emerald-500">Attended</span>
+            </div>
+            <div
+              className="absolute top-1 bottom-1 w-1/3 rounded-lg bg-primary/25 border border-primary/40 transition-all duration-150 pointer-events-none"
+              style={{ left: whatIf === -1 ? '0%' : whatIf === 0 ? '33.333%' : '66.666%' }}
+            />
+          </div>
+          <p className="text-[9px] text-muted-foreground/70 text-center mt-1">Slide to preview — nothing is saved</p>
         </div>
       );
     }
 
-    // ── FUTURE – no buttons ──
     return null;
   };
 
   return (
     <div
+      ref={cardRef}
       className={cn(
         'rounded-2xl p-5 shadow-sm border mb-4 transition-colors duration-300 relative overflow-hidden',
-        cardBg
+        effectiveMode === 'today' ? cardBg : 'bg-card'
       )}
+      style={effectiveMode !== 'today' ? { borderColor: subjectColor } : undefined}
     >
       {/* Header */}
-      <div className="flex justify-between items-start mb-2 relative z-10">
-        <div className="pr-4">
-          {isWard ? (
-            <>
-              <div className="flex items-center gap-2">
-                <h3 className="text-xl font-bold leading-tight text-foreground">
-                  {title || subject}
-                </h3>
-                {tag && (
-                  <span
-                    className={cn(
-                      'text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full',
-                      tagColor === 'primary'
-                        ? 'bg-primary/10 text-primary'
-                        : 'bg-muted text-muted-foreground'
-                    )}
-                  >
-                    {tag}
-                  </span>
-                )}
-              </div>
-              {subtitle && (
-                <p className="text-sm font-semibold text-foreground/80 mt-1">
-                  {subtitle}
-                </p>
-              )}
-              <p className="text-muted-foreground text-sm mt-1">{time}</p>
-            </>
-          ) : (
-            <>
-              <h3 className="text-xl font-bold leading-tight text-foreground">
+      {effectiveMode === 'past' ? (
+        <div className="flex items-center justify-between gap-3 mb-2 relative z-10">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <h3 className="text-xl font-bold leading-tight truncate" style={{ color: subjectColor }}>
                 {title || subject}
               </h3>
-              <p className="text-muted-foreground text-sm mt-1">{time}</p>
-            </>
-          )}
+              {tag && (
+                <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{tag}</span>
+              )}
+            </div>
+            <p className="text-sm font-semibold text-muted-foreground">({time})</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              {(() => {
+                const sel = currentSelection;
+                const tagInfo = sel === 'attended'
+                  ? { t: 'Attended', c: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' }
+                  : sel === 'missed'
+                    ? { t: 'Missed', c: 'bg-rose-500/10 text-rose-500 border-rose-500/20' }
+                    : sel === 'off'
+                      ? { t: 'Holiday', c: 'bg-amber-500/10 text-amber-500 border-amber-500/20' }
+                      : isFinished
+                        ? { t: 'No Planned Class', c: 'bg-muted/40 text-muted-foreground border-border/50' }
+                        : { t: 'Not Marked', c: 'bg-muted/20 text-muted-foreground/70 border-border/40' };
+                return (
+                  <span className={cn('inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border', tagInfo.c)}>{tagInfo.t}</span>
+                );
+              })()}
+              {currentSelection && (currentSelection === 'attended' || currentSelection === 'missed') && pastCounts && (
+                <span className="text-[11px] font-extrabold text-foreground">
+                  Class <span className={currentSelection === 'attended' ? 'text-emerald-500' : 'text-rose-500'}>{pastCounts.conducted}</span>/{totalPlannedClasses ?? pastCounts.conducted}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className={cn('text-lg font-bold min-w-max self-center', pastPct === null ? 'text-muted-foreground' : getPercentageColor(pastPct))}>
+            {pastPct === null ? '—' : `${pastPct.toFixed(0)}%`}
+          </div>
         </div>
-        <div
-          className={cn('text-lg font-bold min-w-max', getPercentageColor(percentage))}
-        >
-          {total === 0 ? '--' : `${percentage.toFixed(0)}%`}
+      ) : (
+        <div className="flex justify-between items-start mb-2 relative z-10">
+          <div className="pr-4">
+            {isWard ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-bold leading-tight text-foreground">
+                    {title || subject}
+                  </h3>
+                  {tag && (
+                    <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
+                      {tag}
+                    </span>
+                  )}
+                </div>
+                {subtitle && (
+                  <p className="text-sm font-semibold mt-1" style={{ color: subjectColor }}>
+                    {subtitle}
+                  </p>
+                )}
+                <p className="text-muted-foreground text-sm mt-1">{time}</p>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-xl font-bold leading-tight" style={{ color: subjectColor }}>
+                    {title || subject}
+                  </h3>
+                  {tag && (
+                    <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
+                      {tag}
+                    </span>
+                  )}
+                </div>
+                <p className="text-muted-foreground text-sm mt-1">{time}</p>
+              </>
+            )}
+          </div>
+          <div className={cn('text-lg font-bold min-w-max', getPercentageColor(effectiveMode === 'future' ? previewPct : percentage))}>
+            {effectiveMode === 'future' ? `${Math.round(previewPct)}%` : total === 0 ? '--' : `${percentage.toFixed(0)}%`}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ECG animation */}
       <AnimatePresence>
@@ -544,3 +690,4 @@ export const HomeCard = ({
     </div>
   );
 };
+
