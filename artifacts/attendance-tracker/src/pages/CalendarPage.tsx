@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
-import { useAttendance } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { motion } from 'framer-motion';
 import { Grid, ChevronDown, TrendingUp, AlertTriangle } from 'lucide-react';
@@ -70,15 +70,33 @@ export default function CalendarPage() {
 
   /* ═══════════ STATISTICS ═══════════ */
   const allEntities = useMemo(() => {
-    const list: Array<{ name: string; isWard: boolean; planned: number }> = [];
+    const list: Array<{ name: string; isWard: boolean; planned: number; isSGT?: boolean; sgtId?: string }> = [];
     if (subjectMode === 'preloaded') {
       CATEGORIES.forEach(c => c.subjects.forEach(s => list.push({ name: s.name, isWard: false, planned: getSubjectPlannedTotal(s.name) })));
       INTEGRATED_SUBJECTS.forEach(s => list.push({ name: s.name, isWard: false, planned: getSubjectPlannedTotal(s.name) }));
       WARD_SUBJECTS.forEach(w => list.push({ name: w.name, isWard: true, planned: getPresetWardTotalPlanned(w.name) }));
-      userAddedSubjects.forEach(u => { if (u.subjectType !== 'allied-parent') list.push({ name: u.name, isWard: false, planned: u.plannedClasses }); });
-      presetWardSchedule.forEach(e => { if (!list.some(x => x.isWard && x.name === e.ward)) list.push({ name: e.ward, isWard: true, planned: getPresetWardTotalPlanned(e.ward) }); });
+      userAddedSubjects.forEach(u => {
+        if (u.subjectType === 'allied-parent') return;
+        if (u.parentName === 'Small Group Teaching') {
+          list.push({ name: u.name, isWard: false, planned: u.plannedClasses, isSGT: true, sgtId: u.id });
+        } else {
+          list.push({ name: u.name, isWard: false, planned: u.plannedClasses });
+        }
+      });
+      presetWardSchedule.forEach(e => {
+        if (!list.some(x => x.isWard && x.name === e.ward)) {
+          list.push({ name: e.ward, isWard: true, planned: getPresetWardTotalPlanned(e.ward) });
+        }
+      });
     } else {
-      customSubjects.forEach(s => { if (s.subjectType !== 'allied-parent') list.push({ name: s.name, isWard: false, planned: s.plannedClasses }); });
+      customSubjects.forEach(s => {
+        if (s.subjectType === 'allied-parent') return;
+        if (s.parentName === 'Small Group Teaching') {
+          list.push({ name: s.name, isWard: false, planned: s.plannedClasses, isSGT: true, sgtId: s.id });
+        } else {
+          list.push({ name: s.name, isWard: false, planned: s.plannedClasses });
+        }
+      });
       customWards.forEach(w => list.push({ name: w.name, isWard: true, planned: getCustomWardTotalPlanned(w.startDate, w.endDate) }));
     }
     return list;
@@ -87,7 +105,12 @@ export default function CalendarPage() {
   const overall = useMemo(() => {
     let att = 0, mis = 0, planned = 0, off = 0;
     allEntities.forEach(e => {
-      const d = (e.isWard ? wards : subjects)[e.isWard ? `ward-${e.name}` : e.name] || { attended: 0, missed: 0 };
+      const key = e.isSGT && e.sgtId
+        ? getSGTKey(e.sgtId)
+        : e.isWard
+          ? `ward-${e.name}`
+          : e.name;
+      const d = (e.isWard ? wards : subjects)[key] || { attended: 0, missed: 0 };
       att += Number(d.attended) || 0; mis += Number(d.missed) || 0; planned += Number(e.planned) || 0;
     });
     for (const sel of Object.values(homeSelections)) if (sel === 'off') off += 1;
@@ -101,7 +124,12 @@ export default function CalendarPage() {
   const attention = useMemo(() => {
     const out: Array<{ name: string; pct: number; needed: number }> = [];
     allEntities.forEach(e => {
-      const d = (e.isWard ? wards : subjects)[e.isWard ? `ward-${e.name}` : e.name] || { attended: 0, missed: 0 };
+      const key = e.isSGT && e.sgtId
+        ? getSGTKey(e.sgtId)
+        : e.isWard
+          ? `ward-${e.name}`
+          : e.name;
+      const d = (e.isWard ? wards : subjects)[key] || { attended: 0, missed: 0 };
       const conducted = d.attended + d.missed;
       if (conducted === 0) return;
       const pct = (d.attended / conducted) * 100;
@@ -130,7 +158,7 @@ export default function CalendarPage() {
     return buckets.map(b => ({ ...b, pct: b.att + b.mis === 0 ? null : (b.att / (b.att + b.mis)) * 100 }));
   }, [homeSelections]);
 
-    const rotation = useMemo(() => {
+  const rotation = useMemo(() => {
     const cur = subjectMode === 'preloaded' ? getCurrentPresetWard(today) : getCurrentCustomWard();
     if (!cur || cur.ward === 'Holiday') return null;
     let startStr: string | undefined;
@@ -155,10 +183,10 @@ export default function CalendarPage() {
     const total = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
     const done = Math.min(total, Math.max(0, Math.round((today.getTime() - start.getTime()) / 86400000) + 1));
     return { name: cur.ward, total, done, pct: (done / total) * 100 };
-    }, [subjectMode, getCurrentPresetWard, getCurrentCustomWard, presetWardSchedule, today]);
+  }, [subjectMode, getCurrentPresetWard, getCurrentCustomWard, presetWardSchedule, today]);
 
-    const [monthSel, setMonthSel] = useState<number | null>(null);
-    const [attnOpen, setAttnOpen] = useState(false);
+  const [monthSel, setMonthSel] = useState<number | null>(null);
+  const [attnOpen, setAttnOpen] = useState(false);
 
   /* ═══════════ ROTATION WHEEL — window-level drag (no pointer capture) ═══════════ */
   const allRotations = useMemo(() => {
@@ -191,7 +219,6 @@ export default function CalendarPage() {
   const wrapIndex = (idx: number) => ((idx % totalItems) + totalItems) % totalItems;
   useEffect(() => { setActiveIndex(currentIndex); }, [currentIndex]);
 
-  /* Tap outside the wheel → return to the real current rotation */
   useEffect(() => {
     const onDoc = (e: PointerEvent) => {
       if (wheelRef.current && !wheelRef.current.contains(e.target as Node)) {
@@ -267,7 +294,7 @@ export default function CalendarPage() {
     return [...base, ...extra].sort((a, b) => a.start - b.start);
   }, [presetTimetable]);
 
-  /* ── Grid cells: a cell STARTS only where a slot starts, SPANS only columns it fully owns ── */
+  /* ── Grid cells ── */
   const timetableGrid = useMemo(() => {
     const rows = DAYS_ORDER.map(day => {
       if (day === 'Fri') return { day, cells: [{ key: 'hol', colStart: 0, span: columns.length, subjects: [] as string[], isRest: false, isHoliday: true, rowspan: 1, hidden: false }] };
@@ -292,7 +319,6 @@ export default function CalendarPage() {
       });
       return { day, cells };
     });
-    // Vertical merge: identical stacked cells (same subject(s)+time, or Rest) on consecutive days
     const sig = (c: { isHoliday?: boolean; subjects: string[]; colStart: number; span: number; isRest: boolean }) =>
       (c.isHoliday || c.subjects.length === 0) ? null : `${c.colStart}|${c.span}|${c.isRest ? 'REST' : c.subjects.join('/')}`;
     for (let r = 1; r < rows.length; r++) {
@@ -419,7 +445,6 @@ export default function CalendarPage() {
         {/* ═══════════ STATISTICS ═══════════ */}
         <section className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
                     <div className="p-3.5 space-y-4">
-            {/* ── Overall: the combined big numbers ── */}
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Overall — every subject & ward combined</p>
               <div className="flex items-center gap-3">
@@ -440,7 +465,6 @@ export default function CalendarPage() {
               </div>
             </div>
 
-            {/* ── Current posting: info only, clearly separate ── */}
             {rotation && (
               <div className="border-t border-border/40 pt-3">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-1.5">Current posting · info only</p>
@@ -455,8 +479,7 @@ export default function CalendarPage() {
               </div>
             )}
 
-             {/* C · 6-month mini bar chart (combined, per month) */}
-                  <div className="border-t border-border/40 pt-3">
+             <div className="border-t border-border/40 pt-3">
                     <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Last 6 Months</p>
                     <div className="flex items-end justify-between gap-1.5 h-14">
                       {months.map((m, i) => (
@@ -472,7 +495,6 @@ export default function CalendarPage() {
                       </p>
                     )}
                   </div>
-                  {/* B · Needs attention */}
                   <div>
                     <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Needs Attention</p>
                     {attention.length === 0 ? (
@@ -502,3 +524,4 @@ export default function CalendarPage() {
     </Layout>
   );
 }
+

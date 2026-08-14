@@ -34,6 +34,8 @@ interface HomeCardSpec {
   tagColor?: string;
   sessionId: string;
   pastSelection?: string;
+  isSGT?: boolean;
+  sgtId?: string;
 }
 interface DayEntry {
   id: string;
@@ -205,12 +207,20 @@ export default function Home() {
           id: `${s.id}-${sch.day}-${sch.time}`,
           name: s.name,
           time: sch.time,
+          isSGT: s.subjectType === 'allied' && s.parentName === 'Small Group Teaching',
+          sgtId: s.id,
         }));
       }
       if (s.days) {
         const assigned = s.days.split(',').map(d => d.trim());
         if (assigned.includes(selectedTodayAbbr)) {
-          return [{ id: s.id, name: s.name, time: s.time || 'Time not set' }];
+          return [{
+            id: s.id,
+            name: s.name,
+            time: s.time || 'Time not set',
+            isSGT: s.subjectType === 'allied' && s.parentName === 'Small Group Teaching',
+            sgtId: s.id,
+          }];
         }
       }
       return [];
@@ -283,35 +293,37 @@ export default function Home() {
           });
         });
       });
-      // SGT
-      if (subjectMode === 'preloaded') {
-        userAddedSubjects.forEach(u => {
-          if (u.subjectType !== 'allied' || !u.parentName || !PRESET_PARENTS.includes(u.parentName)) return;
-          const anyU = u as any;
-          if (anyU.startDate && anyU.endDate) {
-            if (selectedDateStr < anyU.startDate || selectedDateStr > anyU.endDate) return;
-          }
-          const sch = (u.schedules || []).find((s: any) => s.day === selectedTodayAbbr);
-          if (!sch) return;
-          const time = `${sch.start}–${sch.end}`;
-          entries.push({
-            id: `sgt-${u.id}`,
+
+      // SGT subjects
+      userAddedSubjects.forEach(u => {
+        if (u.subjectType !== 'allied' || !u.parentName || !PRESET_PARENTS.includes(u.parentName)) return;
+        const anyU = u as any;
+        if (anyU.startDate && anyU.endDate) {
+          if (selectedDateStr < anyU.startDate || selectedDateStr > anyU.endDate) return;
+        }
+        const sch = (u.schedules || []).find((s: any) => s.day === selectedTodayAbbr);
+        if (!sch) return;
+        const time = `${sch.start}–${sch.end}`;
+        entries.push({
+          id: `sgt-${u.id}`,
+          time,
+          kind: 'card',
+          card: {
+            subject: u.name,
             time,
-            kind: 'card',
-            card: {
-              subject: u.name,
-              time,
-              tag: 'Small Group',
-              tagColor: 'primary',
-              sessionId: `sgt-${u.id}`,
-              pastSelection: isPast
-                ? homeSelections[`${selectedDateStr}-${u.name}-sgt-${u.id}`]
-                : undefined,
-            },
-          });
+            tag: 'Small Group',
+            tagColor: 'primary',
+            isSGT: true,
+            sgtId: u.id,
+            sessionId: undefined,
+            pastSelection: isPast
+              ? homeSelections[`${selectedDateStr}-sgt:${u.id}`]
+              : undefined,
+          },
         });
-      }
+      });
     } else {
+      // CUSTOM MODE
       if (currentWard && !isWardHoliday) {
         entries.push({
           id: 'custom-ward-am',
@@ -358,9 +370,13 @@ export default function Home() {
           card: {
             subject: s.name,
             time: s.time || 'Time not set',
-            sessionId: `custom-${s.id}`,
+            isSGT: s.isSGT,
+            sgtId: s.sgtId,
+            sessionId: s.isSGT ? undefined : `custom-${s.id}`,
             pastSelection: isPast
-              ? homeSelections[`${selectedDateStr}-${s.name}-custom-${s.id}`]
+              ? s.isSGT
+                ? homeSelections[`${selectedDateStr}-sgt:${s.sgtId}`]
+                : homeSelections[`${selectedDateStr}-${s.name}-custom-${s.id}`]
               : undefined,
           },
         });
@@ -584,6 +600,8 @@ export default function Home() {
                   dateStr={selectedDateStr}
                   mode={cardMode}
                   pastSelection={c.pastSelection}
+                  isSGT={c.isSGT}
+                  sgtId={c.sgtId}
                 />
               );
             })}
@@ -637,3 +655,4 @@ export default function Home() {
     </Layout>
   );
 }
+

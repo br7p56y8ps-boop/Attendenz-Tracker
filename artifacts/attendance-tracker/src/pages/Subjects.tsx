@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { SubjectCard } from '@/components/SubjectCard';
 import { Layout } from '@/components/Layout';
-import { useAttendance } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
 import { useCustomData, getEffectiveParentName } from '@/contexts/CustomDataContext';
 import type { CustomSubject, UserAddedSubject } from '@/contexts/CustomDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -108,12 +108,9 @@ const CategoryCard = ({
   renderChildren,
 }: CategoryCardProps) => {
   const overallColor = pctColor(summary.pct, preferredPercentage);
-  // Card background: colored when collapsed, transparent when expanded
-  const cardBgColor = isOpen
-    ? 'bg-card/90 backdrop-blur-xl border-border/80'
-    : `bg-card/90 backdrop-blur-xl border-border/80`;
+  const cardBgColor = 'bg-card/90 backdrop-blur-xl border-border/80';
   const cardStyle = isOpen
-    ? {} // No color tint when expanded
+    ? {}
     : {
         backgroundColor: `${overallColor}14`,
         borderColor: `${overallColor}40`,
@@ -219,8 +216,12 @@ export default function Subjects() {
     return getSubjectPlannedTotal(name) || 40;
   };
 
+  // Helper to detect SGT subject
+  const isSGTSubject = (s: { subjectType: string; parentName?: string }) =>
+    s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
+
   const calcSummary = (
-    subjectList: { name: string; total?: number }[],
+    subjectList: Array<{ name: string; total?: number; isSGT?: boolean; sgtId?: string }>,
     isWardGroup = false
   ): CategorySummary => {
     let att = 0, mis = 0, planned = 0;
@@ -228,7 +229,12 @@ export default function Subjects() {
     const targetPct = preferredPercentage || 75;
 
     subjectList.forEach(sub => {
-      const key = isWardGroup ? `ward-${sub.name}` : sub.name;
+      const key = isWardGroup
+        ? `ward-${sub.name}`
+        : sub.isSGT && sub.sgtId
+          ? getSGTKey(sub.sgtId)
+          : sub.name;
+
       const d = (isWardGroup ? wards : subjects)[key] || { attended: 0, missed: 0 };
       let p = 0;
       if (isWardGroup) {
@@ -239,8 +245,17 @@ export default function Subjects() {
           p = cWard ? getCustomWardTotalPlanned(cWard.startDate, cWard.endDate) : (sub.total || 40);
         }
       } else {
-        // Covers customSubjects, userAddedSubjects and all built-in constants
-        p = plannedFor(sub.name);
+        p = sub.isSGT && sub.sgtId
+          ? (plannedFor(sub.name))  // plannedFor uses name, but SGT may duplicate name; better use id lookup
+          : plannedFor(sub.name);
+        // For SGT, we should find the actual subject by id to get plannedClasses
+        if (sub.isSGT && sub.sgtId) {
+          const sgt =
+            subjectMode === 'preloaded'
+              ? userAddedSubjects.find(s => s.id === sub.sgtId)
+              : customSubjects.find(s => s.id === sub.sgtId);
+          p = sgt ? sgt.plannedClasses : p;
+        }
       }
       const conducted = d.attended + d.missed;
       const remaining = Math.max(0, p - conducted);
@@ -276,9 +291,6 @@ export default function Subjects() {
 
   /* ──────────────────────────────────────────────────────────────────────────
      PRELOADED MODE — merge userAddedSubjects into the built-in cards.
-     A child's parent may be a category name, any subject inside a category,
-     or "Integrated Teaching". 'allied-parent' containers NEVER render as
-     single subject cards.
   ────────────────────────────────────────────────────────────────────────── */
   const uaAllied = userAddedSubjects.filter(s => s.subjectType === 'allied');
   const uaParents = userAddedSubjects.filter(s => s.subjectType === 'allied-parent');
@@ -310,10 +322,8 @@ export default function Subjects() {
     s => norm(getEffectiveParentName(s)) === INTEGRATED_PARENT
   );
 
-  /** Created parents that don't collapse into a built-in card. */
   const standaloneUaParents = uaParents.filter(p => !isBuiltInParentName(p.name));
 
-  /** Allied children whose parent matches nothing else → grouped fallback cards. */
   const uaOrphanMap: Record<string, { title: string; children: UserAddedSubject[] }> = {};
   for (const c of uaAllied) {
     const p = getEffectiveParentName(c) || 'Uncategorised';
@@ -323,7 +333,6 @@ export default function Subjects() {
     uaOrphanMap[norm(p)].children.push(c);
   }
 
-  /** Rotations added by the user that aren't part of the built-in ward list. */
   const extraWardNames = (() => {
     const seen = new Set<string>(WARD_SUBJECTS.map(w => norm(w.name)));
     const out: string[] = [];
@@ -336,11 +345,7 @@ export default function Subjects() {
     return out;
   })();
 
-  /* ──────────────────────────────────────────────────────────────────────────
-     CUSTOM MODE — parent containers, hosting singles, orphaned groups.
-     'allied-parent' rows are ONLY ever rendered as parent cards;
-     parents resolved via parentName || category (legacy-safe).
-  ────────────────────────────────────────────────────────────────────────── */
+  /* ── CUSTOM MODE ── */
   const alliedChildren = customSubjects.filter(s => s.subjectType === 'allied');
   const parentContainers = customSubjects.filter(s => s.subjectType === 'allied-parent');
   const singleSubjects = customSubjects.filter(s => s.subjectType === 'single');
@@ -364,7 +369,7 @@ export default function Subjects() {
   for (const s of hostingSingles) {
     customParentCards.push({ key: `hs_${s.id}`, title: s.name, host: s, children: childrenOf(s.name) });
   }
-  // Orphaned groups: allied children whose parent is neither a container nor a single
+
   const accountedParents = new Set<string>([
     ...parentContainers.map(p => norm(p.name)),
     ...singleSubjects.map(s => norm(s.name)),
@@ -380,10 +385,10 @@ export default function Subjects() {
     customParentCards.push({ key: `og_${k}`, title: g.title, children: g.children });
   }
 
-      return (
-       <Layout>
-        <div className="space-y-4 pb-8">
-         <div>
+  return (
+    <Layout>
+      <div className="space-y-4 pb-8">
+        <div>
           <h1 className="text-lg font-extrabold text-foreground leading-tight">Attendance Progress & Targets</h1>
         </div>
 
@@ -404,9 +409,7 @@ export default function Subjects() {
           </div>
         )}
 
-        {/* ── Built-in Academic Categories (preloaded mode only).
-               User-added allied children merge into their parent card here
-               and never create duplicate parent cards. ── */}
+        {/* ── Built-in Academic Categories (preloaded mode only) ── */}
         {subjectMode === 'preloaded' && CATEGORIES.map((cat) => {
           const merged = uaChildrenForCategory(cat);
           const subjectList = [
@@ -429,7 +432,14 @@ export default function Subjects() {
                     <SubjectCard key={sub.name} subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
                   ))}
                   {merged.map((s) => (
-                    <SubjectCard key={`ua_${s.id}`} subject={s.name} totalPlanned={plannedFor(s.name)} isNested />
+                    <SubjectCard
+                      key={s.id}
+                      subject={s.name}
+                      totalPlanned={plannedFor(s.name)}
+                      isNested
+                      isSGT={isSGTSubject(s)}
+                      sgtId={s.id}
+                    />
                   ))}
                 </>
               )}
@@ -440,7 +450,12 @@ export default function Subjects() {
         {/* ── Preloaded: created parent cards + orphaned allied groups ── */}
         {subjectMode === 'preloaded' && standaloneUaParents.map(p => {
           const kids = uaAllied.filter(c => norm(getEffectiveParentName(c)) === norm(p.name));
-          const summary = calcSummary(kids.map(k => ({ name: k.name, total: k.plannedClasses })));
+          const summary = calcSummary(kids.map(k => ({
+            name: k.name,
+            total: k.plannedClasses,
+            isSGT: isSGTSubject(k),
+            sgtId: k.id,
+          })));
           const sectionKey = `uap_${p.id}`;
           return (
             <CategoryCard
@@ -457,15 +472,28 @@ export default function Subjects() {
                     <p className="text-xs text-muted-foreground px-3 py-2">No children added yet.</p>
                   )}
                   {kids.map(k => (
-                    <SubjectCard key={k.id} subject={k.name} totalPlanned={plannedFor(k.name)} isNested />
+                    <SubjectCard
+                      key={k.id}
+                      subject={k.name}
+                      totalPlanned={plannedFor(k.name)}
+                      isNested
+                      isSGT={isSGTSubject(k)}
+                      sgtId={k.id}
+                    />
                   ))}
                 </>
               )}
             />
           );
         })}
+
         {subjectMode === 'preloaded' && Object.entries(uaOrphanMap).map(([groupKey, group]) => {
-          const summary = calcSummary(group.children.map(k => ({ name: k.name, total: k.plannedClasses })));
+          const summary = calcSummary(group.children.map(k => ({
+            name: k.name,
+            total: k.plannedClasses,
+            isSGT: isSGTSubject(k),
+            sgtId: k.id,
+          })));
           const sectionKey = `uag_${groupKey}`;
           return (
             <CategoryCard
@@ -479,7 +507,14 @@ export default function Subjects() {
               renderChildren={() => (
                 <>
                   {group.children.map(k => (
-                    <SubjectCard key={k.id} subject={k.name} totalPlanned={plannedFor(k.name)} isNested />
+                    <SubjectCard
+                      key={k.id}
+                      subject={k.name}
+                      totalPlanned={plannedFor(k.name)}
+                      isNested
+                      isSGT={isSGTSubject(k)}
+                      sgtId={k.id}
+                    />
                   ))}
                 </>
               )}
@@ -491,7 +526,12 @@ export default function Subjects() {
         {subjectMode === 'custom' && customParentCards.map(card => {
           const subjectList = [
             ...(card.host ? [{ name: card.host.name, total: card.host.plannedClasses }] : []),
-            ...card.children.map(c => ({ name: c.name, total: c.plannedClasses })),
+            ...card.children.map(c => ({
+              name: c.name,
+              total: c.plannedClasses,
+              isSGT: isSGTSubject(c),
+              sgtId: c.id,
+            })),
           ];
           const summary = calcSummary(subjectList);
           return (
@@ -517,7 +557,14 @@ export default function Subjects() {
                     />
                   )}
                   {card.children.map(c => (
-                    <SubjectCard key={c.id} subject={c.name} totalPlanned={c.plannedClasses} isNested />
+                    <SubjectCard
+                      key={c.id}
+                      subject={c.name}
+                      totalPlanned={c.plannedClasses}
+                      isNested
+                      isSGT={isSGTSubject(c)}
+                      sgtId={c.id}
+                    />
                   ))}
                 </>
               )}
@@ -525,7 +572,7 @@ export default function Subjects() {
           );
         })}
 
-        {/* ── A2 · Custom SINGLE subjects as ring-style CategoryCards ── */}
+        {/* ── Custom SINGLE subjects as ring-style CategoryCards ── */}
         {subjectMode === 'custom' && standaloneSingles.map(s => {
           const summary = calcSummary([{ name: s.name, total: s.plannedClasses }]);
           const sectionKey = `single_${s.id}`;
@@ -545,7 +592,7 @@ export default function Subjects() {
           );
         })}
 
-    {/* ── Preloaded single subjects (user-added) — ring-style cards ── */}
+        {/* ── Preloaded single subjects (user-added) — ring-style cards ── */}
         {subjectMode === 'preloaded' && uaSingles.map(s => {
           const summary = calcSummary([{ name: s.name, total: s.plannedClasses }]);
           const sectionKey = `uas_${s.id}`;
@@ -627,7 +674,7 @@ export default function Subjects() {
           const merged = uaChildrenForIntegrated;
           const subjectList = [
             ...INTEGRATED_SUBJECTS.map(sub => ({ name: sub.name, total: sub.total })),
-            ...merged.map(s => ({ name: s.name, total: s.plannedClasses })),
+            ...merged.map(s => ({ name: s.name, total: s.plannedClasses, isSGT: isSGTSubject(s), sgtId: s.id })),
           ];
           const integratedSummary = calcSummary(subjectList);
           return (
@@ -644,7 +691,14 @@ export default function Subjects() {
                     <SubjectCard key={sub.name} subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
                   ))}
                   {merged.map(s => (
-                    <SubjectCard key={`uai_${s.id}`} subject={s.name} totalPlanned={plannedFor(s.name)} isNested />
+                    <SubjectCard
+                      key={s.id}
+                      subject={s.name}
+                      totalPlanned={plannedFor(s.name)}
+                      isNested
+                      isSGT={isSGTSubject(s)}
+                      sgtId={s.id}
+                    />
                   ))}
                 </>
               )}
@@ -655,3 +709,4 @@ export default function Subjects() {
     </Layout>
   );
 }
+

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useAttendance } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, pctColor, getSubjectColor } from '@/lib/utils';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
@@ -15,6 +15,9 @@ interface SubjectCardProps {
   isNested?: boolean;
   /** A6 · True when this ward/rotation is the currently active posting → "Ongoing" badge */
   isActiveWard?: boolean;
+  /** SGT-specific props */
+  isSGT?: boolean;
+  sgtId?: string;
 }
 
 export const SubjectCard = ({
@@ -23,6 +26,8 @@ export const SubjectCard = ({
   isWard = false,
   isNested = false,
   isActiveWard = false,
+  isSGT = false,
+  sgtId,
 }: SubjectCardProps) => {
   const { subjects, wards, finishedMap, updateSubject, updateWard, toggleFinished, preferredPercentage } = useAttendance();
   const {
@@ -35,11 +40,17 @@ export const SubjectCard = ({
     getCustomWardTotalPlanned,
   } = useCustomData();
 
+  // Build canonical attendance key
+  const attendanceKey = isSGT && sgtId
+    ? getSGTKey(sgtId)
+    : isWard
+      ? `ward-${subject}`
+      : subject;
+
   const dataStore = isWard ? wards : subjects;
   const updateFn = isWard ? updateWard : updateSubject;
-  const key = isWard ? `ward-${subject}` : subject;
-  const data = dataStore[key] || { attended: 0, missed: 0 };
-  const isMarkedFinished = finishedMap?.[key] || false;
+  const data = dataStore[attendanceKey] || { attended: 0, missed: 0 };
+  const isMarkedFinished = finishedMap?.[attendanceKey] || false;
 
   // Keep ref of latest data for continuous stepping
   const currentDataRef = useRef({ attended: data.attended, missed: data.missed });
@@ -57,7 +68,7 @@ export const SubjectCard = ({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setIsModalOpen(false);
     };
-        window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey);
     lockScroll();
     return () => {
       window.removeEventListener('keydown', onKey);
@@ -72,7 +83,6 @@ export const SubjectCard = ({
   };
 
   const openModal = (e: React.MouseEvent) => {
-    // Prevent toggling if user clicks inside inputs or buttons
     if (
       (e.target as HTMLElement).closest('input') ||
       (e.target as HTMLElement).closest('button') ||
@@ -100,7 +110,7 @@ export const SubjectCard = ({
     }
     if (showLimitMessage) setShowLimitMessage(false);
     currentDataRef.current = { attended: newAttended, missed: newMissed };
-    updateFn(key, newAttended, newMissed);
+    updateFn(attendanceKey, newAttended, newMissed);
     return true;
   };
 
@@ -135,7 +145,13 @@ export const SubjectCard = ({
         : getPresetWardTotalPlanned(subject);
     }
   } else {
-    if (subjectMode === 'preloaded') {
+    if (isSGT && sgtId) {
+      const sgtSub =
+        subjectMode === 'preloaded'
+          ? userAddedSubjects?.find(s => s.id === sgtId)
+          : customSubjects?.find(s => s.id === sgtId);
+      originalPlannedClasses = sgtSub ? sgtSub.plannedClasses : getSubjectPlannedTotal(subject);
+    } else if (subjectMode === 'preloaded') {
       const uaSub = userAddedSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase());
       originalPlannedClasses = uaSub ? uaSub.plannedClasses : getSubjectPlannedTotal(subject);
     } else {
@@ -146,8 +162,8 @@ export const SubjectCard = ({
 
   // Card background and border color-matched to Current Percentage color
   const cardStyle = {
-    backgroundColor: `${percentageColor}14`, // subtle tint
-    borderColor: `${percentageColor}38`,     // border accent
+    backgroundColor: `${percentageColor}14`,
+    borderColor: `${percentageColor}38`,
   };
 
   // B6 · deterministic shared subject color for titles
@@ -161,10 +177,8 @@ export const SubjectCard = ({
 
   const headerContent = (
     <div className="flex justify-between items-center gap-3">
-      {/* Left side: Title + Planned · Attended · Missed · Remaining */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* B6 · colored subject title */}
           <h4 className="font-semibold text-sm sm:text-base leading-tight truncate" style={{ color: subjectColor }}>
             {subject}
           </h4>
@@ -180,7 +194,6 @@ export const SubjectCard = ({
           <span>Remaining: <strong className="text-foreground font-semibold">{remaining}</strong></span>
         </div>
       </div>
-      {/* Right side: Percentage number */}
       <div className="flex items-center gap-2 shrink-0">
         <div className="text-base sm:text-lg font-extrabold tracking-tight" style={{ color: percentageColor }}>
           {totalConducted === 0 ? '--' : `${percentage.toFixed(0)}%`}
@@ -334,7 +347,7 @@ export const SubjectCard = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              toggleFinished(key);
+              toggleFinished(attendanceKey);
             }}
             className={cn(
               "w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95",
@@ -366,9 +379,7 @@ export const SubjectCard = ({
         {headerContent}
       </div>
 
-      {/* Modal / Popup Overlay for Subject Details - Portaled to Body.
-          Stable identity: this modal belongs to this card's `subject` (not a
-          sorted list index), so edits elsewhere can never make it jump. */}
+      {/* Modal / Popup Overlay for Subject Details - Portaled to Body. */}
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {isModalOpen && (

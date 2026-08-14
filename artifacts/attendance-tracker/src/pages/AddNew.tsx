@@ -8,7 +8,7 @@ import {
   parseDayList,
   getEffectiveParentName,
 } from '@/contexts/CustomDataContext';
-import { useAttendance } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
 import {
   cn,
   canonicalTimeRange,
@@ -138,6 +138,7 @@ interface StagedChild { name: string; rows: ScheduleRow[]; plannedClasses: numbe
 interface EditSubjectState {
   store: 'userAdded' | 'custom'; id: string; originalName: string; name: string;
   subjectType: 'single' | 'allied' | 'allied-parent'; parentName: string;
+  clinicalSubject?: string;
   rows: ScheduleRow[]; plannedClasses: number; startDate?: string; endDate?: string;
 }
 interface EditWardState {
@@ -152,7 +153,11 @@ interface EditSlotState {
 }
 interface ImportBundle {
   version?: number; subjectMode?: 'preloaded' | 'custom';
-  addedSubjects?: Array<{ name: string; type?: string; parentCategory?: string | null; planned?: number; schedules?: Array<{ day: string; start: string; end: string }> }>;
+  addedSubjects?: Array<{
+    name: string; type?: string; parentCategory?: string | null; planned?: number;
+    schedules?: Array<{ day: string; start: string; end: string }>;
+    clinicalSubject?: string; startDate?: string; endDate?: string;
+  }>;
   customWards?: Array<{ name: string; startDate: string; endDate: string; morningTime?: string; eveningTime?: string }>;
   presetTimetable?: any; presetWardSchedule?: any; presetSubjectTotals?: Record<string, number>;
 }
@@ -312,7 +317,7 @@ export default function AddNew() {
     getPresetSubjectDisplayName,
     setPresetSubjectRename,
   } = useCustomData();
-  const { removeSubjectData, removeWardData, renameSubjectData, renameWardData } = useAttendance();
+  const { removeSubjectData, removeWardData, renameSubjectData, renameWardData, removeAttendanceByKey } = useAttendance();
 
   // Local ref for latest timetable
   const timetableRef = useRef(presetTimetable);
@@ -354,7 +359,7 @@ export default function AddNew() {
   const [eveStart, setEveStart] = useState('07:00 PM');
   const [eveEnd, setEveEnd] = useState('09:00 PM');
 
-  // SGT form fields (sgtPlanned removed)
+  // SGT form fields
   const [sgtClinicalSubject, setSgtClinicalSubject] = useState('');
   const [sgtName, setSgtName] = useState('');
   const [sgtStartDate, setSgtStartDate] = useState('');
@@ -404,13 +409,11 @@ export default function AddNew() {
   const parentIsNew = resolvedParent ? !(PRESET_PARENTS.includes(resolvedParent) || isExistingParent(resolvedParent)) : false;
   const parentIsSGT = resolvedParent ? PRESET_PARENTS.includes(resolvedParent) : false;
 
-  // Academic parent options (exclude Small Group Teaching)
   const academicParentOptions = useMemo(() => {
     const all = getParentOptions();
     return all.filter(p => p !== 'Small Group Teaching');
   }, [getParentOptions]);
 
-  // Grouped parents for Academic
   const groupedParents = useMemo(() => {
     const store = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
     const derived = store.filter(s => s.subjectType === 'allied').map(s => getEffectiveParentName(s)).filter((p): p is string => !!p);
@@ -424,16 +427,15 @@ export default function AddNew() {
     return { parents: allParents, singles };
   }, [subjectMode, userAddedSubjects, customSubjects]);
 
-  // ── Clinical subjects list ──
   const allClinicalSubjects = useMemo(() => {
     const presetNames = WARD_SUBJECTS.map(w => w.name);
     const customNames = customWards.map(w => w.name);
-    const sgtParents = userAddedSubjects
-      .filter(s => s.parentName === 'Small Group Teaching')
-      .map(s => (s as any).clinicalSubject)
-      .filter((name): name is string => !!name && !presetNames.includes(name) && !customNames.includes(name));
+    const sgtParents = [
+      ...userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (s as any).clinicalSubject),
+      ...customSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (s as any).clinicalSubject),
+    ].filter((name): name is string => !!name && !presetNames.includes(name) && !customNames.includes(name));
     return Array.from(new Set([...presetNames, ...customNames, ...sgtParents])).sort();
-  }, [customWards, userAddedSubjects]);
+  }, [customWards, userAddedSubjects, customSubjects]);
 
   const clinicalSubjectOptions = useMemo(() => {
     const opts = allClinicalSubjects.map(name => ({ value: name, label: name }));
@@ -443,9 +445,20 @@ export default function AddNew() {
 
   // ── Helpers ──
   const getSGTForSubject = (clinicalName: string) => {
-    return userAddedSubjects.find(
-      s => s.parentName === 'Small Group Teaching' && (s as any).clinicalSubject === clinicalName
-    ) || null;
+    if (subjectMode === 'preloaded') {
+      return userAddedSubjects.find(
+        s => s.parentName === 'Small Group Teaching' && (s as any).clinicalSubject === clinicalName
+      ) || null;
+    } else {
+      return customSubjects.find(
+        s => s.parentName === 'Small Group Teaching' && (s as any).clinicalSubject === clinicalName
+      ) || null;
+    }
+  };
+
+  const getSGTStore = (sgt: any): 'userAdded' | 'custom' => {
+    if (subjectMode === 'preloaded') return 'userAdded';
+    return 'custom';
   };
 
   const getRotationForSubject = (clinicalName: string) => {
@@ -456,7 +469,6 @@ export default function AddNew() {
     return null;
   };
 
-  // ── Helper: check if a subject is an SGT entry ──
   const isSGTSubject = (subjectName: string): boolean => {
     const name = subjectName.trim().toLowerCase();
     const allSGTs = [...userAddedSubjects, ...customSubjects].filter(
@@ -465,9 +477,7 @@ export default function AddNew() {
     return allSGTs.some(s => s.name.toLowerCase() === name);
   };
 
-  // ── Helper: rename a preset academic subject in timetable and totals ──
   const renamePresetAcademicSubject = (oldName: string, newName: string) => {
-    // 1. Rename in timetable
     const tt = timetableRef.current;
     for (let day = 0; day < 7; day++) {
       const slots = tt[day] || [];
@@ -479,7 +489,6 @@ export default function AddNew() {
         }
       }
     }
-    // 2. Move preset subject total
     const totals = { ...presetSubjectTotals };
     if (totals[oldName] !== undefined) {
       totals[newName] = totals[oldName];
@@ -491,7 +500,6 @@ export default function AddNew() {
     }
   };
 
-  // ── SGT planned classes auto-calculation ──
   const computeSGTPlanned = () => {
     if (!sgtStartDate || !sgtEndDate || sgtRows.length === 0) return 0;
     const start = new Date(sgtStartDate + 'T12:00:00');
@@ -508,7 +516,6 @@ export default function AddNew() {
   };
   const computedPlanned = useMemo(() => computeSGTPlanned(), [sgtStartDate, sgtEndDate, sgtRows]);
 
-  // ── Migration for existing SGTs ──
   useEffect(() => {
     const migrateSGTs = () => {
       let changed = false;
@@ -591,6 +598,7 @@ export default function AddNew() {
       setSubjectName(''); setPlanned(''); setSubjectRows([newRow([])]); setStagedChildren([]); setNewParentName(''); setChildStart(''); setChildEnd('');
       setFormError(null);
       showToast(items.length > 1 ? `${items.length} items added.` : 'Added successfully.');
+      setConflictSheet(null);
       window.setTimeout(() => { setConflictSheet(null); setMoreOpen(false); }, 900);
     } catch {
       showToast('Failed to save — please try again.', 'err');
@@ -667,7 +675,10 @@ export default function AddNew() {
         for (const d of duplicates) messages.push(`Duplicate name: "${d}" already exists.`);
         for (const t of timeOverlaps) messages.push(`Time overlap on ${t.day} at ${t.time} with ${t.subjects.join(', ')}.`);
         setFormError(null);
-        setConflictSheet({ messages, onConfirm: () => commitSubjects(items) });
+        setConflictSheet({ messages, onConfirm: () => {
+          setConflictSheet(null);
+          commitSubjects(items);
+        }});
         return;
       }
       commitSubjects(items);
@@ -699,7 +710,6 @@ export default function AddNew() {
 
   const saveClinicalItem = () => {
     if (clinicalParentChoice === 'rotation') {
-      // Existing ward save
       if (!wardName.trim()) { setFormError('Enter a ward name.'); return; }
       if (!wardStart || !wardEnd) { setFormError('Pick start and end dates.'); return; }
       if (wardEnd < wardStart) { setFormError('End date must be after start date.'); return; }
@@ -718,7 +728,7 @@ export default function AddNew() {
       }
       commitWard(name, wardStart, wardEnd, morningTime, eveningTime);
     } else {
-      // SGT save - allow same name as clinical subject, auto-calc planned
+      // SGT save
       if (!sgtClinicalSubject) { setFormError('Select a clinical subject or create a new one.'); return; }
       let clinicalSubjectName = sgtClinicalSubject;
       if (clinicalSubjectName === CREATE_NEW) {
@@ -738,8 +748,7 @@ export default function AddNew() {
       if (rp) { setFormError(rp); return; }
       const rows = buildRowsFromForm(sgtRows);
 
-      // Duplicate check only against existing SGT subjects
-      const existingSGTNames = userAddedSubjects
+      const existingSGTNames = (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects)
         .filter(s => s.parentName === 'Small Group Teaching')
         .map(s => s.name.toLowerCase());
       if (existingSGTNames.includes(finalSgtName.toLowerCase())) {
@@ -747,7 +756,6 @@ export default function AddNew() {
         return;
       }
 
-      // Use computed planned
       const pc = computedPlanned;
       if (pc === 0) {
         setFormError('No scheduled sessions found in the date range. Please check your schedules and dates.');
@@ -838,7 +846,6 @@ export default function AddNew() {
     setSlotMovePlanned(prev => ({ ...prev, [id]: value }));
   };
 
-  // ── Safe schedule update ──
   const updateSubjectSchedule = (name: string, oldDay: number, newDay: number, oldStart: string, oldEnd: string, newStart: string, newEnd: string) => {
     const ua = userAddedSubjects.find(u => u.name.toLowerCase() === name.toLowerCase());
     if (!ua) return;
@@ -855,9 +862,9 @@ export default function AddNew() {
     updateUserAddedSubject(ua.id, { schedules: updated, days: updated.map(s => s.day).join(', ') } as any);
   };
 
-  const doMoveSubjects = () => {
+  const doMoveSubjects = (targetIdsOverride?: string[]) => {
     if (!editSlot) return;
-    const targetIds = selectedSubjects.length > 0 ? selectedSubjects : [];
+    const targetIds = targetIdsOverride || selectedSubjects;
     if (targetIds.length === 0) {
       setEditError('Select at least one subject to move.');
       return;
@@ -929,8 +936,12 @@ export default function AddNew() {
       updateSubjectSchedule(name, currentDay, targetDay, oldStart, oldEnd, slotMoveStart, slotMoveEnd);
     });
     const remaining = editSlot.subjects.filter(s => !targetIds.includes(s.id));
-    const newSubjects = remaining.map(s => ({ ...s, id: genId('sel') }));
-    setEditSlot(prev => prev ? { ...prev, subjects: newSubjects, targetDay } : null);
+    if (remaining.length === 0) {
+      setEditSlot(null);
+    } else {
+      const newSubjects = remaining.map(s => ({ ...s, id: genId('sel') }));
+      setEditSlot(prev => prev ? { ...prev, subjects: newSubjects, targetDay } : null);
+    }
     setSelectedSubjects([]);
     setSlotMovePlanned({});
     setShowMoveForm(false);
@@ -938,7 +949,6 @@ export default function AddNew() {
     showToast(`Moved ${names.length} subject(s).`);
   };
 
-  // ── Slot Remove ──
   const confirmSlotRemove = () => {
     if (!slotRemove) return;
     try {
@@ -994,7 +1004,14 @@ export default function AddNew() {
           }
           if (store === 'userAdded') removeUserAddedSubject(id);
           else removeCustomSubject(id);
-          for (const n of namesToPurge) removeSubjectData(n);
+
+          if (item.subjectType === 'allied' && item.parentName === 'Small Group Teaching') {
+            removeAttendanceByKey(getSGTKey(item.id));
+          } else {
+            for (const n of namesToPurge) {
+              removeSubjectData(n);
+            }
+          }
           setDeleteSheet(null);
           showToast(`Deleted "${item.name}".`);
         } catch { showToast('Delete failed — please try again.', 'err'); }
@@ -1052,6 +1069,7 @@ export default function AddNew() {
     setEditSubject({
       store, id, originalName: item.name, name: item.name,
       subjectType: item.subjectType, parentName: getEffectiveParentName(item) || '',
+      clinicalSubject: (item as any).clinicalSubject || '',
       rows: rows.length ? rows : [newRow([])],
       plannedClasses: item.plannedClasses ?? 0,
       startDate: (item as any).startDate || '',
@@ -1095,12 +1113,27 @@ export default function AddNew() {
         };
         if (editSubject.store === 'userAdded') patch.schedules = rows.map(r => ({ day: r.day, start: r.start, end: r.end }));
         else patch.schedules = rows.map(r => ({ day: r.day, time: r.time }));
-        if (editSubject.subjectType === 'allied') { patch.parentName = editSubject.parentName; patch.category = editSubject.parentName; }
-        if (editSubject.subjectType === 'allied' && PRESET_PARENTS.includes(editSubject.parentName)) { patch.startDate = editSubject.startDate; patch.endDate = editSubject.endDate; }
+        if (editSubject.subjectType === 'allied' && editSubject.parentName !== 'Small Group Teaching') {
+          patch.parentName = editSubject.parentName;
+          patch.category = editSubject.parentName;
+        } else if (editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching') {
+          patch.clinicalSubject = editSubject.clinicalSubject;
+          patch.parentName = 'Small Group Teaching';
+          patch.category = 'Small Group Teaching';
+        }
+        if (editSubject.subjectType === 'allied' && PRESET_PARENTS.includes(editSubject.parentName)) {
+          patch.startDate = editSubject.startDate;
+          patch.endDate = editSubject.endDate;
+        }
         if (editSubject.store === 'userAdded') updateUserAddedSubject(editSubject.id, patch);
         else updateCustomSubject(editSubject.id, patch);
       }
-      if (editSubject.name !== editSubject.originalName) renameSubjectData(editSubject.originalName, editSubject.name);
+      if (editSubject.name !== editSubject.originalName) {
+        const isSGT = editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching';
+        if (!isSGT) {
+          renameSubjectData(editSubject.originalName, editSubject.name);
+        }
+      }
       setEditError(null);
       showToast('Changes saved.');
       window.setTimeout(() => setEditSubject(null), 900);
@@ -1154,6 +1187,7 @@ export default function AddNew() {
     if (isPresetAcademic) {
       renameSubjectData(currentName, newName);
       renamePresetAcademicSubject(currentName, newName);
+      setPresetSubjectRename(currentName, newName);
       showToast(`Renamed to "${newName}".`);
       toggleOpdEdit(id);
       return;
@@ -1165,6 +1199,22 @@ export default function AddNew() {
       toggleOpdEdit(id);
       return;
     }
+    // Check if this is an SGT subject
+    const target = store === 'userAdded'
+      ? userAddedSubjects.find(s => s.id === id)
+      : customSubjects.find(s => s.id === id);
+    if (target?.subjectType === 'allied' && target.parentName === 'Small Group Teaching') {
+      // Only update the subject's name in its store; do NOT touch attendance data
+      if (store === 'userAdded') {
+        updateUserAddedSubject(id, { name: newName });
+      } else {
+        updateCustomSubject(id, { name: newName });
+      }
+      showToast(`Renamed to "${newName}".`);
+      toggleOpdEdit(id);
+      return;
+    }
+    // Normal academic subject rename
     if (isSubjectNameTaken(newName, currentName)) {
       showToast(`"${newName}" already exists.`, 'err');
       return;
@@ -1203,9 +1253,16 @@ export default function AddNew() {
       title: `Delete "${name}"?`,
       lines: ['This subject and all its attendance records will be permanently removed.', 'This action cannot be undone.'],
       onConfirm: () => {
+        const target = store === 'userAdded'
+          ? userAddedSubjects.find(s => s.id === id)
+          : customSubjects.find(s => s.id === id);
         if (store === 'userAdded') removeUserAddedSubject(id);
         else removeCustomSubject(id);
-        removeSubjectData(name);
+        if (target?.subjectType === 'allied' && target.parentName === 'Small Group Teaching') {
+          removeAttendanceByKey(getSGTKey(id));
+        } else {
+          removeSubjectData(name);
+        }
         setDeleteSheet(null);
         showToast(`Deleted "${name}".`);
       },
@@ -1232,14 +1289,27 @@ export default function AddNew() {
       version: BUNDLE_VERSION,
       subjectMode,
       addedSubjects: added.map(s => ({
-        name: s.name, type: s.subjectType, parentCategory: getEffectiveParentName(s) ?? null,
+        name: s.name,
+        type: s.subjectType,
+        parentCategory: getEffectiveParentName(s) ?? null,
         planned: s.plannedClasses,
-        schedules: (s.schedules && s.schedules.length) ? s.schedules : parseDayList(s.days).map((d: string) => {
-          const { start, end } = splitRange(s.time);
-          return { day: d, start: to12h(parseRangeToMinutes(start)?.start || 0), end: to12h(parseRangeToMinutes(end)?.end || 0) };
-        }),
+        schedules: (s.schedules && s.schedules.length)
+          ? s.schedules
+          : parseDayList(s.days).map((d: string) => {
+              const { start, end } = splitRange(s.time);
+              return { day: d, start: to12h(parseRangeToMinutes(start)?.start || 0), end: to12h(parseRangeToMinutes(end)?.end || 0) };
+            }),
+        clinicalSubject: (s as any).clinicalSubject || undefined,
+        startDate: (s as any).startDate || undefined,
+        endDate: (s as any).endDate || undefined,
       })),
-      customWards: customWards.map(w => ({ name: w.name, startDate: w.startDate, endDate: w.endDate, morningTime: w.morningTime, eveningTime: w.eveningTime })),
+      customWards: customWards.map(w => ({
+        name: w.name,
+        startDate: w.startDate,
+        endDate: w.endDate,
+        morningTime: w.morningTime,
+        eveningTime: w.eveningTime,
+      })),
       presetTimetable,
       presetWardSchedule,
       presetSubjectTotals,
@@ -1312,7 +1382,8 @@ export default function AddNew() {
     for (const s of b.addedSubjects || []) {
       if (isSubjectNameTaken(s.name)) { subjectsSkip.push(`${s.name} (duplicate name)`); continue; }
       const rows = (s.schedules || []).map(sch => {
-        const st = to12h(sch.start || '09:00'), en = to12h(sch.end || '10:00');
+        const st = to12h(sch.start || '09:00');
+        const en = to12h(sch.end || '10:00');
         return { day: sch.day, time: canonicalTimeRange(st, en) };
       });
       const overlaps = rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined).some(c => !c.exact));
@@ -1357,13 +1428,23 @@ export default function AddNew() {
       for (const s of b.addedSubjects || []) {
         if (isSubjectNameTaken(s.name)) continue;
         const rows = (s.schedules || []).map(sch => {
-          const st = to12h(sch.start || '09:00'), en = to12h(sch.end || '10:00');
+          const st = to12h(sch.start || '09:00');
+          const en = to12h(sch.end || '10:00');
           return { day: sch.day, time: canonicalTimeRange(st, en), start: st, end: en };
         });
         if (!rows.length) rows.push({ day: 'Mon', time: canonicalTimeRange('09:00 AM', '10:00 AM'), start: '09:00 AM', end: '10:00 AM' });
         const overlaps = rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined).some(c => !c.exact));
         if (overlaps) continue;
-        items.push({ name: s.name, subjectType: (s.type as any) || 'single', parentName: s.parentCategory || undefined, plannedClasses: s.planned ?? 0, rows });
+        items.push({
+          name: s.name,
+          subjectType: (s.type as any) || 'single',
+          parentName: s.parentCategory || undefined,
+          plannedClasses: s.planned ?? 0,
+          rows,
+          clinicalSubject: s.clinicalSubject,
+          startDate: s.startDate,
+          endDate: s.endDate,
+        });
       }
       let wardsAdded = 0;
       for (const w of b.customWards || []) {
@@ -1402,15 +1483,26 @@ export default function AddNew() {
       .then(({ snapshotBeforeEdit }) => {
         snapshotBeforeEdit('Replace Routine Import');
         const toSubjectRecord = (s: any) => {
-          const schedules = (s.schedules || []).map((sch: any) => ({ day: sch.day, start: to12h(sch.start || '09:00'), end: to12h(sch.end || '10:00') }));
+          const schedules = (s.schedules || []).map((sch: any) => {
+            const st = to12h(sch.start || '09:00');
+            const en = to12h(sch.end || '10:00');
+            return { day: sch.day, start: st, end: en };
+          });
           return {
             id: genId(b.subjectMode === 'preloaded' ? 'ua' : 'cs'),
-            name: s.name, subjectType: s.type || 'single',
-            parentName: s.parentCategory || undefined, category: s.parentCategory || undefined,
+            name: s.name,
+            subjectType: s.type || 'single',
+            parentName: s.parentCategory || undefined,
+            category: s.parentCategory || undefined,
             plannedClasses: s.planned ?? 0,
             days: schedules.map((x: any) => x.day).join(', '),
             time: schedules.length ? canonicalTimeRange(schedules[0].start, schedules[0].end) : '',
-            schedules: b.subjectMode === 'preloaded' ? schedules : schedules.map((x: any) => ({ day: x.day, time: canonicalTimeRange(x.start, x.end) })),
+            schedules: b.subjectMode === 'preloaded'
+              ? schedules
+              : schedules.map((x: any) => ({ day: x.day, time: canonicalTimeRange(x.start, x.end) })),
+            clinicalSubject: s.clinicalSubject,
+            startDate: s.startDate,
+            endDate: s.endDate,
           };
         };
         const records = (b.addedSubjects || []).map(toSubjectRecord);
@@ -1420,7 +1512,11 @@ export default function AddNew() {
           storageSetItem('att_preset_timetable', JSON.stringify(tt));
         }
         if (b.presetWardSchedule) {
-          const ws = (b.presetWardSchedule || []).map((e: any) => ({ ...e, morningTime: canonicalizeTimeRange(e.morningTime || '09:30 AM–11:30 AM'), eveningTime: canonicalizeTimeRange(e.eveningTime || '07:00 PM–09:00 PM') }));
+          const ws = (b.presetWardSchedule || []).map((e: any) => ({
+            ...e,
+            morningTime: canonicalizeTimeRange(e.morningTime || '09:30 AM–11:30 AM'),
+            eveningTime: canonicalizeTimeRange(e.eveningTime || '07:00 PM–09:00 PM'),
+          }));
           localStorage.setItem('att_preset_ward_schedule', JSON.stringify(ws));
           storageSetItem('att_preset_ward_schedule', JSON.stringify(ws));
         }
@@ -1431,7 +1527,12 @@ export default function AddNew() {
         if (b.subjectMode === 'custom') {
           localStorage.setItem('att_custom_subjects', JSON.stringify(records));
           storageSetItem('att_custom_subjects', JSON.stringify(records));
-          const cw = (b.customWards || []).map((w: any, i: number) => ({ ...w, id: `cw_imp_${Date.now()}_${i}`, morningTime: canonicalizeTimeRange(w.morningTime || '09:30 AM–11:30 AM'), eveningTime: canonicalizeTimeRange(w.eveningTime || '07:00 PM–09:00 PM') }));
+          const cw = (b.customWards || []).map((w: any, i: number) => ({
+            ...w,
+            id: `cw_imp_${Date.now()}_${i}`,
+            morningTime: canonicalizeTimeRange(w.morningTime || '09:30 AM–11:30 AM'),
+            eveningTime: canonicalizeTimeRange(w.eveningTime || '07:00 PM–09:00 PM'),
+          }));
           localStorage.setItem('att_custom_wards', JSON.stringify(cw));
           storageSetItem('att_custom_wards', JSON.stringify(cw));
         } else {
@@ -1532,7 +1633,9 @@ export default function AddNew() {
                   {subjectMode === 'preloaded' ? presetTimetable[selDay]?.filter(s => s.type !== 'ward' && s.type !== 'ward_replacement').length || 0 : customSubjects.filter(s => s.subjectType !== 'allied-parent' && parseDayList(s.days).includes(DAY_ABBRS[selDay])).length} Slots
                 </span>
               </div>
-              {subjectMode === 'preloaded' && presetTimetable[selDay]?.filter(s => s.type !== 'ward' && s.type !== 'ward_replacement').map((slot, idx) => {
+              {subjectMode === 'preloaded' && presetTimetable[selDay]?.map((slot, idx) => {
+                if (slot.type === 'ward' || slot.type === 'ward_replacement') return null;
+                if (!slot.subjects || slot.subjects.length === 0) return null;
                 const nonSGTSubjects = slot.subjects.filter(s => !isSGTSubject(s));
                 if (nonSGTSubjects.length === 0) return null;
                 const displayNames = nonSGTSubjects.map(s => getPresetSubjectDisplayName(s));
@@ -1544,15 +1647,17 @@ export default function AddNew() {
                         {displayNames.join(', ')}
                       </p>
                       <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                        {nonSGTSubjects.map((s, idx) => `${displayNames[idx]}: ${getSubjectPlannedTotal(s)} planned`).join(' · ')}
+                        {nonSGTSubjects.map((s, index) => `${displayNames[index]}: ${getSubjectPlannedTotal(s)} planned`).join(' · ')}
                       </p>
                       {nonSGTSubjects.some(s => isUserAddedName(s)) && <div className="mt-1"><AddedBadge /></div>}
                     </div>
-                    {nonSGTSubjects.length > 0 && (
-                      <button type="button" onClick={() => openEditSlot(selDay, idx)} className="shrink-0 px-3 py-2 rounded-xl border border-primary/40 text-primary font-bold text-xs flex items-center gap-1.5 hover:bg-primary/10 transition-all cursor-pointer">
-                        <Pencil className="w-3.5 h-3.5" /> Edit
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => openEditSlot(selDay, idx)}
+                      className="shrink-0 px-3 py-2 rounded-xl border border-primary/40 text-primary font-bold text-xs flex items-center gap-1.5 hover:bg-primary/10 transition-all cursor-pointer"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Edit
+                    </button>
                   </div>
                 );
               })}
@@ -1614,14 +1719,16 @@ export default function AddNew() {
                         else openEditWardCustom(rotation.id!);
                       }}
                       onEditSGT={() => {
-                        openEditSubject('userAdded', sgt!.id);
+                        const store = getSGTStore(sgt);
+                        openEditSubject(store, sgt!.id);
                       }}
                       onDeleteRotation={() => {
                         if (rotation.store === 'preset') requestDeleteWard('preset', rotation.index!);
                         else requestDeleteWard('custom', rotation.id!);
                       }}
                       onDeleteSGT={() => {
-                        requestDeleteSubject('userAdded', sgt!.id);
+                        const store = getSGTStore(sgt);
+                        requestDeleteSubject(store, sgt!.id);
                       }}
                     />
                   );
@@ -1650,7 +1757,6 @@ export default function AddNew() {
             {formError && <p className={inlineErrCls}>{formError}</p>}
 
             {section === 'academic' ? (
-              // Academic form (unchanged)
               <>
                 <div>
                   <label className={labelCls}>Subject kind</label>
@@ -1768,7 +1874,6 @@ export default function AddNew() {
                 )}
               </>
             ) : (
-              // Clinical More – with scrollable body for SGT
               <>
                 <div>
                   <label className={labelCls}>Type</label>
@@ -1787,7 +1892,6 @@ export default function AddNew() {
                 </div>
 
                 {clinicalParentChoice === 'rotation' ? (
-                  // Existing ward form
                   <>
                     <div>
                       <label className={labelCls}>Ward name</label>
@@ -1820,7 +1924,6 @@ export default function AddNew() {
                     )}
                   </>
                 ) : (
-                  // SGT Form – scrollable fields, fixed footer
                   <div className="flex flex-col max-h-[calc(80vh-200px)]">
                     <div className="overflow-y-auto pr-1 flex-1 space-y-3">
                       <div>
@@ -1905,7 +2008,20 @@ export default function AddNew() {
                 <label className={labelCls}>Name</label>
                 <input value={editSubject.name} onChange={e => setEditSubject({ ...editSubject, name: e.target.value })} inputMode="text" className={inputCls} />
               </div>
-              {editSubject.subjectType === 'allied' && (
+              {editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' ? (
+                <div>
+                  <label className={labelCls}>Clinical Subject</label>
+                  <select
+                    value={editSubject.clinicalSubject || ''}
+                    onChange={e => setEditSubject({ ...editSubject, clinicalSubject: e.target.value })}
+                    className={inputCls}
+                  >
+                    {allClinicalSubjects.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : editSubject.subjectType === 'allied' ? (
                 <div>
                   <label className={labelCls}>Parent</label>
                   <select value={editSubject.parentName} onChange={e => setEditSubject({ ...editSubject, parentName: e.target.value })} className={inputCls}>
@@ -1918,7 +2034,7 @@ export default function AddNew() {
                     </optgroup>
                   </select>
                 </div>
-              )}
+              ) : null}
               {editSubject.subjectType === 'allied' && PRESET_PARENTS.includes(editSubject.parentName) && (
                 <div className="grid grid-cols-2 gap-2.5">
                   <div><label className={labelCls}>Placement start</label><input type="date" value={editSubject.startDate || ''} onChange={e => setEditSubject({ ...editSubject, startDate: e.target.value })} className={inputCls} /></div>
@@ -2017,7 +2133,6 @@ export default function AddNew() {
               ) : (
                 <>
                   {editSlot.multiSelectMode ? (
-                    // Multi‑subject: no individual checkboxes; cards are tappable
                     <>
                       <div>
                         <label className={labelCls}>Subjects in this slot</label>
@@ -2047,7 +2162,6 @@ export default function AddNew() {
                             </div>
                           ))}
                         </div>
-                        {/* Single Select All checkbox */}
                         <div className="flex items-center gap-2 mt-2">
                           <input
                             type="checkbox"
@@ -2059,7 +2173,6 @@ export default function AddNew() {
                         </div>
                       </div>
 
-                      {/* Move form appears inline when at least one selected */}
                       {showMoveForm && selectedSubjects.length > 0 && (
                         <div className="border-t border-border/40 pt-3 mt-3 space-y-2">
                           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Move selected subjects</p>
@@ -2110,7 +2223,6 @@ export default function AddNew() {
                       )}
                     </>
                   ) : (
-                    // Single‑subject: direct controls
                     <>
                       <div>
                         <label className={labelCls}>Target Day</label>
@@ -2153,8 +2265,8 @@ export default function AddNew() {
                           <button type="button" onClick={closeEditSlot} className={btnGhost}>Cancel</button>
                           <button type="button" onClick={() => {
                             if (editSlot) {
-                              setSelectedSubjects([editSlot.subjects[0].id]);
-                              doMoveSubjects();
+                              const onlyId = editSlot.subjects[0].id;
+                              doMoveSubjects([onlyId]);  // Now uses conflict detection
                             }
                           }} className={btnPrimary}>Apply</button>
                         </div>
@@ -2256,12 +2368,11 @@ export default function AddNew() {
               </button>
             </div>
 
-            {/* Subject list based on selection – with min-height */}
-            <div className="space-y-1 max-h-[50vh] overflow-y-auto pr-1 min-h-[150px]">
+            {/* Subject list based on selection – with fixed height */}
+            <div className="space-y-1 h-[50vh] overflow-y-auto pr-1">
               {triageTop === 'preset' && subjectMode === 'preloaded' && (
                 <>
                   {triageSub === 'academic' ? (
-                    // Preset Academic
                     <>
                       {CATEGORIES.flatMap(c => c.subjects).map(s => (
                         <SubjectTriageCard
@@ -2305,7 +2416,6 @@ export default function AddNew() {
                       ))}
                     </>
                   ) : (
-                    // Preset Clinical – includes WARD_SUBJECTS + SGT
                     <>
                       {WARD_SUBJECTS.map(w => (
                         <SubjectTriageCard
@@ -2334,7 +2444,7 @@ export default function AddNew() {
                           isPreset={false}
                           store="userAdded"
                           id={s.id}
-                          parentOptions={allClinicalSubjects.map(n => ({ value: n, label: n })).concat([{ value: SINGLE_DEST, label: 'Single (standalone)' }])}
+                          parentOptions={allClinicalSubjects.map(n => ({ value: n, label: n }))}
                           currentParent={(s as any).clinicalSubject || ''}
                           canChangeParent={true}
                           canDelete={true}
@@ -2346,14 +2456,14 @@ export default function AddNew() {
                           updateRename={updateOpdRename}
                           saveRename={saveOpdRename}
                           onParentChange={(newParent) => {
-                            const moves = [{ id: s.id, store: 'userAdded', newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
+                            const moves = [{ id: s.id, store: 'userAdded', newSubjectType: 'allied', newParentName: newParent }];
                             bulkUpdateSubjectHierarchy(moves);
-                            if (newParent !== SINGLE_DEST) {
-                              updateUserAddedSubject(s.id, { clinicalSubject: newParent } as any);
-                            } else {
-                              updateUserAddedSubject(s.id, { clinicalSubject: undefined } as any);
+                            const updates: any = { clinicalSubject: newParent };
+                            if (s.name.toLowerCase() === (s as any).clinicalSubject?.toLowerCase()) {
+                              updates.name = newParent;
                             }
-                            showToast('Parent updated.');
+                            updateUserAddedSubject(s.id, updates);
+                            showToast('Clinical subject updated.');
                           }}
                         />
                       ))}
@@ -2365,96 +2475,183 @@ export default function AddNew() {
               {triageTop === 'added' && (
                 <>
                   {triageSub === 'academic' ? (
-                    // Added/Custom Academic
                     <>
-                      {customSubjects.filter(s => s.subjectType !== 'allied').map(s => (
-                        <SubjectTriageCard
-                          key={s.id}
-                          name={s.name}
-                          isPreset={false}
-                          store="custom"
-                          id={s.id}
-                          parentOptions={getParentOptions().filter(p => p !== 'Small Group Teaching')}
-                          currentParent={getEffectiveParentName(s) || ''}
-                          canChangeParent={true}
-                          canDelete={true}
-                          onRename={() => {}}
-                          onDelete={() => deleteOpdSubject(s.id, 'custom', s.name)}
-                          opdRename={opdRename}
-                          opdEditing={opdEditing}
-                          toggleEdit={toggleOpdEdit}
-                          updateRename={updateOpdRename}
-                          saveRename={saveOpdRename}
-                          onParentChange={(newParent) => {
-                            const moves = [{ id: s.id, store: 'custom', newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
-                            bulkUpdateSubjectHierarchy(moves);
-                            showToast('Parent updated.');
-                          }}
-                        />
-                      ))}
+                      {subjectMode === 'preloaded' ? (
+                        userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (
+                          <SubjectTriageCard
+                            key={s.id}
+                            name={s.name}
+                            isPreset={false}
+                            store="userAdded"
+                            id={s.id}
+                            parentOptions={getParentOptions().filter(p => p !== 'Small Group Teaching')}
+                            currentParent={getEffectiveParentName(s) || ''}
+                            canChangeParent={true}
+                            canDelete={true}
+                            onRename={() => {}}
+                            onDelete={() => deleteOpdSubject(s.id, 'userAdded', s.name)}
+                            opdRename={opdRename}
+                            opdEditing={opdEditing}
+                            toggleEdit={toggleOpdEdit}
+                            updateRename={updateOpdRename}
+                            saveRename={saveOpdRename}
+                            onParentChange={(newParent) => {
+                              const moves = [{ id: s.id, store: 'userAdded', newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
+                              bulkUpdateSubjectHierarchy(moves);
+                              showToast('Parent updated.');
+                            }}
+                          />
+                        ))
+                      ) : (
+                        customSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (
+                          <SubjectTriageCard
+                            key={s.id}
+                            name={s.name}
+                            isPreset={false}
+                            store="custom"
+                            id={s.id}
+                            parentOptions={getParentOptions().filter(p => p !== 'Small Group Teaching')}
+                            currentParent={getEffectiveParentName(s) || ''}
+                            canChangeParent={true}
+                            canDelete={true}
+                            onRename={() => {}}
+                            onDelete={() => deleteOpdSubject(s.id, 'custom', s.name)}
+                            opdRename={opdRename}
+                            opdEditing={opdEditing}
+                            toggleEdit={toggleOpdEdit}
+                            updateRename={updateOpdRename}
+                            saveRename={saveOpdRename}
+                            onParentChange={(newParent) => {
+                              const moves = [{ id: s.id, store: 'custom', newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
+                              bulkUpdateSubjectHierarchy(moves);
+                              showToast('Parent updated.');
+                            }}
+                          />
+                        ))
+                      )}
                     </>
                   ) : (
-                    // Added/Custom Clinical (custom wards + SGT)
                     <>
-                      {customWards.map(w => (
-                        <SubjectTriageCard
-                          key={w.id}
-                          name={w.name}
-                          isPreset={false}
-                          store="custom"
-                          id={w.id}
-                          parentOptions={[]}
-                          currentParent=""
-                          canChangeParent={false}
-                          canDelete={true}
-                          onRename={() => {}}
-                          onDelete={() => deleteOpdWard(w.id, w.name)}
-                          opdRename={opdRename}
-                          opdEditing={opdEditing}
-                          toggleEdit={toggleOpdEdit}
-                          updateRename={updateOpdRename}
-                          saveRename={saveOpdRename}
-                        />
-                      ))}
-                      {userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
-                        <SubjectTriageCard
-                          key={s.id}
-                          name={s.name}
-                          isPreset={false}
-                          store="userAdded"
-                          id={s.id}
-                          parentOptions={allClinicalSubjects.map(n => ({ value: n, label: n })).concat([{ value: SINGLE_DEST, label: 'Single (standalone)' }])}
-                          currentParent={(s as any).clinicalSubject || ''}
-                          canChangeParent={true}
-                          canDelete={true}
-                          onRename={() => {}}
-                          onDelete={() => deleteOpdSubject(s.id, 'userAdded', s.name)}
-                          opdRename={opdRename}
-                          opdEditing={opdEditing}
-                          toggleEdit={toggleOpdEdit}
-                          updateRename={updateOpdRename}
-                          saveRename={saveOpdRename}
-                          onParentChange={(newParent) => {
-                            const moves = [{ id: s.id, store: 'userAdded', newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
-                            bulkUpdateSubjectHierarchy(moves);
-                            if (newParent !== SINGLE_DEST) {
-                              updateUserAddedSubject(s.id, { clinicalSubject: newParent } as any);
-                            } else {
-                              updateUserAddedSubject(s.id, { clinicalSubject: undefined } as any);
-                            }
-                            showToast('Parent updated.');
-                          }}
-                        />
-                      ))}
+                      {subjectMode === 'preloaded' ? (
+                        <>
+                          {customWards.map(w => (
+                            <SubjectTriageCard
+                              key={w.id}
+                              name={w.name}
+                              isPreset={false}
+                              store="custom"
+                              id={w.id}
+                              parentOptions={[]}
+                              currentParent=""
+                              canChangeParent={false}
+                              canDelete={true}
+                              onRename={() => {}}
+                              onDelete={() => deleteOpdWard(w.id, w.name)}
+                              opdRename={opdRename}
+                              opdEditing={opdEditing}
+                              toggleEdit={toggleOpdEdit}
+                              updateRename={updateOpdRename}
+                              saveRename={saveOpdRename}
+                            />
+                          ))}
+                          {userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
+                            <SubjectTriageCard
+                              key={s.id}
+                              name={s.name}
+                              isPreset={false}
+                              store="userAdded"
+                              id={s.id}
+                              parentOptions={allClinicalSubjects.map(n => ({ value: n, label: n }))}
+                              currentParent={(s as any).clinicalSubject || ''}
+                              canChangeParent={true}
+                              canDelete={true}
+                              onRename={() => {}}
+                              onDelete={() => deleteOpdSubject(s.id, 'userAdded', s.name)}
+                              opdRename={opdRename}
+                              opdEditing={opdEditing}
+                              toggleEdit={toggleOpdEdit}
+                              updateRename={updateOpdRename}
+                              saveRename={saveOpdRename}
+                              onParentChange={(newParent) => {
+                                const moves = [{ id: s.id, store: 'userAdded', newSubjectType: 'allied', newParentName: newParent }];
+                                bulkUpdateSubjectHierarchy(moves);
+                                const updates: any = { clinicalSubject: newParent };
+                                if (s.name.toLowerCase() === (s as any).clinicalSubject?.toLowerCase()) {
+                                  updates.name = newParent;
+                                }
+                                updateUserAddedSubject(s.id, updates);
+                                showToast('Clinical subject updated.');
+                              }}
+                            />
+                          ))}
+                        </>
+                      ) : (
+                        <>
+                          {customWards.map(w => (
+                            <SubjectTriageCard
+                              key={w.id}
+                              name={w.name}
+                              isPreset={false}
+                              store="custom"
+                              id={w.id}
+                              parentOptions={[]}
+                              currentParent=""
+                              canChangeParent={false}
+                              canDelete={true}
+                              onRename={() => {}}
+                              onDelete={() => deleteOpdWard(w.id, w.name)}
+                              opdRename={opdRename}
+                              opdEditing={opdEditing}
+                              toggleEdit={toggleOpdEdit}
+                              updateRename={updateOpdRename}
+                              saveRename={saveOpdRename}
+                            />
+                          ))}
+                          {customSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
+                            <SubjectTriageCard
+                              key={s.id}
+                              name={s.name}
+                              isPreset={false}
+                              store="custom"
+                              id={s.id}
+                              parentOptions={allClinicalSubjects.map(n => ({ value: n, label: n }))}
+                              currentParent={(s as any).clinicalSubject || ''}
+                              canChangeParent={true}
+                              canDelete={true}
+                              onRename={() => {}}
+                              onDelete={() => deleteOpdSubject(s.id, 'custom', s.name)}
+                              opdRename={opdRename}
+                              opdEditing={opdEditing}
+                              toggleEdit={toggleOpdEdit}
+                              updateRename={updateOpdRename}
+                              saveRename={saveOpdRename}
+                              onParentChange={(newParent) => {
+                                const moves = [{ id: s.id, store: 'custom', newSubjectType: 'allied', newParentName: newParent }];
+                                bulkUpdateSubjectHierarchy(moves);
+                                const updates: any = { clinicalSubject: newParent };
+                                if (s.name.toLowerCase() === (s as any).clinicalSubject?.toLowerCase()) {
+                                  updates.name = newParent;
+                                }
+                                updateCustomSubject(s.id, updates);
+                                showToast('Clinical subject updated.');
+                              }}
+                            />
+                          ))}
+                        </>
+                      )}
                     </>
                   )}
                 </>
               )}
+
+              {/* Empty state — centered in the fixed height list area */}
               {((triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'academic' && CATEGORIES.flatMap(c => c.subjects).length === 0 && INTEGRATED_SUBJECTS.length === 0) ||
                 (triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'clinical' && WARD_SUBJECTS.length === 0 && userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0) ||
-                (triageTop === 'added' && triageSub === 'academic' && customSubjects.filter(s => s.subjectType !== 'allied').length === 0) ||
-                (triageTop === 'added' && triageSub === 'clinical' && customWards.length === 0 && userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0)) && (
-                <p className="text-xs text-muted-foreground text-center py-5">No subjects found in this section.</p>
+                (triageTop === 'added' && triageSub === 'academic' && (subjectMode === 'preloaded' ? userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).length === 0 : customSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).length === 0)) ||
+                (triageTop === 'added' && triageSub === 'clinical' && (subjectMode === 'preloaded' ? customWards.length === 0 && userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0 : customWards.length === 0 && customSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0))) && (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-xs text-muted-foreground text-center py-5">No subjects found in this section.</p>
+                </div>
               )}
             </div>
 
@@ -2556,7 +2753,10 @@ export default function AddNew() {
       "type": "single" | "allied" | "allied-parent",
       "parentCategory": "string" | null,
       "planned": number,
-      "schedules": [{ "day": "Mon", "start": "HH:MM", "end": "HH:MM" }]
+      "schedules": [{ "day": "Mon", "start": "HH:MM", "end": "HH:MM" }],
+      "clinicalSubject": "string" | null,
+      "startDate": "yyyy-mm-dd" | null,
+      "endDate": "yyyy-mm-dd" | null
     }
   ],
   "customWards": [

@@ -3,7 +3,7 @@ import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSna
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
-import { useAttendance } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
 import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
 import { storageClear, storageSetItem } from '@/lib/idb';
@@ -29,7 +29,6 @@ export default function Account() {
   const { customSubjects, customWards, userAddedSubjects, presetWardSchedule, subjectMode, changeSubjectMode, setWhatsNewOpen, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupFileInputRef = useRef<HTMLInputElement>(null);
-  const [storageSize, setStorageSize] = useState('0.00 KB');
   const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
   const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
   const [installedVersion, setInstalledVersion] = useState<string>(() => localStorage.getItem('att_app_version') || APP_VERSION);
@@ -75,22 +74,32 @@ export default function Account() {
     setSnapshots(getSnapshots());
     import('sonner').then(({ toast }) => toast.success('Curriculum marked as Completed! Auto-snapshot saved.'));
   };
-  const handleApplyUpdate = (withBackup: boolean) => {
-      if (withBackup) exportDataAsJSON();
-      const newVer = localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION;
-      localStorage.setItem('att_app_version', newVer);
-      localStorage.setItem('att_just_updated', 'true');
-      localStorage.removeItem('att_has_seen_welcome_v1');
-      localStorage.removeItem('att_pwa_update_ready');
-      setInstalledVersion(newVer);
-      setShowUpdatePrompt(false);
-      setUpdatingNow(true);
+    const handleApplyUpdate = async (withBackup: boolean) => {
+    if (withBackup) exportDataAsJSON();
+    const newVer = localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION;
+    localStorage.setItem('att_app_version', newVer);
+    localStorage.setItem('att_just_updated', 'true');
+    localStorage.removeItem('att_has_seen_welcome_v1');
+    localStorage.removeItem('att_pwa_update_ready');
+    setInstalledVersion(newVer);
+    setShowUpdatePrompt(false);
+    setUpdatingNow(true);
+
+    const MIN_UPDATE_DELAY = 5600;
+    const start = Date.now();
+
+    try {
       const applyPwa = (window as any).attendenzApplyPwaUpdate;
-      if (applyPwa) applyPwa(); // SW swaps the shell in the background
-      window.setTimeout(() => {
-      window.location.href = import.meta.env.BASE_URL || '/'; // reopen on Home → What's New
-      }, 5600);
-      };
+      if (applyPwa) await applyPwa(); // wait for ATT_SW_UPDATED
+    } catch {}
+
+    const elapsed = Date.now() - start;
+    if (elapsed < MIN_UPDATE_DELAY) {
+      await new Promise(r => setTimeout(r, MIN_UPDATE_DELAY - elapsed));
+    }
+
+    window.location.href = import.meta.env.BASE_URL || '/';
+  };
 
   const [exportFormat, setExportFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
   const [exportScope, setExportScope] = useState<'complete' | 'subject' | 'custom' | 'semester'>('complete');
@@ -120,26 +129,14 @@ export default function Account() {
     detectStorage();
   }, [isPersistentStorage]);
 
-  // Compute SGT subject names for later use
-  const sgtSubjectNames = new Set<string>();
-  if (subjectMode === 'preloaded') {
-    userAddedSubjects.filter(s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')
-      .forEach(s => sgtSubjectNames.add(s.name));
-  } else {
-    customSubjects.filter(s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')
-      .forEach(s => sgtSubjectNames.add(s.name));
-  }
-
   const semesterRange = (period: string): { s: string; e: string } => {
     const now = new Date();
     const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (period === 'Current Month') return { s: iso(new Date(now.getFullYear(), now.getMonth(), 1)), e: iso(now) };
     if (period === 'Last 3 Months') return { s: iso(new Date(now.getFullYear(), now.getMonth() - 2, 1)), e: iso(now) };
-    // Full Academic Term / Year
     if (subjectMode === 'preloaded') {
-      return { s: '2026-01-24', e: iso(now) }; // Fixed start for preset MBBS
+      return { s: '2026-01-24', e: iso(now) };
     } else {
-      // Custom mode: derive start from earliest attendance record or subject/ward start date
       let earliest = '';
       for (const key of Object.keys(homeSelections)) {
         const date = key.slice(0, 10);
@@ -161,35 +158,40 @@ export default function Account() {
   const aggregateRangeItems = (startStr: string, endStr: string) => {
     const start = startStr || '0000-01-01';
     const end = endStr || '9999-12-31';
-    const entities: Array<{ name: string; category: string; isWard: boolean; plannedTotal: number }> = [];
-    const pushEntity = (name: string, category: string, isWard: boolean, planned: number) => {
-      if (!entities.some(e => e.isWard === isWard && e.name.toLowerCase() === name.toLowerCase())) entities.push({ name, category, isWard, plannedTotal: planned });
+    const entities: Array<{ name: string; category: string; isWard: boolean; plannedTotal: number; isSGT?: boolean; sgtId?: string }> = [];
+    const pushEntity = (name: string, category: string, isWard: boolean, planned: number, isSGT = false, sgtId?: string) => {
+      if (!entities.some(e => e.isWard === isWard && e.name.toLowerCase() === name.toLowerCase() && e.isSGT === isSGT)) {
+        entities.push({ name, category, isWard, plannedTotal: planned, isSGT, sgtId });
+      }
     };
     if (subjectMode === 'preloaded') {
       for (const cat of CATEGORIES) for (const s of cat.subjects) pushEntity(s.name, cat.name, false, getSubjectPlannedTotal(s.name));
       for (const s of INTEGRATED_SUBJECTS) pushEntity(s.name, 'Academic', false, getSubjectPlannedTotal(s.name));
-      // SGT subjects as clinical
       for (const ua of userAddedSubjects) {
         if (ua.subjectType === 'allied' && ua.parentName === 'Small Group Teaching') {
-          pushEntity(ua.name, 'Clinical Wards', false, ua.plannedClasses || getSubjectPlannedTotal(ua.name));
+          pushEntity(ua.name, 'Clinical Wards', false, ua.plannedClasses || getSubjectPlannedTotal(ua.name), true, ua.id);
         } else {
           pushEntity(ua.name, 'Added by you', false, ua.plannedClasses || getSubjectPlannedTotal(ua.name));
         }
       }
-      // Normal wards
       for (const w of WARD_SUBJECTS) pushEntity(w.name, 'Clinical Wards', true, getPresetWardTotalPlanned(w.name));
-      for (const e of presetWardSchedule) pushEntity(e.ward, 'Clinical Wards', true, getPresetWardTotalPlanned(e.ward));
+      for (const e of presetWardSchedule) {
+        if (!WARD_SUBJECTS.some(w => w.name.toLowerCase() === e.ward.toLowerCase())) {
+          pushEntity(e.ward, 'Clinical Wards', true, getPresetWardTotalPlanned(e.ward));
+        }
+      }
     } else {
       for (const cs of customSubjects) {
         if (cs.subjectType === 'allied' && cs.parentName === 'Small Group Teaching') {
-          pushEntity(cs.name, 'Clinical Wards', false, cs.plannedClasses || getSubjectPlannedTotal(cs.name));
+          pushEntity(cs.name, 'Clinical Wards', false, cs.plannedClasses || getSubjectPlannedTotal(cs.name), true, cs.id);
         } else {
           pushEntity(cs.name, cs.category || 'Custom Subject', false, cs.plannedClasses);
         }
       }
       for (const cw of customWards) pushEntity(cw.name, 'Custom Wards', true, getCustomWardTotalPlanned(cw.startDate, cw.endDate));
     }
-    const agg = new Map<string, { name: string; category: string; attended: number; missed: number; plannedTotal: number }>();
+
+    const agg = new Map<string, { name: string; category: string; attended: number; missed: number; plannedTotal: number; isSGT?: boolean }>();
     for (const [key, sel] of Object.entries(homeSelections)) {
       const date = key.slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
@@ -197,24 +199,29 @@ export default function Account() {
       if (sel !== 'attended' && sel !== 'missed') continue;
       const rest = key.slice(11);
       for (const e of entities) {
-        // Normalise names for robust matching
         const norm = (s: string) => s.toLowerCase().replace(/[-\s]+/g, '_');
-        const prefixes = e.isWard ? [`ward-${norm(e.name)}`, `ward_${norm(e.name)}`] : [norm(e.name)];
+        let prefixes: string[];
+        if (e.isSGT && e.sgtId) {
+          prefixes = [`sgt:${norm(e.sgtId)}`];
+        } else if (e.isWard) {
+          prefixes = [`ward-${norm(e.name)}`, `ward_${norm(e.name)}`];
+        } else {
+          prefixes = [norm(e.name)];
+        }
         const normRest = norm(rest);
         const matched = prefixes.some(p => normRest === p || normRest.startsWith(p + '-') || normRest.startsWith(p + '_'));
         if (matched) {
-          const id = `${e.isWard ? 'w' : 's'}_${e.name.toLowerCase()}`;
-          const cur = agg.get(id) || { name: e.name, category: e.category, attended: 0, missed: 0, plannedTotal: e.plannedTotal };
+          const id = `${e.isWard ? 'w' : 's'}_${e.name.toLowerCase()}${e.isSGT ? '_sgt' : ''}`;
+          const cur = agg.get(id) || { name: e.name, category: e.category, attended: 0, missed: 0, plannedTotal: e.plannedTotal, isSGT: e.isSGT };
           if (sel === 'attended') cur.attended += 1; else cur.missed += 1;
           agg.set(id, cur);
           break;
         }
       }
     }
-    // Post-process: add (SGT) tag to SGT subjects
     return Array.from(agg.values()).map(a => ({
       ...a,
-      name: sgtSubjectNames.has(a.name) ? `${a.name} (SGT)` : a.name,
+      name: a.isSGT ? `${a.name} (SGT)` : a.name,
     }));
   };
 
@@ -226,31 +233,41 @@ export default function Account() {
         const data = subjects[sub.name] || { attended: 0, missed: 0 };
         rawItems.push({ name: sub.name, category: cat.name, attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(sub.name) || 0 });
       }
-      // Integrated subjects → Academic section
       for (const s of INTEGRATED_SUBJECTS) {
         const data = subjects[s.name] || { attended: 0, missed: 0 };
         rawItems.push({ name: s.name, category: 'Academic', attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(s.name) || 0 });
       }
-      // User-added subjects: SGT -> Clinical with tag, others -> Added by you
       for (const ua of userAddedSubjects) {
-        const data = subjects[ua.name] || { attended: 0, missed: 0 };
         if (ua.subjectType === 'allied' && ua.parentName === 'Small Group Teaching') {
+          const sgtKey = getSGTKey(ua.id);
+          const data = subjects[sgtKey] || { attended: 0, missed: 0 };
           rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || getSubjectPlannedTotal(ua.name) || 0 });
         } else {
+          const data = subjects[ua.name] || { attended: 0, missed: 0 };
           rawItems.push({ name: ua.name, category: 'Added by you', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || getSubjectPlannedTotal(ua.name) || 0 });
         }
       }
-      // Wards
+      const addedWards = new Set<string>();
       for (const w of WARD_SUBJECTS) {
         const data = wards[`ward-${w.name}`] || { attended: 0, missed: 0 };
         rawItems.push({ name: `${w.name} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(w.name) || 0 });
+        addedWards.add(w.name.toLowerCase());
+      }
+      for (const e of presetWardSchedule) {
+        if (!addedWards.has(e.ward.toLowerCase())) {
+          const data = wards[`ward-${e.ward}`] || { attended: 0, missed: 0 };
+          rawItems.push({ name: `${e.ward} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(e.ward) || 0 });
+          addedWards.add(e.ward.toLowerCase());
+        }
       }
     } else {
       for (const cs of customSubjects) {
-        const data = subjects[cs.name] || { attended: 0, missed: 0 };
         if (cs.subjectType === 'allied' && cs.parentName === 'Small Group Teaching') {
+          const sgtKey = getSGTKey(cs.id);
+          const data = subjects[sgtKey] || { attended: 0, missed: 0 };
           rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || getSubjectPlannedTotal(cs.name) || 0 });
         } else {
+          const data = subjects[cs.name] || { attended: 0, missed: 0 };
           rawItems.push({ name: cs.name, category: cs.category || 'Custom Subject', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || getSubjectPlannedTotal(cs.name) || 0 });
         }
       }
@@ -259,14 +276,35 @@ export default function Account() {
         rawItems.push({ name: `${cw.name} (Ward)`, category: 'Custom Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getCustomWardTotalPlanned(cw.startDate, cw.endDate) || 0 });
       }
     }
+
     let filteredItems = rawItems;
     let filterTitle = 'Complete Attendance';
-    if (exportScope === 'subject' && exportSelectedSubject) {
-      filteredItems = rawItems.filter(i => i.name === exportSelectedSubject || i.name.startsWith(exportSelectedSubject));
-      filterTitle = exportSelectedSubject;
+    if (exportScope === 'subject') {
+      if (!exportSelectedSubject) {
+        setExportMsg('Please select a subject or ward first.');
+        return;
+      }
+      const [type, value] = exportSelectedSubject.split(':');
+      if (type === 'subject') {
+        filteredItems = rawItems.filter(i => i.name === value && !i.name.endsWith('(SGT)') && !i.name.endsWith('(Ward)'));
+        filterTitle = value;
+      } else if (type === 'sgt') {
+        const name = rawItems.find(i => i.name === `${value} (SGT)`)?.name || value;
+        filteredItems = rawItems.filter(i => i.name === name);
+        filterTitle = name;
+      } else if (type === 'ward') {
+        filteredItems = rawItems.filter(i => i.name === `${value} (Ward)`);
+        filterTitle = `${value} (Ward)`;
+      } else {
+        setExportMsg('Invalid subject selection.');
+        return;
+      }
     } else if (exportScope === 'custom') {
-      // Validate date range
-      if (exportStartDate && exportEndDate && exportStartDate > exportEndDate) {
+      if (!exportStartDate) {
+        setExportMsg('Please select a start date.');
+        return;
+      }
+      if (exportStartDate > exportEndDate) {
         setExportMsg('Start date must be before or equal to end date.');
         return;
       }
@@ -280,6 +318,7 @@ export default function Account() {
       filterTitle = `Semester – ${exportSemester}`;
       if (filteredItems.length === 0) { setExportMsg('No attendance records inside the selected period — nothing to export yet. Mark some classes first!'); return; }
     }
+
     const reportItems = filteredItems.map(item => {
       const total = item.total; const attended = item.attended; const plannedTotal = item.plannedTotal;
       const pct = total > 0 ? (attended / total) * 100 : 0;
@@ -290,7 +329,6 @@ export default function Account() {
           const needed = Math.ceil((target * total - 100 * attended) / (100 - target));
           neededText = `${needed > 0 ? needed : 0} needed`;
         } else {
-          // target 100% and pct < 100
           neededText = `${total - attended} more attendances needed`;
         }
       } else if (total > 0) neededText = 'Target Achieved';
@@ -319,7 +357,7 @@ export default function Account() {
     } finally { setBusy(null); }
   };
 
-  const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'transfer' | 'snapshot' | 'backup' | 'export' | 'dataProtection' | null>(null);
+  const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'snapshot' | 'export' | 'dataProtection' | null>(null);
   const [transferImportData, setTransferImportData] = useState<any>(null);
   const transferFileInputRef = useRef<HTMLInputElement>(null);
   const handleShareData = async () => {
@@ -347,7 +385,6 @@ export default function Account() {
     for (const [key, value] of Object.entries(transferImportData)) {
       if (value !== null && value !== undefined) {
         const stringVal = typeof value === 'string' ? value : JSON.stringify(value);
-        // Write to both localStorage and IndexedDB
         localStorage.setItem(key, stringVal);
         storageSetItem(key, stringVal);
       }
@@ -430,7 +467,10 @@ export default function Account() {
     const snapshotRaw = localStorage.getItem(getSnapshotKey(pendingMode));
     if (snapshotRaw) {
       const data = JSON.parse(snapshotRaw);
-      Object.entries(data).forEach(([k, v]) => { localStorage.setItem(k, v as string); });
+      Object.entries(data).forEach(([k, v]) => {
+        localStorage.setItem(k, v as string);
+        storageSetItem(k, v as string);
+      });
     }
     changeSubjectMode(pendingMode);
     setShowSwitchDialog(false);
@@ -453,14 +493,6 @@ export default function Account() {
     import('sonner').then(({ toast }) => toast.success(`Switched to ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine. Previous records archived in Snapshots.`));
     setLocation('/');
   };
-  useEffect(() => {
-    let totalBytes = 0;
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) { const val = localStorage.getItem(key) || ''; totalBytes += (key.length + val.length) * 2; }
-    }
-    setStorageSize((totalBytes / 1024).toFixed(2) + ' KB');
-  }, [subjects, wards, customSubjects, customWards, subjectMode]);
   const detectGender = (name: string): 'male' | 'female' | 'neutral' => {
     if (!name || name.length < 2) return 'neutral';
     const n = name.toLowerCase();
@@ -499,7 +531,6 @@ export default function Account() {
     }
   };
 
-  // ── NEW: Combined modal state ──
   const [backupTransferOpen, setBackupTransferOpen] = useState(false);
 
   return (
@@ -587,7 +618,6 @@ export default function Account() {
         <div className="space-y-2 pt-2">
           <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Other Setting</p>
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
-            {/* ── NEW merged card ── */}
             <button
               type="button"
               onClick={() => setBackupTransferOpen(true)}
@@ -641,7 +671,6 @@ export default function Account() {
             </button>
           </div>
 
-          {/* ── NEW combined modal ── */}
           <AnimatePresence>
             {backupTransferOpen && (
               <motion.div
@@ -675,7 +704,6 @@ export default function Account() {
 
                   {busy && <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{busy}</p>}
 
-                  {/* ── Backup / Transfer Section ── */}
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
                       <Send className="w-3.5 h-3.5" /> Backup / Transfer
@@ -703,7 +731,6 @@ export default function Account() {
                     </div>
                   </div>
 
-                  {/* ── Restore Section ── */}
                   <div className="border-t border-border/40 pt-3">
                     <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
                       <RefreshCw className="w-3.5 h-3.5" /> Restore Data
@@ -721,7 +748,6 @@ export default function Account() {
                       >
                         <RefreshCw className="w-4 h-4" /> Restore from File
                       </button>
-                      {/* Hidden file inputs */}
                       <input
                         type="file"
                         ref={transferFileInputRef}
@@ -786,7 +812,6 @@ export default function Account() {
             )}
           </AnimatePresence>
 
-          {/* ── Existing modals (unchanged) ── */}
           <AnimatePresence>
             {activeSettingModal && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto" onClick={() => setActiveSettingModal(null)}>
@@ -795,27 +820,21 @@ export default function Account() {
                     <div className="flex items-center gap-3">
                       {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
                       {activeSettingModal === 'curriculum' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><GraduationCap className="w-5 h-5" /></div>)}
-                      {activeSettingModal === 'transfer' && (<div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 border border-blue-500/20"><Send className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'snapshot' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><SnapshotIcon className="w-5 h-5" /></div>)}
-                      {activeSettingModal === 'backup' && (<div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 border border-emerald-500/20"><Download className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'export' && (<div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20"><FileText className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'dataProtection' && (<div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 border border-emerald-500/20"><Database className="w-5 h-5" /></div>)}
                       <div>
                         <h3 className="font-bold text-base text-foreground">
                           {activeSettingModal === 'preferredPc' && 'Preferred Percentage'}
                           {activeSettingModal === 'curriculum' && 'Curriculum Management'}
-                          {activeSettingModal === 'transfer' && 'Transfer App Data'}
                           {activeSettingModal === 'snapshot' && 'Snapshots & Storage'}
-                          {activeSettingModal === 'backup' && 'File Backup & Restore'}
                           {activeSettingModal === 'export' && 'Export Attendance Data'}
                           {activeSettingModal === 'dataProtection' && 'Data Protection & Storage'}
                         </h3>
                         <p className="text-xs text-muted-foreground">
                           {activeSettingModal === 'preferredPc' && 'Target attendance threshold percentage'}
                           {activeSettingModal === 'curriculum' && 'Academic progress, status & routine mode'}
-                          {activeSettingModal === 'transfer' && 'Securely transfer your complete app data to another device'}
                           {activeSettingModal === 'snapshot' && 'Manage local state backups & cache'}
-                          {activeSettingModal === 'backup' && 'Download or restore a .json backup file'}
                           {activeSettingModal === 'export' && 'Export records in PDF, Excel, or CSV formats'}
                           {activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}
                         </p>
@@ -878,43 +897,6 @@ export default function Account() {
                         </div>
                       </div>
                     )}
-                    {activeSettingModal === 'transfer' && (
-                      <div className="space-y-3">
-                        {!transferImportData ? (
-                          <div className="grid grid-cols-1 gap-2.5">
-                            <button onClick={handleShareData} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-2xl transition-colors shadow-sm cursor-pointer">
-                              <Send className="w-4 h-4" />
-                              Send to Another Device
-                            </button>
-                            <div className="space-y-1.5">
-                              <button onClick={() => transferFileInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold rounded-2xl transition-colors border border-border cursor-pointer">
-                                <Download className="w-4 h-4" />
-                                Receive from Another Device
-                              </button>
-                              <p className="text-[11px] text-muted-foreground text-center leading-tight">Select the received backup (.json) file to import.</p>
-                            </div>
-                            <input type="file" ref={transferFileInputRef} onChange={handleTransferFileSelect} accept=".json" className="hidden" />
-                          </div>
-                        ) : (
-                          <div className="bg-muted/30 p-3.5 rounded-2xl border border-border/50 text-left space-y-3">
-                            <div className="flex items-center gap-2 text-amber-500 mb-1">
-                              <AlertCircle className="w-4 h-4 shrink-0" />
-                              <p className="text-xs font-bold">Import Data Confirmation</p>
-                            </div>
-                            <p className="text-xs text-muted-foreground leading-relaxed">You are about to replace your current local data with the received backup. We recommend creating a Full App Backup before continuing.</p>
-                            <div className="bg-background rounded-xl border border-border/60 p-2.5 space-y-1.5 mt-2">
-                              <div className="flex justify-between text-xs"><span className="text-muted-foreground">App Version</span><span className="font-bold text-foreground">{transferImportData.att_app_version || 'Unknown'}</span></div>
-                              <div className="flex justify-between text-xs"><span className="text-muted-foreground">Routine Mode</span><span className="font-bold text-foreground">{transferImportData.att_subject_mode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine'}</span></div>
-                              <div className="flex justify-between text-xs"><span className="text-muted-foreground">Total Snapshots</span><span className="font-bold text-foreground">{transferImportData.attendenz_snapshots_v1 ? JSON.parse(transferImportData.attendenz_snapshots_v1).length : 0}</span></div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 pt-2">
-                              <button onClick={() => setTransferImportData(null)} className="w-full py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
-                              <button onClick={executeTransferImport} className="w-full py-2.5 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:opacity-90 transition-colors shadow-sm cursor-pointer">Replace & Import</button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
                     {activeSettingModal === 'snapshot' && (
                       <div className="space-y-3">
                         <div className="flex items-center justify-between bg-muted/30 p-2.5 rounded-xl border border-border/50">
@@ -959,35 +941,6 @@ export default function Account() {
                         {snapshotMsg && (<p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{snapshotMsg}</p>)}
                       </div>
                     )}
-                    {activeSettingModal === 'backup' && (
-                      <div className="space-y-3">
-                        {busy && <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{busy}</p>}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          <button onClick={() => { setBusy('Backing up…'); setTimeout(() => { exportDataAsJSON(); setBusy(null); import('sonner').then(({ toast }) => toast.success('Backup downloaded.')); }, 400); }} className="w-full flex items-center justify-center gap-2 px-3 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-2xl transition-colors shadow-sm cursor-pointer">
-                            <Download className="w-4 h-4" />
-                            Export Backup (.json)
-                          </button>
-                          <button onClick={() => backupFileInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold rounded-2xl transition-colors border border-border cursor-pointer">
-                            <RefreshCw className="w-4 h-4" />
-                            Restore from File
-                          </button>
-                          <input type="file" ref={backupFileInputRef} onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              importDataFromJSON(file, (success) => {
-                                if (success) {
-                                  import("sonner").then(({ toast }) => toast.info('Backup restored successfully! Reloading app...'));
-                                  setLocation('/');
-                                  window.location.reload();
-                                } else {
-                                  import("sonner").then(({ toast }) => toast.info('Failed to restore backup. Please ensure the file is valid.'));
-                                }
-                              });
-                            }
-                          }} accept=".json" className="hidden" />
-                        </div>
-                      </div>
-                    )}
                     {activeSettingModal === 'export' && (
                       <div className="space-y-3 text-left">
                         {busy && <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{busy}</p>}
@@ -1022,17 +975,18 @@ export default function Account() {
                               <option value="">-- Choose Subject --</option>
                               {subjectMode === 'preloaded' ? (
                                 <>
-                                  {CATEGORIES.flatMap(c => c.subjects).map(s => (<option key={s.name} value={s.name}>{s.name}</option>))}
-                                  {INTEGRATED_SUBJECTS.map(s => (<option key={s.name} value={s.name}>{s.name}</option>))}
-                                  {userAddedSubjects.filter(s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching').map(s => (<option key={s.id} value={s.name}>{s.name} (SGT)</option>))}
-                                  {userAddedSubjects.filter(s => !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (<option key={s.id} value={s.name}>{s.name}</option>))}
-                                  {WARD_SUBJECTS.map(w => (<option key={w.name} value={w.name}>{w.name} (Ward)</option>))}
+                                  {CATEGORIES.flatMap(c => c.subjects).map(s => (<option key={`subject:${s.name}`} value={`subject:${s.name}`}>{s.name}</option>))}
+                                  {INTEGRATED_SUBJECTS.map(s => (<option key={`subject:${s.name}`} value={`subject:${s.name}`}>{s.name}</option>))}
+                                  {userAddedSubjects.filter(s => !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (<option key={`subject:${s.name}`} value={`subject:${s.name}`}>{s.name}</option>))}
+                                  {userAddedSubjects.filter(s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching').map(s => (<option key={`sgt:${s.id}`} value={`sgt:${s.id}`}>{s.name} (SGT)</option>))}
+                                  {WARD_SUBJECTS.map(w => (<option key={`ward:${w.name}`} value={`ward:${w.name}`}>{w.name} (Ward)</option>))}
+                                  {presetWardSchedule.filter(e => !WARD_SUBJECTS.some(w => w.name === e.ward)).map((e, idx) => (<option key={`ward:${e.ward}:${idx}`} value={`ward:${e.ward}`}>{e.ward} (Ward)</option>))}
                                 </>
                               ) : (
                                 <>
-                                  {customSubjects.filter(s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching').map(s => (<option key={s.id} value={s.name}>{s.name} (SGT)</option>))}
-                                  {customSubjects.filter(s => !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (<option key={s.id} value={s.name}>{s.name}</option>))}
-                                  {customWards.map(w => (<option key={w.id} value={w.name}>{w.name} (Ward)</option>))}
+                                  {customSubjects.filter(s => !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (<option key={`subject:${s.name}`} value={`subject:${s.name}`}>{s.name}</option>))}
+                                  {customSubjects.filter(s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching').map(s => (<option key={`sgt:${s.id}`} value={`sgt:${s.id}`}>{s.name} (SGT)</option>))}
+                                  {customWards.map(w => (<option key={`ward:${w.name}`} value={`ward:${w.name}`}>{w.name} (Ward)</option>))}
                                 </>
                               )}
                             </select>
@@ -1135,7 +1089,7 @@ export default function Account() {
                   )}
                 </div>
                 <p className="text-[11px] text-muted-foreground font-medium">Developer: <strong className="text-foreground font-bold">benzavraar</strong></p>
-                <p className="text-[10px] text-muted-foreground/80 font-medium">Local Storage: {storageSize}</p>
+                <p className="text-[10px] text-muted-foreground/80 font-medium">Storage Used: {runtimeStorageInfo.usedMB}</p>
               </div>
             </div>
             <div className="flex items-center gap-2 pt-1 border-t border-border/50">
