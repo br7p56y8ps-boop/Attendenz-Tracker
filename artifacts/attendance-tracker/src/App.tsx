@@ -58,6 +58,7 @@ function MainAppFlow() {
       <WelcomeVideoScreen
         onComplete={() => {
           localStorage.setItem(HAS_SEEN_WELCOME_KEY, 'true');
+          localStorage.removeItem('att_just_updated'); // ← clear update flag so next render goes to normal app
           setShowWelcome(false);
         }}
       />
