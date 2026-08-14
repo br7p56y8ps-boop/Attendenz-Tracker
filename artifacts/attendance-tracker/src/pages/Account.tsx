@@ -68,17 +68,32 @@ export default function Account() {
     }
   };
 
-  const handleApplyUpdate = (withBackup: boolean) => {
-    if (withBackup) {
-      exportDataAsJSON();
-    }
-    localStorage.setItem('att_app_version', LATEST_VERSION);
-    localStorage.setItem('att_just_updated', 'true');
-    localStorage.removeItem('att_has_seen_welcome_v1');
-    setInstalledVersion(LATEST_VERSION);
-    setShowUpdatePrompt(false);
-    window.location.reload();
-  };
+  const handleApplyUpdate = async (withBackup: boolean) => {
+  if (withBackup) exportDataAsJSON();
+  const newVer = localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION;
+  localStorage.setItem('att_app_version', newVer);
+  localStorage.setItem('att_just_updated', 'true');
+  localStorage.removeItem('att_has_seen_welcome_v1');
+  localStorage.removeItem('att_pwa_update_ready');
+  setInstalledVersion(newVer);
+  setShowUpdatePrompt(false);
+  setUpdatingNow(true);
+
+  const MIN_UPDATE_DELAY = 5600;
+  const start = Date.now();
+
+  try {
+    const applyPwa = (window as any).attendenzApplyPwaUpdate;
+    if (applyPwa) await applyPwa();
+  } catch {}
+
+  const elapsed = Date.now() - start;
+  if (elapsed < MIN_UPDATE_DELAY) {
+    await new Promise(r => setTimeout(r, MIN_UPDATE_DELAY - elapsed));
+  }
+
+  window.location.href = import.meta.env.BASE_URL || '/';
+};
 
   // Export Attendance Data States
   const [exportFormat, setExportFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
