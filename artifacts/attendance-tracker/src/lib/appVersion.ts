@@ -1,5 +1,5 @@
-export const APP_VERSION = '4.2.1.2';
-export const LATEST_VERSION = '4.2.1.2';
+export const APP_VERSION = '4.2.0';
+export const LATEST_VERSION = '4.2.0';
 
 export const FEATURES_UPDATED = [
   { emoji: '🎉', title: "What's New Popup", desc: 'Automatically alerts on first-time setup and future version updates to keep you informed of changes.' },
