@@ -25,7 +25,7 @@ import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '
 import {
   Plus, Trash2, Pencil, X, AlertTriangle, ArrowRightLeft,
   GraduationCap, Stethoscope, Download, Upload, Copy, Share2, FileText,
-  Check, ChevronDown, ChevronRight, Edit2, History,
+  Check, ChevronDown, ChevronRight, Edit2, SendToBack,
 } from 'lucide-react';
 
 /* ── Shared styles ── */
@@ -54,28 +54,6 @@ const splitRange = (range: string): { start: string; end: string } => {
 const to24 = (mins: number): string => {
   const m = ((mins % 1440) + 1440) % 1440;
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-};
-
-/* ── History helpers ── */
-const HISTORY_KEY = 'att_manage_history_v1';
-interface HistoryEntry {
-  id: string;
-  type: string;
-  label: string;
-  timestamp: string;
-  data: any;
-}
-const loadHistory = (): HistoryEntry[] => {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
-const persistHistory = (entries: HistoryEntry[]) => {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(entries));
-  storageSetItem(HISTORY_KEY, JSON.stringify(entries));
 };
 
 function OverlayModal({ open, onClose, children, maxW = 'max-w-md' }: {
@@ -162,7 +140,6 @@ interface EditSubjectState {
   subjectType: 'single' | 'allied' | 'allied-parent'; parentName: string;
   clinicalSubject?: string;
   rows: ScheduleRow[]; plannedClasses: number; startDate?: string; endDate?: string;
-  originalPlanned: number;
 }
 interface EditWardState {
   store: 'preset' | 'custom'; index?: number; id?: string;
@@ -361,21 +338,6 @@ export default function AddNew() {
   const [section, setSection] = useState<'academic' | 'clinical'>('academic');
   const [selDay, setSelDay] = useState<number>(new Date().getDay());
 
-  // History state
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
-
-  useEffect(() => {
-    if (historyOpen) setHistoryEntries(loadHistory());
-  }, [historyOpen]);
-
-  const recordHistory = (type: string, label: string, data: any) => {
-    const entry: HistoryEntry = { id: genId('hist'), type, label, timestamp: new Date().toISOString(), data };
-    const updated = [entry, ...loadHistory()].slice(0, 30);
-    persistHistory(updated);
-    setHistoryEntries(updated);
-  };
-
   // ── Academic More state ──
   const [subjectType, setSubjectType] = useState<'single' | 'allied'>('single');
   const [subjectName, setSubjectName] = useState('');
@@ -416,14 +378,6 @@ export default function AddNew() {
   const [slotRemoveConfirm, setSlotRemoveConfirm] = useState(false);
   const [showMoveForm, setShowMoveForm] = useState(false);
 
-  // ── Add Slot state ──
-  const [addSlotOpen, setAddSlotOpen] = useState(false);
-  const [addSlotDay, setAddSlotDay] = useState<number>(0);
-  const [addSlotStart, setAddSlotStart] = useState('09:00 AM');
-  const [addSlotEnd, setAddSlotEnd] = useState('10:00 AM');
-  const [addSlotSubject, setAddSlotSubject] = useState('');
-  const [addSlotError, setAddSlotError] = useState<string | null>(null);
-
   // ── Subject Triage state ──
   const [opdOpen, setOpdOpen] = useState(false);
   const [opdRename, setOpdRename] = useState<Record<string, string>>({});
@@ -448,6 +402,17 @@ export default function AddNew() {
   // ── Edit Subject & Edit Ward states ──
   const [editSubject, setEditSubject] = useState<EditSubjectState | null>(null);
   const [editWard, setEditWard] = useState<EditWardState | null>(null);
+
+  // ── Add Slot state ──
+  const [addSlotOpen, setAddSlotOpen] = useState(false);
+  const [addSlotSubject, setAddSlotSubject] = useState('');
+  const [addSlotStart, setAddSlotStart] = useState('09:00 AM');
+  const [addSlotEnd, setAddSlotEnd] = useState('10:00 AM');
+  const [addSlotPlanned, setAddSlotPlanned] = useState(0);
+
+  // ── History state ──
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<any[]>([]);
 
   // ── Derived data ──
   const isAllied = subjectType === 'allied';
@@ -489,23 +454,6 @@ export default function AddNew() {
     return opts;
   }, [allClinicalSubjects]);
 
-  const academicAddSlotOptions = useMemo(() => {
-    if (subjectMode === 'preloaded') {
-      const preset = [
-        ...CATEGORIES.flatMap(c => c.subjects.map(s => s.name)),
-        ...INTEGRATED_SUBJECTS.map(s => s.name),
-      ];
-      const userAdded = userAddedSubjects
-        .filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'))
-        .map(s => s.name);
-      return Array.from(new Set([...preset, ...userAdded])).sort();
-    }
-    return customSubjects
-      .filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'))
-      .map(s => s.name)
-      .sort();
-  }, [subjectMode, userAddedSubjects, customSubjects]);
-
   // ── Helpers ──
   const getSGTForSubject = (clinicalName: string) => {
     if (subjectMode === 'preloaded') {
@@ -530,6 +478,22 @@ export default function AddNew() {
     const custom = customWards.find(w => w.name === clinicalName);
     if (custom) return { store: 'custom' as const, entry: custom, id: custom.id };
     return null;
+  };
+
+  // FIX: Academic subject detection should use type, not name.
+  const isAcademicSubject = (subjectName: string): boolean => {
+    if (subjectMode === 'preloaded') {
+      const presetAcademic = CATEGORIES.flatMap(c => c.subjects).some(s => s.name === subjectName);
+      const integrated = INTEGRATED_SUBJECTS.some(s => s.name === subjectName);
+      const userAddedAcademic = userAddedSubjects.some(s =>
+        s.name === subjectName && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')
+      );
+      return presetAcademic || integrated || userAddedAcademic;
+    } else {
+      return customSubjects.some(s =>
+        s.name === subjectName && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')
+      );
+    }
   };
 
   const isSGTSubject = (subjectName: string): boolean => {
@@ -603,6 +567,94 @@ export default function AddNew() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Academic subjects for Add Slot dropdown
+  const academicAddSlotSubjects = useMemo(() => {
+    const set = new Set<string>();
+    if (subjectMode === 'preloaded') {
+      CATEGORIES.forEach(c => c.subjects.forEach(s => set.add(s.name)));
+      INTEGRATED_SUBJECTS.forEach(s => set.add(s.name));
+      userAddedSubjects
+        .filter(s => !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'))
+        .forEach(s => set.add(s.name));
+    } else {
+      customSubjects
+        .filter(s => !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'))
+        .forEach(s => set.add(s.name));
+    }
+    return Array.from(set).sort();
+  }, [subjectMode, userAddedSubjects, customSubjects]);
+
+  // History persistence
+  const HISTORY_KEY = 'att_manage_history';
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(HISTORY_KEY);
+      if (stored) setHistoryEntries(JSON.parse(stored));
+    } catch {}
+  }, []);
+
+  const recordHistory = (type: string, data: any) => {
+    const entry = { id: genId('hist'), type, timestamp: new Date().toISOString(), data };
+    setHistoryEntries(prev => {
+      const updated = [entry, ...prev].slice(0, 50);
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+        storageSetItem(HISTORY_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const openAddSlot = () => {
+    setAddSlotSubject('');
+    setAddSlotStart('09:00 AM');
+    setAddSlotEnd('10:00 AM');
+    setAddSlotPlanned(0);
+    setFormError(null);
+    setAddSlotOpen(true);
+  };
+
+  const saveAddSlot = () => {
+    if (!addSlotSubject) {
+      setFormError('Select a subject.');
+      return;
+    }
+    const time = canonicalTimeRange(addSlotStart, addSlotEnd);
+    const conflicts = findSubjectTimeConflicts([DAY_ABBRS[selDay]], time, undefined).filter(c => !c.exact);
+    if (conflicts.length > 0) {
+      setFormError(`Time overlaps with ${conflicts.map(c => c.subjects.join(', ')).join('; ')}.`);
+      return;
+    }
+
+    recordHistory('Add Slot', { subject: addSlotSubject, day: selDay, time });
+
+    if (subjectMode === 'preloaded') {
+      const tt = timetableRef.current;
+      const existingIdx = (tt[selDay] || []).findIndex(s => canonicalizeTimeRange(s.time) === time);
+      if (existingIdx >= 0) {
+        const existing = tt[selDay][existingIdx];
+        const merged = Array.from(new Set([...existing.subjects, addSlotSubject]));
+        updatePresetTimetableSlot(selDay, existingIdx, existing.time, merged, selDay);
+      } else {
+        addSubjectToSlot(selDay, time, addSlotSubject);
+      }
+    } else {
+      const target = customSubjects.find(s => s.name === addSlotSubject);
+      if (target) {
+        const schedules = target.schedules || [];
+        const existing = schedules.find(s => s.day === DAY_ABBRS[selDay] && canonicalizeTimeRange(s.time) === time);
+        if (existing) {
+          setFormError('Subject already scheduled at this time.');
+          return;
+        }
+        const updated = [...schedules, { day: DAY_ABBRS[selDay], time }];
+        updateCustomSubject(target.id, { schedules: updated });
+      }
+    }
+    setAddSlotOpen(false);
+    showToast('Slot added.');
+  };
+
   // ── Academic functions ──
   const addSubjectRow = () => {
     if (subjectRows.length >= 7) { setFormError('Maximum 7 day & time rows.'); return; }
@@ -658,8 +710,6 @@ export default function AddNew() {
           startDate: it.startDate, endDate: it.endDate, clinicalSubject: it.clinicalSubject,
         })));
       }
-      const addedNames = items.map(i => i.name);
-      recordHistory('ADD_SUBJECT', `Added ${items.length} subject(s)`, { mode: subjectMode, names: addedNames });
       setSubjectName(''); setPlanned(''); setSubjectRows([newRow([])]); setStagedChildren([]); setNewParentName(''); setChildStart(''); setChildEnd('');
       setFormError(null);
       showToast(items.length > 1 ? `${items.length} items added.` : 'Added successfully.');
@@ -764,7 +814,6 @@ export default function AddNew() {
     try {
       if (subjectMode === 'preloaded') addPresetWardEntry({ start, end, ward: name, morningTime, eveningTime, addedByUser: true });
       else addCustomWard({ name, startDate: start, endDate: end, morningTime, eveningTime });
-      recordHistory('ADD_WARD', `Added rotation ${name}`, { mode: subjectMode, name, start, end, morningTime, eveningTime });
       setWardName(''); setWardStart(''); setWardEnd('');
       setFormError(null);
       showToast('Rotation added.');
@@ -794,7 +843,6 @@ export default function AddNew() {
       }
       commitWard(name, wardStart, wardEnd, morningTime, eveningTime);
     } else {
-      // SGT save
       if (!sgtClinicalSubject) { setFormError('Select a clinical subject or create a new one.'); return; }
       let clinicalSubjectName = sgtClinicalSubject;
       if (clinicalSubjectName === CREATE_NEW) {
@@ -813,7 +861,6 @@ export default function AddNew() {
       const rp = rowProblem(sgtRows);
       if (rp) { setFormError(rp); return; }
       const rows = buildRowsFromForm(sgtRows);
-
       const existingSGTNames = (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects)
         .filter(s => s.parentName === 'Small Group Teaching')
         .map(s => s.name.toLowerCase());
@@ -821,13 +868,11 @@ export default function AddNew() {
         setFormError(`An SGT subject named "${finalSgtName}" already exists.`);
         return;
       }
-
       const pc = computedPlanned;
       if (pc === 0) {
         setFormError('No scheduled sessions found in the date range. Please check your schedules and dates.');
         return;
       }
-
       const newSubject = {
         name: finalSgtName,
         subjectType: 'allied' as const,
@@ -845,7 +890,6 @@ export default function AddNew() {
       } else {
         addCustomSubjects([newSubject as any]);
       }
-      recordHistory('ADD_SGT', `Added SGT ${finalSgtName}`, { mode: subjectMode, name: finalSgtName });
       setSgtClinicalSubject('');
       setSgtName('');
       setSgtStartDate('');
@@ -855,34 +899,6 @@ export default function AddNew() {
       showToast(`SGT added with ${pc} planned classes.`);
       setMoreOpen(false);
     }
-  };
-
-  // ── Schedule sync helpers ──
-  const updateSubjectSchedule = (name: string, oldDay: number, newDay: number, oldStart: string, oldEnd: string, newStart: string, newEnd: string) => {
-    const ua = userAddedSubjects.find(u => u.name.toLowerCase() === name.toLowerCase());
-    if (!ua) return;
-    const existing = ua.schedules || [];
-    let filtered = existing;
-    if (oldDay !== undefined && oldDay >= 0) {
-      const oldAbbr = DAY_ABBRS[oldDay];
-      filtered = existing.filter(s => !(s.day === oldAbbr && s.start === oldStart && s.end === oldEnd));
-    }
-    const newAbbr = DAY_ABBRS[newDay];
-    const newEntry = { day: newAbbr, start: newStart, end: newEnd };
-    const alreadyExists = filtered.some(s => s.day === newAbbr && s.start === newStart && s.end === newEnd);
-    const updated = alreadyExists ? filtered : [...filtered, newEntry];
-    updateUserAddedSubject(ua.id, { schedules: updated, days: updated.map(s => s.day).join(', ') } as any);
-  };
-
-  const updateSubjectScheduleForAdd = (name: string, day: number, start: string, end: string) => {
-    const ua = userAddedSubjects.find(u => u.name.toLowerCase() === name.toLowerCase());
-    if (!ua) return;
-    const dayAbbr = DAY_ABBRS[day];
-    const existing = ua.schedules || [];
-    const alreadyExists = existing.some(s => s.day === dayAbbr && s.start === start && s.end === end);
-    if (alreadyExists) return;
-    const updated = [...existing, { day: dayAbbr, start, end }];
-    updateUserAddedSubject(ua.id, { schedules: updated, days: updated.map(s => s.day).join(', ') });
   };
 
   // ── Edit Slot functions ──
@@ -941,6 +957,22 @@ export default function AddNew() {
     setSlotMovePlanned(prev => ({ ...prev, [id]: value }));
   };
 
+  const updateSubjectSchedule = (name: string, oldDay: number, newDay: number, oldStart: string, oldEnd: string, newStart: string, newEnd: string) => {
+    const ua = userAddedSubjects.find(u => u.name.toLowerCase() === name.toLowerCase());
+    if (!ua) return;
+    const existing = ua.schedules || [];
+    let filtered = existing;
+    if (oldDay !== undefined && oldDay >= 0) {
+      const oldAbbr = DAY_ABBRS[oldDay];
+      filtered = existing.filter(s => !(s.day === oldAbbr && s.start === oldStart && s.end === oldEnd));
+    }
+    const newAbbr = DAY_ABBRS[newDay];
+    const newEntry = { day: newAbbr, start: newStart, end: newEnd };
+    const alreadyExists = filtered.some(s => s.day === newAbbr && s.start === newStart && s.end === newEnd);
+    const updated = alreadyExists ? filtered : [...filtered, newEntry];
+    updateUserAddedSubject(ua.id, { schedules: updated, days: updated.map(s => s.day).join(', ') } as any);
+  };
+
   const doMoveSubjects = (targetIdsOverride?: string[]) => {
     if (!editSlot) return;
     const targetIds = targetIdsOverride || selectedSubjects;
@@ -950,7 +982,7 @@ export default function AddNew() {
     }
     const targetDay = slotMoveTargetDay;
     const time = canonicalTimeRange(slotMoveStart, slotMoveEnd);
-    const targetSlots = presetTimetable[targetDay] || [];
+    const targetSlots = timetableRef.current[targetDay] || [];
     const conflictSlot = targetSlots.find(sl => {
       if (sl.type === 'ward' || sl.type === 'ward_replacement') return false;
       const pa = parseRangeToMinutes(sl.time);
@@ -976,7 +1008,7 @@ export default function AddNew() {
     const names = subjectsToMove.map(s => s.name);
     const currentDay = editSlot.day;
     const currentIndex = editSlot.index;
-    const sourceSlot = presetTimetable[currentDay]?.[currentIndex];
+    const sourceSlot = timetableRef.current[currentDay]?.[currentIndex];
     if (!sourceSlot) return;
     const { start: oldStart, end: oldEnd } = splitRange(sourceSlot.time);
     const sourceSubjects = sourceSlot.subjects.filter(s => !names.includes(s));
@@ -985,7 +1017,7 @@ export default function AddNew() {
     } else {
       updatePresetTimetableSlot(currentDay, currentIndex, sourceSlot.time, sourceSubjects, currentDay);
     }
-    const targetSlots = presetTimetable[targetDay] || [];
+    const targetSlots = timetableRef.current[targetDay] || [];
     const existingIndex = targetSlots.findIndex(sl => canonicalizeTimeRange(sl.time) === time);
     if (existingIndex >= 0) {
       const merged = Array.from(new Set([...targetSlots[existingIndex].subjects, ...names]));
@@ -1025,13 +1057,14 @@ export default function AddNew() {
     setSlotMovePlanned({});
     setShowMoveForm(false);
     setSlotConflict(null);
+    recordHistory('Move Subjects', { names, fromDay: currentDay, fromTime: sourceSlot.time, toDay: targetDay, toTime: time });
     showToast(`Moved ${names.length} subject(s).`);
   };
 
   const confirmSlotRemove = () => {
     if (!slotRemove) return;
     try {
-      const slot = presetTimetable[slotRemove.day]?.[slotRemove.index];
+      const slot = timetableRef.current[slotRemove.day]?.[slotRemove.index];
       if (slot) {
         const remaining = slot.subjects.filter(s => s !== slotRemove.subject);
         if (remaining.length === 0) {
@@ -1045,6 +1078,7 @@ export default function AddNew() {
           const filtered = existing.filter(s => !(s.day === DAY_ABBRS[slotRemove.day] && s.start === slotRemove.start && s.end === slotRemove.end));
           updateUserAddedSubject(ua.id, { schedules: filtered, days: filtered.map(s => s.day).join(', ') } as any);
         }
+        recordHistory('Remove from Slot', { subject: slotRemove.subject, day: slotRemove.day, time: slotRemove.time });
         showToast(`Removed "${slotRemove.subject}" from slot.`);
       }
     } catch {
@@ -1058,93 +1092,16 @@ export default function AddNew() {
     }
   };
 
-  // ── Add Slot functions ──
-  const openAddSlot = () => {
-    setAddSlotDay(selDay);
-    setAddSlotStart('09:00 AM');
-    setAddSlotEnd('10:00 AM');
-    setAddSlotSubject('');
-    setAddSlotError(null);
-    setAddSlotOpen(true);
-  };
-
-  const saveAddSlot = () => {
-    if (!addSlotSubject) { setAddSlotError('Select a subject.'); return; }
-    const time = canonicalTimeRange(addSlotStart, addSlotEnd);
-    if (!time) { setAddSlotError('Invalid time range.'); return; }
-    const dayAbbr = DAY_ABBRS[addSlotDay];
-
-    if (subjectMode === 'preloaded') {
-      const slots = presetTimetable[addSlotDay] || [];
-      const exactIndex = slots.findIndex(sl => (sl.type !== 'ward' && sl.type !== 'ward_replacement') && canonicalizeTimeRange(sl.time) === time);
-      if (exactIndex >= 0) {
-        const exactSlot = slots[exactIndex];
-        if (exactSlot.subjects.includes(addSlotSubject)) {
-          setAddSlotError('Subject already in this slot.');
-          return;
-        }
-        const newSubjects = [...exactSlot.subjects, addSlotSubject];
-        updatePresetTimetableSlot(addSlotDay, exactIndex, exactSlot.time, newSubjects, addSlotDay);
-        updateSubjectScheduleForAdd(addSlotSubject, addSlotDay, addSlotStart, addSlotEnd);
-        recordHistory('ADD_SLOT', `Added ${addSlotSubject} to ${dayAbbr} ${time} (merged)`, { mode: 'preloaded', day: addSlotDay, time, subject: addSlotSubject, start: addSlotStart, end: addSlotEnd, merged: true });
-        setAddSlotOpen(false);
-        showToast(`Added ${addSlotSubject} to slot.`);
-        return;
-      }
-      const conflicts = findSubjectTimeConflicts([dayAbbr], time, undefined) || [];
-      if (conflicts.length > 0) {
-        setAddSlotError(`Overlap with existing subjects: ${conflicts.map(c => `${c.time} (${c.subjects.join(', ')})`).join(', ')}`);
-        return;
-      }
-      addSubjectToSlot(addSlotDay, time, addSlotSubject);
-      updateSubjectScheduleForAdd(addSlotSubject, addSlotDay, addSlotStart, addSlotEnd);
-      recordHistory('ADD_SLOT', `Added ${addSlotSubject} to ${dayAbbr} ${time}`, { mode: 'preloaded', day: addSlotDay, time, subject: addSlotSubject, start: addSlotStart, end: addSlotEnd, merged: false });
-      setAddSlotOpen(false);
-      showToast(`Added ${addSlotSubject} to slot.`);
-    } else {
-      const subject = customSubjects.find(s => s.name === addSlotSubject && s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'));
-      if (!subject) { setAddSlotError('Subject not found.'); return; }
-      const existingSchedules = (subject.schedules || []).filter(sch => sch.day === dayAbbr);
-      const exactExists = existingSchedules.some(sch => canonicalizeTimeRange(sch.time) === time);
-      if (exactExists) {
-        setAddSlotError('Subject already scheduled at this time.');
-        return;
-      }
-      const pa = parseRangeToMinutes(time);
-      if (!pa) { setAddSlotError('Invalid time range.'); return; }
-      for (const sch of existingSchedules) {
-        const pb = parseRangeToMinutes(sch.time);
-        if (pb && pa.start < pb.end && pb.start < pa.end) {
-          setAddSlotError(`Overlaps with existing schedule ${sch.day} ${sch.time}.`);
-          return;
-        }
-      }
-      const newSchedule = { day: dayAbbr, time };
-      const updatedSchedules = [...(subject.schedules || []), newSchedule];
-      updateCustomSubject(subject.id, { schedules: updatedSchedules, days: updatedSchedules.map(s => s.day).join(', ') });
-      recordHistory('ADD_SLOT', `Added ${addSlotSubject} to ${dayAbbr} ${time}`, { mode: 'custom', day: addSlotDay, time, subject: addSlotSubject });
-      setAddSlotOpen(false);
-      showToast(`Added ${addSlotSubject} schedule.`);
-    }
-  };
-
   // ── Delete functions ──
   const requestDeleteSubject = (store: 'userAdded' | 'custom', id: string) => {
     const item = store === 'userAdded' ? userAddedSubjects.find(x => x.id === id) : customSubjects.find(x => x.id === id);
     if (!item) return;
-    const lines = [
-      `The "${item.name}" subject card`,
-      'All timetable slots referencing it',
-      'Calendar / schedule entries',
-      'All attendance records (attended, missed, finished)',
-    ];
-    if (item.subjectType === 'allied-parent') lines.push('All allied children nested under this parent');
     setDeleteSheet({
       title: `Delete "${item.name}"?`,
-      lines,
+      lines: ['This subject and all its attendance records will be permanently removed.', 'This action cannot be undone.'],
       onConfirm: () => {
+        recordHistory('Delete Subject', { name: item.name, store, id });
         try {
-          recordHistory('DELETE_SUBJECT', `Deleted ${item.name}`, { store, id, name: item.name });
           const namesToPurge = [item.name];
           if (item.subjectType === 'allied-parent') {
             const kids = store === 'userAdded'
@@ -1154,13 +1111,10 @@ export default function AddNew() {
           }
           if (store === 'userAdded') removeUserAddedSubject(id);
           else removeCustomSubject(id);
-
           if (item.subjectType === 'allied' && item.parentName === 'Small Group Teaching') {
             removeAttendanceByKey(getSGTKey(item.id));
           } else {
-            for (const n of namesToPurge) {
-              removeSubjectData(n);
-            }
+            for (const n of namesToPurge) removeSubjectData(n);
           }
           setDeleteSheet(null);
           showToast(`Deleted "${item.name}".`);
@@ -1174,15 +1128,14 @@ export default function AddNew() {
       const idx = ref as number;
       const e = presetWardSchedule[idx];
       if (!e) return;
-      const occurrences = presetWardSchedule.filter(x => x.ward.toLowerCase() === e.ward.toLowerCase()).length;
       setDeleteSheet({
         title: `Delete rotation "${e.ward}"?`,
-        lines: ['This rotation period', 'Calendar / schedule entries', occurrences <= 1 ? 'All attendance records for this ward' : 'Attendance is kept (ward has other periods)'],
+        lines: ['This rotation period', 'Calendar / schedule entries', 'All attendance records for this ward'],
         onConfirm: () => {
+          recordHistory('Delete Rotation', { ward: e.ward, index: idx });
           try {
-            recordHistory('DELETE_WARD', `Deleted rotation ${e.ward}`, { store: 'preset', index: idx, name: e.ward, start: e.start, end: e.end });
             removePresetWardEntry(idx);
-            if (occurrences <= 1) removeWardData(e.ward);
+            if (presetWardSchedule.filter(x => x.ward === e.ward).length <= 1) removeWardData(e.ward);
             setDeleteSheet(null);
             showToast(`Deleted "${e.ward}".`);
           } catch { showToast('Delete failed — please try again.', 'err'); }
@@ -1195,8 +1148,8 @@ export default function AddNew() {
         title: `Delete rotation "${w.name}"?`,
         lines: ['This rotation card', 'Calendar / schedule entries', 'All attendance records for this ward'],
         onConfirm: () => {
+          recordHistory('Delete Ward', { name: w.name, id: w.id });
           try {
-            recordHistory('DELETE_WARD', `Deleted rotation ${w.name}`, { store: 'custom', id: w.id, name: w.name });
             removeCustomWard(w.id);
             removeWardData(w.name);
             setDeleteSheet(null);
@@ -1226,7 +1179,6 @@ export default function AddNew() {
       plannedClasses: item.plannedClasses ?? 0,
       startDate: (item as any).startDate || '',
       endDate: (item as any).endDate || '',
-      originalPlanned: item.plannedClasses ?? 0,
     });
   };
 
@@ -1254,6 +1206,7 @@ export default function AddNew() {
       const rp = rowProblem(editSubject.rows);
       if (rp) { setEditError(rp); return; }
     }
+    recordHistory('Edit Subject', { old: editSubject, new: { ...editSubject } });
     try {
       if (editSubject.subjectType === 'allied-parent') {
         const patch = { name: editSubject.name };
@@ -1283,18 +1236,8 @@ export default function AddNew() {
       }
       if (editSubject.name !== editSubject.originalName) {
         const isSGT = editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching';
-        if (!isSGT) {
-          renameSubjectData(editSubject.originalName, editSubject.name);
-        }
+        if (!isSGT) renameSubjectData(editSubject.originalName, editSubject.name);
       }
-      recordHistory('EDIT_SUBJECT', `Edited ${editSubject.originalName}`, {
-        store: editSubject.store,
-        id: editSubject.id,
-        oldName: editSubject.originalName,
-        newName: editSubject.name,
-        oldPlanned: editSubject.originalPlanned,
-        newPlanned: editSubject.plannedClasses,
-      });
       setEditError(null);
       showToast('Changes saved.');
       window.setTimeout(() => setEditSubject(null), 900);
@@ -1306,23 +1249,13 @@ export default function AddNew() {
     if (!editWard.name.trim()) { setEditError('Ward name cannot be empty.'); return; }
     if (!editWard.startDate || !editWard.endDate) { setEditError('Pick start and end dates.'); return; }
     if (editWard.endDate < editWard.startDate) { setEditError('End date must be after start date.'); return; }
+    recordHistory('Edit Ward', { old: editWard, new: { ...editWard } });
     try {
       const morningTime = canonicalTimeRange(editWard.mornStart, editWard.mornEnd);
       const eveningTime = canonicalTimeRange(editWard.eveStart, editWard.eveEnd);
       if (editWard.store === 'preset') updatePresetWardEntry(editWard.index!, { ward: editWard.name.trim(), start: editWard.startDate, end: editWard.endDate, morningTime, eveningTime });
       else updateCustomWard(editWard.id!, { name: editWard.name.trim(), startDate: editWard.startDate, endDate: editWard.endDate, morningTime, eveningTime });
       if (editWard.name.trim() !== editWard.originalName) renameWardData(editWard.originalName, editWard.name.trim());
-      recordHistory('EDIT_WARD', `Edited rotation ${editWard.originalName}`, {
-        store: editWard.store,
-        id: editWard.id,
-        index: editWard.index,
-        oldName: editWard.originalName,
-        newName: editWard.name.trim(),
-        oldStart: editWard.startDate,
-        oldEnd: editWard.endDate,
-        newStart: editWard.startDate,
-        newEnd: editWard.endDate,
-      });
       setEditError(null);
       showToast('Rotation updated.');
       window.setTimeout(() => setEditWard(null), 900);
@@ -1333,22 +1266,13 @@ export default function AddNew() {
   const openOpd = () => {
     setOpdRename({});
     setOpdEditing({});
-    if (subjectMode === 'preloaded') {
-      setTriageTop('preset');
-    } else {
-      setTriageTop('added');
-    }
+    if (subjectMode === 'preloaded') setTriageTop('preset'); else setTriageTop('added');
     setTriageSub('academic');
     setOpdOpen(true);
   };
 
-  const toggleOpdEdit = (id: string) => {
-    setOpdEditing(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const updateOpdRename = (id: string, value: string) => {
-    setOpdRename(prev => ({ ...prev, [id]: value }));
-  };
+  const toggleOpdEdit = (id: string) => setOpdEditing(prev => ({ ...prev, [id]: !prev[id] }));
+  const updateOpdRename = (id: string, value: string) => setOpdRename(prev => ({ ...prev, [id]: value }));
 
   const saveOpdRename = (id: string, store: 'userAdded' | 'custom', currentName: string) => {
     const newName = opdRename[id]?.trim() || currentName;
@@ -1356,11 +1280,11 @@ export default function AddNew() {
     const isPresetAcademic = CATEGORIES.flatMap(c => c.subjects).some(s => s.name === currentName) ||
                              INTEGRATED_SUBJECTS.some(s => s.name === currentName);
     const isPresetClinical = WARD_SUBJECTS.some(s => s.name === currentName);
+    recordHistory('Rename', { old: currentName, new: newName, type: isPresetAcademic ? 'preset-academic' : isPresetClinical ? 'preset-clinical' : 'subject' });
     if (isPresetAcademic) {
       renameSubjectData(currentName, newName);
       renamePresetAcademicSubject(currentName, newName);
       setPresetSubjectRename(currentName, newName);
-      recordHistory('RENAME_SUBJECT', `Renamed ${currentName} to ${newName}`, { kind: 'preset_academic', oldName: currentName, newName });
       showToast(`Renamed to "${newName}".`);
       toggleOpdEdit(id);
       return;
@@ -1368,55 +1292,33 @@ export default function AddNew() {
     if (isPresetClinical) {
       renameWardData(currentName, newName);
       renamePresetWard(currentName, newName);
-      recordHistory('RENAME_WARD', `Renamed ${currentName} to ${newName}`, { kind: 'preset_clinical', oldName: currentName, newName });
       showToast(`Renamed to "${newName}".`);
       toggleOpdEdit(id);
       return;
     }
-    const target = store === 'userAdded'
-      ? userAddedSubjects.find(s => s.id === id)
-      : customSubjects.find(s => s.id === id);
+    const target = store === 'userAdded' ? userAddedSubjects.find(s => s.id === id) : customSubjects.find(s => s.id === id);
     if (target?.subjectType === 'allied' && target.parentName === 'Small Group Teaching') {
-      if (store === 'userAdded') {
-        updateUserAddedSubject(id, { name: newName });
-      } else {
-        updateCustomSubject(id, { name: newName });
-      }
-      recordHistory('RENAME_SUBJECT', `Renamed ${currentName} to ${newName}`, { kind: 'sgt', store, id, oldName: currentName, newName });
+      if (store === 'userAdded') updateUserAddedSubject(id, { name: newName }); else updateCustomSubject(id, { name: newName });
       showToast(`Renamed to "${newName}".`);
       toggleOpdEdit(id);
       return;
     }
-    if (isSubjectNameTaken(newName, currentName)) {
-      showToast(`"${newName}" already exists.`, 'err');
-      return;
-    }
+    if (isSubjectNameTaken(newName, currentName)) { showToast(`"${newName}" already exists.`, 'err'); return; }
     renameSubjectData(currentName, newName);
-    if (store === 'userAdded') {
-      const item = userAddedSubjects.find(s => s.id === id);
-      if (item) updateUserAddedSubject(id, { name: newName });
-    } else {
-      const item = customSubjects.find(s => s.id === id);
-      if (item) updateCustomSubject(id, { name: newName });
-    }
-    recordHistory('RENAME_SUBJECT', `Renamed ${currentName} to ${newName}`, { kind: 'normal', store, id, oldName: currentName, newName });
+    if (store === 'userAdded') { const item = userAddedSubjects.find(s => s.id === id); if (item) updateUserAddedSubject(id, { name: newName }); }
+    else { const item = customSubjects.find(s => s.id === id); if (item) updateCustomSubject(id, { name: newName }); }
     showToast(`Renamed to "${newName}".`);
     toggleOpdEdit(id);
   };
 
   const saveOpdParent = (id: string, store: 'userAdded' | 'custom', newParent: string) => {
-    const moves = [{
-      id,
-      store: store as 'userAdded' | 'custom',
-      newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied',
-      newParentName: newParent === SINGLE_DEST ? undefined : newParent,
-    }];
+    recordHistory('Change Parent', { id, store, newParent });
+    const moves = [{ id, store, newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
     bulkUpdateSubjectHierarchy(moves);
     const item = store === 'userAdded' ? userAddedSubjects.find(s => s.id === id) : customSubjects.find(s => s.id === id);
     if (item && item.parentName === 'Small Group Teaching' && newParent !== SINGLE_DEST) {
       const patch = { clinicalSubject: newParent };
-      if (store === 'userAdded') updateUserAddedSubject(id, patch as any);
-      else updateCustomSubject(id, patch as any);
+      if (store === 'userAdded') updateUserAddedSubject(id, patch as any); else updateCustomSubject(id, patch as any);
     }
     showToast('Parent updated.');
   };
@@ -1426,17 +1328,11 @@ export default function AddNew() {
       title: `Delete "${name}"?`,
       lines: ['This subject and all its attendance records will be permanently removed.', 'This action cannot be undone.'],
       onConfirm: () => {
-        const target = store === 'userAdded'
-          ? userAddedSubjects.find(s => s.id === id)
-          : customSubjects.find(s => s.id === id);
-        recordHistory('DELETE_SUBJECT', `Deleted ${name}`, { store, id, name });
-        if (store === 'userAdded') removeUserAddedSubject(id);
-        else removeCustomSubject(id);
-        if (target?.subjectType === 'allied' && target.parentName === 'Small Group Teaching') {
-          removeAttendanceByKey(getSGTKey(id));
-        } else {
-          removeSubjectData(name);
-        }
+        recordHistory('Delete Subject', { name, store, id });
+        const target = store === 'userAdded' ? userAddedSubjects.find(s => s.id === id) : customSubjects.find(s => s.id === id);
+        if (store === 'userAdded') removeUserAddedSubject(id); else removeCustomSubject(id);
+        if (target?.subjectType === 'allied' && target.parentName === 'Small Group Teaching') removeAttendanceByKey(getSGTKey(id));
+        else removeSubjectData(name);
         setDeleteSheet(null);
         showToast(`Deleted "${name}".`);
       },
@@ -1448,7 +1344,7 @@ export default function AddNew() {
       title: `Delete ward "${name}"?`,
       lines: ['This rotation and all its attendance records will be permanently removed.', 'This action cannot be undone.'],
       onConfirm: () => {
-        recordHistory('DELETE_WARD', `Deleted ward ${name}`, { store: 'custom', id, name });
+        recordHistory('Delete Ward', { name, id });
         removeCustomWard(id);
         removeWardData(name);
         setDeleteSheet(null);
@@ -1456,159 +1352,8 @@ export default function AddNew() {
       },
     });
   };
-
-  // ── Undo history ──
-  const undoHistoryEntry = (entry: HistoryEntry) => {
-    const { type, data } = entry;
-    switch (type) {
-      case 'ADD_SUBJECT': {
-        const addedNames: string[] = data.names || [];
-        for (const name of addedNames) {
-          const store = data.mode === 'preloaded' ? userAddedSubjects : customSubjects;
-          const found = store.find(s => s.name === name);
-          if (found) {
-            if (data.mode === 'preloaded') removeUserAddedSubject(found.id);
-            else removeCustomSubject(found.id);
-            if (found.subjectType === 'allied' && found.parentName === 'Small Group Teaching') {
-              removeAttendanceByKey(getSGTKey(found.id));
-            } else {
-              removeSubjectData(name);
-            }
-          }
-        }
-        showToast('Undid add subject.');
-        break;
-      }
-      case 'ADD_WARD': {
-        if (data.mode === 'preloaded') {
-          const idx = presetWardSchedule.findIndex(e => e.ward === data.name && e.start === data.start && e.end === data.end);
-          if (idx >= 0) {
-            const occurrences = presetWardSchedule.filter(x => x.ward.toLowerCase() === data.name.toLowerCase()).length;
-            removePresetWardEntry(idx);
-            if (occurrences <= 1) removeWardData(data.name);
-          }
-        } else {
-          const found = customWards.find(w => w.name === data.name);
-          if (found) {
-            removeCustomWard(found.id);
-            removeWardData(data.name);
-          }
-        }
-        showToast('Undid add ward.');
-        break;
-      }
-      case 'ADD_SGT': {
-        const store = data.mode === 'preloaded' ? userAddedSubjects : customSubjects;
-        const found = store.find(s => s.name === data.name && s.subjectType === 'allied' && s.parentName === 'Small Group Teaching');
-        if (found) {
-          if (data.mode === 'preloaded') removeUserAddedSubject(found.id);
-          else removeCustomSubject(found.id);
-          removeAttendanceByKey(getSGTKey(found.id));
-        }
-        showToast('Undid add SGT.');
-        break;
-      }
-      case 'ADD_SLOT': {
-        const { mode, day, time, subject } = data;
-        if (mode === 'preloaded') {
-          const slots = presetTimetable[day] || [];
-          const idx = slots.findIndex(sl => (sl.type !== 'ward' && sl.type !== 'ward_replacement') && canonicalizeTimeRange(sl.time) === time);
-          if (idx >= 0) {
-            const slot = slots[idx];
-            const remaining = slot.subjects.filter(s => s !== subject);
-            if (remaining.length === 0) {
-              updatePresetTimetableSlot(day, idx, slot.time, [], day);
-            } else {
-              updatePresetTimetableSlot(day, idx, slot.time, remaining, day);
-            }
-            const ua = userAddedSubjects.find(u => u.name.toLowerCase() === subject.toLowerCase());
-            if (ua) {
-              const existing = ua.schedules || [];
-              const filtered = existing.filter(s => !(s.day === DAY_ABBRS[day] && s.start === data.start && s.end === data.end));
-              updateUserAddedSubject(ua.id, { schedules: filtered, days: filtered.map(s => s.day).join(', ') });
-            }
-          }
-        } else {
-          const found = customSubjects.find(s => s.name === subject);
-          if (found) {
-            const existing = found.schedules || [];
-            const filtered = existing.filter(s => !(s.day === DAY_ABBRS[day] && canonicalizeTimeRange(s.time) === time));
-            updateCustomSubject(found.id, { schedules: filtered, days: filtered.map(s => s.day).join(', ') });
-          }
-        }
-        showToast('Undid add slot.');
-        break;
-      }
-      case 'RENAME_SUBJECT': {
-        const { kind, oldName, newName, store, id } = data;
-        if (kind === 'preset_academic') {
-          renameSubjectData(newName, oldName);
-          renamePresetAcademicSubject(newName, oldName);
-          setPresetSubjectRename(newName, oldName);
-        } else if (kind === 'sgt') {
-          if (store === 'userAdded') updateUserAddedSubject(id, { name: oldName });
-          else updateCustomSubject(id, { name: oldName });
-        } else {
-          renameSubjectData(newName, oldName);
-          if (store === 'userAdded') {
-            const found = userAddedSubjects.find(s => s.id === id);
-            if (found) updateUserAddedSubject(id, { name: oldName });
-          } else {
-            const found = customSubjects.find(s => s.id === id);
-            if (found) updateCustomSubject(id, { name: oldName });
-          }
-        }
-        showToast('Undid rename.');
-        break;
-      }
-      case 'RENAME_WARD': {
-        const { kind, oldName, newName, store, id } = data;
-        if (kind === 'preset_clinical') {
-          renameWardData(newName, oldName);
-          renamePresetWard(newName, oldName);
-        } else if (store === 'custom' && id) {
-          const found = customWards.find(w => w.id === id);
-          if (found) {
-            updateCustomWard(id, { name: oldName });
-            renameWardData(newName, oldName);
-          }
-        }
-        showToast('Undid ward rename.');
-        break;
-      }
-      case 'EDIT_SUBJECT': {
-        const { store, id, oldName, newName, oldPlanned } = data;
-        if (store === 'userAdded') updateUserAddedSubject(id, { name: oldName, plannedClasses: oldPlanned });
-        else updateCustomSubject(id, { name: oldName, plannedClasses: oldPlanned });
-        if (oldName !== newName) renameSubjectData(newName, oldName);
-        showToast('Undid edit subject.');
-        break;
-      }
-      case 'EDIT_WARD': {
-        const { store, id, index, oldName, newName, oldStart, oldEnd } = data;
-        if (store === 'preset') {
-          updatePresetWardEntry(index, { ward: oldName, start: oldStart, end: oldEnd });
-        } else {
-          updateCustomWard(id, { name: oldName, startDate: oldStart, endDate: oldEnd });
-        }
-        if (oldName !== newName) renameWardData(newName, oldName);
-        showToast('Undid edit ward.');
-        break;
-      }
-      case 'DELETE_SUBJECT':
-      case 'DELETE_WARD':
-        showToast('Undo not supported yet', 'info');
-        return;
-      default:
-        showToast('Unknown action', 'err');
-        return;
-    }
-    const updated = historyEntries.filter(e => e.id !== entry.id);
-    setHistoryEntries(updated);
-    persistHistory(updated);
-  };
-
-  // ── Import/Export ──
+  
+// ── Import/Export ──
   const bundleJson = () => {
     const added = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
     const bundle = {
@@ -1904,19 +1649,19 @@ export default function AddNew() {
     </div>
   );
 
-  // ── Main render ──
   return (
     <Layout>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pb-24">
+        {/* Header with History button */}
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-extrabold text-foreground leading-tight">Manage Subjects & Rotations</h1>
           <button
             type="button"
             onClick={() => setHistoryOpen(true)}
-            className="w-10 h-10 rounded-xl bg-muted/50 border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all cursor-pointer"
-            aria-label="History"
+            className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm"
+            title="History"
           >
-            <History className="w-5 h-5" />
+            <SendToBack className="w-5 h-5" />
           </button>
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -1970,9 +1715,9 @@ export default function AddNew() {
               {subjectMode === 'preloaded' && presetTimetable[selDay]?.map((slot, idx) => {
                 if (slot.type === 'ward' || slot.type === 'ward_replacement') return null;
                 if (!slot.subjects || slot.subjects.length === 0) return null;
-                const nonSGTSubjects = slot.subjects.filter(s => !isSGTSubject(s));
-                if (nonSGTSubjects.length === 0) return null;
-                const displayNames = nonSGTSubjects.map(s => getPresetSubjectDisplayName(s));
+                const academicSubjects = slot.subjects.filter(s => isAcademicSubject(s));
+                if (academicSubjects.length === 0) return null;
+                const displayNames = academicSubjects.map(s => getPresetSubjectDisplayName(s));
                 return (
                   <div key={`${selDay}-${idx}`} className="bg-background/50 border border-border/60 rounded-xl p-3 flex items-center gap-2.5">
                     <div className="min-w-0 flex-1">
@@ -1981,9 +1726,9 @@ export default function AddNew() {
                         {displayNames.join(', ')}
                       </p>
                       <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                        {nonSGTSubjects.map((s, index) => `${displayNames[index]}: ${getSubjectPlannedTotal(s)} planned`).join(' · ')}
+                        {academicSubjects.map((s, index) => `${displayNames[index]}: ${getSubjectPlannedTotal(s)} planned`).join(' · ')}
                       </p>
-                      {nonSGTSubjects.some(s => isUserAddedName(s)) && <div className="mt-1"><AddedBadge /></div>}
+                      {academicSubjects.some(s => isUserAddedName(s)) && <div className="mt-1"><AddedBadge /></div>}
                     </div>
                     <button
                       type="button"
@@ -1996,38 +1741,31 @@ export default function AddNew() {
                 );
               })}
               {subjectMode === 'custom' && customSubjects
-                .filter(s => s.subjectType !== 'allied-parent' && !isSGTSubject(s.name))
+                .filter(s => s.subjectType !== 'allied-parent' && parseDayList(s.days).includes(DAY_ABBRS[selDay]))
                 .map(s => {
-                  const daySchedules = (s.schedules || []).filter(sch => sch.day === DAY_ABBRS[selDay]);
-                  const fallbackSchedules = daySchedules.length
-                    ? daySchedules
-                    : parseDayList(s.days).includes(DAY_ABBRS[selDay])
-                      ? [{ day: DAY_ABBRS[selDay], time: s.time || '' }]
-                      : [];
-                  return fallbackSchedules.map((sch, idx) => {
-                    const time = sch.time ? canonicalizeTimeRange(sch.time) : canonicalizeTimeRange(s.time);
-                    return (
-                      <div key={`${s.id}-${sch.day}-${sch.time || idx}`} className="bg-background/50 border border-border/60 rounded-xl p-3 flex items-center gap-2.5">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-mono font-bold text-primary text-xs">{time}</p>
-                          <p className="font-extrabold text-foreground text-sm leading-tight truncate mt-0.5" style={{ color: getSubjectColor(s.name) }}>{s.name}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">{s.name}: {s.plannedClasses} planned{getEffectiveParentName(s) ? ` · under ${getEffectiveParentName(s)}` : ''}</p>
-                        </div>
-                        <button type="button" onClick={() => openEditSubject('custom', s.id)} className="shrink-0 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"><Pencil className="w-4 h-4" /></button>
-                        <button type="button" onClick={() => requestDeleteSubject('custom', s.id)} className="shrink-0 p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"><Trash2 className="w-4 h-4" /></button>
+                  if (!isAcademicSubject(s.name)) return null;
+                  const rows = s.schedules?.filter(sch => sch.day === DAY_ABBRS[selDay]) || [];
+                  if (rows.length === 0) return null;
+                  return rows.map((row, i) => (
+                    <div key={`${s.id}-${i}`} className="bg-background/50 border border-border/60 rounded-xl p-3 flex items-center gap-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono font-bold text-primary text-xs">{canonicalizeTimeRange(row.time)}</p>
+                        <p className="font-extrabold text-foreground text-sm leading-tight truncate mt-0.5" style={{ color: getSubjectColor(s.name) }}>{s.name}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{s.name}: {s.plannedClasses} planned{getEffectiveParentName(s) ? ` · under ${getEffectiveParentName(s)}` : ''}</p>
                       </div>
-                    );
-                  });
+                      <button type="button" onClick={() => openEditSubject('custom', s.id)} className="shrink-0 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"><Pencil className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => requestDeleteSubject('custom', s.id)} className="shrink-0 p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  ));
                 })}
-              {subjectMode === 'custom' && customSubjects.filter(s => s.subjectType !== 'allied-parent' && !isSGTSubject(s.name) && parseDayList(s.days).includes(DAY_ABBRS[selDay])).length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-5">Nothing scheduled on {DAY_ABBRS[selDay]}.</p>
-              )}
+              {/* Add Slot button below last slot */}
               <button
                 type="button"
                 onClick={openAddSlot}
-                className="mt-2 w-full py-2.5 rounded-xl border border-dashed border-primary/40 text-primary font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-primary/10 transition-all cursor-pointer"
+                className="w-full py-2 rounded-xl border border-dashed border-border text-xs font-semibold text-muted-foreground hover:bg-muted/20 hover:text-foreground transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <Plus className="w-3.5 h-3.5" /> Add Slot
+                <Plus className="w-3.5 h-3.5" />
+                Add Slot
               </button>
             </div>
           )}
@@ -2038,18 +1776,14 @@ export default function AddNew() {
               <div className="space-y-2">
                 {allClinicalSubjects.map(name => {
                   const group = { rotation: getRotationForSubject(name), sgt: getSGTForSubject(name) };
-                  const hasRotation = !!group.rotation;
-                  const hasSGT = !!group.sgt;
-                  const sgt = group.sgt;
-                  const rotation = group.rotation;
                   return (
                     <ClinicalGroupCard
                       key={name}
                       name={name}
-                      hasRotation={hasRotation}
-                      hasSGT={hasSGT}
-                      rotation={rotation}
-                      sgt={sgt}
+                      hasRotation={!!group.rotation}
+                      hasSGT={!!group.sgt}
+                      rotation={group.rotation}
+                      sgt={group.sgt}
                       onAddRotation={() => {
                         setClinicalParentChoice('rotation');
                         setWardName(name);
@@ -2062,20 +1796,20 @@ export default function AddNew() {
                         setMoreOpen(true);
                       }}
                       onEditRotation={() => {
-                        if (rotation.store === 'preset') openEditWardPreset(rotation.index!);
-                        else openEditWardCustom(rotation.id!);
+                        if (group.rotation.store === 'preset') openEditWardPreset(group.rotation.index!);
+                        else openEditWardCustom(group.rotation.id!);
                       }}
                       onEditSGT={() => {
-                        const store = getSGTStore(sgt);
-                        openEditSubject(store, sgt!.id);
+                        const store = getSGTStore(group.sgt);
+                        openEditSubject(store, group.sgt!.id);
                       }}
                       onDeleteRotation={() => {
-                        if (rotation.store === 'preset') requestDeleteWard('preset', rotation.index!);
-                        else requestDeleteWard('custom', rotation.id!);
+                        if (group.rotation.store === 'preset') requestDeleteWard('preset', group.rotation.index!);
+                        else requestDeleteWard('custom', group.rotation.id!);
                       }}
                       onDeleteSGT={() => {
-                        const store = getSGTStore(sgt);
-                        requestDeleteSubject(store, sgt!.id);
+                        const store = getSGTStore(group.sgt);
+                        requestDeleteSubject(store, group.sgt!.id);
                       }}
                     />
                   );
@@ -2088,7 +1822,7 @@ export default function AddNew() {
           )}
         </section>
 
-        {/* ── More Modal ── */}
+{/* ── More Modal ── */}
         <OverlayModal open={moreOpen} onClose={() => { setMoreOpen(false); setFormError(null); }} maxW="max-w-lg">
           <div className="p-4 sm:p-5 space-y-3.5">
             <div className="flex items-center justify-between">
@@ -2341,66 +2075,69 @@ export default function AddNew() {
         </OverlayModal>
 
         {/* ── Add Slot Modal ── */}
-        <OverlayModal open={addSlotOpen} onClose={() => { setAddSlotOpen(false); setAddSlotError(null); }} maxW="max-w-md">
+        <OverlayModal open={addSlotOpen} onClose={() => { setAddSlotOpen(false); setFormError(null); }} maxW="max-w-sm">
           <div className="p-4 sm:p-5 space-y-3.5">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
-              <button type="button" onClick={() => { setAddSlotOpen(false); setAddSlotError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
-            <p className="text-[10px] text-muted-foreground -mt-2">Add a subject to {DAY_ABBRS[addSlotDay]}'s schedule.</p>
             <Note note={note} />
-            {addSlotError && <p className={inlineErrCls}>{addSlotError}</p>}
+            {formError && <p className={inlineErrCls}>{formError}</p>}
             <div className="grid grid-cols-2 gap-2.5">
-              <div><label className={labelCls}>Start</label><TimeField value={addSlotStart} onChange={setAddSlotStart} ariaLabel="add slot start" /></div>
-              <div><label className={labelCls}>End</label><TimeField value={addSlotEnd} onChange={setAddSlotEnd} ariaLabel="add slot end" /></div>
+              <div><label className={labelCls}>Start</label><TimeField value={addSlotStart} onChange={setAddSlotStart} ariaLabel="start" /></div>
+              <div><label className={labelCls}>End</label><TimeField value={addSlotEnd} onChange={setAddSlotEnd} ariaLabel="end" /></div>
             </div>
             <div>
               <label className={labelCls}>Subject</label>
-              <select value={addSlotSubject} onChange={e => setAddSlotSubject(e.target.value)} className={inputCls}>
-                <option value="">Select subject…</option>
-                {academicAddSlotOptions.map(name => (
-                  <option key={name} value={name}>{subjectMode === 'preloaded' ? getPresetSubjectDisplayName(name) : name}</option>
+              <select value={addSlotSubject} onChange={e => {
+                const name = e.target.value;
+                setAddSlotSubject(name);
+                const subj = subjectMode === 'preloaded'
+                  ? [...CATEGORIES.flatMap(c => c.subjects), ...INTEGRATED_SUBJECTS, ...userAddedSubjects].find(s => s.name === name)
+                  : customSubjects.find(s => s.name === name);
+                setAddSlotPlanned(subj ? (subj as any).plannedClasses ?? getSubjectPlannedTotal(name) : getSubjectPlannedTotal(name));
+              }} className={inputCls}>
+                <option value="">Select academic subject…</option>
+                {academicAddSlotSubjects.map(name => (
+                  <option key={name} value={name}>{name}</option>
                 ))}
               </select>
             </div>
-            {addSlotSubject && (
-              <div>
-                <label className={labelCls}>Planned Classes</label>
-                <div className="text-sm font-bold text-primary bg-muted/30 p-2 rounded-lg border border-border/50">
-                  {subjectMode === 'preloaded' ? getSubjectPlannedTotal(addSlotSubject) : (customSubjects.find(s => s.name === addSlotSubject)?.plannedClasses ?? 0)}
-                </div>
-              </div>
-            )}
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => { setAddSlotOpen(false); setAddSlotError(null); }} className={btnGhost}>Cancel</button>
-              <button type="button" onClick={saveAddSlot} className={btnPrimary}>Add Slot</button>
+            <div className="bg-muted/30 p-2.5 rounded-xl flex justify-between items-center">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned</span>
+              <span className="text-xs font-extrabold text-foreground">{addSlotPlanned}</span>
             </div>
+            <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}>
+              <Plus className="w-3.5 h-3.5" /> Add Slot
+            </button>
           </div>
         </OverlayModal>
 
         {/* ── History Modal ── */}
         <OverlayModal open={historyOpen} onClose={() => setHistoryOpen(false)} maxW="max-w-md">
-          <div className="p-4 sm:p-5 space-y-3 flex flex-col max-h-[70vh]">
+          <div className="p-4 sm:p-5 space-y-3.5 max-h-[70vh] flex flex-col">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">Manage History</h3>
+              <h3 className="text-sm font-bold text-foreground">History</h3>
               <button type="button" onClick={() => setHistoryOpen(false)} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
-            <div className="overflow-y-auto flex-1 space-y-1.5">
-              {historyEntries.length === 0 && <p className="text-xs text-muted-foreground text-center py-5">No actions recorded yet.</p>}
-              {historyEntries.map(entry => (
-                <div key={entry.id} className="flex items-center gap-2 bg-card border border-border/50 rounded-lg p-2.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-foreground truncate">{entry.label}</p>
-                    <p className="text-[10px] text-muted-foreground">{new Date(entry.timestamp).toLocaleString()}</p>
+            <div className="overflow-y-auto flex-1 min-h-0 space-y-2">
+              {historyEntries.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-5">No Manage actions yet.</p>
+              ) : (
+                historyEntries.map(entry => (
+                  <div key={entry.id} className="flex items-center justify-between bg-background border border-border/60 rounded-xl p-2.5">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground truncate">{entry.type}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(entry.timestamp).toLocaleString()}</p>
+                    </div>
                   </div>
-                  <button type="button" onClick={() => undoHistoryEntry(entry)} className="shrink-0 px-3 py-1.5 rounded-lg border border-primary/40 text-primary font-bold text-xs hover:bg-primary/10 transition-all cursor-pointer">Undo</button>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </OverlayModal>
 
-        {/* ── Edit Subject Modal ── */}
+{/* ── Edit Subject Modal ── */}
         <OverlayModal open={!!editSubject} onClose={() => { setEditSubject(null); setEditError(null); }} maxW="max-w-lg">
           {editSubject && (
             <div className="p-4 sm:p-5 space-y-3.5">
@@ -2673,7 +2410,7 @@ export default function AddNew() {
                           <button type="button" onClick={() => {
                             if (editSlot) {
                               const onlyId = editSlot.subjects[0].id;
-                              doMoveSubjects([onlyId]);
+                              doMoveSubjects([onlyId]);  // Now uses conflict detection
                             }
                           }} className={btnPrimary}>Apply</button>
                         </div>
