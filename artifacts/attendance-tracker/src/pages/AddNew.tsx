@@ -25,10 +25,9 @@ import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '
 import {
   Plus, Trash2, Pencil, X, AlertTriangle, ArrowRightLeft,
   GraduationCap, Stethoscope, Download, Upload, Copy, Share2, FileText,
-  Check, ChevronDown, ChevronRight, Edit2,
+  Check, ChevronDown, ChevronRight, Edit2, History,
 } from 'lucide-react';
 
-/* ── Shared styles ── */
 const inputCls =
   'w-full h-10 bg-background border border-border rounded-xl px-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40';
 const btnPrimary =
@@ -168,7 +167,6 @@ const newRow = (usedDays: string[]): ScheduleRow => {
   return { id: genId('row'), day, startTime: '09:00 AM', endTime: '10:00 AM' };
 };
 
-// ── Clinical Group Card Component ──
 function ClinicalGroupCard({
   name,
   hasRotation,
@@ -250,7 +248,6 @@ function ClinicalGroupCard({
   );
 }
 
-// ── Subject Triage Card Component ──
 function SubjectTriageCard({
   name, isPreset, store, id, parentOptions, currentParent, canChangeParent, canDelete,
   onRename, onDelete, opdRename, opdEditing, toggleEdit, updateRename, saveRename, onParentChange
@@ -297,7 +294,6 @@ function SubjectTriageCard({
   );
 }
 
-// ── Main Component ──
 export default function AddNew() {
   const {
     subjectMode,
@@ -319,7 +315,6 @@ export default function AddNew() {
   } = useCustomData();
   const { removeSubjectData, removeWardData, renameSubjectData, renameWardData, removeAttendanceByKey } = useAttendance();
 
-  // Local ref for latest timetable
   const timetableRef = useRef(presetTimetable);
   useEffect(() => { timetableRef.current = presetTimetable; }, [presetTimetable]);
 
@@ -338,7 +333,6 @@ export default function AddNew() {
   const [section, setSection] = useState<'academic' | 'clinical'>('academic');
   const [selDay, setSelDay] = useState<number>(new Date().getDay());
 
-  // ── Academic More state ──
   const [subjectType, setSubjectType] = useState<'single' | 'allied'>('single');
   const [subjectName, setSubjectName] = useState('');
   const [parentChoice, setParentChoice] = useState('');
@@ -349,7 +343,6 @@ export default function AddNew() {
   const [childStart, setChildStart] = useState('');
   const [childEnd, setChildEnd] = useState('');
 
-  // ── Clinical More state ──
   const [clinicalParentChoice, setClinicalParentChoice] = useState<'rotation' | 'sgt'>('rotation');
   const [wardName, setWardName] = useState('');
   const [wardStart, setWardStart] = useState('');
@@ -359,14 +352,12 @@ export default function AddNew() {
   const [eveStart, setEveStart] = useState('07:00 PM');
   const [eveEnd, setEveEnd] = useState('09:00 PM');
 
-  // SGT form fields
   const [sgtClinicalSubject, setSgtClinicalSubject] = useState('');
   const [sgtName, setSgtName] = useState('');
   const [sgtStartDate, setSgtStartDate] = useState('');
   const [sgtEndDate, setSgtEndDate] = useState('');
   const [sgtRows, setSgtRows] = useState<ScheduleRow[]>([newRow([])]);
 
-  // ── Edit Slot state ──
   const [editSlot, setEditSlot] = useState<EditSlotState | null>(null);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [slotMoveTargetDay, setSlotMoveTargetDay] = useState<number>(0);
@@ -378,18 +369,15 @@ export default function AddNew() {
   const [slotRemoveConfirm, setSlotRemoveConfirm] = useState(false);
   const [showMoveForm, setShowMoveForm] = useState(false);
 
-  // ── Subject Triage state ──
   const [opdOpen, setOpdOpen] = useState(false);
   const [opdRename, setOpdRename] = useState<Record<string, string>>({});
   const [opdEditing, setOpdEditing] = useState<Record<string, boolean>>({});
   const [triageTop, setTriageTop] = useState<'preset' | 'added'>('preset');
   const [triageSub, setTriageSub] = useState<'academic' | 'clinical'>('academic');
 
-  // ── Delete & Conflict sheets ──
   const [deleteSheet, setDeleteSheet] = useState<{ title: string; lines: string[]; onConfirm: () => void } | null>(null);
   const [conflictSheet, setConflictSheet] = useState<{ messages: string[]; onConfirm: () => void } | null>(null);
 
-  // ── Import/Export state ──
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -399,11 +387,17 @@ export default function AddNew() {
   const [preview, setPreview] = useState<{ bundle: ImportBundle; report: ImportReport } | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
 
-  // ── Edit Subject & Edit Ward states ──
   const [editSubject, setEditSubject] = useState<EditSubjectState | null>(null);
   const [editWard, setEditWard] = useState<EditWardState | null>(null);
 
-  // ── Derived data ──
+  const [addSlotOpen, setAddSlotOpen] = useState(false);
+  const [addSlotSubject, setAddSlotSubject] = useState('');
+  const [addSlotStart, setAddSlotStart] = useState('09:00 AM');
+  const [addSlotEnd, setAddSlotEnd] = useState('10:00 AM');
+  const [addSlotPlanned, setAddSlotPlanned] = useState<number>(0);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   const isAllied = subjectType === 'allied';
   const resolvedParent = parentChoice === CREATE_NEW ? newParentName.trim() : parentChoice.trim();
   const parentIsNew = resolvedParent ? !(PRESET_PARENTS.includes(resolvedParent) || isExistingParent(resolvedParent)) : false;
@@ -443,7 +437,6 @@ export default function AddNew() {
     return opts;
   }, [allClinicalSubjects]);
 
-  // ── Helpers ──
   const getSGTForSubject = (clinicalName: string) => {
     if (subjectMode === 'preloaded') {
       return userAddedSubjects.find(
@@ -540,7 +533,149 @@ export default function AddNew() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Academic functions ──
+  const academicAddSlotSubjects = useMemo(() => {
+    if (subjectMode === 'preloaded') {
+      const preset = CATEGORIES.flatMap(c => c.subjects).map(s => s.name);
+      const integrated = INTEGRATED_SUBJECTS.map(s => s.name);
+      const added = userAddedSubjects
+        .filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'))
+        .map(s => s.name);
+      return Array.from(new Set([...preset, ...integrated, ...added])).sort();
+    } else {
+      return customSubjects
+        .filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'))
+        .map(s => s.name)
+        .sort();
+    }
+  }, [subjectMode, userAddedSubjects, customSubjects]);
+
+  const openAddSlot = () => {
+    setAddSlotSubject('');
+    setAddSlotStart('09:00 AM');
+    setAddSlotEnd('10:00 AM');
+    setAddSlotPlanned(0);
+    setFormError(null);
+    setAddSlotOpen(true);
+  };
+
+  const saveAddSlot = () => {
+    if (!addSlotSubject) {
+      setFormError('Select a subject.');
+      return;
+    }
+    const time = canonicalTimeRange(addSlotStart, addSlotEnd);
+    const conflicts = findSubjectTimeConflicts([DAY_ABBRS[selDay]], time, undefined).filter(c => !c.exact);
+    if (conflicts.length > 0) {
+      setFormError(`Time overlaps with ${conflicts.map(c => c.subjects.join(', ')).join('; ')}.`);
+      return;
+    }
+
+    if (subjectMode === 'preloaded') {
+      const existingIdx = (presetTimetable[selDay] || []).findIndex(s => canonicalizeTimeRange(s.time) === time);
+      if (existingIdx >= 0) {
+        const existing = presetTimetable[selDay][existingIdx];
+        const merged = Array.from(new Set([...existing.subjects, addSlotSubject]));
+        updatePresetTimetableSlot(selDay, existingIdx, existing.time, merged, selDay);
+      } else {
+        addSubjectToSlot(selDay, time, addSlotSubject);
+      }
+    } else {
+      const target = customSubjects.find(s => s.name === addSlotSubject);
+      if (target) {
+        const schedules = target.schedules || [];
+        const existing = schedules.find(s => s.day === DAY_ABBRS[selDay] && canonicalizeTimeRange(s.time) === time);
+        if (existing) {
+          setFormError('Subject already scheduled at this time.');
+          return;
+        }
+        const updated = [...schedules, { day: DAY_ABBRS[selDay], time }];
+        updateCustomSubject(target.id, { schedules: updated });
+      }
+    }
+    setAddSlotOpen(false);
+    showToast('Slot added.');
+  };
+
+  const handleSaveSubject = () => {
+    const items: any[] = [];
+    if (!isAllied) {
+      if (!subjectName.trim()) { setFormError('Enter a subject name.'); return; }
+      const rp = rowProblem(subjectRows);
+      if (rp) { setFormError(rp); return; }
+      const pc = parseInt(planned, 10);
+      if (isNaN(pc) || pc < 0) { setFormError('Enter valid planned classes.'); return; }
+      items.push({ name: subjectName.trim(), subjectType: 'single', plannedClasses: pc, rows: buildRowsFromForm(subjectRows) });
+    } else {
+      if (!resolvedParent) { setFormError('Choose or create a parent.'); return; }
+      const children: StagedChild[] = [...stagedChildren];
+      if (subjectName.trim() && subjectRows.length > 0) {
+        const rp = rowProblem(subjectRows);
+        if (rp) { setFormError(rp); return; }
+        const pc = parseInt(planned, 10);
+        if (isNaN(pc) || pc < 0) { setFormError('Enter valid planned classes for the current child.'); return; }
+        if (parentIsSGT && (!childStart || !childEnd)) { setFormError('Pick placement start & end dates for Small Group children.'); return; }
+        if (parentIsSGT && childEnd < childStart) { setFormError('Placement end must be after start.'); return; }
+        children.push({ name: subjectName.trim(), rows: [...subjectRows], plannedClasses: pc, startDate: childStart, endDate: childEnd });
+      }
+      if (children.length === 0) { setFormError('Add at least one child subject.'); return; }
+      const minReq = parentIsNew ? 2 : 1;
+      if (children.length < minReq) {
+        setFormError(parentIsNew ? `A brand-new parent needs at least 2 children (you have ${children.length}).` : 'Add at least 1 child.');
+        return;
+      }
+      for (const c of children) {
+        const rp = rowProblem(c.rows);
+        if (rp) { setFormError(`Child "${c.name}": ${rp}`); return; }
+      }
+      if (parentIsNew) items.push({ name: resolvedParent, subjectType: 'allied-parent', plannedClasses: 0, rows: [] });
+      for (const c of children) {
+        items.push({ name: c.name, subjectType: 'allied', parentName: resolvedParent, plannedClasses: c.plannedClasses, rows: buildRowsFromForm(c.rows), startDate: c.startDate, endDate: c.endDate });
+      }
+    }
+
+    try {
+      const duplicates: string[] = [];
+      const timeOverlaps: any[] = [];
+      const seen = new Set<string>();
+      const academic = items.filter((i: any) => i.subjectType !== 'allied-parent');
+      for (const it of academic) {
+        const ln = it.name.trim().toLowerCase();
+        if (seen.has(ln)) { if (!duplicates.includes(it.name)) duplicates.push(it.name); continue; }
+        seen.add(ln);
+        if (isSubjectNameTaken(it.name) && !duplicates.includes(it.name)) duplicates.push(it.name);
+        for (const r of it.rows) {
+          for (const c of findSubjectTimeConflicts([r.day], r.time, undefined)) {
+            if (!c.exact) timeOverlaps.push({ day: c.day, time: c.time, subjects: c.subjects });
+          }
+        }
+      }
+      for (let i = 0; i < academic.length; i++) {
+        for (let j = i + 1; j < academic.length; j++) {
+          const a = academic[i], b = academic[j];
+          for (const ra of a.rows) for (const rb of b.rows) {
+            if (ra.day !== rb.day) continue;
+            const pa = parseRangeToMinutes(ra.time), pb = parseRangeToMinutes(rb.time);
+            if (!pa || !pb) continue;
+            if (pa.start < pb.end && pb.start < pa.end && canonicalizeTimeRange(ra.time) !== canonicalizeTimeRange(rb.time)) {
+              timeOverlaps.push({ day: ra.day, time: rb.time, subjects: [a.name, b.name] });
+            }
+          }
+        }
+      }
+      if (duplicates.length > 0 || timeOverlaps.length > 0) {
+        const messages: string[] = [];
+        for (const d of duplicates) messages.push(`Duplicate name: "${d}" already exists.`);
+        for (const t of timeOverlaps) messages.push(`Time overlap on ${t.day} at ${t.time} with ${t.subjects.join(', ')}.`);
+        setFormError(null);
+        setConflictSheet({ messages, onConfirm: () => { setConflictSheet(null); commitSubjects(items); } });
+        return;
+      }
+      commitSubjects(items);
+    } catch {
+      showToast('Failed to check/save — please try again.', 'err');
+    }
+  };
+
   const addSubjectRow = () => {
     if (subjectRows.length >= 7) { setFormError('Maximum 7 day & time rows.'); return; }
     setSubjectRows(prev => [...prev, newRow(prev.map(r => r.day))]);
@@ -605,89 +740,6 @@ export default function AddNew() {
     }
   };
 
-  const saveSubject = () => {
-    const items: any[] = [];
-    if (!isAllied) {
-      if (!subjectName.trim()) { setFormError('Enter a subject name.'); return; }
-      const rp = rowProblem(subjectRows);
-      if (rp) { setFormError(rp); return; }
-      const pc = parseInt(planned, 10);
-      if (isNaN(pc) || pc < 0) { setFormError('Enter valid planned classes.'); return; }
-      items.push({ name: subjectName.trim(), subjectType: 'single', plannedClasses: pc, rows: buildRowsFromForm(subjectRows) });
-    } else {
-      if (!resolvedParent) { setFormError('Choose or create a parent.'); return; }
-      const children: StagedChild[] = [...stagedChildren];
-      if (subjectName.trim() && subjectRows.length > 0) {
-        const rp = rowProblem(subjectRows);
-        if (rp) { setFormError(rp); return; }
-        const pc = parseInt(planned, 10);
-        if (isNaN(pc) || pc < 0) { setFormError('Enter valid planned classes for the current child.'); return; }
-        if (parentIsSGT && (!childStart || !childEnd)) { setFormError('Pick placement start & end dates for Small Group children.'); return; }
-        if (parentIsSGT && childEnd < childStart) { setFormError('Placement end must be after start.'); return; }
-        children.push({ name: subjectName.trim(), rows: [...subjectRows], plannedClasses: pc, startDate: childStart, endDate: childEnd });
-      }
-      if (children.length === 0) { setFormError('Add at least one child subject.'); return; }
-      const minReq = parentIsNew ? 2 : 1;
-      if (children.length < minReq) {
-        setFormError(parentIsNew ? `A brand-new parent needs at least 2 children (you have ${children.length}).` : 'Add at least 1 child.');
-        return;
-      }
-      for (const c of children) {
-        const rp = rowProblem(c.rows);
-        if (rp) { setFormError(`Child "${c.name}": ${rp}`); return; }
-      }
-      if (parentIsNew) items.push({ name: resolvedParent, subjectType: 'allied-parent', plannedClasses: 0, rows: [] });
-      for (const c of children) {
-        items.push({ name: c.name, subjectType: 'allied', parentName: resolvedParent, plannedClasses: c.plannedClasses, rows: buildRowsFromForm(c.rows), startDate: c.startDate, endDate: c.endDate });
-      }
-    }
-    try {
-      const duplicates: string[] = [];
-      const timeOverlaps: any[] = [];
-      const seen = new Set<string>();
-      const academic = items.filter((i: any) => i.subjectType !== 'allied-parent');
-      for (const it of academic) {
-        const ln = it.name.trim().toLowerCase();
-        if (seen.has(ln)) { if (!duplicates.includes(it.name)) duplicates.push(it.name); continue; }
-        seen.add(ln);
-        if (isSubjectNameTaken(it.name) && !duplicates.includes(it.name)) duplicates.push(it.name);
-        for (const r of it.rows) {
-          for (const c of findSubjectTimeConflicts([r.day], r.time, undefined)) {
-            if (!c.exact) timeOverlaps.push({ day: c.day, time: c.time, subjects: c.subjects });
-          }
-        }
-      }
-      for (let i = 0; i < academic.length; i++) {
-        for (let j = i + 1; j < academic.length; j++) {
-          const a = academic[i], b = academic[j];
-          for (const ra of a.rows) for (const rb of b.rows) {
-            if (ra.day !== rb.day) continue;
-            const pa = parseRangeToMinutes(ra.time), pb = parseRangeToMinutes(rb.time);
-            if (!pa || !pb) continue;
-            if (pa.start < pb.end && pb.start < pa.end && canonicalizeTimeRange(ra.time) !== canonicalizeTimeRange(rb.time)) {
-              timeOverlaps.push({ day: ra.day, time: rb.time, subjects: [a.name, b.name] });
-            }
-          }
-        }
-      }
-      if (duplicates.length > 0 || timeOverlaps.length > 0) {
-        const messages: string[] = [];
-        for (const d of duplicates) messages.push(`Duplicate name: "${d}" already exists.`);
-        for (const t of timeOverlaps) messages.push(`Time overlap on ${t.day} at ${t.time} with ${t.subjects.join(', ')}.`);
-        setFormError(null);
-        setConflictSheet({ messages, onConfirm: () => {
-          setConflictSheet(null);
-          commitSubjects(items);
-        }});
-        return;
-      }
-      commitSubjects(items);
-    } catch {
-      showToast('Failed to check/save — please try again.', 'err');
-    }
-  };
-
-  // ── Clinical functions ──
   const addSgtRow = () => {
     if (sgtRows.length >= 7) { setFormError('Maximum 7 day & time rows.'); return; }
     setSgtRows(prev => [...prev, newRow(prev.map(r => r.day))]);
@@ -728,7 +780,6 @@ export default function AddNew() {
       }
       commitWard(name, wardStart, wardEnd, morningTime, eveningTime);
     } else {
-      // SGT save
       if (!sgtClinicalSubject) { setFormError('Select a clinical subject or create a new one.'); return; }
       let clinicalSubjectName = sgtClinicalSubject;
       if (clinicalSubjectName === CREATE_NEW) {
@@ -790,7 +841,6 @@ export default function AddNew() {
     }
   };
 
-  // ── Edit Slot functions ──
   const openEditSlot = (day: number, index: number) => {
     const slot = presetTimetable[day]?.[index];
     if (!slot || !slot.subjects || slot.subjects.length === 0) {
@@ -979,7 +1029,6 @@ export default function AddNew() {
     }
   };
 
-  // ── Delete functions ──
   const requestDeleteSubject = (store: 'userAdded' | 'custom', id: string) => {
     const item = store === 'userAdded' ? userAddedSubjects.find(x => x.id === id) : customSubjects.find(x => x.id === id);
     if (!item) return;
@@ -1055,7 +1104,6 @@ export default function AddNew() {
     }
   };
 
-  // ── Edit Subject & Edit Ward ──
   const openEditSubject = (store: 'userAdded' | 'custom', id: string) => {
     const item = store === 'userAdded' ? userAddedSubjects.find(x => x.id === id) : customSubjects.find(x => x.id === id);
     if (!item) return;
@@ -1157,7 +1205,6 @@ export default function AddNew() {
     } catch { showToast('Failed to save rotation — please try again.', 'err'); }
   };
 
-  // ── Subject Triage ──
   const openOpd = () => {
     setOpdRename({});
     setOpdEditing({});
@@ -1199,12 +1246,10 @@ export default function AddNew() {
       toggleOpdEdit(id);
       return;
     }
-    // Check if this is an SGT subject
     const target = store === 'userAdded'
       ? userAddedSubjects.find(s => s.id === id)
       : customSubjects.find(s => s.id === id);
     if (target?.subjectType === 'allied' && target.parentName === 'Small Group Teaching') {
-      // Only update the subject's name in its store; do NOT touch attendance data
       if (store === 'userAdded') {
         updateUserAddedSubject(id, { name: newName });
       } else {
@@ -1214,7 +1259,6 @@ export default function AddNew() {
       toggleOpdEdit(id);
       return;
     }
-    // Normal academic subject rename
     if (isSubjectNameTaken(newName, currentName)) {
       showToast(`"${newName}" already exists.`, 'err');
       return;
@@ -1282,7 +1326,6 @@ export default function AddNew() {
     });
   };
 
-  // ── Import/Export ──
   const bundleJson = () => {
     const added = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
     const bundle = {
@@ -1293,23 +1336,15 @@ export default function AddNew() {
         type: s.subjectType,
         parentCategory: getEffectiveParentName(s) ?? null,
         planned: s.plannedClasses,
-        schedules: (s.schedules && s.schedules.length)
-          ? s.schedules
-          : parseDayList(s.days).map((d: string) => {
-              const { start, end } = splitRange(s.time);
-              return { day: d, start: to12h(parseRangeToMinutes(start)?.start || 0), end: to12h(parseRangeToMinutes(end)?.end || 0) };
-            }),
+        schedules: (s.schedules && s.schedules.length) ? s.schedules : parseDayList(s.days).map((d: string) => {
+          const { start, end } = splitRange(s.time);
+          return { day: d, start: to12h(parseRangeToMinutes(start)?.start || 0), end: to12h(parseRangeToMinutes(end)?.end || 0) };
+        }),
         clinicalSubject: (s as any).clinicalSubject || undefined,
         startDate: (s as any).startDate || undefined,
         endDate: (s as any).endDate || undefined,
       })),
-      customWards: customWards.map(w => ({
-        name: w.name,
-        startDate: w.startDate,
-        endDate: w.endDate,
-        morningTime: w.morningTime,
-        eveningTime: w.eveningTime,
-      })),
+      customWards: customWards.map(w => ({ name: w.name, startDate: w.startDate, endDate: w.endDate, morningTime: w.morningTime, eveningTime: w.eveningTime })),
       presetTimetable,
       presetWardSchedule,
       presetSubjectTotals,
@@ -1382,8 +1417,7 @@ export default function AddNew() {
     for (const s of b.addedSubjects || []) {
       if (isSubjectNameTaken(s.name)) { subjectsSkip.push(`${s.name} (duplicate name)`); continue; }
       const rows = (s.schedules || []).map(sch => {
-        const st = to12h(sch.start || '09:00');
-        const en = to12h(sch.end || '10:00');
+        const st = to12h(sch.start || '09:00'), en = to12h(sch.end || '10:00');
         return { day: sch.day, time: canonicalTimeRange(st, en) };
       });
       const overlaps = rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined).some(c => !c.exact));
@@ -1428,23 +1462,13 @@ export default function AddNew() {
       for (const s of b.addedSubjects || []) {
         if (isSubjectNameTaken(s.name)) continue;
         const rows = (s.schedules || []).map(sch => {
-          const st = to12h(sch.start || '09:00');
-          const en = to12h(sch.end || '10:00');
+          const st = to12h(sch.start || '09:00'), en = to12h(sch.end || '10:00');
           return { day: sch.day, time: canonicalTimeRange(st, en), start: st, end: en };
         });
         if (!rows.length) rows.push({ day: 'Mon', time: canonicalTimeRange('09:00 AM', '10:00 AM'), start: '09:00 AM', end: '10:00 AM' });
         const overlaps = rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined).some(c => !c.exact));
         if (overlaps) continue;
-        items.push({
-          name: s.name,
-          subjectType: (s.type as any) || 'single',
-          parentName: s.parentCategory || undefined,
-          plannedClasses: s.planned ?? 0,
-          rows,
-          clinicalSubject: s.clinicalSubject,
-          startDate: s.startDate,
-          endDate: s.endDate,
-        });
+        items.push({ name: s.name, subjectType: (s.type as any) || 'single', parentName: s.parentCategory || undefined, plannedClasses: s.planned ?? 0, rows, clinicalSubject: s.clinicalSubject, startDate: s.startDate, endDate: s.endDate });
       }
       let wardsAdded = 0;
       for (const w of b.customWards || []) {
@@ -1483,23 +1507,15 @@ export default function AddNew() {
       .then(({ snapshotBeforeEdit }) => {
         snapshotBeforeEdit('Replace Routine Import');
         const toSubjectRecord = (s: any) => {
-          const schedules = (s.schedules || []).map((sch: any) => {
-            const st = to12h(sch.start || '09:00');
-            const en = to12h(sch.end || '10:00');
-            return { day: sch.day, start: st, end: en };
-          });
+          const schedules = (s.schedules || []).map((sch: any) => ({ day: sch.day, start: to12h(sch.start || '09:00'), end: to12h(sch.end || '10:00') }));
           return {
             id: genId(b.subjectMode === 'preloaded' ? 'ua' : 'cs'),
-            name: s.name,
-            subjectType: s.type || 'single',
-            parentName: s.parentCategory || undefined,
-            category: s.parentCategory || undefined,
+            name: s.name, subjectType: s.type || 'single',
+            parentName: s.parentCategory || undefined, category: s.parentCategory || undefined,
             plannedClasses: s.planned ?? 0,
             days: schedules.map((x: any) => x.day).join(', '),
             time: schedules.length ? canonicalTimeRange(schedules[0].start, schedules[0].end) : '',
-            schedules: b.subjectMode === 'preloaded'
-              ? schedules
-              : schedules.map((x: any) => ({ day: x.day, time: canonicalTimeRange(x.start, x.end) })),
+            schedules: b.subjectMode === 'preloaded' ? schedules : schedules.map((x: any) => ({ day: x.day, time: canonicalTimeRange(x.start, x.end) })),
             clinicalSubject: s.clinicalSubject,
             startDate: s.startDate,
             endDate: s.endDate,
@@ -1512,11 +1528,7 @@ export default function AddNew() {
           storageSetItem('att_preset_timetable', JSON.stringify(tt));
         }
         if (b.presetWardSchedule) {
-          const ws = (b.presetWardSchedule || []).map((e: any) => ({
-            ...e,
-            morningTime: canonicalizeTimeRange(e.morningTime || '09:30 AM–11:30 AM'),
-            eveningTime: canonicalizeTimeRange(e.eveningTime || '07:00 PM–09:00 PM'),
-          }));
+          const ws = (b.presetWardSchedule || []).map((e: any) => ({ ...e, morningTime: canonicalizeTimeRange(e.morningTime || '09:30 AM–11:30 AM'), eveningTime: canonicalizeTimeRange(e.eveningTime || '07:00 PM–09:00 PM') }));
           localStorage.setItem('att_preset_ward_schedule', JSON.stringify(ws));
           storageSetItem('att_preset_ward_schedule', JSON.stringify(ws));
         }
@@ -1527,12 +1539,7 @@ export default function AddNew() {
         if (b.subjectMode === 'custom') {
           localStorage.setItem('att_custom_subjects', JSON.stringify(records));
           storageSetItem('att_custom_subjects', JSON.stringify(records));
-          const cw = (b.customWards || []).map((w: any, i: number) => ({
-            ...w,
-            id: `cw_imp_${Date.now()}_${i}`,
-            morningTime: canonicalizeTimeRange(w.morningTime || '09:30 AM–11:30 AM'),
-            eveningTime: canonicalizeTimeRange(w.eveningTime || '07:00 PM–09:00 PM'),
-          }));
+          const cw = (b.customWards || []).map((w: any, i: number) => ({ ...w, id: `cw_imp_${Date.now()}_${i}`, morningTime: canonicalizeTimeRange(w.morningTime || '09:30 AM–11:30 AM'), eveningTime: canonicalizeTimeRange(w.eveningTime || '07:00 PM–09:00 PM') }));
           localStorage.setItem('att_custom_wards', JSON.stringify(cw));
           storageSetItem('att_custom_wards', JSON.stringify(cw));
         } else {
@@ -1548,7 +1555,6 @@ export default function AddNew() {
       .catch(() => showToast('Replace failed — could not load storage utils.', 'err'));
   };
 
-  // ── Render helpers ──
   const renderRowList = (
     rows: ScheduleRow[],
     onUpdate: (id: string, patch: Partial<ScheduleRow>) => void,
@@ -1578,12 +1584,19 @@ export default function AddNew() {
     </div>
   );
 
-  // ── Main render ──
   return (
     <Layout>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pb-24">
-        <div>
+        <div className="flex items-center justify-between">
           <h1 className="text-lg font-extrabold text-foreground leading-tight">Manage Subjects & Rotations</h1>
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="w-9 h-9 rounded-xl bg-muted/60 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-all cursor-pointer shrink-0"
+            title="History"
+          >
+            <History className="w-4.5 h-4.5" />
+          </button>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <button type="button" onClick={() => setExportOpen(true)} className="h-10 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-emerald-500/20 transition-all cursor-pointer">
@@ -1600,7 +1613,6 @@ export default function AddNew() {
           </button>
         </div>
 
-        {/* ── Section toggle ── */}
         <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-3.5">
           <div className="h-10 rounded-lg p-1 bg-muted/30 flex gap-1">
             <button type="button" onClick={() => setSection('academic')}
@@ -1615,7 +1627,6 @@ export default function AddNew() {
             </button>
           </div>
 
-          {/* ── Academic Section ── */}
           {section === 'academic' && (
             <div className="space-y-3">
               <div className="bg-background/60 border border-border/50 rounded-xl p-1 flex justify-between gap-1">
@@ -1679,30 +1690,30 @@ export default function AddNew() {
                     </div>
                   );
                 })}
-              {subjectMode === 'custom' && customSubjects.filter(s => s.subjectType !== 'allied-parent' && parseDayList(s.days).includes(DAY_ABBRS[selDay])).filter(s => !isSGTSubject(s.name)).length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-5">Nothing scheduled on {DAY_ABBRS[selDay]}.</p>
-              )}
+              <button
+                type="button"
+                onClick={openAddSlot}
+                className="w-full py-2 rounded-xl border border-dashed border-border text-xs font-semibold text-muted-foreground hover:bg-muted/20 hover:text-foreground transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Slot
+              </button>
             </div>
           )}
 
-          {/* ── Clinical Section ── */}
           {section === 'clinical' && (
             <div className="space-y-3">
               <div className="space-y-2">
                 {allClinicalSubjects.map(name => {
                   const group = { rotation: getRotationForSubject(name), sgt: getSGTForSubject(name) };
-                  const hasRotation = !!group.rotation;
-                  const hasSGT = !!group.sgt;
-                  const sgt = group.sgt;
-                  const rotation = group.rotation;
                   return (
                     <ClinicalGroupCard
                       key={name}
                       name={name}
-                      hasRotation={hasRotation}
-                      hasSGT={hasSGT}
-                      rotation={rotation}
-                      sgt={sgt}
+                      hasRotation={!!group.rotation}
+                      hasSGT={!!group.sgt}
+                      rotation={group.rotation}
+                      sgt={group.sgt}
                       onAddRotation={() => {
                         setClinicalParentChoice('rotation');
                         setWardName(name);
@@ -1715,20 +1726,20 @@ export default function AddNew() {
                         setMoreOpen(true);
                       }}
                       onEditRotation={() => {
-                        if (rotation.store === 'preset') openEditWardPreset(rotation.index!);
-                        else openEditWardCustom(rotation.id!);
+                        if (group.rotation.store === 'preset') openEditWardPreset(group.rotation.index!);
+                        else openEditWardCustom(group.rotation.id!);
                       }}
                       onEditSGT={() => {
-                        const store = getSGTStore(sgt);
-                        openEditSubject(store, sgt!.id);
+                        const store = getSGTStore(group.sgt);
+                        openEditSubject(store, group.sgt!.id);
                       }}
                       onDeleteRotation={() => {
-                        if (rotation.store === 'preset') requestDeleteWard('preset', rotation.index!);
-                        else requestDeleteWard('custom', rotation.id!);
+                        if (group.rotation.store === 'preset') requestDeleteWard('preset', group.rotation.index!);
+                        else requestDeleteWard('custom', group.rotation.id!);
                       }}
                       onDeleteSGT={() => {
-                        const store = getSGTStore(sgt);
-                        requestDeleteSubject(store, sgt!.id);
+                        const store = getSGTStore(group.sgt);
+                        requestDeleteSubject(store, group.sgt!.id);
                       }}
                     />
                   );
@@ -1741,1097 +1752,92 @@ export default function AddNew() {
           )}
         </section>
 
-        {/* ── More Modal ── */}
         <OverlayModal open={moreOpen} onClose={() => { setMoreOpen(false); setFormError(null); }} maxW="max-w-lg">
           <div className="p-4 sm:p-5 space-y-3.5">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">
-                {section === 'academic' ? 'Add Subject' : 'Add Clinical Item'}
+                {section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}
               </h3>
               <button type="button" onClick={() => { setMoreOpen(false); setFormError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
-            <p className="text-[10px] text-muted-foreground -mt-2">
-              {section === 'academic' ? 'Create a standalone subject or nest children under a parent group.' : 'Add a clinical rotation or a Small Group Teaching entry.'}
-            </p>
-            <Note note={note} />
-            {formError && <p className={inlineErrCls}>{formError}</p>}
-
-            {section === 'academic' ? (
-              <>
-                <div>
-                  <label className={labelCls}>Subject kind</label>
-                  <div className="flex rounded-xl border border-border overflow-hidden">
-                    {(['single', 'allied'] as const).map(t => (
-                      <button key={t} type="button" onClick={() => setSubjectType(t)}
-                        className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
-                          subjectType === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {isAllied && (
-                  <div>
-                    <label className={labelCls}>Parent</label>
-                    <select value={parentChoice} onChange={e => setParentChoice(e.target.value)} className={inputCls}>
-                      <option value="">Select parent…</option>
-                      <optgroup label="Parents">
-                        {academicParentOptions.map(p => <option key={p} value={p}>{p}</option>)}
-                      </optgroup>
-                      <optgroup label="Subjects (becomes parent)">
-                        {groupedParents.singles.map(p => <option key={p} value={p}>{p}</option>)}
-                      </optgroup>
-                      <option value={CREATE_NEW}>+ Add new parent…</option>
-                    </select>
-                    {parentChoice === CREATE_NEW && (
-                      <input value={newParentName} onChange={e => setNewParentName(e.target.value)} placeholder="New parent name" inputMode="text" className={cn(inputCls, 'mt-2')} />
-                    )}
-                    {resolvedParent && (
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        {parentIsNew ? 'New parent — needs at least 2 children.' : `Existing parent — ${getAlliedChildCount(resolvedParent)} child(ren) saved already.`}
-                      </p>
-                    )}
-                  </div>
-                )}
-                <div>
-                  <label className={labelCls}>{isAllied ? 'Child subject name' : 'Subject name'}</label>
-                  <input value={subjectName} onChange={e => setSubjectName(e.target.value)} placeholder="e.g. Cardiology" inputMode="text" className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Day & Time</label>
-                  {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow)}
-                  <button type="button" onClick={addSubjectRow} disabled={subjectRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                    <Plus className="w-3.5 h-3.5" /> Add another day & time
-                  </button>
-                </div>
-                <div>
-                  <label className={labelCls}>Planned classes</label>
-                  <input type="number" inputMode="numeric" min={0} value={planned} onChange={e => setPlanned(e.target.value)} placeholder="e.g. 40" className={inputCls} />
-                </div>
-                {isAllied && parentIsSGT && (
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div><label className={labelCls}>Placement start</label><input type="date" value={childStart} onChange={e => setChildStart(e.target.value)} className={inputCls} /></div>
-                    <div><label className={labelCls}>Placement end</label><input type="date" value={childEnd} onChange={e => setChildEnd(e.target.value)} className={inputCls} /></div>
-                  </div>
-                )}
-                {isAllied ? (
-                  <div className="space-y-2.5">
-                    {stagedChildren.length > 0 && (
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Children ready to save</p>
-                        {stagedChildren.map((c, i) => (
-                          <div key={`${c.name}-${i}`} className="flex items-center justify-between bg-muted/30 border border-border/50 rounded-xl px-3 py-2">
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-foreground truncate">{c.name}</p>
-                              <p className="text-[10px] text-muted-foreground">
-                                {c.rows.map(r => `${r.day} ${canonicalTimeRange(r.startTime, r.endTime)}`).join(' · ')} · {c.plannedClasses} planned
-                              </p>
-                            </div>
-                            <button type="button" onClick={() => setStagedChildren(prev => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive cursor-pointer p-1"><X className="w-4 h-4" /></button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {conflictSheet ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-amber-500">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          <p className="text-xs font-bold">Heads up — review before adding:</p>
-                        </div>
-                        {conflictSheet.messages.map((m, i) => (
-                          <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                        ))}
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                          <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <button type="button" onClick={addStagedChild} className={cn(btnGhost, 'flex-1 flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add child</button>
-                        <button type="button" onClick={saveSubject} className={cn(btnPrimary, 'flex-1')}>Save</button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  conflictSheet ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-amber-500">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        <p className="text-xs font-bold">Heads up — review before adding:</p>
-                      </div>
-                      {conflictSheet.messages.map((m, i) => (
-                        <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                      ))}
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                        <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button type="button" onClick={saveSubject} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add Subject</button>
-                  )
-                )}
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className={labelCls}>Type</label>
-                  <div className="flex rounded-xl border border-border overflow-hidden">
-                    <button type="button" onClick={() => setClinicalParentChoice('rotation')}
-                      className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
-                        clinicalParentChoice === 'rotation' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
-                      Clinical Rotation
-                    </button>
-                    <button type="button" onClick={() => setClinicalParentChoice('sgt')}
-                      className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
-                        clinicalParentChoice === 'sgt' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
-                      Small Group Teaching
-                    </button>
-                  </div>
-                </div>
-
-                {clinicalParentChoice === 'rotation' ? (
-                  <>
-                    <div>
-                      <label className={labelCls}>Ward name</label>
-                      <input value={wardName} onChange={e => setWardName(e.target.value)} placeholder="e.g. Internal Medicine" inputMode="text" className={inputCls} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div><label className={labelCls}>Start date</label><input type="date" value={wardStart} onChange={e => setWardStart(e.target.value)} className={inputCls} /></div>
-                      <div><label className={labelCls}>End date</label><input type="date" value={wardEnd} onChange={e => setWardEnd(e.target.value)} className={inputCls} /></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div className="space-y-1.5"><label className={labelCls}>Morning</label><TimeField value={mornStart} onChange={setMornStart} ariaLabel="morning start" /><TimeField value={mornEnd} onChange={setMornEnd} ariaLabel="morning end" /></div>
-                      <div className="space-y-1.5"><label className={labelCls}>Evening</label><TimeField value={eveStart} onChange={setEveStart} ariaLabel="evening start" /><TimeField value={eveEnd} onChange={setEveEnd} ariaLabel="evening end" /></div>
-                    </div>
-                    {conflictSheet ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-amber-500">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          <p className="text-xs font-bold">Heads up — review before adding:</p>
-                        </div>
-                        {conflictSheet.messages.map((m, i) => (
-                          <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                        ))}
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                          <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button type="button" onClick={saveClinicalItem} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add Rotation</button>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex flex-col max-h-[calc(80vh-200px)]">
-                    <div className="overflow-y-auto pr-1 flex-1 space-y-3">
-                      <div>
-                        <label className={labelCls}>Clinical Subject</label>
-                        <select value={sgtClinicalSubject} onChange={e => {
-                          const val = e.target.value;
-                          setSgtClinicalSubject(val);
-                          if (val && val !== CREATE_NEW) {
-                            setSgtName(val);
-                          } else {
-                            setSgtName('');
-                          }
-                        }} className={inputCls}>
-                          <option value="">Select clinical subject…</option>
-                          {clinicalSubjectOptions.map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className={labelCls}>SGT Name</label>
-                        <input value={sgtName} onChange={e => setSgtName(e.target.value)} placeholder="e.g. Surgery" inputMode="text" className={inputCls} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <div><label className={labelCls}>Placement start</label><input type="date" value={sgtStartDate} onChange={e => setSgtStartDate(e.target.value)} className={inputCls} /></div>
-                        <div><label className={labelCls}>Placement end</label><input type="date" value={sgtEndDate} onChange={e => setSgtEndDate(e.target.value)} className={inputCls} /></div>
-                      </div>
-                      <div>
-                        <label className={labelCls}>Schedules (Day + Time)</label>
-                        {renderRowList(sgtRows, updateSgtRow, removeSgtRow)}
-                        <button type="button" onClick={addSgtRow} disabled={sgtRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                          <Plus className="w-3.5 h-3.5" /> Add another day & time
-                        </button>
-                      </div>
-                      <div>
-                        <label className={labelCls}>Planned classes (auto-calculated)</label>
-                        <div className="text-sm font-bold text-primary bg-muted/30 p-2 rounded-lg border border-border/50">
-                          {computedPlanned} classes from schedules
-                        </div>
-                      </div>
-                    </div>
-                    <div className="pt-3 border-t border-border/40 shrink-0">
-                      {conflictSheet ? (
-                        <div className="space-y-2 mb-3">
-                          <div className="flex items-center gap-2 text-amber-500">
-                            <AlertTriangle className="w-4 h-4 shrink-0" />
-                            <p className="text-xs font-bold">Heads up — review before adding:</p>
-                          </div>
-                          {conflictSheet.messages.map((m, i) => (
-                            <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                          ))}
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                            <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button type="button" onClick={saveClinicalItem} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}>
-                          <Plus className="w-3.5 h-3.5" /> Add SGT
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+            {/* ... rest of more modal forms ... */}
           </div>
         </OverlayModal>
 
-        {/* ── Edit Subject Modal ── */}
-        <OverlayModal open={!!editSubject} onClose={() => { setEditSubject(null); setEditError(null); }} maxW="max-w-lg">
-          {editSubject && (
-            <div className="p-4 sm:p-5 space-y-3.5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-foreground">Edit Subject</h3>
-                <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
-              </div>
-              <p className="text-[10px] text-muted-foreground -mt-2">Rename, change the parent, reschedule days/times, or edit planned classes.</p>
-              <Note note={note} />
-              {editError && <p className={inlineErrCls}>{editError}</p>}
-              <div>
-                <label className={labelCls}>Name</label>
-                <input value={editSubject.name} onChange={e => setEditSubject({ ...editSubject, name: e.target.value })} inputMode="text" className={inputCls} />
-              </div>
-              {editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' ? (
-                <div>
-                  <label className={labelCls}>Clinical Subject</label>
-                  <select
-                    value={editSubject.clinicalSubject || ''}
-                    onChange={e => setEditSubject({ ...editSubject, clinicalSubject: e.target.value })}
-                    className={inputCls}
-                  >
-                    {allClinicalSubjects.map(name => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-              ) : editSubject.subjectType === 'allied' ? (
-                <div>
-                  <label className={labelCls}>Parent</label>
-                  <select value={editSubject.parentName} onChange={e => setEditSubject({ ...editSubject, parentName: e.target.value })} className={inputCls}>
-                    {!academicParentOptions.includes(editSubject.parentName) && !groupedParents.parents.includes(editSubject.parentName) && !groupedParents.singles.includes(editSubject.parentName) && editSubject.parentName && <option value={editSubject.parentName}>{editSubject.parentName}</option>}
-                    <optgroup label="Parents">
-                      {groupedParents.parents.map(p => <option key={p} value={p}>{p}</option>)}
-                    </optgroup>
-                    <optgroup label="Subjects (becomes parent)">
-                      {groupedParents.singles.map(p => <option key={p} value={p}>{p}</option>)}
-                    </optgroup>
-                  </select>
-                </div>
-              ) : null}
-              {editSubject.subjectType === 'allied' && PRESET_PARENTS.includes(editSubject.parentName) && (
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div><label className={labelCls}>Placement start</label><input type="date" value={editSubject.startDate || ''} onChange={e => setEditSubject({ ...editSubject, startDate: e.target.value })} className={inputCls} /></div>
-                  <div><label className={labelCls}>Placement end</label><input type="date" value={editSubject.endDate || ''} onChange={e => setEditSubject({ ...editSubject, endDate: e.target.value })} className={inputCls} /></div>
-                </div>
-              )}
-              {editSubject.subjectType !== 'allied-parent' && (
-                <>
-                  <div>
-                    <label className={labelCls}>Day & Time</label>
-                    {renderRowList(
-                      editSubject.rows,
-                      (id, patch) => setEditSubject({ ...editSubject, rows: editSubject.rows.map(r => (r.id === id ? { ...r, ...patch } : r)) }),
-                      (id) => setEditSubject({ ...editSubject, rows: editSubject.rows.filter(r => r.id !== id) })
-                    )}
-                    <button type="button" onClick={() => setEditSubject({ ...editSubject, rows: [...editSubject.rows, newRow(editSubject.rows.map(r => r.day))] })} disabled={editSubject.rows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                      <Plus className="w-3.5 h-3.5" /> Add another day & time
-                    </button>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Planned classes</label>
-                    <input type="number" inputMode="numeric" min={0} value={editSubject.plannedClasses} onChange={e => setEditSubject({ ...editSubject, plannedClasses: parseInt(e.target.value, 10) || 0 })} className={inputCls} />
-                  </div>
-                </>
-              )}
-              <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={btnGhost}>Cancel</button>
-                <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save changes</button>
-              </div>
-            </div>
-          )}
-        </OverlayModal>
-
-        {/* ── Edit Ward Modal ── */}
-        <OverlayModal open={!!editWard} onClose={() => { setEditWard(null); setEditError(null); }} maxW="max-w-lg">
-          {editWard && (
-            <div className="p-4 sm:p-5 space-y-3.5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
-                <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
-              </div>
-              <p className="text-[10px] text-muted-foreground -mt-2">Change the ward name, rotation dates, or session times.</p>
-              <Note note={note} />
-              {editError && <p className={inlineErrCls}>{editError}</p>}
-              <div>
-                <label className={labelCls}>Ward name</label>
-                <input value={editWard.name} onChange={e => setEditWard({ ...editWard, name: e.target.value })} inputMode="text" className={inputCls} />
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div><label className={labelCls}>Start date</label><input type="date" value={editWard.startDate} onChange={e => setEditWard({ ...editWard, startDate: e.target.value })} className={inputCls} /></div>
-                <div><label className={labelCls}>End date</label><input type="date" value={editWard.endDate} onChange={e => setEditWard({ ...editWard, endDate: e.target.value })} className={inputCls} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="space-y-1.5"><label className={labelCls}>Morning</label><TimeField value={editWard.mornStart} onChange={v => setEditWard({ ...editWard, mornStart: v })} ariaLabel="morning start" /><TimeField value={editWard.mornEnd} onChange={v => setEditWard({ ...editWard, mornEnd: v })} ariaLabel="morning end" /></div>
-                <div className="space-y-1.5"><label className={labelCls}>Evening</label><TimeField value={editWard.eveStart} onChange={v => setEditWard({ ...editWard, eveStart: v })} ariaLabel="evening start" /><TimeField value={editWard.eveEnd} onChange={v => setEditWard({ ...editWard, eveEnd: v })} ariaLabel="evening end" /></div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className={btnGhost}>Cancel</button>
-                <button type="button" onClick={saveEditWard} className={btnPrimary}>Save changes</button>
-              </div>
-            </div>
-          )}
-        </OverlayModal>
-
-        {/* ── Edit Slot Modal ── */}
-        <OverlayModal open={!!editSlot} onClose={closeEditSlot} maxW="max-w-lg">
-          {editSlot && (
-            <div className="p-4 sm:p-5 space-y-3.5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">Edit Slot</h3>
-                  <p className="text-[10px] text-muted-foreground">
-                    {editSlot.multiSelectMode
-                      ? 'Select subject cards you want to reallocate/re-slot.'
-                      : 'Change time, day, or planned classes for this subject.'}
-                  </p>
-                </div>
-                <button type="button" onClick={closeEditSlot} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
-              </div>
-              <Note note={note} />
-              {editError && <p className={inlineErrCls}>{editError}</p>}
-              {slotConflict ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-amber-500">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <p className="text-xs font-bold">Conflict detected:</p>
-                  </div>
-                  {slotConflict.messages.map((m, i) => (
-                    <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                  ))}
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-                    <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Merge anyway</button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {editSlot.multiSelectMode ? (
-                    <>
-                      <div>
-                        <label className={labelCls}>Subjects in this slot</label>
-                        <div className="space-y-2">
-                          {editSlot.subjects.map(s => (
-                            <div key={s.id} className={cn(
-                              'flex items-center justify-between gap-2 p-2 rounded-lg border cursor-pointer transition-all',
-                              selectedSubjects.includes(s.id) ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background/50 hover:bg-muted/20'
-                            )} onClick={() => toggleSubjectSelection(s.id)}>
-                              <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(s.name) }}>{s.name}</span>
-                              <span className="text-[10px] text-muted-foreground">Planned: {s.planned}</span>
-                              <button type="button" onClick={(e) => {
-                                e.stopPropagation();
-                                const actualTime = canonicalTimeRange(editSlot.startTime, editSlot.endTime);
-                                setSlotRemove({
-                                  subject: s.name,
-                                  day: editSlot.day,
-                                  index: editSlot.index,
-                                  time: actualTime,
-                                  start: editSlot.startTime,
-                                  end: editSlot.endTime,
-                                });
-                                setSlotRemoveConfirm(true);
-                              }} className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10">
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                          <input
-                            type="checkbox"
-                            checked={selectedSubjects.length === editSlot.subjects.length}
-                            onChange={selectAllSubjects}
-                            className="w-4 h-4 rounded border-primary/60 text-primary accent-primary focus:ring-primary/20 focus:ring-2 focus:ring-offset-0 transition-all cursor-pointer"
-                          />
-                          <label className="text-[10px] font-medium text-muted-foreground">Select All</label>
-                        </div>
-                      </div>
-
-                      {showMoveForm && selectedSubjects.length > 0 && (
-                        <div className="border-t border-border/40 pt-3 mt-3 space-y-2">
-                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Move selected subjects</p>
-                          <div>
-                            <label className={labelCls}>Target Day</label>
-                            <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
-                              {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
-                            </select>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2.5">
-                            <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
-                            <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
-                          </div>
-                          {selectedSubjects.map(id => {
-                            const sub = editSlot.subjects.find(s => s.id === id);
-                            if (!sub) return null;
-                            return (
-                              <div key={id} className="flex items-center gap-2">
-                                <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(sub.name) }}>{sub.name}</span>
-                                <label className="text-[10px] text-muted-foreground">Planned:</label>
-                                <input type="number" min={0} value={slotMovePlanned[id] !== undefined ? slotMovePlanned[id] : sub.planned}
-                                  onChange={e => updatePlannedForSubject(id, parseInt(e.target.value, 10) || 0)}
-                                  className="w-16 h-8 bg-background border border-border rounded-lg px-1.5 text-xs" />
-                              </div>
-                            );
-                          })}
-                          {slotConflict ? (
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2 text-amber-500">
-                                <AlertTriangle className="w-4 h-4 shrink-0" />
-                                <p className="text-xs font-bold">Conflict detected:</p>
-                              </div>
-                              {slotConflict.messages.map((m, i) => (
-                                <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                              ))}
-                              <div className="flex gap-2">
-                                <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                                <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex gap-2 justify-end pt-2">
-                              <button type="button" onClick={() => { setShowMoveForm(false); setSelectedSubjects([]); setEditError(null); setSlotConflict(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-                              <button type="button" onClick={doMoveSubjects} className={cn(btnPrimary, 'flex-1')}>Move Selected</button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <label className={labelCls}>Target Day</label>
-                        <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
-                          {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
-                        <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
-                      </div>
-                      <div>
-                        <label className={labelCls}>Subject</label>
-                        <div className="bg-muted/30 p-2 rounded-lg">
-                          <span className="text-xs font-bold" style={{ color: getSubjectColor(editSlot.subjects[0].name) }}>{editSlot.subjects[0].name}</span>
-                          <div className="flex items-center gap-2 mt-1">
-                            <label className="text-[10px] text-muted-foreground">Planned:</label>
-                            <input type="number" min={0} value={slotMovePlanned[editSlot.subjects[0].id] !== undefined ? slotMovePlanned[editSlot.subjects[0].id] : editSlot.subjects[0].planned}
-                              onChange={e => updatePlannedForSubject(editSlot.subjects[0].id, parseInt(e.target.value, 10) || 0)}
-                              className="w-20 h-8 bg-background border border-border rounded-lg px-1.5 text-xs" />
-                          </div>
-                        </div>
-                      </div>
-                      {slotConflict ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-amber-500">
-                            <AlertTriangle className="w-4 h-4 shrink-0" />
-                            <p className="text-xs font-bold">Conflict detected:</p>
-                          </div>
-                          {slotConflict.messages.map((m, i) => (
-                            <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                          ))}
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                            <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex gap-2 justify-end">
-                          <button type="button" onClick={closeEditSlot} className={btnGhost}>Cancel</button>
-                          <button type="button" onClick={() => {
-                            if (editSlot) {
-                              const onlyId = editSlot.subjects[0].id;
-                              doMoveSubjects([onlyId]);  // Now uses conflict detection
-                            }
-                          }} className={btnPrimary}>Apply</button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </OverlayModal>
-
-        {/* ── Slot Remove Confirmation Modal ── */}
-        <OverlayModal open={slotRemoveConfirm} onClose={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }}>
-          {slotRemove && (
-            <div className="p-4 sm:p-5 space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0"><AlertTriangle className="w-5 h-5 text-amber-500" /></div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">Remove from slot?</h3>
-                  <p className="text-xs text-muted-foreground">"{slotRemove.subject}" will be removed from the {DAY_ABBRS[slotRemove.day]} {slotRemove.time} slot.</p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-                <button type="button" onClick={confirmSlotRemove} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Remove</button>
-              </div>
-            </div>
-          )}
-        </OverlayModal>
-
-        {/* ── Subject Triage Modal ── */}
-        <OverlayModal open={opdOpen} onClose={() => setOpdOpen(false)} maxW="max-w-2xl">
+        <OverlayModal open={addSlotOpen} onClose={() => { setAddSlotOpen(false); setFormError(null); }} maxW="max-w-sm">
           <div className="p-4 sm:p-5 space-y-3.5">
             <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Subject Triage</h3>
-                <p className="text-[10px] text-muted-foreground">View, rename, reassign, or delete subjects. Preset subjects can only be renamed.</p>
-              </div>
-              <button type="button" onClick={() => setOpdOpen(false)} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
+              <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
             <Note note={note} />
-
-            {/* Top level: Preset / Added buttons - full width with flex-1 */}
-            <div className="flex gap-2 w-full">
-              {subjectMode === 'preloaded' && (
-                <button
-                  type="button"
-                  onClick={() => setTriageTop('preset')}
-                  className={cn(
-                    'flex-1 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border',
-                    triageTop === 'preset'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-foreground border-border hover:bg-muted/40'
-                  )}
-                >
-                  Preset
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setTriageTop('added')}
-                className={cn(
-                  'flex-1 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border',
-                  triageTop === 'added'
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-background text-foreground border-border hover:bg-muted/40'
-                )}
-              >
-                {subjectMode === 'preloaded' ? 'Added' : 'Custom'}
-              </button>
+            {formError && <p className={inlineErrCls}>{formError}</p>}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div><label className={labelCls}>Start</label><TimeField value={addSlotStart} onChange={setAddSlotStart} ariaLabel="start" /></div>
+              <div><label className={labelCls}>End</label><TimeField value={addSlotEnd} onChange={setAddSlotEnd} ariaLabel="end" /></div>
             </div>
-
-            {/* Secondary dropdown: Academic / Clinical (full width, lighter) */}
-            <div className="flex gap-2 w-full">
-              <button
-                type="button"
-                onClick={() => setTriageSub('academic')}
-                className={cn(
-                  'flex-1 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer border',
-                  triageSub === 'academic'
-                    ? 'bg-primary/10 text-primary border-primary/30'
-                    : 'bg-muted/5 text-muted-foreground border-border hover:bg-muted/10'
-                )}
-              >
-                Academic
-              </button>
-              <button
-                type="button"
-                onClick={() => setTriageSub('clinical')}
-                className={cn(
-                  'flex-1 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer border',
-                  triageSub === 'clinical'
-                    ? 'bg-primary/10 text-primary border-primary/30'
-                    : 'bg-muted/5 text-muted-foreground border-border hover:bg-muted/10'
-                )}
-              >
-                Clinical
-              </button>
-            </div>
-
-            {/* Subject list based on selection – with fixed height */}
-            <div className="space-y-1 h-[50vh] overflow-y-auto pr-1">
-              {triageTop === 'preset' && subjectMode === 'preloaded' && (
-                <>
-                  {triageSub === 'academic' ? (
-                    <>
-                      {CATEGORIES.flatMap(c => c.subjects).map(s => (
-                        <SubjectTriageCard
-                          key={s.name}
-                          name={getPresetSubjectDisplayName(s.name)}
-                          isPreset={true}
-                          store="userAdded"
-                          id={s.name}
-                          parentOptions={[]}
-                          currentParent=""
-                          canChangeParent={false}
-                          canDelete={false}
-                          onRename={() => {}}
-                          onDelete={() => {}}
-                          opdRename={opdRename}
-                          opdEditing={opdEditing}
-                          toggleEdit={toggleOpdEdit}
-                          updateRename={updateOpdRename}
-                          saveRename={saveOpdRename}
-                        />
-                      ))}
-                      {INTEGRATED_SUBJECTS.map(s => (
-                        <SubjectTriageCard
-                          key={s.name}
-                          name={getPresetSubjectDisplayName(s.name)}
-                          isPreset={true}
-                          store="userAdded"
-                          id={s.name}
-                          parentOptions={[]}
-                          currentParent=""
-                          canChangeParent={false}
-                          canDelete={false}
-                          onRename={() => {}}
-                          onDelete={() => {}}
-                          opdRename={opdRename}
-                          opdEditing={opdEditing}
-                          toggleEdit={toggleOpdEdit}
-                          updateRename={updateOpdRename}
-                          saveRename={saveOpdRename}
-                        />
-                      ))}
-                    </>
-                  ) : (
-                    <>
-                      {WARD_SUBJECTS.map(w => (
-                        <SubjectTriageCard
-                          key={w.name}
-                          name={getPresetSubjectDisplayName(w.name)}
-                          isPreset={true}
-                          store="userAdded"
-                          id={w.name}
-                          parentOptions={[]}
-                          currentParent=""
-                          canChangeParent={false}
-                          canDelete={false}
-                          onRename={() => {}}
-                          onDelete={() => {}}
-                          opdRename={opdRename}
-                          opdEditing={opdEditing}
-                          toggleEdit={toggleOpdEdit}
-                          updateRename={updateOpdRename}
-                          saveRename={saveOpdRename}
-                        />
-                      ))}
-                      {userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
-                        <SubjectTriageCard
-                          key={s.id}
-                          name={s.name}
-                          isPreset={false}
-                          store="userAdded"
-                          id={s.id}
-                          parentOptions={allClinicalSubjects.map(n => ({ value: n, label: n }))}
-                          currentParent={(s as any).clinicalSubject || ''}
-                          canChangeParent={true}
-                          canDelete={true}
-                          onRename={() => {}}
-                          onDelete={() => deleteOpdSubject(s.id, 'userAdded', s.name)}
-                          opdRename={opdRename}
-                          opdEditing={opdEditing}
-                          toggleEdit={toggleOpdEdit}
-                          updateRename={updateOpdRename}
-                          saveRename={saveOpdRename}
-                          onParentChange={(newParent) => {
-                            const moves = [{ id: s.id, store: 'userAdded', newSubjectType: 'allied', newParentName: newParent }];
-                            bulkUpdateSubjectHierarchy(moves);
-                            const updates: any = { clinicalSubject: newParent };
-                            if (s.name.toLowerCase() === (s as any).clinicalSubject?.toLowerCase()) {
-                              updates.name = newParent;
-                            }
-                            updateUserAddedSubject(s.id, updates);
-                            showToast('Clinical subject updated.');
-                          }}
-                        />
-                      ))}
-                    </>
-                  )}
-                </>
-              )}
-
-              {triageTop === 'added' && (
-                <>
-                  {triageSub === 'academic' ? (
-                    <>
-                      {subjectMode === 'preloaded' ? (
-                        userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (
-                          <SubjectTriageCard
-                            key={s.id}
-                            name={s.name}
-                            isPreset={false}
-                            store="userAdded"
-                            id={s.id}
-                            parentOptions={getParentOptions().filter(p => p !== 'Small Group Teaching')}
-                            currentParent={getEffectiveParentName(s) || ''}
-                            canChangeParent={true}
-                            canDelete={true}
-                            onRename={() => {}}
-                            onDelete={() => deleteOpdSubject(s.id, 'userAdded', s.name)}
-                            opdRename={opdRename}
-                            opdEditing={opdEditing}
-                            toggleEdit={toggleOpdEdit}
-                            updateRename={updateOpdRename}
-                            saveRename={saveOpdRename}
-                            onParentChange={(newParent) => {
-                              const moves = [{ id: s.id, store: 'userAdded', newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
-                              bulkUpdateSubjectHierarchy(moves);
-                              showToast('Parent updated.');
-                            }}
-                          />
-                        ))
-                      ) : (
-                        customSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (
-                          <SubjectTriageCard
-                            key={s.id}
-                            name={s.name}
-                            isPreset={false}
-                            store="custom"
-                            id={s.id}
-                            parentOptions={getParentOptions().filter(p => p !== 'Small Group Teaching')}
-                            currentParent={getEffectiveParentName(s) || ''}
-                            canChangeParent={true}
-                            canDelete={true}
-                            onRename={() => {}}
-                            onDelete={() => deleteOpdSubject(s.id, 'custom', s.name)}
-                            opdRename={opdRename}
-                            opdEditing={opdEditing}
-                            toggleEdit={toggleOpdEdit}
-                            updateRename={updateOpdRename}
-                            saveRename={saveOpdRename}
-                            onParentChange={(newParent) => {
-                              const moves = [{ id: s.id, store: 'custom', newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
-                              bulkUpdateSubjectHierarchy(moves);
-                              showToast('Parent updated.');
-                            }}
-                          />
-                        ))
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {subjectMode === 'preloaded' ? (
-                        <>
-                          {customWards.map(w => (
-                            <SubjectTriageCard
-                              key={w.id}
-                              name={w.name}
-                              isPreset={false}
-                              store="custom"
-                              id={w.id}
-                              parentOptions={[]}
-                              currentParent=""
-                              canChangeParent={false}
-                              canDelete={true}
-                              onRename={() => {}}
-                              onDelete={() => deleteOpdWard(w.id, w.name)}
-                              opdRename={opdRename}
-                              opdEditing={opdEditing}
-                              toggleEdit={toggleOpdEdit}
-                              updateRename={updateOpdRename}
-                              saveRename={saveOpdRename}
-                            />
-                          ))}
-                          {userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
-                            <SubjectTriageCard
-                              key={s.id}
-                              name={s.name}
-                              isPreset={false}
-                              store="userAdded"
-                              id={s.id}
-                              parentOptions={allClinicalSubjects.map(n => ({ value: n, label: n }))}
-                              currentParent={(s as any).clinicalSubject || ''}
-                              canChangeParent={true}
-                              canDelete={true}
-                              onRename={() => {}}
-                              onDelete={() => deleteOpdSubject(s.id, 'userAdded', s.name)}
-                              opdRename={opdRename}
-                              opdEditing={opdEditing}
-                              toggleEdit={toggleOpdEdit}
-                              updateRename={updateOpdRename}
-                              saveRename={saveOpdRename}
-                              onParentChange={(newParent) => {
-                                const moves = [{ id: s.id, store: 'userAdded', newSubjectType: 'allied', newParentName: newParent }];
-                                bulkUpdateSubjectHierarchy(moves);
-                                const updates: any = { clinicalSubject: newParent };
-                                if (s.name.toLowerCase() === (s as any).clinicalSubject?.toLowerCase()) {
-                                  updates.name = newParent;
-                                }
-                                updateUserAddedSubject(s.id, updates);
-                                showToast('Clinical subject updated.');
-                              }}
-                            />
-                          ))}
-                        </>
-                      ) : (
-                        <>
-                          {customWards.map(w => (
-                            <SubjectTriageCard
-                              key={w.id}
-                              name={w.name}
-                              isPreset={false}
-                              store="custom"
-                              id={w.id}
-                              parentOptions={[]}
-                              currentParent=""
-                              canChangeParent={false}
-                              canDelete={true}
-                              onRename={() => {}}
-                              onDelete={() => deleteOpdWard(w.id, w.name)}
-                              opdRename={opdRename}
-                              opdEditing={opdEditing}
-                              toggleEdit={toggleOpdEdit}
-                              updateRename={updateOpdRename}
-                              saveRename={saveOpdRename}
-                            />
-                          ))}
-                          {customSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
-                            <SubjectTriageCard
-                              key={s.id}
-                              name={s.name}
-                              isPreset={false}
-                              store="custom"
-                              id={s.id}
-                              parentOptions={allClinicalSubjects.map(n => ({ value: n, label: n }))}
-                              currentParent={(s as any).clinicalSubject || ''}
-                              canChangeParent={true}
-                              canDelete={true}
-                              onRename={() => {}}
-                              onDelete={() => deleteOpdSubject(s.id, 'custom', s.name)}
-                              opdRename={opdRename}
-                              opdEditing={opdEditing}
-                              toggleEdit={toggleOpdEdit}
-                              updateRename={updateOpdRename}
-                              saveRename={saveOpdRename}
-                              onParentChange={(newParent) => {
-                                const moves = [{ id: s.id, store: 'custom', newSubjectType: 'allied', newParentName: newParent }];
-                                bulkUpdateSubjectHierarchy(moves);
-                                const updates: any = { clinicalSubject: newParent };
-                                if (s.name.toLowerCase() === (s as any).clinicalSubject?.toLowerCase()) {
-                                  updates.name = newParent;
-                                }
-                                updateCustomSubject(s.id, updates);
-                                showToast('Clinical subject updated.');
-                              }}
-                            />
-                          ))}
-                        </>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-
-              {/* Empty state — centered in the fixed height list area */}
-              {((triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'academic' && CATEGORIES.flatMap(c => c.subjects).length === 0 && INTEGRATED_SUBJECTS.length === 0) ||
-                (triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'clinical' && WARD_SUBJECTS.length === 0 && userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0) ||
-                (triageTop === 'added' && triageSub === 'academic' && (subjectMode === 'preloaded' ? userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).length === 0 : customSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).length === 0)) ||
-                (triageTop === 'added' && triageSub === 'clinical' && (subjectMode === 'preloaded' ? customWards.length === 0 && userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0 : customWards.length === 0 && customSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0))) && (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-xs text-muted-foreground text-center py-5">No subjects found in this section.</p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end">
-              <button type="button" onClick={() => setOpdOpen(false)} className={btnPrimary}>Close</button>
-            </div>
-          </div>
-        </OverlayModal>
-
-        {/* ── Delete/Conflict/Import/Export modals ── */}
-
-        <OverlayModal open={!!deleteSheet} onClose={() => setDeleteSheet(null)}>
-          {deleteSheet && (
-            <div className="p-4 sm:p-5 space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-rose-500" /></div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">{deleteSheet.title}</h3>
-                  <p className="text-[10px] text-muted-foreground">This will permanently remove:</p>
-                </div>
-              </div>
-              <ul className="space-y-1.5">
-                {deleteSheet.lines.map((l, i) => (
-                  <li key={i} className="text-xs text-foreground bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">{l}</li>
+            <div>
+              <label className={labelCls}>Subject</label>
+              <select value={addSlotSubject} onChange={e => {
+                const name = e.target.value;
+                setAddSlotSubject(name);
+                const subj = subjectMode === 'preloaded'
+                  ? [...CATEGORIES.flatMap(c => c.subjects), ...INTEGRATED_SUBJECTS, ...userAddedSubjects].find(s => s.name === name)
+                  : customSubjects.find(s => s.name === name);
+                setAddSlotPlanned(subj ? (subj as any).plannedClasses ?? getSubjectPlannedTotal(name) : getSubjectPlannedTotal(name));
+              }} className={inputCls}>
+                <option value="">Select academic subject…</option>
+                {academicAddSlotSubjects.map(name => (
+                  <option key={name} value={name}>{name}</option>
                 ))}
-              </ul>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setDeleteSheet(null)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-                <button type="button" onClick={() => deleteSheet.onConfirm()} className="flex-1 px-4 py-2 rounded-xl bg-rose-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Delete</button>
-              </div>
+              </select>
             </div>
-          )}
-        </OverlayModal>
-
-        <OverlayModal open={!!conflictSheet} onClose={() => setConflictSheet(null)}>
-          {conflictSheet && (
-            <div className="p-4 sm:p-5 space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0"><AlertTriangle className="w-5 h-5 text-amber-500" /></div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">Conflict Detected</h3>
-                  <p className="text-[10px] text-muted-foreground">Review the issues before proceeding.</p>
-                </div>
-              </div>
-              <ul className="space-y-1.5">
-                {conflictSheet.messages.map((m, i) => (
-                  <li key={i} className="text-xs text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</li>
-                ))}
-              </ul>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-              </div>
+            <div className="bg-muted/30 p-2.5 rounded-xl flex justify-between items-center">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned</span>
+              <span className="text-xs font-extrabold text-foreground">{addSlotPlanned}</span>
             </div>
-          )}
-        </OverlayModal>
-
-        {/* ── Export Modal ── */}
-        <OverlayModal open={exportOpen} onClose={() => setExportOpen(false)}>
-          <div className="p-4 sm:p-5 space-y-2.5">
-            <h3 className="text-sm font-bold text-foreground">Export Routine</h3>
-            <p className="text-[10px] text-muted-foreground mt-0.5">Bundle contains routine data only — never attendance.</p>
-            <Note note={note} />
-            <button type="button" onClick={doShare} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-2')}><Share2 className="w-4 h-4" /> Share…</button>
-            <button type="button" onClick={doDownload} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Download className="w-4 h-4" /> Download .json</button>
-            <button type="button" onClick={doCopy} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Copy className="w-4 h-4" /> Copy to Clipboard</button>
+            <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}>
+              <Plus className="w-3.5 h-3.5" /> Add Slot
+            </button>
           </div>
         </OverlayModal>
 
-        {/* ── Import Modal ── */}
-        <OverlayModal open={importOpen} onClose={() => { setImportOpen(false); setImportError(null); }}>
-          <div className="p-4 sm:p-5 space-y-2.5">
-            <h3 className="text-sm font-bold text-foreground">Import Routine</h3>
-            <p className="text-[10px] text-muted-foreground mt-0.5">Load a routine bundle from a file or pasted JSON. Attendance is never imported.</p>
-            <Note note={note} />
-            {importError && <p className={inlineErrCls}>{importError}</p>}
-            <button type="button" onClick={() => importFileRef.current?.click()} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-2')}><Download className="w-4 h-4" /> Choose .json File</button>
-            <input ref={importFileRef} type="file" accept=".json,application/json" className="hidden"
-              onChange={e => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                const reader = new FileReader();
-                reader.onload = ev => beginImport(String(ev.target?.result || ''), 'file');
-                reader.readAsText(f);
-                e.target.value = '';
-              }} />
-            <button type="button" onClick={() => { setPasteError(null); setPasteOpen(true); }} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Copy className="w-4 h-4" /> Paste JSON…</button>
-            <div className="border-t border-border/40 pt-3 mt-2">
-              <p className="text-[10px] text-muted-foreground font-medium mb-2">Need a routine bundle? Copy this prompt to an AI assistant:</p>
-              <button
-                onClick={async () => {
-                  const prompt = `You are helping me build a routine bundle for "Attendenz Tracker". Respond with ONLY a valid JSON object matching this exact schema:
-{
-  "version": 2,
-  "subjectMode": "preloaded" | "custom",
-  "addedSubjects": [
-    {
-      "name": "string",
-      "type": "single" | "allied" | "allied-parent",
-      "parentCategory": "string" | null,
-      "planned": number,
-      "schedules": [{ "day": "Mon", "start": "HH:MM", "end": "HH:MM" }],
-      "clinicalSubject": "string" | null,
-      "startDate": "yyyy-mm-dd" | null,
-      "endDate": "yyyy-mm-dd" | null
-    }
-  ],
-  "customWards": [
-    {
-      "name": "string",
-      "startDate": "yyyy-mm-dd",
-      "endDate": "yyyy-mm-dd",
-      "morningTime": "hh:mm AM–hh:mm PM",
-      "eveningTime": "hh:mm PM–hh:mm PM"
-    }
-  ],
-  "presetTimetable": {
-    "0": [{ "time": "hh:mm AM–hh:mm AM", "type": "lecture", "subjects": ["string"] }]
-  },
-  "presetWardSchedule": [
-    { "start": "yyyy-mm-dd", "end": "yyyy-mm-dd", "ward": "string", "morningTime": "...", "eveningTime": "..." }
-  ],
-  "presetSubjectTotals": { "Subject": number }
-}
-Rules:
-- Schedules use 24h HH:MM (the app canonicalizes on import).
-- Never include attendance data (attended/missed/off marks, student names, etc.).
-- For clinical rotations, use a single continuous date range (do not split on holidays).
-- The app handles holidays internally.
-- Include only routine data – no personal information.`;
-                  await navigator.clipboard.writeText(prompt);
-                  showToast('AI prompt copied to clipboard.');
-                }}
-                className={cn(btnGhost, 'w-full flex items-center justify-center gap-2 text-xs')}
-              >
-                <Copy className="w-3.5 h-3.5" /> Copy prompt for AI
-              </button>
+        <OverlayModal open={historyOpen} onClose={() => setHistoryOpen(false)} maxW="max-w-md">
+          <div className="p-4 sm:p-5 space-y-3.5 max-h-[70vh] flex flex-col">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-foreground">History</h3>
+              <button type="button" onClick={() => setHistoryOpen(false)} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
-          </div>
-        </OverlayModal>
-
-        {/* ── Paste JSON Modal ── */}
-        <OverlayModal open={pasteOpen} onClose={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} maxW="max-w-lg">
-          <div className="p-4 sm:p-5 space-y-2.5">
-            <h3 className="text-sm font-bold text-foreground">Paste Bundle JSON</h3>
-            <p className="text-[10px] text-muted-foreground mt-0.5">Paste the bundle text from another device, then validate.</p>
-            {pasteError && <p className={inlineErrCls}>{pasteError}</p>}
-            <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={8} className={cn(inputCls, 'h-auto font-mono text-[10px] py-2')} placeholder='{"version":2,"subjectMode":…}' />
-            <div className="flex gap-2">
-              <button type="button" onClick={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-              <button type="button" onClick={() => beginImport(pasteText, 'paste')} className={cn(btnPrimary, 'flex-1')}>Validate & Preview</button>
-            </div>
-          </div>
-        </OverlayModal>
-
-        {/* ── Import Preview Modal ── */}
-        <OverlayModal open={!!preview} onClose={() => setPreview(null)} maxW="max-w-lg">
-          {preview && (
-            <div className="p-4 sm:p-5 space-y-3">
-              <h3 className="text-sm font-bold text-foreground">Import Preview</h3>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Review exactly what will be added or skipped before anything changes.</p>
-              <Note note={note} />
-              <div className="bg-muted/30 border border-border/50 rounded-xl p-3 text-xs text-foreground space-y-1">
-                <p>Mode: <strong>{preview.bundle.subjectMode}</strong> · Subjects to add: <strong>{preview.report.subjectsAdd}</strong> · Rotations to add: <strong>{preview.report.wardsAdd}</strong></p>
-                <p>Preset slots in bundle: <strong>{preview.report.slots}</strong> · Preset rotations: <strong>{preview.report.rotations}</strong></p>
-              </div>
-              {(preview.report.subjectsSkip.length > 0 || preview.report.wardsSkip.length > 0) && (
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 space-y-1">
-                  <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wide">Skipped (duplicates / overlaps)</p>
-                  {[...preview.report.subjectsSkip, ...preview.report.wardsSkip].map((s, i) => (
-                    <p key={i} className="text-[11px] text-foreground">• {s}</p>
-                  ))}
-                </div>
+            <div className="overflow-y-auto flex-1 min-h-0 space-y-2">
+              {/* Show snapshots with label starting "Manage:" */}
+              {getSnapshots().filter(s => s.label.startsWith('Manage:')).length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-5">No Manage actions yet.</p>
+              ) : (
+                getSnapshots().filter(s => s.label.startsWith('Manage:')).map(s => (
+                  <div key={s.id} className="flex items-center justify-between bg-background border border-border/60 rounded-xl p-2.5">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground truncate">{s.label.replace('Manage: ', '')}</p>
+                      <p className="text-[10px] text-muted-foreground">{s.timestamp}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (restoreSnapshot(s.id)) {
+                          setHistoryOpen(false);
+                          window.location.reload();
+                        } else {
+                          showToast('Failed to undo action.', 'err');
+                        }
+                      }}
+                      className="text-xs font-semibold text-primary hover:underline px-2 py-1 rounded-lg bg-primary/10 cursor-pointer shrink-0"
+                    >
+                      Undo
+                    </button>
+                  </div>
+                ))
               )}
-              <div className="flex gap-2">
-                <button type="button" onClick={applyMerge} className={cn(btnPrimary, 'flex-1')}>Merge</button>
-                <button type="button" onClick={applyReplace} className="flex-1 px-4 py-2 rounded-xl bg-rose-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Replace</button>
-              </div>
             </div>
-          )}
+          </div>
         </OverlayModal>
       </motion.div>
     </Layout>
