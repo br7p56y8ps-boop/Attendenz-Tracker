@@ -5,13 +5,13 @@ self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(SHELL)
       .then((c) => c.addAll([`${self.registration.scope}index.html`]))
-      .then(() => self.skipWaiting())
       .catch(() => {})
   );
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(self.clients.claim());
+  // Deliberately no clients.claim() here.
+  // The new service worker waits for user approval before taking control.
 });
 
 self.addEventListener('message', (e) => {
@@ -23,6 +23,11 @@ self.addEventListener('message', (e) => {
         const fresh = await fetch(`${self.registration.scope}index.html`, { cache: 'no-store' });
         if (fresh.ok) await cache.put(`${self.registration.scope}index.html`, fresh);
       } catch {}
+
+      // Now we can safely activate and take control
+      await self.skipWaiting();
+      await self.clients.claim();
+
       const clients = await self.clients.matchAll();
       clients.forEach((c) => c.postMessage({ type: 'ATT_SW_UPDATED' }));
     })());

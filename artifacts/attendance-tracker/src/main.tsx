@@ -34,8 +34,26 @@ if ('serviceWorker' in navigator) {
   localStorage.removeItem('att_pwa_update_ready');
   try {
     const reg = await navigator.serviceWorker.getRegistration();
-    reg?.active?.postMessage({ type: 'ATT_UPDATE_APPROVED' });
-    await new Promise(r => setTimeout(r, 350));
+    if (reg?.waiting) {
+      reg.waiting.postMessage({ type: 'ATT_UPDATE_APPROVED' });
+    } else if (reg?.installing) {
+      reg.installing.postMessage({ type: 'ATT_UPDATE_APPROVED' });
+    } else if (reg?.active) {
+      reg.active.postMessage({ type: 'ATT_UPDATE_APPROVED' });
+    }
+
+    // Wait for the service worker to tell us it has updated
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 10000);
+      const onMessage = (event: MessageEvent) => {
+        if (event.data && event.data.type === 'ATT_SW_UPDATED') {
+          clearTimeout(timeout);
+          navigator.serviceWorker.removeEventListener('message', onMessage);
+          resolve();
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', onMessage);
+    });
   } catch { /* fall through */ }
 };
 

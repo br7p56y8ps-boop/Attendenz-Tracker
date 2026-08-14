@@ -21,13 +21,12 @@ const HAS_SEEN_WELCOME_KEY = 'att_has_seen_welcome_v1';
 function AuthGate() {
   const { isLoggedIn } = useAuth();
   const { setupDone } = useCustomData();
-  const justUpdated = localStorage.getItem('att_just_updated') === 'true';
 
   if (!isLoggedIn) {
     return <Login />;
   }
 
-  if (!setupDone || justUpdated) {
+  if (!setupDone) {
     return <SetupScreen />;
   }
 
@@ -58,6 +57,7 @@ function MainAppFlow() {
       <WelcomeVideoScreen
         onComplete={() => {
           localStorage.setItem(HAS_SEEN_WELCOME_KEY, 'true');
+          localStorage.removeItem('att_just_updated'); // clear update flag so next render doesn't force setup
           setShowWelcome(false);
         }}
       />
