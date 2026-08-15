@@ -7,7 +7,6 @@ import { useAttendance } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
-import { PRESET_PARENTS } from '@/lib/constants';
 import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen } from 'lucide-react';
 
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -241,11 +240,7 @@ export default function Home() {
     const entries: DayEntry[] = [];
     const mode: 'today' | 'past' | 'future' = isTodaySelected ? 'today' : isPast ? 'past' : 'future';
     if (subjectMode === 'preloaded') {
-      const sgtNames = new Set(
-        userAddedSubjects
-          .filter(u => u.subjectType === 'allied' && u.parentName && PRESET_PARENTS.includes(u.parentName))
-          .map(u => u.name.toLowerCase())
-      );
+     
       schedule.forEach((slot, idx) => {
         if (slot.type === 'ward' || slot.type === 'ward_replacement') {
           const effectiveTime =
@@ -276,8 +271,7 @@ export default function Home() {
           }
           return;
         }
-        slot.subjects.forEach((subject, subIdx) => {
-          if (sgtNames.has(subject.toLowerCase())) return;
+        slot.subjects.forEach((subject, subIdx) => { 
           entries.push({
             id: `${idx}-${subIdx}`,
             time: slot.time,
