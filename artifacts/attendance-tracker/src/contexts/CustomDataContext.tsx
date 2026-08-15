@@ -63,6 +63,8 @@ export interface PresetWardEntry {
 }
 
 export type SubjectMode = 'preloaded' | 'custom';
+export type SubjectDomain = 'academic' | 'clinical';
+
 export interface SubjectTimeConflict {
   day: string;
   time: string;
@@ -313,6 +315,64 @@ function migrateStoredRoutines(): void {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+   SGT timetable cleanup
+──────────────────────────────────────────────────────────────────────────── */
+const isSGTName = (name: string, sgtNames: Set<string>): boolean =>
+  sgtNames.has(name.trim().toLowerCase());
+
+const isAcademicName = (name: string): boolean => {
+  const n = name.trim().toLowerCase();
+  for (const cat of CATEGORIES) for (const s of cat.subjects) if (s.name.toLowerCase() === n) return true;
+  for (const s of INTEGRATED_SUBJECTS) if (s.name.toLowerCase() === n) return true;
+  return false;
+};
+
+const removeSGTFromTimetable = (
+  tt: typeof TIMETABLE,
+  uaSubjects: UserAddedSubject[],
+  csSubjects: CustomSubject[]
+): { tt: typeof TIMETABLE; changed: boolean } => {
+  const sgtNames = new Set<string>();
+  for (const s of uaSubjects) {
+    if (s.subjectType === 'allied' && s.parentName === 'Small Group Teaching') {
+      sgtNames.add(s.name.trim().toLowerCase());
+    }
+  }
+  for (const s of csSubjects) {
+    if (s.subjectType === 'allied' && s.parentName === 'Small Group Teaching') {
+      sgtNames.add(s.name.trim().toLowerCase());
+    }
+  }
+
+  const src = asMutable(tt);
+  const next: Record<number, MutableSlot[]> = {};
+  let changed = false;
+
+  for (let day = 0; day < 7; day++) {
+    const slots = src[day] || [];
+    const newSlots: MutableSlot[] = [];
+    for (const slot of slots) {
+      if (isWardSlotType(slot.type)) {
+        newSlots.push(slot);
+        continue;
+      }
+      const filteredSubjects = slot.subjects.filter(s => {
+        const isSGTOnly = isSGTName(s, sgtNames) && !isAcademicName(s);
+        return !isSGTOnly;
+      });
+      if (filteredSubjects.length !== slot.subjects.length) changed = true;
+      if (filteredSubjects.length > 0) {
+        newSlots.push({ ...slot, subjects: filteredSubjects });
+      } else {
+        changed = true; // remove slot entirely
+      }
+    }
+    next[day] = newSlots;
+  }
+  return { tt: asTimetable(next), changed };
+};
+
+/* ────────────────────────────────────────────────────────────────────────────
    Context shape
 ──────────────────────────────────────────────────────────────────────────── */
 interface CustomDataContextType {
@@ -365,9 +425,9 @@ interface CustomDataContextType {
   getAlliedChildCount: (parentName: string) => number;
   getCustomAlliedChildren: (parentName: string) => CustomSubject[];
   getUserAddedAlliedChildren: (parentName: string) => UserAddedSubject[];
-  isSubjectNameTaken: (name: string, excludeName?: string) => boolean;
+  isSubjectNameTaken: (name: string, excludeName?: string, domain?: SubjectDomain) => boolean;
   isWardNameTaken: (name: string, excludeWard?: string) => boolean;
-  findSubjectTimeConflicts: (days: string[], time: string, excludeName?: string) => SubjectTimeConflict[];
+  findSubjectTimeConflicts: (days: string[], time: string, excludeName?: string, domain?: SubjectDomain) => SubjectTimeConflict[];
   findWardDateConflicts: (startDate: string, endDate: string, excludeWard?: string) => WardDateConflict[];
   bulkUpdateSubjectHierarchy: (moves: Array<{
     id: string;
@@ -383,7 +443,6 @@ interface CustomDataContextType {
   startFresh: () => void;
   changeSubjectMode: (mode: SubjectMode) => void;
   clearRoutineData: (mode: SubjectMode) => void;
-  // NEW: Preset rename override
   getPresetSubjectDisplayName: (originalName: string) => string;
   setPresetSubjectRename: (oldName: string, newName: string) => void;
 }
@@ -401,7 +460,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [setupDone, setSetupDone] = useState(false);
   const [whatsNewOpen, setWhatsNewOpenState] = useState(false);
   const [presetTimetable, setPresetTimetable] = useState<typeof TIMETABLE>(TIMETABLE);
-  /* LIVE REF — always-current timetable so back-to-back writes compose (fixes stale overwrite) */
   const presetTimetableRef = useRef<typeof TIMETABLE>(TIMETABLE);
   const [presetWardSchedule, setPresetWardSchedule] = useState<PresetWardEntry[]>(defaultWardSchedule);
   const [presetSubjectTotals, setPresetSubjectTotals] = useState<Record<string, number>>({});
@@ -410,11 +468,14 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     migrateStoredRoutines();
     try {
+      let uaParsed: UserAddedSubject[] = [];
+      let csParsed: CustomSubject[] = [];
+
       const s = localStorage.getItem(CUSTOM_SUBJECTS_KEY);
       if (s) {
-        let parsed: CustomSubject[] = JSON.parse(s);
+        csParsed = JSON.parse(s);
         let migrated = false;
-        parsed = parsed.map(it => {
+        csParsed = csParsed.map(it => {
           if (it && it.subjectType === 'allied' && !it.parentName) {
             migrated = true;
             const legacyParent = (it.category || '').trim() || 'Uncategorised';
@@ -422,32 +483,70 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
           }
           return it;
         });
-        if (migrated) localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(parsed));
-        setCustomSubjects(parsed);
+        csParsed = csParsed.map(it => {
+          if (it.subjectType === 'allied' && it.parentName === 'Small Group Teaching' && !it.clinicalSubject) {
+            it.clinicalSubject = it.name.replace(/\s*SGT\s*$/i, '').trim() || it.name;
+            migrated = true;
+          }
+          return it;
+        });
+        if (migrated) localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(csParsed));
+        setCustomSubjects(csParsed);
       }
+
       const w = localStorage.getItem(CUSTOM_WARDS_KEY);
       if (w) setCustomWards(JSON.parse(w));
+
       const ua = localStorage.getItem(USER_ADDED_SUBJECTS_KEY);
-      if (ua) setUserAddedSubjects(JSON.parse(ua));
+      if (ua) {
+        uaParsed = JSON.parse(ua);
+        let uaMigrated = false;
+        uaParsed = uaParsed.map(it => {
+          if (it.subjectType === 'allied' && it.parentName === 'Small Group Teaching' && !it.clinicalSubject) {
+            it.clinicalSubject = it.name.replace(/\s*SGT\s*$/i, '').trim() || it.name;
+            uaMigrated = true;
+          }
+          return it;
+        });
+        if (uaMigrated) {
+          localStorage.setItem(USER_ADDED_SUBJECTS_KEY, JSON.stringify(uaParsed));
+          storageSetItem(USER_ADDED_SUBJECTS_KEY, JSON.stringify(uaParsed));
+        }
+        setUserAddedSubjects(uaParsed);
+      }
+
       const m = localStorage.getItem(SUBJECT_MODE_KEY) as SubjectMode | null;
       if (m === 'preloaded' || m === 'custom') setSubjectMode(m);
+
       const done = localStorage.getItem(SETUP_DONE_KEY);
       if (done === 'true') setSetupDone(true);
       else setSetupDone(false);
+
       const seenWhatsNew = localStorage.getItem(WHATS_NEW_KEY);
       if (seenWhatsNew !== 'true') setWhatsNewOpenState(true);
-      const pt = localStorage.getItem(PRESET_TIMETABLE_KEY);
-      if (pt) {
-        const parsed = JSON.parse(pt);
-        setPresetTimetable(parsed);
-        presetTimetableRef.current = parsed;
+
+      const ptRaw = localStorage.getItem(PRESET_TIMETABLE_KEY);
+      if (ptRaw) {
+        const parsed = JSON.parse(ptRaw);
+        const cleanup = removeSGTFromTimetable(parsed, uaParsed, csParsed);
+        if (cleanup.changed) {
+          localStorage.setItem(PRESET_TIMETABLE_KEY, JSON.stringify(cleanup.tt));
+          storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(cleanup.tt));
+          snapshotBeforeEdit('SGT Timetable Cleanup');
+        }
+        setPresetTimetable(cleanup.tt);
+        presetTimetableRef.current = cleanup.tt;
+      } else {
+        setPresetTimetable(TIMETABLE);
+        presetTimetableRef.current = TIMETABLE;
       }
+
       const pws = localStorage.getItem(PRESET_WARD_SCHEDULE_KEY);
       if (pws) setPresetWardSchedule(JSON.parse(pws));
+
       const pst = localStorage.getItem(PRESET_SUBJECT_TOTALS_KEY);
       if (pst) setPresetSubjectTotals(JSON.parse(pst));
 
-      // Load renamed preset subjects
       const renames = localStorage.getItem(PRESET_RENAMES_KEY);
       if (renames) setRenamedPresetSubjects(JSON.parse(renames));
     } catch {
@@ -613,7 +712,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       );
       if (existingIdx !== -1) {
         record.id = nextUserAdded[existingIdx].id;
-        // Merge with existing to preserve SGT fields if not overwritten
         const existingRec = nextUserAdded[existingIdx];
         record.startDate = record.startDate ?? existingRec.startDate;
         record.endDate = record.endDate ?? existingRec.endDate;
@@ -624,7 +722,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         nextUserAdded.push(record);
       }
       created.push(record);
-      if (record.subjectType !== 'allied-parent') {
+      const isSGT = record.parentName === 'Small Group Teaching';
+      if (record.subjectType !== 'allied-parent' && !isSGT) {
         nextTimetable = syncSubjectSchedules(nextTimetable, record.name, rows);
         nextTotals[record.name] = record.plannedClasses;
       }
@@ -680,10 +779,11 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       );
     }
     saveUserAdded(nextUserAdded);
+    const isSGT = merged.parentName === 'Small Group Teaching';
     if (existing.subjectType !== 'allied-parent' || merged.subjectType !== 'allied-parent') {
       let tt = presetTimetableRef.current;
       if (nameChanged) tt = removeSubjectFromTimetable(tt, existing.name);
-      if (merged.subjectType !== 'allied-parent') {
+      if (merged.subjectType !== 'allied-parent' && !isSGT) {
         tt = syncSubjectSchedules(tt, merged.name, rows);
       } else {
         tt = removeSubjectFromTimetable(tt, existing.name);
@@ -693,10 +793,10 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       if (nameChanged) {
         const prevVal = normalized.plannedClasses !== undefined ? normalized.plannedClasses : totals[existing.name];
         delete totals[existing.name];
-        if (prevVal !== undefined && merged.subjectType !== 'allied-parent') totals[merged.name] = prevVal;
+        if (prevVal !== undefined && merged.subjectType !== 'allied-parent' && !isSGT) totals[merged.name] = prevVal;
         saveTotals(totals);
       } else if (normalized.plannedClasses !== undefined) {
-        saveTotals({ ...presetSubjectTotals, [merged.name]: merged.plannedClasses });
+        if (!isSGT) saveTotals({ ...presetSubjectTotals, [merged.name]: merged.plannedClasses });
       }
     }
   };
@@ -717,7 +817,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     let tt = presetTimetableRef.current;
     const totals = { ...presetSubjectTotals };
     for (const r of removedEntries) {
-      if (r.subjectType === 'allied-parent') continue;
+      const isSGT = r.parentName === 'Small Group Teaching';
+      if (r.subjectType === 'allied-parent' || isSGT) continue;
       tt = removeSubjectFromTimetable(tt, r.name);
       delete totals[r.name];
     }
@@ -761,7 +862,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     );
     saveWardSchedule(updated);
   };
-  /* LIVE-REF read → back-to-back slot writes compose (fixes Medicine move) */
   const updatePresetTimetableSlot = (
     currentDay: number,
     slotIndex: number,
@@ -817,14 +917,10 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const setPresetSubjectRename = (oldName: string, newName: string) => {
-    // Update the override map
     const nextRenames = { ...renamedPresetSubjects };
     nextRenames[oldName] = newName;
     saveRenames(nextRenames);
-
-    // Rewrite the timetable atomically
     const currentTt = presetTimetableRef.current;
-    // Deep clone to avoid mutating the ref
     const newTt: typeof TIMETABLE = JSON.parse(JSON.stringify(currentTt));
     let changed = false;
     for (let day = 0; day < 7; day++) {
@@ -1010,18 +1106,30 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       s => s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p
     );
   };
-  const isSubjectNameTaken = (name: string, excludeName?: string): boolean => {
+  const isSubjectNameTaken = (name: string, excludeName?: string, domain: SubjectDomain = 'academic'): boolean => {
     const n = name.trim().toLowerCase();
     if (!n) return false;
     const ex = excludeName?.trim().toLowerCase();
     const pool: string[] = [];
     if (subjectMode === 'preloaded') {
-      for (const cat of CATEGORIES) for (const s of cat.subjects) pool.push(s.name);
-      for (const s of INTEGRATED_SUBJECTS) pool.push(s.name);
-      for (const s of WARD_SUBJECTS) pool.push(s.name);
-      for (const s of userAddedSubjects) pool.push(s.name);
+      if (domain === 'academic') {
+        for (const cat of CATEGORIES) for (const s of cat.subjects) pool.push(s.name);
+        for (const s of INTEGRATED_SUBJECTS) pool.push(s.name);
+        for (const s of userAddedSubjects) {
+          if (!(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')) pool.push(s.name);
+        }
+      } else if (domain === 'clinical') {
+        for (const s of userAddedSubjects) {
+          if (s.subjectType === 'allied' && s.parentName === 'Small Group Teaching') pool.push(s.name);
+        }
+      }
     }
-    for (const s of customSubjects) pool.push(s.name);
+    for (const s of customSubjects) {
+      const isSGT = s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
+      if (domain === 'academic' && isSGT) continue;
+      if (domain === 'clinical' && !isSGT) continue;
+      pool.push(s.name);
+    }
     return pool.some(p => p.trim().toLowerCase() === n && p.trim().toLowerCase() !== ex);
   };
   const isWardNameTaken = (name: string, excludeWard?: string): boolean => {
@@ -1039,41 +1147,93 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const findSubjectTimeConflicts = (
     days: string[],
     time: string,
-    excludeName?: string
+    excludeName?: string,
+    domain: SubjectDomain = 'academic'
   ): SubjectTimeConflict[] => {
     const conflicts: SubjectTimeConflict[] = [];
     const daySet = new Set(days.map(d => d.trim()).filter(Boolean));
     const ex = excludeName?.trim().toLowerCase();
+
     if (subjectMode === 'preloaded') {
-      const tt = asMutable(presetTimetableRef.current);
-      for (let day = 0; day < 7; day++) {
-        const abbr = DAY_ABBRS[day];
-        if (!daySet.has(abbr)) continue;
-        for (const slot of tt[day] || []) {
-          if (isWardSlotType(slot.type)) continue;
-          if (ex && slot.subjects.some(s => s.trim().toLowerCase() === ex)) continue;
-          if (timesOverlap(slot.time, time)) {
-            conflicts.push({ day: abbr, time: slot.time, subjects: [...slot.subjects], exact: sameRange(slot.time, time) });
+      if (domain === 'academic') {
+        const tt = asMutable(presetTimetableRef.current);
+        for (let day = 0; day < 7; day++) {
+          const abbr = DAY_ABBRS[day];
+          if (!daySet.has(abbr)) continue;
+          for (const slot of tt[day] || []) {
+            if (isWardSlotType(slot.type)) continue;
+            if (ex && slot.subjects.some(s => s.trim().toLowerCase() === ex)) continue;
+            if (timesOverlap(slot.time, time)) {
+              conflicts.push({ day: abbr, time: slot.time, subjects: [...slot.subjects], exact: sameRange(slot.time, time) });
+            }
+          }
+        }
+      } else { // clinical: check SGT schedules from userAddedSubjects
+        const sgtSubjects = userAddedSubjects.filter(
+          s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'
+        );
+        for (const s of sgtSubjects) {
+          if (ex && s.name.trim().toLowerCase() === ex) continue;
+          const sDays = new Set<string>([
+            ...parseDayList(s.days),
+            ...(s.schedules || []).map(sch => sch.day),
+          ]);
+          const hitDays = [...daySet].filter(d => sDays.has(d));
+          if (hitDays.length === 0) continue;
+          const ranges: string[] = [];
+          if (parseDayList(s.days).length > 0 && s.time) ranges.push(s.time);
+          for (const sch of s.schedules || []) ranges.push(sch.time);
+          for (const r of ranges) {
+            if (!timesOverlap(r, time)) continue;
+            for (const d of hitDays) {
+              conflicts.push({ day: d, time: r, subjects: [s.name], exact: sameRange(r, time) });
+            }
           }
         }
       }
-    } else {
-      for (const s of customSubjects) {
-        if (ex && s.name.trim().toLowerCase() === ex) continue;
-        if (s.subjectType === 'allied-parent') continue;
-        const sDays = new Set<string>([
-          ...parseDayList(s.days),
-          ...(s.schedules || []).map(sch => sch.day),
-        ]);
-        const hitDays = [...daySet].filter(d => sDays.has(d));
-        if (hitDays.length === 0) continue;
-        const ranges: string[] = [];
-        if (parseDayList(s.days).length > 0 && s.time) ranges.push(s.time);
-        for (const sch of s.schedules || []) ranges.push(sch.time);
-        for (const r of ranges) {
-          if (!timesOverlap(r, time)) continue;
-          for (const d of hitDays) {
-            conflicts.push({ day: d, time: r, subjects: [s.name], exact: sameRange(r, time) });
+    } else { // custom mode
+      if (domain === 'academic') {
+        for (const s of customSubjects) {
+          const isSGT = s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
+          if (isSGT) continue;
+          if (ex && s.name.trim().toLowerCase() === ex) continue;
+          if (s.subjectType === 'allied-parent') continue;
+          const sDays = new Set<string>([
+            ...parseDayList(s.days),
+            ...(s.schedules || []).map(sch => sch.day),
+          ]);
+          const hitDays = [...daySet].filter(d => sDays.has(d));
+          if (hitDays.length === 0) continue;
+          const ranges: string[] = [];
+          if (parseDayList(s.days).length > 0 && s.time) ranges.push(s.time);
+          for (const sch of s.schedules || []) ranges.push(sch.time);
+          for (const r of ranges) {
+            if (!timesOverlap(r, time)) continue;
+            for (const d of hitDays) {
+              conflicts.push({ day: d, time: r, subjects: [s.name], exact: sameRange(r, time) });
+            }
+          }
+        }
+      } else { // clinical
+        const sgtSubjects = customSubjects.filter(
+          s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'
+        );
+        for (const s of sgtSubjects) {
+          if (ex && s.name.trim().toLowerCase() === ex) continue;
+          const sDays = new Set<string>([
+            ...parseDayList(s.days),
+            ...(s.schedules || []).map(sch => sch.day),
+          ]);
+          const hitDays = [...daySet].filter(d => sDays.has(d));
+          if (hitDays.length === 0) continue;
+          const ranges: string[] = [];
+          if (parseDayList(s.days).length > 0 && s.time) ranges.push(s.time);
+          for (const sch of s.schedules || []) ranges.push(sch.time);
+          for (const r of ranges) {
+            if (!timesOverlap(r, time)) continue;
+            for (const d of hitDays) {
+              conflicts.push({ day: d, time: r, subjects: [s.name], exact: sameRange(r, time) });
+            }
           }
         }
       }
