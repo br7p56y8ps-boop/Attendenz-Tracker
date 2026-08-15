@@ -7,6 +7,7 @@ import { useAttendance } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
+import { PRESET_PARENTS } from '@/lib/constants';
 import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen } from 'lucide-react';
 
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
