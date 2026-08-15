@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
@@ -7,6 +6,7 @@ import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext'
 import { initStorageAndMigrate } from '@/lib/idb';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
 import WelcomeVideoScreen from '@/components/video/WelcomeVideoScreen';
+import { restoreSnapshot } from '@/utils/snapshotUtils';
 import Home from '@/pages/Home';
 import Subjects from '@/pages/Subjects';
 import AddNew from '@/pages/AddNew';
@@ -54,8 +54,19 @@ function MainAppFlow() {
 
   if (showWelcome) {
     return (
-      <WelcomeVideoScreen
+            <WelcomeVideoScreen
         onComplete={() => {
+          // Silent auto-restore of pre-update snapshot if it exists
+          const pendingRestoreId = localStorage.getItem('att_pending_update_restore');
+          if (pendingRestoreId) {
+            try {
+              restoreSnapshot(pendingRestoreId);
+            } catch (e) {
+              // Fail silently, data remains intact
+            }
+            localStorage.removeItem('att_pending_update_restore');
+          }
+          
           localStorage.setItem(HAS_SEEN_WELCOME_KEY, 'true');
           localStorage.removeItem('att_just_updated'); // clear update flag so next render doesn't force setup
           setShowWelcome(false);

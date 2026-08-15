@@ -17,6 +17,19 @@ import femaleStudentProfile from '@/assets/images/female_student_profile_1784286
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
 
 const SNAPSHOTS_KEY = 'attendenz_snapshots_v1';
+// Returns 1 if a>b, -1 if a<b, 0 if equal
+function compareVersions(a: string, b: string): number {
+  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x > y) return 1;
+    if (x < y) return -1;
+  }
+  return 0;
+}
+
 
 export default function Account() {
   const { username, updateUsername, profileImage, updateProfileImage, isPersistentStorage, requestPersistentStorage } = useAuth();
@@ -31,7 +44,15 @@ export default function Account() {
   const backupFileInputRef = useRef<HTMLInputElement>(null);
   const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
   const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
-  const [installedVersion, setInstalledVersion] = useState<string>(() => localStorage.getItem('att_app_version') || APP_VERSION);
+  const [installedVersion, setInstalledVersion] = useState<string>(() => {
+  const stored = localStorage.getItem('att_app_version') || APP_VERSION;
+  if (compareVersions(APP_VERSION, stored) > 0) {
+    localStorage.setItem('att_app_version', APP_VERSION);
+    return APP_VERSION;
+  }
+  return stored;
+  });
+
   const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
     useEffect(() => {
@@ -39,14 +60,17 @@ export default function Account() {
     window.addEventListener('attendenz:update-ready', on);
     return () => window.removeEventListener('attendenz:update-ready', on);
   }, []);
-   const isUpdateAvailable = installedVersion !== LATEST_VERSION || pwaReady;
-   const [updatingNow, setUpdatingNow] = useState(false);
+   const isUpdateAvailable =
+  compareVersions(serverVersion, installedVersion) > 0 ||
+  (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
+   const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
    const [dots, setDots] = useState(1);
    useEffect(() => {
-  if (!updatingNow) return;
+  if (updatePhase === 'none') return;
   const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450);
   return () => window.clearInterval(t);
-  }, [updatingNow]);
+  }, [updatePhase]);
+
 
   /* Round-5: progress + confirm-before states */
   const [busy, setBusy] = useState<string | null>(null);
@@ -74,31 +98,45 @@ export default function Account() {
     setSnapshots(getSnapshots());
     import('sonner').then(({ toast }) => toast.success('Curriculum marked as Completed! Auto-snapshot saved.'));
   };
-    const handleApplyUpdate = async (withBackup: boolean) => {
-    if (withBackup) exportDataAsJSON();
-    const newVer = localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION;
-    localStorage.setItem('att_app_version', newVer);
-    localStorage.setItem('att_just_updated', 'true');
-    localStorage.removeItem('att_has_seen_welcome_v1');
-    localStorage.removeItem('att_pwa_update_ready');
-    setInstalledVersion(newVer);
-    setShowUpdatePrompt(false);
-    setUpdatingNow(true);
+  
+  const handleApplyUpdate = async (withBackup: boolean) => {
+  setShowUpdatePrompt(false);
+  localStorage.removeItem('att_pwa_update_ready');
+  localStorage.setItem('att_just_updated', 'true');
+  localStorage.removeItem('att_has_seen_welcome_v1');
+  localStorage.removeItem('att_app_version'); // Let the new app sync its own version on boot
 
-    const MIN_UPDATE_DELAY = 5600;
-    const start = Date.now();
-
-    try {
-      const applyPwa = (window as any).attendenzApplyPwaUpdate;
-      if (applyPwa) await applyPwa(); // wait for ATT_SW_UPDATED
-    } catch {}
-
-    const elapsed = Date.now() - start;
-    if (elapsed < MIN_UPDATE_DELAY) {
-      await new Promise(r => setTimeout(r, MIN_UPDATE_DELAY - elapsed));
+  if (withBackup) {
+    setUpdatePhase('backing');
+    // 1. Create internal snapshot silently (no download/share popup)
+    createSnapshot('Pre-Update Backup');
+    // 2. Save the ID of this snapshot to restore it later
+    const snaps = getSnapshots();
+    if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
+      localStorage.setItem('att_pending_update_restore', snaps[0].id);
     }
+    
+    // 3. Show "Backing Up" phase for 5.5 seconds
+    await new Promise(r => setTimeout(r, 5500));
+  }
 
-    window.location.href = import.meta.env.BASE_URL || '/';
+  // Switch to the "Updating" phase
+  setUpdatePhase('updating');
+  
+  const MIN_UPDATE_DELAY = 6500;
+  const start = Date.now();
+
+  try {
+    const applyPwa = (window as any).attendenzApplyPwaUpdate;
+    if (applyPwa) await applyPwa(); // wait for ATT_SW_UPDATED
+  } catch {}
+
+  const elapsed = Date.now() - start;
+  if (elapsed < MIN_UPDATE_DELAY) {
+    await new Promise(r => setTimeout(r, MIN_UPDATE_DELAY - elapsed));
+  }
+
+  window.location.href = import.meta.env.BASE_URL || '/';
   };
 
   const [exportFormat, setExportFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
@@ -1169,18 +1207,29 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Updating… overlay */}
+    {/* Updating / Backing Up overlay */}
       <AnimatePresence>
-        {updatingNow && (
+        {updatePhase !== 'none' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-center justify-center p-4">
-           <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-card border border-border rounded-3xl p-8 w-full max-w-xs shadow-2xl flex flex-col items-center gap-4">
-           <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-            <p className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
-         <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
+            <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-card border border-border rounded-3xl p-8 w-full max-w-xs shadow-2xl flex flex-col items-center gap-4">
+              {updatePhase === 'backing' ? (
+                <>
+                  <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin" />
+                  <p className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
+                  <p className="text-[10px] text-muted-foreground text-center">Securing your attendance records & preferences...</p>
+                </>
+              ) : (
+                <>
+                  <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+                  <p className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
+                  <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
+                </>
+              )}
             </motion.div>
-           </motion.div>
-          )}
-        </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
 
       {/* Delete-All dialog */}
       <AnimatePresence>
