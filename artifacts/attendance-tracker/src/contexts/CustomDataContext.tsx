@@ -314,18 +314,9 @@ function migrateStoredRoutines(): void {
   }
 }
 
-/* ────────────────────────────────────────────────────────────────────────────
-   SGT timetable cleanup
-──────────────────────────────────────────────────────────────────────────── */
-const isSGTName = (name: string, sgtNames: Set<string>): boolean =>
-  sgtNames.has(name.trim().toLowerCase());
-
-const isAcademicName = (name: string): boolean => {
-  const n = name.trim().toLowerCase();
-  for (const cat of CATEGORIES) for (const s of cat.subjects) if (s.name.toLowerCase() === n) return true;
-  for (const s of INTEGRATED_SUBJECTS) if (s.name.toLowerCase() === n) return true;
-  return false;
-};
+/* ── SGT timetable cleanup ── */
+const isSGTSubjectRecord = (s: { subjectType: string; parentName?: string }): boolean =>
+  s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
 
 const removeSGTFromTimetable = (
   tt: typeof TIMETABLE,
@@ -333,16 +324,24 @@ const removeSGTFromTimetable = (
   csSubjects: CustomSubject[]
 ): { tt: typeof TIMETABLE; changed: boolean } => {
   const sgtNames = new Set<string>();
+  const academicNames = new Set<string>();
+
   for (const s of uaSubjects) {
-    if (s.subjectType === 'allied' && s.parentName === 'Small Group Teaching') {
-      sgtNames.add(s.name.trim().toLowerCase());
+      if (isSGTSubjectRecord(s)) sgtNames.add(s.name.trim().toLowerCase());
+      else academicNames.add(s.name.trim().toLowerCase());
     }
-  }
-  for (const s of csSubjects) {
-    if (s.subjectType === 'allied' && s.parentName === 'Small Group Teaching') {
-      sgtNames.add(s.name.trim().toLowerCase());
+    for (const s of csSubjects) {
+      if (isSGTSubjectRecord(s)) sgtNames.add(s.name.trim().toLowerCase());
+      else academicNames.add(s.name.trim().toLowerCase());
     }
-  }
+
+    // Ensure preset academic subjects are never removed as SGT-only
+    for (const cat of CATEGORIES) {
+      for (const subj of cat.subjects) academicNames.add(subj.name.trim().toLowerCase());
+    }
+    for (const subj of INTEGRATED_SUBJECTS) {
+      academicNames.add(subj.name.trim().toLowerCase());
+    }
 
   const src = asMutable(tt);
   const next: Record<number, MutableSlot[]> = {};
@@ -357,8 +356,8 @@ const removeSGTFromTimetable = (
         continue;
       }
       const filteredSubjects = slot.subjects.filter(s => {
-        const isSGTOnly = isSGTName(s, sgtNames) && !isAcademicName(s);
-        return !isSGTOnly;
+        const nameKey = s.trim().toLowerCase();
+        return !(sgtNames.has(nameKey) && !academicNames.has(nameKey));
       });
       if (filteredSubjects.length !== slot.subjects.length) changed = true;
       if (filteredSubjects.length > 0) {
@@ -372,9 +371,7 @@ const removeSGTFromTimetable = (
   return { tt: asTimetable(next), changed };
 };
 
-/* ────────────────────────────────────────────────────────────────────────────
-   Context shape
-──────────────────────────────────────────────────────────────────────────── */
+/* ── Context shape ── */
 interface CustomDataContextType {
   customSubjects: CustomSubject[];
   customWards: CustomWard[];
@@ -449,9 +446,7 @@ interface CustomDataContextType {
 
 const CustomDataContext = createContext<CustomDataContextType | undefined>(undefined);
 
-/* ────────────────────────────────────────────────────────────────────────────
-   Provider
-──────────────────────────────────────────────────────────────────────────── */
+/* ── Provider ── */
 export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [customSubjects, setCustomSubjects] = useState<CustomSubject[]>([]);
   const [customWards, setCustomWards] = useState<CustomWard[]>([]);
@@ -484,7 +479,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
           return it;
         });
         csParsed = csParsed.map(it => {
-          if (it.subjectType === 'allied' && it.parentName === 'Small Group Teaching' && !it.clinicalSubject) {
+          if (isSGTSubjectRecord(it) && !it.clinicalSubject) {
             it.clinicalSubject = it.name.replace(/\s*SGT\s*$/i, '').trim() || it.name;
             migrated = true;
           }
@@ -502,7 +497,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         uaParsed = JSON.parse(ua);
         let uaMigrated = false;
         uaParsed = uaParsed.map(it => {
-          if (it.subjectType === 'allied' && it.parentName === 'Small Group Teaching' && !it.clinicalSubject) {
+          if (isSGTSubjectRecord(it) && !it.clinicalSubject) {
             it.clinicalSubject = it.name.replace(/\s*SGT\s*$/i, '').trim() || it.name;
             uaMigrated = true;
           }
@@ -590,7 +585,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     storageSetItem(PRESET_RENAMES_KEY, JSON.stringify(data));
   };
 
-  // ── CUSTOM MODE ──
+  /* ── CUSTOM MODE ── */
   const addCustomSubjects = (items: Array<Omit<CustomSubject, 'id'>>): CustomSubject[] => {
     const created: CustomSubject[] = items.map(it => {
       const base: CustomSubject = {
@@ -707,8 +702,10 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         clinicalSubject: (it as any).clinicalSubject,
         id: '',
       };
+      const isRecordSGT = isSGTSubjectRecord(record);
       const existingIdx = nextUserAdded.findIndex(
-        e => e.name.trim().toLowerCase() === record.name.trim().toLowerCase()
+        e => e.name.trim().toLowerCase() === record.name.trim().toLowerCase() &&
+             isSGTSubjectRecord(e) === isRecordSGT
       );
       if (existingIdx !== -1) {
         record.id = nextUserAdded[existingIdx].id;
@@ -722,8 +719,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         nextUserAdded.push(record);
       }
       created.push(record);
-      const isSGT = record.parentName === 'Small Group Teaching';
-      if (record.subjectType !== 'allied-parent' && !isSGT) {
+      if (record.subjectType !== 'allied-parent' && !isRecordSGT) {
         nextTimetable = syncSubjectSchedules(nextTimetable, record.name, rows);
         nextTotals[record.name] = record.plannedClasses;
       }
@@ -779,7 +775,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       );
     }
     saveUserAdded(nextUserAdded);
-    const isSGT = merged.parentName === 'Small Group Teaching';
+    const isSGT = isSGTSubjectRecord(merged);
     if (existing.subjectType !== 'allied-parent' || merged.subjectType !== 'allied-parent') {
       let tt = presetTimetableRef.current;
       if (nameChanged) tt = removeSubjectFromTimetable(tt, existing.name);
@@ -817,7 +813,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     let tt = presetTimetableRef.current;
     const totals = { ...presetSubjectTotals };
     for (const r of removedEntries) {
-      const isSGT = r.parentName === 'Small Group Teaching';
+      const isSGT = isSGTSubjectRecord(r);
       if (r.subjectType === 'allied-parent' || isSGT) continue;
       tt = removeSubjectFromTimetable(tt, r.name);
       delete totals[r.name];
@@ -829,6 +825,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     const n = name.trim().toLowerCase();
     return userAddedSubjects.some(e => e.name.trim().toLowerCase() === n);
   };
+
   /* ── PRELOADED · ward schedule editing ── */
   const addPresetWardEntry = (
     entry: Omit<PresetWardEntry, 'addedByUser'> & { addedByUser?: boolean }
@@ -911,7 +908,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     saveTotals({ ...presetSubjectTotals, [subjectName]: total });
   };
 
-  // ── PRESET SUBJECT RENAME OVERRIDE ──
+  /* ── PRESET SUBJECT RENAME OVERRIDE ── */
   const getPresetSubjectDisplayName = (originalName: string): string => {
     return renamedPresetSubjects[originalName] ?? originalName;
   };
@@ -1116,16 +1113,16 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         for (const cat of CATEGORIES) for (const s of cat.subjects) pool.push(s.name);
         for (const s of INTEGRATED_SUBJECTS) pool.push(s.name);
         for (const s of userAddedSubjects) {
-          if (!(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')) pool.push(s.name);
+          if (!isSGTSubjectRecord(s)) pool.push(s.name);
         }
       } else if (domain === 'clinical') {
         for (const s of userAddedSubjects) {
-          if (s.subjectType === 'allied' && s.parentName === 'Small Group Teaching') pool.push(s.name);
+          if (isSGTSubjectRecord(s)) pool.push(s.name);
         }
       }
     }
     for (const s of customSubjects) {
-      const isSGT = s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
+      const isSGT = isSGTSubjectRecord(s);
       if (domain === 'academic' && isSGT) continue;
       if (domain === 'clinical' && !isSGT) continue;
       pool.push(s.name);
@@ -1169,20 +1166,22 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
           }
         }
       } else { // clinical: check SGT schedules from userAddedSubjects
-        const sgtSubjects = userAddedSubjects.filter(
-          s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'
-        );
+        const sgtSubjects = userAddedSubjects.filter(s => isSGTSubjectRecord(s));
         for (const s of sgtSubjects) {
           if (ex && s.name.trim().toLowerCase() === ex) continue;
-          const sDays = new Set<string>([
-            ...parseDayList(s.days),
-            ...(s.schedules || []).map(sch => sch.day),
-          ]);
+          const sDays = new Set<string>(parseDayList(s.days));
+          const ranges: string[] = [];
+          if (s.schedules && s.schedules.length) {
+            for (const sch of s.schedules) {
+              const range = sch.time ? canonicalizeTimeRange(sch.time) : canonicalTimeRange(sch.start || '', sch.end || '');
+              if (range) ranges.push(range);
+              sDays.add(sch.day);
+            }
+          } else if (s.time) {
+            ranges.push(s.time);
+          }
           const hitDays = [...daySet].filter(d => sDays.has(d));
           if (hitDays.length === 0) continue;
-          const ranges: string[] = [];
-          if (parseDayList(s.days).length > 0 && s.time) ranges.push(s.time);
-          for (const sch of s.schedules || []) ranges.push(sch.time);
           for (const r of ranges) {
             if (!timesOverlap(r, time)) continue;
             for (const d of hitDays) {
@@ -1194,7 +1193,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     } else { // custom mode
       if (domain === 'academic') {
         for (const s of customSubjects) {
-          const isSGT = s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
+          const isSGT = isSGTSubjectRecord(s);
           if (isSGT) continue;
           if (ex && s.name.trim().toLowerCase() === ex) continue;
           if (s.subjectType === 'allied-parent') continue;
@@ -1215,9 +1214,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
           }
         }
       } else { // clinical
-        const sgtSubjects = customSubjects.filter(
-          s => s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'
-        );
+        const sgtSubjects = customSubjects.filter(s => isSGTSubjectRecord(s));
         for (const s of sgtSubjects) {
           if (ex && s.name.trim().toLowerCase() === ex) continue;
           const sDays = new Set<string>([
@@ -1269,7 +1266,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       const move = moves.find(m => m.store === 'userAdded' && m.id === s.id);
       if (!move) return s;
       let updated = { ...s };
-      if (s.parentName === 'Small Group Teaching' && move.newParentName && move.newParentName !== 'Small Group Teaching') {
+      if (isSGTSubjectRecord(s) && move.newParentName && move.newParentName !== 'Small Group Teaching') {
         updated = { ...updated, clinicalSubject: move.newParentName };
       }
       return {
@@ -1283,7 +1280,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       const move = moves.find(m => m.store === 'custom' && m.id === s.id);
       if (!move) return s;
       let updated = { ...s };
-      if (s.parentName === 'Small Group Teaching' && move.newParentName && move.newParentName !== 'Small Group Teaching') {
+      if (isSGTSubjectRecord(s) && move.newParentName && move.newParentName !== 'Small Group Teaching') {
         updated = { ...updated, clinicalSubject: move.newParentName };
       }
       return {
