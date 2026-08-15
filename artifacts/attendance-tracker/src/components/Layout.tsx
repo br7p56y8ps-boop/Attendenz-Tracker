@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { Heart, Stethoscope, Syringe, Calendar, Hospital } from 'lucide-react';
 import { motion, useScroll, AnimatePresence } from 'framer-motion';
 
+
 const NAV_ITEMS = [
   { path: '/',          label: 'Home',      Icon: Heart },
   { path: '/subjects',  label: 'Subjects',  Icon: Stethoscope },
