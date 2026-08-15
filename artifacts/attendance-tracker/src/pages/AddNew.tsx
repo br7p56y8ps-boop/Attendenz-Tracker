@@ -59,8 +59,9 @@ const to24 = (mins: number): string => {
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 };
 
-function OverlayModal({ open, onClose, children, maxW = 'max-w-md' }: {
+function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, footer }: {
   open: boolean; onClose: () => void; children: React.ReactNode; maxW?: string;
+  header?: React.ReactNode; footer?: React.ReactNode;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -72,16 +73,18 @@ function OverlayModal({ open, onClose, children, maxW = 'max-w-md' }: {
   if (!open) return null;
   if (typeof document === 'undefined') return null;
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-        className={cn('relative bg-card border border-border rounded-2xl shadow-2xl w-full max-h-[85vh] overflow-y-auto', maxW)}
+        className={cn('relative bg-card border border-border rounded-2xl shadow-2xl w-full max-h-[85vh] flex flex-col overflow-hidden', maxW)}
         onClick={e => e.stopPropagation()}
       >
-        {children}
+        {header && <div className="shrink-0 px-4 sm:px-5 pt-4 sm:pt-5">{header}</div>}
+        <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+        {footer && <div className="shrink-0 px-4 sm:px-5 pb-4 sm:pb-5 pt-3 border-t border-border/40">{footer}</div>}
       </motion.div>
     </div>,
     document.body
@@ -1906,293 +1909,257 @@ export default function AddNew() {
         </section>
 
         {/* ── More Modal ── */}
-        <OverlayModal open={moreOpen} onClose={() => { setMoreOpen(false); setFormError(null); }} maxW="max-w-lg">
-          <div className="p-4 sm:p-5 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">
-                {section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}
-              </h3>
-              <button type="button" onClick={() => { setMoreOpen(false); setFormError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
-            </div>
-            <p className="text-[10px] text-muted-foreground -mt-2">
-              {section === 'academic' ? 'Create a standalone subject or nest children under a parent group.' : 'Add a clinical rotation or a Small Group Teaching entry.'}
-            </p>
-            <Note note={note} />
-            {formError && <p className={inlineErrCls}>{formError}</p>}
-            {section === 'academic' ? (
-              <>
-                <div>
-                  <label className={labelCls}>Subject kind</label>
-                  <div className="flex rounded-xl border border-border overflow-hidden">
-                    {(['single', 'allied'] as const).map(t => (
-                      <button key={t} type="button" onClick={() => setSubjectType(t)}
-                        className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
-                          subjectType === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {isAllied && (
-                  <div>
-                    <label className={labelCls}>Parent</label>
-                    <select value={parentChoice} onChange={e => setParentChoice(e.target.value)} className={inputCls}>
-                      <option value="">Select parent…</option>
-                      <optgroup label="Parents">
-                        {academicParentOptions.map(p => <option key={p} value={p}>{p}</option>)}
-                      </optgroup>
-                      <optgroup label="Subjects (becomes parent)">
-                        {groupedParents.singles.map(p => <option key={p} value={p}>{p}</option>)}
-                      </optgroup>
-                      <option value={CREATE_NEW}>+ Add new parent…</option>
-                    </select>
-                    {parentChoice === CREATE_NEW && (
-                      <input value={newParentName} onChange={e => setNewParentName(e.target.value)} placeholder="New parent name" inputMode="text" className={cn(inputCls, 'mt-2')} />
-                    )}
-                    {resolvedParent && (
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        {parentIsNew ? 'New parent — needs at least 2 children.' : `Existing parent — ${getAlliedChildCount(resolvedParent)} child(ren) saved already.`}
-                      </p>
-                    )}
-                  </div>
-                )}
-                <div>
-                  <label className={labelCls}>{isAllied ? 'Child subject name' : 'Subject name'}</label>
-                  <input value={subjectName} onChange={e => setSubjectName(e.target.value)} placeholder="e.g. Cardiology" inputMode="text" className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Day & Time</label>
-                  {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow)}
-                  <button type="button" onClick={addSubjectRow} disabled={subjectRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                    <Plus className="w-3.5 h-3.5" /> Add another day & time
-                  </button>
-                </div>
-                <div>
-                  <label className={labelCls}>Planned classes</label>
-                  <input type="number" inputMode="numeric" min={0} value={planned} onChange={e => setPlanned(e.target.value)} placeholder="e.g. 40" className={inputCls} />
-                </div>
-                {isAllied && parentIsSGT && (
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div><label className={labelCls}>Placement start</label><input type="date" value={childStart} onChange={e => setChildStart(e.target.value)} className={inputCls} /></div>
-                    <div><label className={labelCls}>Placement end</label><input type="date" value={childEnd} onChange={e => setChildEnd(e.target.value)} className={inputCls} /></div>
-                  </div>
-                )}
-                {isAllied ? (
-                  <div className="space-y-2.5">
-                    {stagedChildren.length > 0 && (
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Children ready to save</p>
-                        {stagedChildren.map((c, i) => (
-                          <div key={`${c.name}-${i}`} className="flex items-center justify-between bg-muted/30 border border-border/50 rounded-xl px-3 py-2">
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-foreground truncate">{c.name}</p>
-                              <p className="text-[10px] text-muted-foreground">
-                                {c.rows.map(r => `${r.day} ${canonicalTimeRange(r.startTime, r.endTime)}`).join(' · ')} · {c.plannedClasses} planned
-                              </p>
-                            </div>
-                            <button type="button" onClick={() => setStagedChildren(prev => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive cursor-pointer p-1"><X className="w-4 h-4" /></button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {conflictSheet ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-amber-500">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          <p className="text-xs font-bold">Heads up — review before adding:</p>
-                        </div>
-                        {conflictSheet.messages.map((m, i) => (
-                          <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                        ))}
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                          <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <button type="button" onClick={addStagedChild} className={cn(btnGhost, 'flex-1 flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add child</button>
-                        <button type="button" onClick={saveSubject} className={cn(btnPrimary, 'flex-1')}>Save</button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  conflictSheet ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-amber-500">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        <p className="text-xs font-bold">Heads up — review before adding:</p>
-                      </div>
-                      {conflictSheet.messages.map((m, i) => (
-                        <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                      ))}
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                        <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button type="button" onClick={saveSubject} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add Subject</button>
-                  )
-                )}
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className={labelCls}>Type</label>
-                  <div className="flex rounded-xl border border-border overflow-hidden">
-                    <button type="button" onClick={() => setClinicalParentChoice('rotation')}
-                      className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
-                        clinicalParentChoice === 'rotation' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
-                      Clinical Rotation
-                    </button>
-                    <button type="button" onClick={() => setClinicalParentChoice('sgt')}
-                      className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
-                        clinicalParentChoice === 'sgt' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
-                      Small Group Teaching
-                    </button>
-                  </div>
-                </div>
-                {clinicalParentChoice === 'rotation' ? (
-                  <>
-                    <div>
-                      <label className={labelCls}>Ward name</label>
-                      <input value={wardName} onChange={e => setWardName(e.target.value)} placeholder="e.g. Internal Medicine" inputMode="text" className={inputCls} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div><label className={labelCls}>Start date</label><input type="date" value={wardStart} onChange={e => setWardStart(e.target.value)} className={inputCls} /></div>
-                      <div><label className={labelCls}>End date</label><input type="date" value={wardEnd} onChange={e => setWardEnd(e.target.value)} className={inputCls} /></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div className="space-y-1.5"><label className={labelCls}>Morning</label><TimeField value={mornStart} onChange={setMornStart} ariaLabel="morning start" /><TimeField value={mornEnd} onChange={setMornEnd} ariaLabel="morning end" /></div>
-                      <div className="space-y-1.5"><label className={labelCls}>Evening</label><TimeField value={eveStart} onChange={setEveStart} ariaLabel="evening start" /><TimeField value={eveEnd} onChange={setEveEnd} ariaLabel="evening end" /></div>
-                    </div>
-                    {conflictSheet ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-amber-500">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          <p className="text-xs font-bold">Heads up — review before adding:</p>
-                        </div>
-                        {conflictSheet.messages.map((m, i) => (
-                          <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                        ))}
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                          <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button type="button" onClick={saveClinicalItem} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add Rotation</button>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex flex-col max-h-[calc(80vh-200px)]">
-                    <div className="overflow-y-auto pr-1 flex-1 space-y-3">
-                      <div>
-                        <label className={labelCls}>Clinical Subject</label>
-                        <select value={sgtClinicalSubject} onChange={e => {
-                          const val = e.target.value;
-                          setSgtClinicalSubject(val);
-                          if (val && val !== CREATE_NEW) {
-                            setSgtName(val);
-                          } else {
-                            setSgtName('');
-                          }
-                        }} className={inputCls}>
-                          <option value="">Select clinical subject…</option>
-                          {clinicalSubjectOptions.map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className={labelCls}>SGT Name</label>
-                        <input value={sgtName} onChange={e => setSgtName(e.target.value)} placeholder="e.g. Surgery" inputMode="text" className={inputCls} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <div><label className={labelCls}>Placement start</label><input type="date" value={sgtStartDate} onChange={e => setSgtStartDate(e.target.value)} className={inputCls} /></div>
-                        <div><label className={labelCls}>Placement end</label><input type="date" value={sgtEndDate} onChange={e => setSgtEndDate(e.target.value)} className={inputCls} /></div>
-                      </div>
-                      <div>
-                        <label className={labelCls}>Schedules (Day + Time)</label>
-                        {renderRowList(sgtRows, updateSgtRow, removeSgtRow)}
-                        <button type="button" onClick={addSgtRow} disabled={sgtRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                          <Plus className="w-3.5 h-3.5" /> Add another day & time
-                        </button>
-                      </div>
-                      <div>
-                        <label className={labelCls}>Planned classes (auto-calculated)</label>
-                        <div className="text-sm font-bold text-primary bg-muted/30 p-2 rounded-lg border border-border/50">
-                          {computedPlanned} classes from schedules
-                        </div>
-                      </div>
-                    </div>
-                    <div className="pt-3 border-t border-border/40 shrink-0">
-                      {conflictSheet ? (
-                        <div className="space-y-2 mb-3">
-                          <div className="flex items-center gap-2 text-amber-500">
-                            <AlertTriangle className="w-4 h-4 shrink-0" />
-                            <p className="text-xs font-bold">Heads up — review before adding:</p>
-                          </div>
-                          {conflictSheet.messages.map((m, i) => (
-                            <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                          ))}
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                            <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button type="button" onClick={saveClinicalItem} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}>
-                          <Plus className="w-3.5 h-3.5" /> Add SGT
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </>
+       <OverlayModal
+  open={moreOpen}
+  onClose={() => { setMoreOpen(false); setFormError(null); }}
+  maxW="max-w-lg"
+  header={
+    <>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-foreground">
+          {section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}
+        </h3>
+        <button type="button" onClick={() => { setMoreOpen(false); setFormError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-1">
+        {section === 'academic' ? 'Create a standalone subject or nest children under a parent group.' : 'Add a clinical rotation or a Small Group Teaching entry.'}
+      </p>
+    </>
+  }
+  footer={
+    conflictSheet ? (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-amber-500">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <p className="text-xs font-bold">Heads up — review before adding:</p>
+        </div>
+        {conflictSheet.messages.map((m, i) => (
+          <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
+        ))}
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
+          <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
+        </div>
+      </div>
+    ) : section === 'academic' ? (
+      isAllied ? (
+        <div className="flex gap-2">
+          <button type="button" onClick={addStagedChild} className={cn(btnGhost, 'flex-1 flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add child</button>
+          <button type="button" onClick={saveSubject} className={cn(btnPrimary, 'flex-1')}>Save</button>
+        </div>
+      ) : (
+        <button type="button" onClick={saveSubject} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add Subject</button>
+      )
+    ) : clinicalParentChoice === 'rotation' ? (
+      <button type="button" onClick={saveClinicalItem} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add Rotation</button>
+    ) : (
+      <button type="button" onClick={saveClinicalItem} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add SGT</button>
+    )
+  }
+>
+  <div className="p-4 sm:p-5 space-y-3.5">
+    <Note note={note} />
+    {formError && <p className={inlineErrCls}>{formError}</p>}
+    {section === 'academic' ? (
+      <>
+        <div>
+          <label className={labelCls}>Subject kind</label>
+          <div className="flex rounded-xl border border-border overflow-hidden">
+            {(['single', 'allied'] as const).map(t => (
+              <button key={t} type="button" onClick={() => setSubjectType(t)}
+                className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
+                  subjectType === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+        {isAllied && (
+          <div>
+            <label className={labelCls}>Parent</label>
+            <select value={parentChoice} onChange={e => setParentChoice(e.target.value)} className={inputCls}>
+              <option value="">Select parent…</option>
+              <optgroup label="Parents">
+                {academicParentOptions.map(p => <option key={p} value={p}>{p}</option>)}
+              </optgroup>
+              <optgroup label="Subjects (becomes parent)">
+                {groupedParents.singles.map(p => <option key={p} value={p}>{p}</option>)}
+              </optgroup>
+              <option value={CREATE_NEW}>+ Add new parent…</option>
+            </select>
+            {parentChoice === CREATE_NEW && (
+              <input value={newParentName} onChange={e => setNewParentName(e.target.value)} placeholder="New parent name" inputMode="text" className={cn(inputCls, 'mt-2')} />
+            )}
+            {resolvedParent && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {parentIsNew ? 'New parent — needs at least 2 children.' : `Existing parent — ${getAlliedChildCount(resolvedParent)} child(ren) saved already.`}
+              </p>
             )}
           </div>
-        </OverlayModal>
-
-        {/* ── Add Slot Modal ── */}
-        <OverlayModal open={addSlotOpen} onClose={() => { setAddSlotOpen(false); setFormError(null); }} maxW="max-w-sm">
-          <div className="p-4 sm:p-5 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
-              <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
-            </div>
-            <Note note={note} />
-            {formError && <p className={inlineErrCls}>{formError}</p>}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div><label className={labelCls}>Start</label><TimeField value={addSlotStart} onChange={setAddSlotStart} ariaLabel="start" /></div>
-              <div><label className={labelCls}>End</label><TimeField value={addSlotEnd} onChange={setAddSlotEnd} ariaLabel="end" /></div>
-            </div>
+        )}
+        <div>
+          <label className={labelCls}>{isAllied ? 'Child subject name' : 'Subject name'}</label>
+          <input value={subjectName} onChange={e => setSubjectName(e.target.value)} placeholder="e.g. Cardiology" inputMode="text" className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>Day & Time</label>
+          {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow)}
+          <button type="button" onClick={addSubjectRow} disabled={subjectRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
+            <Plus className="w-3.5 h-3.5" /> Add another day & time
+          </button>
+        </div>
+        <div>
+          <label className={labelCls}>Planned classes</label>
+          <input type="number" inputMode="numeric" min={0} value={planned} onChange={e => setPlanned(e.target.value)} placeholder="e.g. 40" className={inputCls} />
+        </div>
+        {isAllied && parentIsSGT && (
+          <div className="grid grid-cols-2 gap-2.5">
+            <div><label className={labelCls}>Placement start</label><input type="date" value={childStart} onChange={e => setChildStart(e.target.value)} className={inputCls} /></div>
+            <div><label className={labelCls}>Placement end</label><input type="date" value={childEnd} onChange={e => setChildEnd(e.target.value)} className={inputCls} /></div>
+          </div>
+        )}
+        {isAllied && stagedChildren.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Children ready to save</p>
+            {stagedChildren.map((c, i) => (
+              <div key={`${c.name}-${i}`} className="flex items-center justify-between bg-muted/30 border border-border/50 rounded-xl px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-foreground truncate">{c.name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {c.rows.map(r => `${r.day} ${canonicalTimeRange(r.startTime, r.endTime)}`).join(' · ')} · {c.plannedClasses} planned
+                  </p>
+                </div>
+                <button type="button" onClick={() => setStagedChildren(prev => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive cursor-pointer p-1"><X className="w-4 h-4" /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </>
+    ) : (
+      <>
+        <div>
+          <label className={labelCls}>Type</label>
+          <div className="flex rounded-xl border border-border overflow-hidden">
+            <button type="button" onClick={() => setClinicalParentChoice('rotation')}
+              className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
+                clinicalParentChoice === 'rotation' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
+              Clinical Rotation
+            </button>
+            <button type="button" onClick={() => setClinicalParentChoice('sgt')}
+              className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
+                clinicalParentChoice === 'sgt' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
+              Small Group Teaching
+            </button>
+          </div>
+        </div>
+        {clinicalParentChoice === 'rotation' ? (
+          <>
             <div>
-              <label className={labelCls}>Subject</label>
-              <select value={addSlotSubject} onChange={e => {
-                const name = e.target.value;
-                setAddSlotSubject(name);
-                const subj = subjectMode === 'preloaded'
-                  ? [...CATEGORIES.flatMap(c => c.subjects), ...INTEGRATED_SUBJECTS, ...userAddedSubjects].find(s => s.name === name)
-                  : customSubjects.find(s => s.name === name);
-                setAddSlotPlanned(subj ? (subj as any).plannedClasses ?? getSubjectPlannedTotal(name) : getSubjectPlannedTotal(name));
+              <label className={labelCls}>Ward name</label>
+              <input value={wardName} onChange={e => setWardName(e.target.value)} placeholder="e.g. Internal Medicine" inputMode="text" className={inputCls} />
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div><label className={labelCls}>Start date</label><input type="date" value={wardStart} onChange={e => setWardStart(e.target.value)} className={inputCls} /></div>
+              <div><label className={labelCls}>End date</label><input type="date" value={wardEnd} onChange={e => setWardEnd(e.target.value)} className={inputCls} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="space-y-1.5"><label className={labelCls}>Morning</label><TimeField value={mornStart} onChange={setMornStart} ariaLabel="morning start" /><TimeField value={mornEnd} onChange={setMornEnd} ariaLabel="morning end" /></div>
+              <div className="space-y-1.5"><label className={labelCls}>Evening</label><TimeField value={eveStart} onChange={setEveStart} ariaLabel="evening start" /><TimeField value={eveEnd} onChange={setEveEnd} ariaLabel="evening end" /></div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <label className={labelCls}>Clinical Subject</label>
+              <select value={sgtClinicalSubject} onChange={e => {
+                const val = e.target.value;
+                setSgtClinicalSubject(val);
+                if (val && val !== CREATE_NEW) {
+                  setSgtName(val);
+                } else {
+                  setSgtName('');
+                }
               }} className={inputCls}>
-                <option value="">Select academic subject…</option>
-                {academicAddSlotSubjects.map(name => (
-                  <option key={name} value={name}>{name}</option>
+                <option value="">Select clinical subject…</option>
+                {clinicalSubjectOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
             </div>
-            <div className="bg-muted/30 p-2.5 rounded-xl flex justify-between items-center">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned</span>
-              <span className="text-xs font-extrabold text-foreground">{addSlotPlanned}</span>
+            <div>
+              <label className={labelCls}>SGT Name</label>
+              <input value={sgtName} onChange={e => setSgtName(e.target.value)} placeholder="e.g. Surgery" inputMode="text" className={inputCls} />
             </div>
-            <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}>
-              <Plus className="w-3.5 h-3.5" /> Add Slot
-            </button>
-          </div>
-        </OverlayModal>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div><label className={labelCls}>Placement start</label><input type="date" value={sgtStartDate} onChange={e => setSgtStartDate(e.target.value)} className={inputCls} /></div>
+              <div><label className={labelCls}>Placement end</label><input type="date" value={sgtEndDate} onChange={e => setSgtEndDate(e.target.value)} className={inputCls} /></div>
+            </div>
+            <div>
+              <label className={labelCls}>Schedules (Day + Time)</label>
+              {renderRowList(sgtRows, updateSgtRow, removeSgtRow)}
+              <button type="button" onClick={addSgtRow} disabled={sgtRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
+                <Plus className="w-3.5 h-3.5" /> Add another day & time
+              </button>
+            </div>
+            <div>
+              <label className={labelCls}>Planned classes (auto-calculated)</label>
+              <div className="text-sm font-bold text-primary bg-muted/30 p-2 rounded-lg border border-border/50">
+                {computedPlanned} classes from schedules
+              </div>
+            </div>
+          </>
+        )}
+      </>
+    )}
+  </div>
+</OverlayModal>
+
+        {/* ── Add Slot Modal ── */}
+       <OverlayModal
+  open={addSlotOpen}
+  onClose={() => { setAddSlotOpen(false); setFormError(null); }}
+  maxW="max-w-sm"
+  header={
+    <div className="flex items-center justify-between">
+      <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
+      <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+    </div>
+  }
+  footer={
+    <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}>
+      <Plus className="w-3.5 h-3.5" /> Add Slot
+    </button>
+  }
+>
+  <div className="p-4 sm:p-5 space-y-3.5">
+    <Note note={note} />
+    {formError && <p className={inlineErrCls}>{formError}</p>}
+    <div className="grid grid-cols-2 gap-2.5">
+      <div><label className={labelCls}>Start</label><TimeField value={addSlotStart} onChange={setAddSlotStart} ariaLabel="start" /></div>
+      <div><label className={labelCls}>End</label><TimeField value={addSlotEnd} onChange={setAddSlotEnd} ariaLabel="end" /></div>
+    </div>
+    <div>
+      <label className={labelCls}>Subject</label>
+      <select value={addSlotSubject} onChange={e => {
+        const name = e.target.value;
+        setAddSlotSubject(name);
+        const subj = subjectMode === 'preloaded'
+          ? [...CATEGORIES.flatMap(c => c.subjects), ...INTEGRATED_SUBJECTS, ...userAddedSubjects].find(s => s.name === name)
+          : customSubjects.find(s => s.name === name);
+        setAddSlotPlanned(subj ? (subj as any).plannedClasses ?? getSubjectPlannedTotal(name) : getSubjectPlannedTotal(name));
+      }} className={inputCls}>
+        <option value="">Select academic subject…</option>
+        {academicAddSlotSubjects.map(name => (
+          <option key={name} value={name}>{name}</option>
+        ))}
+      </select>
+    </div>
+    <div className="bg-muted/30 p-2.5 rounded-xl flex justify-between items-center">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned</span>
+      <span className="text-xs font-extrabold text-foreground">{addSlotPlanned}</span>
+    </div>
+  </div>
+</OverlayModal>
 
         {/* ── History Modal ── */}
         <OverlayModal open={historyOpen} onClose={() => setHistoryOpen(false)} maxW="max-w-md">
@@ -2222,261 +2189,286 @@ export default function AddNew() {
         </OverlayModal>
 
         {/* ── Edit Subject Modal ── */}
-        <OverlayModal open={!!editSubject} onClose={() => { setEditSubject(null); setEditError(null); }} maxW="max-w-lg">
-          {editSubject && (
-            <div className="p-4 sm:p-5 space-y-3.5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-foreground">Edit Subject</h3>
-                <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
-              </div>
-              <p className="text-[10px] text-muted-foreground -mt-2">Rename, change the parent, reschedule days/times, or edit planned classes.</p>
-              <Note note={note} />
-              {editError && <p className={inlineErrCls}>{editError}</p>}
-              <div>
-                <label className={labelCls}>Name</label>
-                <input value={editSubject.name} onChange={e => setEditSubject({ ...editSubject, name: e.target.value })} inputMode="text" className={inputCls} />
-              </div>
-              {editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' ? (
-                <div>
-                  <label className={labelCls}>Clinical Subject</label>
-                  <select
-                    value={editSubject.clinicalSubject || ''}
-                    onChange={e => setEditSubject({ ...editSubject, clinicalSubject: e.target.value })}
-                    className={inputCls}
-                  >
-                    {allClinicalSubjects.map(name => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-              ) : editSubject.subjectType === 'allied' ? (
-                <div>
-                  <label className={labelCls}>Parent</label>
-                  <select value={editSubject.parentName} onChange={e => setEditSubject({ ...editSubject, parentName: e.target.value })} className={inputCls}>
-                    {!academicParentOptions.includes(editSubject.parentName) && !groupedParents.parents.includes(editSubject.parentName) && !groupedParents.singles.includes(editSubject.parentName) && editSubject.parentName && <option value={editSubject.parentName}>{editSubject.parentName}</option>}
-                    <optgroup label="Parents">
-                      {groupedParents.parents.map(p => <option key={p} value={p}>{p}</option>)}
-                    </optgroup>
-                    <optgroup label="Subjects (becomes parent)">
-                      {groupedParents.singles.map(p => <option key={p} value={p}>{p}</option>)}
-                    </optgroup>
-                  </select>
-                </div>
-              ) : null}
-              {editSubject.subjectType === 'allied' && PRESET_PARENTS.includes(editSubject.parentName) && (
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div><label className={labelCls}>Placement start</label><input type="date" value={editSubject.startDate || ''} onChange={e => setEditSubject({ ...editSubject, startDate: e.target.value })} className={inputCls} /></div>
-                  <div><label className={labelCls}>Placement end</label><input type="date" value={editSubject.endDate || ''} onChange={e => setEditSubject({ ...editSubject, endDate: e.target.value })} className={inputCls} /></div>
-                </div>
-              )}
-              {editSubject.subjectType !== 'allied-parent' && (
-                <>
-                  <div>
-                    <label className={labelCls}>Day & Time</label>
-                    {renderRowList(
-                      editSubject.rows,
-                      (id, patch) => setEditSubject({ ...editSubject, rows: editSubject.rows.map(r => (r.id === id ? { ...r, ...patch } : r)) }),
-                      (id) => setEditSubject({ ...editSubject, rows: editSubject.rows.filter(r => r.id !== id) })
-                    )}
-                    <button type="button" onClick={() => setEditSubject({ ...editSubject, rows: [...editSubject.rows, newRow(editSubject.rows.map(r => r.day))] })} disabled={editSubject.rows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                      <Plus className="w-3.5 h-3.5" /> Add another day & time
-                    </button>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Planned classes</label>
-                    <input type="number" inputMode="numeric" min={0} value={editSubject.plannedClasses} onChange={e => setEditSubject({ ...editSubject, plannedClasses: parseInt(e.target.value, 10) || 0 })} className={inputCls} />
-                  </div>
-                </>
-              )}
-              <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={btnGhost}>Cancel</button>
-                <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save changes</button>
-              </div>
-            </div>
-          )}
-        </OverlayModal>
-
+       <OverlayModal
+  open={!!editSubject}
+  onClose={() => { setEditSubject(null); setEditError(null); }}
+  maxW="max-w-lg"
+  header={
+    <>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-foreground">Edit Subject</h3>
+        <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-1">Rename, change the parent, reschedule days/times, or edit planned classes.</p>
+    </>
+  }
+  footer={
+    <div className="flex gap-2 justify-end">
+      <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={btnGhost}>Cancel</button>
+      <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save changes</button>
+    </div>
+  }
+>
+  {editSubject && (
+    <div className="p-4 sm:p-5 space-y-3.5">
+      <Note note={note} />
+      {editError && <p className={inlineErrCls}>{editError}</p>}
+      <div>
+        <label className={labelCls}>Name</label>
+        <input value={editSubject.name} onChange={e => setEditSubject({ ...editSubject, name: e.target.value })} inputMode="text" className={inputCls} />
+      </div>
+      {editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' ? (
+        <div>
+          <label className={labelCls}>Clinical Subject</label>
+          <select
+            value={editSubject.clinicalSubject || ''}
+            onChange={e => setEditSubject({ ...editSubject, clinicalSubject: e.target.value })}
+            className={inputCls}
+          >
+            {allClinicalSubjects.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        </div>
+      ) : editSubject.subjectType === 'allied' ? (
+        <div>
+          <label className={labelCls}>Parent</label>
+          <select value={editSubject.parentName} onChange={e => setEditSubject({ ...editSubject, parentName: e.target.value })} className={inputCls}>
+            {!academicParentOptions.includes(editSubject.parentName) && !groupedParents.parents.includes(editSubject.parentName) && !groupedParents.singles.includes(editSubject.parentName) && editSubject.parentName && <option value={editSubject.parentName}>{editSubject.parentName}</option>}
+            <optgroup label="Parents">
+              {groupedParents.parents.map(p => <option key={p} value={p}>{p}</option>)}
+            </optgroup>
+            <optgroup label="Subjects (becomes parent)">
+              {groupedParents.singles.map(p => <option key={p} value={p}>{p}</option>)}
+            </optgroup>
+          </select>
+        </div>
+      ) : null}
+      {editSubject.subjectType === 'allied' && PRESET_PARENTS.includes(editSubject.parentName) && (
+        <div className="grid grid-cols-2 gap-2.5">
+          <div><label className={labelCls}>Placement start</label><input type="date" value={editSubject.startDate || ''} onChange={e => setEditSubject({ ...editSubject, startDate: e.target.value })} className={inputCls} /></div>
+          <div><label className={labelCls}>Placement end</label><input type="date" value={editSubject.endDate || ''} onChange={e => setEditSubject({ ...editSubject, endDate: e.target.value })} className={inputCls} /></div>
+        </div>
+      )}
+      {editSubject.subjectType !== 'allied-parent' && (
+        <>
+          <div>
+            <label className={labelCls}>Day & Time</label>
+            {renderRowList(
+              editSubject.rows,
+              (id, patch) => setEditSubject({ ...editSubject, rows: editSubject.rows.map(r => (r.id === id ? { ...r, ...patch } : r)) }),
+              (id) => setEditSubject({ ...editSubject, rows: editSubject.rows.filter(r => r.id !== id) })
+            )}
+            <button type="button" onClick={() => setEditSubject({ ...editSubject, rows: [...editSubject.rows, newRow(editSubject.rows.map(r => r.day))] })} disabled={editSubject.rows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
+              <Plus className="w-3.5 h-3.5" /> Add another day & time
+            </button>
+          </div>
+          <div>
+            <label className={labelCls}>Planned classes</label>
+            <input type="number" inputMode="numeric" min={0} value={editSubject.plannedClasses} onChange={e => setEditSubject({ ...editSubject, plannedClasses: parseInt(e.target.value, 10) || 0 })} className={inputCls} />
+          </div>
+        </>
+      )}
+    </div>
+  )}
+</OverlayModal>
+        
         {/* ── Edit Ward Modal ── */}
-        <OverlayModal open={!!editWard} onClose={() => { setEditWard(null); setEditError(null); }} maxW="max-w-lg">
-          {editWard && (
-            <div className="p-4 sm:p-5 space-y-3.5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
-                <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
-              </div>
-              <p className="text-[10px] text-muted-foreground -mt-2">Change the ward name, rotation dates, or session times.</p>
-              <Note note={note} />
-              {editError && <p className={inlineErrCls}>{editError}</p>}
-              <div>
-                <label className={labelCls}>Ward name</label>
-                <input value={editWard.name} onChange={e => setEditWard({ ...editWard, name: e.target.value })} inputMode="text" className={inputCls} />
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div><label className={labelCls}>Start date</label><input type="date" value={editWard.startDate} onChange={e => setEditWard({ ...editWard, startDate: e.target.value })} className={inputCls} /></div>
-                <div><label className={labelCls}>End date</label><input type="date" value={editWard.endDate} onChange={e => setEditWard({ ...editWard, endDate: e.target.value })} className={inputCls} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="space-y-1.5"><label className={labelCls}>Morning</label><TimeField value={editWard.mornStart} onChange={v => setEditWard({ ...editWard, mornStart: v })} ariaLabel="morning start" /><TimeField value={editWard.mornEnd} onChange={v => setEditWard({ ...editWard, mornEnd: v })} ariaLabel="morning end" /></div>
-                <div className="space-y-1.5"><label className={labelCls}>Evening</label><TimeField value={editWard.eveStart} onChange={v => setEditWard({ ...editWard, eveStart: v })} ariaLabel="evening start" /><TimeField value={editWard.eveEnd} onChange={v => setEditWard({ ...editWard, eveEnd: v })} ariaLabel="evening end" /></div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className={btnGhost}>Cancel</button>
-                <button type="button" onClick={saveEditWard} className={btnPrimary}>Save changes</button>
-              </div>
-            </div>
-          )}
-        </OverlayModal>
+       <OverlayModal
+  open={!!editWard}
+  onClose={() => { setEditWard(null); setEditError(null); }}
+  maxW="max-w-lg"
+  header={
+    <>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
+        <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-1">Change the ward name, rotation dates, or session times.</p>
+    </>
+  }
+  footer={
+    <div className="flex gap-2 justify-end">
+      <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className={btnGhost}>Cancel</button>
+      <button type="button" onClick={saveEditWard} className={btnPrimary}>Save changes</button>
+    </div>
+  }
+>
+  {editWard && (
+    <div className="p-4 sm:p-5 space-y-3.5">
+      <Note note={note} />
+      {editError && <p className={inlineErrCls}>{editError}</p>}
+      <div>
+        <label className={labelCls}>Ward name</label>
+        <input value={editWard.name} onChange={e => setEditWard({ ...editWard, name: e.target.value })} inputMode="text" className={inputCls} />
+      </div>
+      <div className="grid grid-cols-2 gap-2.5">
+        <div><label className={labelCls}>Start date</label><input type="date" value={editWard.startDate} onChange={e => setEditWard({ ...editWard, startDate: e.target.value })} className={inputCls} /></div>
+        <div><label className={labelCls}>End date</label><input type="date" value={editWard.endDate} onChange={e => setEditWard({ ...editWard, endDate: e.target.value })} className={inputCls} /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-2.5">
+        <div className="space-y-1.5"><label className={labelCls}>Morning</label><TimeField value={editWard.mornStart} onChange={v => setEditWard({ ...editWard, mornStart: v })} ariaLabel="morning start" /><TimeField value={editWard.mornEnd} onChange={v => setEditWard({ ...editWard, mornEnd: v })} ariaLabel="morning end" /></div>
+        <div className="space-y-1.5"><label className={labelCls}>Evening</label><TimeField value={editWard.eveStart} onChange={v => setEditWard({ ...editWard, eveStart: v })} ariaLabel="evening start" /><TimeField value={editWard.eveEnd} onChange={v => setEditWard({ ...editWard, eveEnd: v })} ariaLabel="evening end" /></div>
+      </div>
+    </div>
+  )}
+</OverlayModal>
 
         {/* ── Edit Slot Modal (E2: shows current position) ── */}
-        <OverlayModal open={!!editSlot} onClose={closeEditSlot} maxW="max-w-lg">
-          {editSlot && (
-            <div className="p-4 sm:p-5 space-y-3.5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">Edit Slot</h3>
-                  <p className="text-[10px] text-muted-foreground">
-                    {editSlot.multiSelectMode
-                      ? 'Select subject cards you want to reallocate/re-slot.'
-                      : 'Change time, day, or planned classes for this subject.'}
-                  </p>
+        <OverlayModal
+  open={!!editSlot}
+  onClose={closeEditSlot}
+  maxW="max-w-lg"
+  header={editSlot ? (
+    <div className="flex items-center justify-between">
+      <div>
+        <h3 className="text-sm font-bold text-foreground">Edit Slot</h3>
+        <p className="text-[10px] text-muted-foreground mt-0.5">
+          {editSlot.multiSelectMode
+            ? 'Select subject cards you want to reallocate/re-slot.'
+            : 'Change time, day, or planned classes for this subject.'}
+        </p>
+      </div>
+      <button type="button" onClick={closeEditSlot} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+    </div>
+  ) : undefined}
+  footer={
+    !editSlot ? undefined :
+    slotConflict ? (
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
+        <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Merge anyway</button>
+      </div>
+    ) : editSlot.multiSelectMode ? (
+      showMoveForm ? (
+        <div className="flex gap-2">
+          <button type="button" onClick={() => { setShowMoveForm(false); setSelectedSubjects([]); setEditError(null); setSlotConflict(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
+          <button type="button" onClick={doMoveSubjects} className={cn(btnPrimary, 'flex-1')}>Move Selected</button>
+        </div>
+      ) : undefined
+    ) : (
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={closeEditSlot} className={btnGhost}>Cancel</button>
+        <button type="button" onClick={() => { if (editSlot) doMoveSubjects([editSlot.subjects[0].id]); }} className={btnPrimary}>Apply</button>
+      </div>
+    )
+  }
+>
+  {editSlot && (
+    <div className="p-4 sm:p-5 space-y-3.5">
+      <Note note={note} />
+      {editError && <p className={inlineErrCls}>{editError}</p>}
+      {slotConflict ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-amber-500">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <p className="text-xs font-bold">Conflict detected:</p>
+          </div>
+          {slotConflict.messages.map((m, i) => (
+            <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
+          ))}
+        </div>
+      ) : editSlot.multiSelectMode ? (
+        <>
+          <div>
+            <label className={labelCls}>Subjects in this slot</label>
+            <div className="space-y-2">
+              {editSlot.subjects.map(s => (
+                <div key={s.id} className={cn(
+                  'flex items-center justify-between gap-2 p-2 rounded-lg border cursor-pointer transition-all',
+                  selectedSubjects.includes(s.id) ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background/50 hover:bg-muted/20'
+                )} onClick={() => toggleSubjectSelection(s.id)}>
+                  <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(s.name) }}>{s.name}</span>
+                  <span className="text-[10px] text-muted-foreground">Planned: {s.planned}</span>
+                  <button type="button" onClick={(e) => {
+                    e.stopPropagation();
+                    const actualTime = canonicalTimeRange(editSlot.startTime, editSlot.endTime);
+                    setSlotRemove({
+                      subject: s.name,
+                      day: editSlot.day,
+                      index: editSlot.index,
+                      time: actualTime,
+                      start: editSlot.startTime,
+                      end: editSlot.endTime,
+                    });
+                    setSlotRemoveConfirm(true);
+                  }} className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <button type="button" onClick={closeEditSlot} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                type="checkbox"
+                checked={selectedSubjects.length === editSlot.subjects.length}
+                onChange={selectAllSubjects}
+                className="w-4 h-4 rounded border-primary/60 text-primary accent-primary focus:ring-primary/20 focus:ring-2 focus:ring-offset-0 transition-all cursor-pointer"
+              />
+              <label className="text-[10px] font-medium text-muted-foreground">Select All</label>
+            </div>
+          </div>
+          {showMoveForm && selectedSubjects.length > 0 && (
+            <div className="border-t border-border/40 pt-3 mt-3 space-y-2">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Move selected subjects</p>
+              <div>
+                <label className={labelCls}>Target Day</label>
+                <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
+                  {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
+                </select>
               </div>
-              <Note note={note} />
-              {editError && <p className={inlineErrCls}>{editError}</p>}
-              {slotConflict ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-amber-500">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <p className="text-xs font-bold">Conflict detected:</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
+                <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
+              </div>
+              {selectedSubjects.map(id => {
+                const sub = editSlot.subjects.find(s => s.id === id);
+                if (!sub) return null;
+                return (
+                  <div key={id} className="flex items-center gap-2">
+                    <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(sub.name) }}>{sub.name}</span>
+                    <label className="text-[10px] text-muted-foreground">Planned:</label>
+                    <input type="number" min={0} value={slotMovePlanned[id] !== undefined ? slotMovePlanned[id] : sub.planned}
+                      onChange={e => updatePlannedForSubject(id, parseInt(e.target.value, 10) || 0)}
+                      className="w-16 h-8 bg-background border border-border rounded-lg px-1.5 text-xs" />
                   </div>
-                  {slotConflict.messages.map((m, i) => (
-                    <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                  ))}
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-                    <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Merge anyway</button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {editSlot.multiSelectMode ? (
-                    <>
-                      <div>
-                        <label className={labelCls}>Subjects in this slot</label>
-                        <div className="space-y-2">
-                          {editSlot.subjects.map(s => (
-                            <div key={s.id} className={cn(
-                              'flex items-center justify-between gap-2 p-2 rounded-lg border cursor-pointer transition-all',
-                              selectedSubjects.includes(s.id) ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-background/50 hover:bg-muted/20'
-                            )} onClick={() => toggleSubjectSelection(s.id)}>
-                              <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(s.name) }}>{s.name}</span>
-                              <span className="text-[10px] text-muted-foreground">Planned: {s.planned}</span>
-                              <button type="button" onClick={(e) => {
-                                e.stopPropagation();
-                                const actualTime = canonicalTimeRange(editSlot.startTime, editSlot.endTime);
-                                setSlotRemove({
-                                  subject: s.name,
-                                  day: editSlot.day,
-                                  index: editSlot.index,
-                                  time: actualTime,
-                                  start: editSlot.startTime,
-                                  end: editSlot.endTime,
-                                });
-                                setSlotRemoveConfirm(true);
-                              }} className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10">
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                          <input
-                            type="checkbox"
-                            checked={selectedSubjects.length === editSlot.subjects.length}
-                            onChange={selectAllSubjects}
-                            className="w-4 h-4 rounded border-primary/60 text-primary accent-primary focus:ring-primary/20 focus:ring-2 focus:ring-offset-0 transition-all cursor-pointer"
-                          />
-                          <label className="text-[10px] font-medium text-muted-foreground">Select All</label>
-                        </div>
-                      </div>
-                      {showMoveForm && selectedSubjects.length > 0 && (
-                        <div className="border-t border-border/40 pt-3 mt-3 space-y-2">
-                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Move selected subjects</p>
-                          <div>
-                            <label className={labelCls}>Target Day</label>
-                            <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
-                              {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
-                            </select>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2.5">
-                            <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
-                            <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
-                          </div>
-                          {selectedSubjects.map(id => {
-                            const sub = editSlot.subjects.find(s => s.id === id);
-                            if (!sub) return null;
-                            return (
-                              <div key={id} className="flex items-center gap-2">
-                                <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(sub.name) }}>{sub.name}</span>
-                                <label className="text-[10px] text-muted-foreground">Planned:</label>
-                                <input type="number" min={0} value={slotMovePlanned[id] !== undefined ? slotMovePlanned[id] : sub.planned}
-                                  onChange={e => updatePlannedForSubject(id, parseInt(e.target.value, 10) || 0)}
-                                  className="w-16 h-8 bg-background border border-border rounded-lg px-1.5 text-xs" />
-                              </div>
-                            );
-                          })}
-                          <div className="flex gap-2 justify-end pt-2">
-                            <button type="button" onClick={() => { setShowMoveForm(false); setSelectedSubjects([]); setEditError(null); setSlotConflict(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-                            <button type="button" onClick={doMoveSubjects} className={cn(btnPrimary, 'flex-1')}>Move Selected</button>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {/* E2: current position reference */}
-                      <p className="text-[10px] text-muted-foreground bg-muted/20 rounded-lg px-3 py-1.5">
-                        Currently: <span className="font-semibold text-foreground">{DAY_ABBRS[editSlot.day]} {canonicalTimeRange(editSlot.startTime, editSlot.endTime)}</span>
-                      </p>
-                      <div>
-                        <label className={labelCls}>Target Day</label>
-                        <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
-                          {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
-                        <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
-                      </div>
-                      <div>
-                        <label className={labelCls}>Subject</label>
-                        <div className="bg-muted/30 p-2 rounded-lg">
-                          <span className="text-xs font-bold" style={{ color: getSubjectColor(editSlot.subjects[0].name) }}>{editSlot.subjects[0].name}</span>
-                          <div className="flex items-center gap-2 mt-1">
-                            <label className="text-[10px] text-muted-foreground">Planned:</label>
-                            <input type="number" min={0} value={slotMovePlanned[editSlot.subjects[0].id] !== undefined ? slotMovePlanned[editSlot.subjects[0].id] : editSlot.subjects[0].planned}
-                              onChange={e => updatePlannedForSubject(editSlot.subjects[0].id, parseInt(e.target.value, 10) || 0)}
-                              className="w-20 h-8 bg-background border border-border rounded-lg px-1.5 text-xs" />
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <button type="button" onClick={closeEditSlot} className={btnGhost}>Cancel</button>
-                        <button type="button" onClick={() => {
-                          if (editSlot) {
-                            const onlyId = editSlot.subjects[0].id;
-                            doMoveSubjects([onlyId]);
-                          }
-                        }} className={btnPrimary}>Apply</button>
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
+                );
+              })}
             </div>
           )}
-        </OverlayModal>
+        </>
+      ) : (
+        <>
+          <p className="text-[10px] text-muted-foreground bg-muted/20 rounded-lg px-3 py-1.5">
+            Currently: <span className="font-semibold text-foreground">{DAY_ABBRS[editSlot.day]} {canonicalTimeRange(editSlot.startTime, editSlot.endTime)}</span>
+          </p>
+          <div>
+            <label className={labelCls}>Target Day</label>
+            <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
+              {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
+            <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
+          </div>
+          <div>
+            <label className={labelCls}>Subject</label>
+            <div className="bg-muted/30 p-2 rounded-lg">
+              <span className="text-xs font-bold" style={{ color: getSubjectColor(editSlot.subjects[0].name) }}>{editSlot.subjects[0].name}</span>
+              <div className="flex items-center gap-2 mt-1">
+                <label className="text-[10px] text-muted-foreground">Planned:</label>
+                <input type="number" min={0} value={slotMovePlanned[editSlot.subjects[0].id] !== undefined ? slotMovePlanned[editSlot.subjects[0].id] : editSlot.subjects[0].planned}
+                  onChange={e => updatePlannedForSubject(editSlot.subjects[0].id, parseInt(e.target.value, 10) || 0)}
+                  className="w-20 h-8 bg-background border border-border rounded-lg px-1.5 text-xs" />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )}
+</OverlayModal>
 
         {/* ── Slot Remove Confirmation Modal ── */}
         <OverlayModal open={slotRemoveConfirm} onClose={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }}>
