@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo, ReactNode } from 'react';
 import {
   getCurrentDateStr,
   canonicalTimeRange,
@@ -25,6 +25,7 @@ export interface CustomSubject {
   endDate?: string;
   clinicalSubject?: string;
 }
+
 export interface CustomWard {
   id: string;
   name: string;
@@ -33,12 +34,14 @@ export interface CustomWard {
   morningTime?: string;
   eveningTime?: string;
 }
+
 export interface ScheduleRowInput {
   day: string;
   time?: string;
   start?: string;
   end?: string;
 }
+
 export interface UserAddedSubject {
   id: string;
   name: string;
@@ -53,6 +56,7 @@ export interface UserAddedSubject {
   endDate?: string;
   clinicalSubject?: string;
 }
+
 export interface PresetWardEntry {
   start: string;
   end: string;
@@ -63,12 +67,34 @@ export interface PresetWardEntry {
 }
 
 export type SubjectMode = 'preloaded' | 'custom';
+export type SubjectDomain = 'academic' | 'clinical';
+
+/* ── NEW: Subject Registry types ── */
+export type SubjectKind =
+  | 'preset-academic'
+  | 'integrated'
+  | 'preset-ward'
+  | 'user-added'
+  | 'custom'
+  | 'sgt'
+  | 'ward-rotation';
+
+export interface SubjectRef {
+  id: string;
+  name: string;
+  domain: SubjectDomain;
+  kind: SubjectKind;
+  parentName?: string;
+  planned: number;
+}
+
 export interface SubjectTimeConflict {
   day: string;
   time: string;
   subjects: string[];
   exact: boolean;
 }
+
 export interface WardDateConflict {
   ward: string;
   start: string;
@@ -76,6 +102,7 @@ export interface WardDateConflict {
 }
 
 export const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+
 const CUSTOM_SUBJECTS_KEY = 'att_custom_subjects';
 const CUSTOM_WARDS_KEY = 'att_custom_wards';
 const SUBJECT_MODE_KEY = 'att_subject_mode';
@@ -86,52 +113,68 @@ const PRESET_TIMETABLE_KEY = 'att_preset_timetable';
 const PRESET_WARD_SCHEDULE_KEY = 'att_preset_ward_schedule';
 const PRESET_SUBJECT_TOTALS_KEY = 'att_preset_subject_totals';
 const PRESET_RENAMES_KEY = 'att_preset_subject_renames';
+/* NEW: one-time repair guard */
+const SGT_REPAIR_DONE_KEY = 'att_sgt_repair_v1_done';
+
 const DEFAULT_MORNING_TIME = '09:30 AM–11:30 AM';
 const DEFAULT_EVENING_TIME = '07:00 PM–09:00 PM';
+
 const genId = (prefix: string) =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
 export const parseDayList = (days: string): string[] =>
   (days || '')
     .split(',')
     .map(d => d.trim())
     .filter(Boolean);
+
 export const getEffectiveParentName = (
   s: { parentName?: string; category?: string }
 ): string | undefined => {
   const p = (s.parentName || s.category || '').trim();
   return p.length > 0 ? p : undefined;
 };
+
 export const normalizeTimeStr = (t: string): string =>
   (t || '')
     .replace(/\s+/g, ' ')
     .replace(/[–—−]/g, '-')
     .trim()
     .toLowerCase();
+
 export const timesOverlap = (a: string, b: string): boolean => {
   const ra = parseRangeToMinutes(a);
   const rb = parseRangeToMinutes(b);
   if (!ra || !rb) return false;
   return ra.start < rb.end && rb.start < ra.end;
 };
+
 const sameRange = (a: string, b: string): boolean =>
   canonicalizeTimeRange(a) === canonicalizeTimeRange(b);
+
 const canonTokens = (time: string): { start: string; end: string } => {
   const m = canonicalizeTimeRange(time).match(/^(\d{2}:\d{2} (?:AM|PM))–(\d{2}:\d{2} (?:AM|PM))$/);
   return m ? { start: m[1], end: m[2] } : { start: time, end: time };
 };
+
 const rowTime = (sch: ScheduleRowInput): string =>
   sch.time ? canonicalizeTimeRange(sch.time) : canonicalTimeRange(sch.start || '', sch.end || '');
+
 interface MutableSlot {
   type?: string;
   time: string;
   subjects: string[];
   [k: string]: unknown;
 }
+
 const asMutable = (tt: typeof TIMETABLE): Record<number, MutableSlot[]> =>
   tt as unknown as Record<number, MutableSlot[]>;
+
 const asTimetable = (tt: Record<number, MutableSlot[]>): typeof TIMETABLE =>
   tt as unknown as typeof TIMETABLE;
+
 const isWardSlotType = (t?: string): boolean => t === 'ward' || t === 'ward_replacement';
+
 const insertSubjectSlot = (
   base: typeof TIMETABLE,
   name: string,
@@ -158,6 +201,7 @@ const insertSubjectSlot = (
   next[dayIdx] = slots;
   return asTimetable(next);
 };
+
 const insertSubjectIntoTimetable = (
   base: typeof TIMETABLE,
   name: string,
@@ -168,6 +212,7 @@ const insertSubjectIntoTimetable = (
   for (const d of days) tt = insertSubjectSlot(tt, name, d, time);
   return tt;
 };
+
 const removeSubjectFromTimetable = (base: typeof TIMETABLE, name: string): typeof TIMETABLE => {
   const src = asMutable(base);
   const next: Record<number, MutableSlot[]> = {};
@@ -184,6 +229,7 @@ const removeSubjectFromTimetable = (base: typeof TIMETABLE, name: string): typeo
   }
   return asTimetable(next);
 };
+
 const syncSubjectSchedules = (
   base: typeof TIMETABLE,
   name: string,
@@ -193,8 +239,10 @@ const syncSubjectSchedules = (
   for (const sch of rows) tt = insertSubjectSlot(tt, name, sch.day, rowTime(sch));
   return tt;
 };
+
 const sortWardEntries = (list: PresetWardEntry[]): PresetWardEntry[] =>
   [...list].sort((a, b) => a.start.localeCompare(b.start));
+
 const defaultWardSchedule = (): PresetWardEntry[] =>
   WARD_SCHEDULE.map(ws => ({
     ...ws,
@@ -212,7 +260,6 @@ const canonTime = (t?: string): { value?: string; changed: boolean } => {
 function migrateStoredRoutines(): void {
   try {
     const writes: Array<{ key: string; value: string }> = [];
-
     const ptRaw = localStorage.getItem(PRESET_TIMETABLE_KEY);
     if (ptRaw) {
       const tt = JSON.parse(ptRaw);
@@ -227,7 +274,6 @@ function migrateStoredRoutines(): void {
       }
       if (changed) writes.push({ key: PRESET_TIMETABLE_KEY, value: JSON.stringify(tt) });
     }
-
     const pwsRaw = localStorage.getItem(PRESET_WARD_SCHEDULE_KEY);
     if (pwsRaw) {
       const list = JSON.parse(pwsRaw);
@@ -242,7 +288,6 @@ function migrateStoredRoutines(): void {
       }
       if (changed) writes.push({ key: PRESET_WARD_SCHEDULE_KEY, value: JSON.stringify(list) });
     }
-
     const csRaw = localStorage.getItem(CUSTOM_SUBJECTS_KEY);
     if (csRaw) {
       const list = JSON.parse(csRaw);
@@ -261,7 +306,6 @@ function migrateStoredRoutines(): void {
       }
       if (changed) writes.push({ key: CUSTOM_SUBJECTS_KEY, value: JSON.stringify(list) });
     }
-
     const cwRaw = localStorage.getItem(CUSTOM_WARDS_KEY);
     if (cwRaw) {
       const list = JSON.parse(cwRaw);
@@ -276,7 +320,6 @@ function migrateStoredRoutines(): void {
       }
       if (changed) writes.push({ key: CUSTOM_WARDS_KEY, value: JSON.stringify(list) });
     }
-
     const uaRaw = localStorage.getItem(USER_ADDED_SUBJECTS_KEY);
     if (uaRaw) {
       const list = JSON.parse(uaRaw);
@@ -299,7 +342,6 @@ function migrateStoredRoutines(): void {
       }
       if (changed) writes.push({ key: USER_ADDED_SUBJECTS_KEY, value: JSON.stringify(list) });
     }
-
     if (writes.length > 0) {
       snapshotBeforeEdit('Time Format Migration');
       for (const w of writes) {
@@ -312,9 +354,125 @@ function migrateStoredRoutines(): void {
   }
 }
 
-/* ────────────────────────────────────────────────────────────────────────────
-   Context shape
-──────────────────────────────────────────────────────────────────────────── */
+/* ── SGT timetable cleanup ── */
+export const isSGTSubjectRecord = (s: { subjectType: string; parentName?: string }): boolean =>
+  s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
+
+const removeSGTFromTimetable = (
+  tt: typeof TIMETABLE,
+  uaSubjects: UserAddedSubject[],
+  csSubjects: CustomSubject[]
+): { tt: typeof TIMETABLE; changed: boolean } => {
+  const sgtNames = new Set<string>();
+  const academicNames = new Set<string>();
+
+  for (const s of uaSubjects) {
+    if (isSGTSubjectRecord(s)) sgtNames.add(s.name.trim().toLowerCase());
+    else academicNames.add(s.name.trim().toLowerCase());
+  }
+
+  for (const s of csSubjects) {
+    if (isSGTSubjectRecord(s)) sgtNames.add(s.name.trim().toLowerCase());
+    else academicNames.add(s.name.trim().toLowerCase());
+  }
+
+  for (const cat of CATEGORIES) {
+    for (const subj of cat.subjects) academicNames.add(subj.name.trim().toLowerCase());
+  }
+
+  for (const subj of INTEGRATED_SUBJECTS) {
+    academicNames.add(subj.name.trim().toLowerCase());
+  }
+
+  const src = asMutable(tt);
+  const next: Record<number, MutableSlot[]> = {};
+  let changed = false;
+
+  for (let day = 0; day < 7; day++) {
+    const slots = src[day] || [];
+    const newSlots: MutableSlot[] = [];
+    for (const slot of slots) {
+      if (isWardSlotType(slot.type)) {
+        newSlots.push(slot);
+        continue;
+      }
+      const filteredSubjects = slot.subjects.filter(s => {
+        const nameKey = s.trim().toLowerCase();
+        return !(sgtNames.has(nameKey) && !academicNames.has(nameKey));
+      });
+      if (filteredSubjects.length !== slot.subjects.length) changed = true;
+      if (filteredSubjects.length > 0) {
+        newSlots.push({ ...slot, subjects: filteredSubjects });
+      } else {
+        changed = true;
+      }
+    }
+    next[day] = newSlots;
+  }
+
+  return { tt: asTimetable(next), changed };
+};
+
+/* ── NEW: one-time repair for data already corrupted by the old SGT bug ──
+   Restores academic slots that were wiped when a same-named SGT was edited.
+   Runs ONCE, takes a snapshot first, and only re-syncs subjects that have
+   stored schedules but are missing from the timetable AND have a same-named SGT. */
+const repairSGTDamage = (
+  tt: typeof TIMETABLE,
+  uaSubjects: UserAddedSubject[],
+  csSubjects: CustomSubject[]
+): { tt: typeof TIMETABLE; changed: boolean } => {
+  let repaired = tt;
+  let changed = false;
+
+  const sgtNames = new Set<string>();
+  for (const s of uaSubjects) if (isSGTSubjectRecord(s)) sgtNames.add(s.name.trim().toLowerCase());
+  for (const s of csSubjects) if (isSGTSubjectRecord(s)) sgtNames.add(s.name.trim().toLowerCase());
+  if (sgtNames.size === 0) return { tt, changed: false };
+
+  const tryRepair = (list: Array<{ name: string; subjectType: string; parentName?: string; schedules?: Array<{ day: string; start: string; end: string }> }>, hasTimeField: boolean) => {
+    for (const s of list) {
+      if (isSGTSubjectRecord(s)) continue;
+      if (s.subjectType === 'allied-parent') continue;
+      const key = s.name.trim().toLowerCase();
+      if (!sgtNames.has(key)) continue;               // only repair the collision pattern
+      const schedules = s.schedules || [];
+      if (schedules.length === 0) continue;
+      for (const sch of schedules) {
+        const dayIdx = DAY_ABBRS.indexOf(sch.day as (typeof DAY_ABBRS)[number]);
+        if (dayIdx === -1) continue;
+        const time = canonicalTimeRange(sch.start, sch.end);
+        const slots = asMutable(repaired)[dayIdx] || [];
+        const exists = slots.some(slot =>
+          !isWardSlotType(slot.type) &&
+          sameRange(slot.time, time) &&
+          slot.subjects.some(sub => sub.toLowerCase() === key)
+        );
+        if (!exists) {
+          repaired = insertSubjectSlot(repaired, s.name, sch.day, time);
+          changed = true;
+        }
+      }
+    }
+  };
+
+  tryRepair(uaSubjects as any, true);
+  // custom subjects store schedules as {day, time}; convert shape
+  const csAdapted = csSubjects.map(s => ({
+    name: s.name,
+    subjectType: s.subjectType,
+    parentName: s.parentName,
+    schedules: (s.schedules || []).map(sch => {
+      const { start, end } = canonTokens(sch.time);
+      return { day: sch.day, start, end };
+    }),
+  }));
+  tryRepair(csAdapted as any, false);
+
+  return { tt: repaired, changed };
+};
+
+/* ── Context shape ── */
 interface CustomDataContextType {
   customSubjects: CustomSubject[];
   customWards: CustomWard[];
@@ -341,12 +499,12 @@ interface CustomDataContextType {
   removePresetWardEntry: (index: number) => void;
   renamePresetWard: (oldName: string, newName: string) => void;
   updatePresetTimetableSlot: (
-   currentDay: number,
-   slotIndex: number,
-   updatedTime: string,
-   updatedSubjects: string[],
-   targetDay: number
-   ) => void;
+    currentDay: number,
+    slotIndex: number,
+    updatedTime: string,
+    updatedSubjects: string[],
+    targetDay: number
+  ) => void;
   addSubjectToSlot: (day: number, time: string, name: string) => void;
   updatePresetWardSchedule: (
     index: number,
@@ -365,9 +523,9 @@ interface CustomDataContextType {
   getAlliedChildCount: (parentName: string) => number;
   getCustomAlliedChildren: (parentName: string) => CustomSubject[];
   getUserAddedAlliedChildren: (parentName: string) => UserAddedSubject[];
-  isSubjectNameTaken: (name: string, excludeName?: string) => boolean;
+  isSubjectNameTaken: (name: string, excludeName?: string, domain?: SubjectDomain) => boolean;
   isWardNameTaken: (name: string, excludeWard?: string) => boolean;
-  findSubjectTimeConflicts: (days: string[], time: string, excludeName?: string) => SubjectTimeConflict[];
+  findSubjectTimeConflicts: (days: string[], time: string, excludeName?: string, domain?: SubjectDomain) => SubjectTimeConflict[];
   findWardDateConflicts: (startDate: string, endDate: string, excludeWard?: string) => WardDateConflict[];
   bulkUpdateSubjectHierarchy: (moves: Array<{
     id: string;
@@ -383,16 +541,17 @@ interface CustomDataContextType {
   startFresh: () => void;
   changeSubjectMode: (mode: SubjectMode) => void;
   clearRoutineData: (mode: SubjectMode) => void;
-  // NEW: Preset rename override
   getPresetSubjectDisplayName: (originalName: string) => string;
   setPresetSubjectRename: (oldName: string, newName: string) => void;
+  /* NEW: registry lookups */
+  subjectRegistry: SubjectRef[];
+  getSubjectById: (id: string) => SubjectRef | undefined;
+  getSubjectIdByName: (name: string, domain: SubjectDomain) => string | undefined;
 }
 
 const CustomDataContext = createContext<CustomDataContextType | undefined>(undefined);
 
-/* ────────────────────────────────────────────────────────────────────────────
-   Provider
-──────────────────────────────────────────────────────────────────────────── */
+/* ── Provider ── */
 export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [customSubjects, setCustomSubjects] = useState<CustomSubject[]>([]);
   const [customWards, setCustomWards] = useState<CustomWard[]>([]);
@@ -401,7 +560,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [setupDone, setSetupDone] = useState(false);
   const [whatsNewOpen, setWhatsNewOpenState] = useState(false);
   const [presetTimetable, setPresetTimetable] = useState<typeof TIMETABLE>(TIMETABLE);
-  /* LIVE REF — always-current timetable so back-to-back writes compose (fixes stale overwrite) */
   const presetTimetableRef = useRef<typeof TIMETABLE>(TIMETABLE);
   const [presetWardSchedule, setPresetWardSchedule] = useState<PresetWardEntry[]>(defaultWardSchedule);
   const [presetSubjectTotals, setPresetSubjectTotals] = useState<Record<string, number>>({});
@@ -410,11 +568,14 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     migrateStoredRoutines();
     try {
+      let uaParsed: UserAddedSubject[] = [];
+      let csParsed: CustomSubject[] = [];
+
       const s = localStorage.getItem(CUSTOM_SUBJECTS_KEY);
       if (s) {
-        let parsed: CustomSubject[] = JSON.parse(s);
+        csParsed = JSON.parse(s);
         let migrated = false;
-        parsed = parsed.map(it => {
+        csParsed = csParsed.map(it => {
           if (it && it.subjectType === 'allied' && !it.parentName) {
             migrated = true;
             const legacyParent = (it.category || '').trim() || 'Uncategorised';
@@ -422,38 +583,197 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
           }
           return it;
         });
-        if (migrated) localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(parsed));
-        setCustomSubjects(parsed);
+        csParsed = csParsed.map(it => {
+          if (isSGTSubjectRecord(it) && !it.clinicalSubject) {
+            it.clinicalSubject = it.name.replace(/\s*SGT\s*$/i, '').trim() || it.name;
+            migrated = true;
+          }
+          return it;
+        });
+        if (migrated) localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(csParsed));
+        setCustomSubjects(csParsed);
       }
+
       const w = localStorage.getItem(CUSTOM_WARDS_KEY);
       if (w) setCustomWards(JSON.parse(w));
+
       const ua = localStorage.getItem(USER_ADDED_SUBJECTS_KEY);
-      if (ua) setUserAddedSubjects(JSON.parse(ua));
+      if (ua) {
+        uaParsed = JSON.parse(ua);
+        let uaMigrated = false;
+        uaParsed = uaParsed.map(it => {
+          if (isSGTSubjectRecord(it) && !it.clinicalSubject) {
+            it.clinicalSubject = it.name.replace(/\s*SGT\s*$/i, '').trim() || it.name;
+            uaMigrated = true;
+          }
+          return it;
+        });
+        if (uaMigrated) {
+          localStorage.setItem(USER_ADDED_SUBJECTS_KEY, JSON.stringify(uaParsed));
+          storageSetItem(USER_ADDED_SUBJECTS_KEY, JSON.stringify(uaParsed));
+        }
+        setUserAddedSubjects(uaParsed);
+      }
+
       const m = localStorage.getItem(SUBJECT_MODE_KEY) as SubjectMode | null;
       if (m === 'preloaded' || m === 'custom') setSubjectMode(m);
+
       const done = localStorage.getItem(SETUP_DONE_KEY);
       if (done === 'true') setSetupDone(true);
       else setSetupDone(false);
+
       const seenWhatsNew = localStorage.getItem(WHATS_NEW_KEY);
       if (seenWhatsNew !== 'true') setWhatsNewOpenState(true);
-      const pt = localStorage.getItem(PRESET_TIMETABLE_KEY);
-      if (pt) {
-        const parsed = JSON.parse(pt);
-        setPresetTimetable(parsed);
-        presetTimetableRef.current = parsed;
+
+      const ptRaw = localStorage.getItem(PRESET_TIMETABLE_KEY);
+      let loadedTimetable: typeof TIMETABLE;
+      if (ptRaw) {
+        const parsed = JSON.parse(ptRaw);
+        const cleanup = removeSGTFromTimetable(parsed, uaParsed, csParsed);
+        loadedTimetable = cleanup.tt;
+        if (cleanup.changed) {
+          localStorage.setItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
+          storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
+          snapshotBeforeEdit('SGT Timetable Cleanup');
+        }
+      } else {
+        loadedTimetable = TIMETABLE;
       }
+
+      /* NEW: one-time repair for already-corrupted academic slots */
+      try {
+        const repairDone = localStorage.getItem(SGT_REPAIR_DONE_KEY);
+        if (repairDone !== 'true') {
+          const repair = repairSGTDamage(loadedTimetable, uaParsed, csParsed);
+          if (repair.changed) {
+            snapshotBeforeEdit('SGT Damage Repair');
+            loadedTimetable = repair.tt;
+            localStorage.setItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
+            storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
+          }
+          localStorage.setItem(SGT_REPAIR_DONE_KEY, 'true');
+          storageSetItem(SGT_REPAIR_DONE_KEY, 'true');
+        }
+      } catch { /* repair must never block app load */ }
+
+      setPresetTimetable(loadedTimetable);
+      presetTimetableRef.current = loadedTimetable;
+
       const pws = localStorage.getItem(PRESET_WARD_SCHEDULE_KEY);
       if (pws) setPresetWardSchedule(JSON.parse(pws));
+
       const pst = localStorage.getItem(PRESET_SUBJECT_TOTALS_KEY);
       if (pst) setPresetSubjectTotals(JSON.parse(pst));
 
-      // Load renamed preset subjects
       const renames = localStorage.getItem(PRESET_RENAMES_KEY);
       if (renames) setRenamedPresetSubjects(JSON.parse(renames));
     } catch {
       /* ignore */
     }
   }, []);
+
+  /* ── NEW: Subject Registry — every subject resolves to a unique ID ── */
+  const subjectRegistry = useMemo<SubjectRef[]>(() => {
+    const refs: SubjectRef[] = [];
+    // Preset academic
+    for (const cat of CATEGORIES) {
+      for (const s of cat.subjects) {
+        refs.push({
+          id: (s as any).id || `acad:${s.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+          name: renamedPresetSubjects[s.name] ?? s.name,
+          domain: 'academic',
+          kind: 'preset-academic',
+          parentName: cat.name,
+          planned: presetSubjectTotals[s.name] ?? s.total,
+        });
+      }
+    }
+    // Integrated
+    for (const s of INTEGRATED_SUBJECTS) {
+      refs.push({
+        id: (s as any).id || `int:${s.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+        name: renamedPresetSubjects[s.name] ?? s.name,
+        domain: 'academic',
+        kind: 'integrated',
+        parentName: 'Integrated Teaching',
+        planned: presetSubjectTotals[s.name] ?? s.total,
+      });
+    }
+    // Preset ward subjects
+    for (const w of WARD_SUBJECTS) {
+      refs.push({
+        id: (w as any).id || `ward:${w.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+        name: renamedPresetSubjects[w.name] ?? w.name,
+        domain: 'clinical',
+        kind: 'preset-ward',
+        planned: getPresetWardTotalPlannedLocal(w.name),
+      });
+    }
+    // User-added + custom (preloaded uses userAdded, custom mode uses customSubjects)
+    const store = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+    for (const s of store) {
+      const isSGT = isSGTSubjectRecord(s);
+      refs.push({
+        id: s.id,
+        name: s.name,
+        domain: isSGT ? 'clinical' : 'academic',
+        kind: isSGT ? 'sgt' : (subjectMode === 'preloaded' ? 'user-added' : 'custom'),
+        parentName: isSGT ? (s as any).clinicalSubject : getEffectiveParentName(s),
+        planned: s.plannedClasses,
+      });
+    }
+    // Custom wards (clinical rotations)
+    for (const w of customWards) {
+      refs.push({
+        id: w.id,
+        name: w.name,
+        domain: 'clinical',
+        kind: 'ward-rotation',
+        planned: getCustomWardTotalPlannedLocal(w.startDate, w.endDate),
+      });
+    }
+    return refs;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customSubjects, customWards, userAddedSubjects, subjectMode, renamedPresetSubjects, presetSubjectTotals, presetWardSchedule]);
+
+  const getSubjectById = (id: string): SubjectRef | undefined =>
+    subjectRegistry.find(r => r.id === id);
+
+  const getSubjectIdByName = (name: string, domain: SubjectDomain): string | undefined => {
+    const n = name.trim().toLowerCase();
+    return subjectRegistry.find(r => r.domain === domain && r.name.trim().toLowerCase() === n)?.id;
+  };
+
+  /* local helpers (avoid depending on state setters inside useMemo) */
+  function getPresetWardTotalPlannedLocal(wardName: string): number {
+    let count = 0;
+    for (const slot of presetWardSchedule) {
+      if (slot.ward !== wardName) continue;
+      try {
+        const start = new Date(slot.start + 'T12:00:00');
+        const end = new Date(slot.end + 'T12:00:00');
+        const cur = new Date(start);
+        while (cur <= end) {
+          if (cur.getDay() !== 5) count++;
+          cur.setDate(cur.getDate() + 1);
+        }
+      } catch { /* ignore */ }
+    }
+    return count * 2;
+  }
+  function getCustomWardTotalPlannedLocal(startDateStr: string, endDateStr: string): number {
+    let count = 0;
+    try {
+      const start = new Date(startDateStr + 'T12:00:00');
+      const end = new Date(endDateStr + 'T12:00:00');
+      const cur = new Date(start);
+      while (cur <= end) {
+        if (cur.getDay() !== 5) count++;
+        cur.setDate(cur.getDate() + 1);
+      }
+    } catch { /* ignore */ }
+    return count * 2;
+  }
 
   const handleSetWhatsNewOpen = (open: boolean) => {
     if (!open) storageSetItem(WHATS_NEW_KEY, 'true');
@@ -464,34 +784,40 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     setCustomSubjects(data);
     storageSetItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(data));
   };
+
   const saveWards = (data: CustomWard[]) => {
     setCustomWards(data);
     storageSetItem(CUSTOM_WARDS_KEY, JSON.stringify(data));
   };
+
   const saveUserAdded = (data: UserAddedSubject[]) => {
     setUserAddedSubjects(data);
     storageSetItem(USER_ADDED_SUBJECTS_KEY, JSON.stringify(data));
   };
+
   const saveTimetable = (data: typeof TIMETABLE) => {
     presetTimetableRef.current = data;
     setPresetTimetable(data);
     storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(data));
   };
+
   const saveWardSchedule = (data: PresetWardEntry[]) => {
     setPresetWardSchedule(data);
     storageSetItem(PRESET_WARD_SCHEDULE_KEY, JSON.stringify(data));
   };
+
   const saveTotals = (data: Record<string, number>) => {
     setPresetSubjectTotals(data);
     storageSetItem(PRESET_SUBJECT_TOTALS_KEY, JSON.stringify(data));
   };
+
   const saveRenames = (data: Record<string, string>) => {
     setRenamedPresetSubjects(data);
     localStorage.setItem(PRESET_RENAMES_KEY, JSON.stringify(data));
     storageSetItem(PRESET_RENAMES_KEY, JSON.stringify(data));
   };
 
-  // ── CUSTOM MODE ──
+  /* ── CUSTOM MODE ── */
   const addCustomSubjects = (items: Array<Omit<CustomSubject, 'id'>>): CustomSubject[] => {
     const created: CustomSubject[] = items.map(it => {
       const base: CustomSubject = {
@@ -513,7 +839,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     saveSubjects([...customSubjects, ...created]);
     return created;
   };
+
   const addCustomSubject = (s: Omit<CustomSubject, 'id'>): CustomSubject => addCustomSubjects([s])[0];
+
   const updateCustomSubject = (id: string, patch: Partial<Omit<CustomSubject, 'id'>>) => {
     const existing = customSubjects.find(s => s.id === id);
     if (!existing) return;
@@ -527,7 +855,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
     const merged: CustomSubject = { ...existing, ...normalized };
     if (merged.subjectType === 'allied' && merged.parentName) merged.category = merged.parentName;
+
     let next = customSubjects.map(s => (s.id === id ? merged : s));
+
     const oldName = existing.name.trim().toLowerCase();
     const renamed = patch.name !== undefined && patch.name.trim().toLowerCase() !== oldName;
     if (renamed) {
@@ -537,8 +867,10 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
           : s
       );
     }
+
     saveSubjects(next);
   };
+
   const removeCustomSubject = (id: string) => {
     const target = customSubjects.find(s => s.id === id);
     if (!target) return;
@@ -553,6 +885,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
     saveSubjects(customSubjects.filter(s => !idsToRemove.has(s.id)));
   };
+
   const addCustomWards = (items: Array<Omit<CustomWard, 'id'>>): CustomWard[] => {
     const created = items.map(it => ({
       ...it,
@@ -563,7 +896,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     saveWards([...customWards, ...created]);
     return created;
   };
+
   const addCustomWard = (w: Omit<CustomWard, 'id'>): CustomWard => addCustomWards([w])[0];
+
   const updateCustomWard = (id: string, patch: Partial<Omit<CustomWard, 'id'>>) => {
     const existing = customWards.find(w => w.id === id);
     if (!existing) return;
@@ -572,9 +907,11 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     if (normalized.eveningTime !== undefined) normalized.eveningTime = canonicalizeTimeRange(normalized.eveningTime);
     saveWards(customWards.map(w => (w.id === id ? { ...w, ...normalized } : w)));
   };
+
   const removeCustomWard = (id: string) => {
     saveWards(customWards.filter(w => w.id !== id));
   };
+
   const getCurrentCustomWard = (): CustomWard | null => {
     const today = getCurrentDateStr();
     return customWards.find(w => today >= w.startDate && today <= w.endDate) ?? null;
@@ -588,12 +925,15 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     let nextTimetable = presetTimetableRef.current;
     const nextTotals = { ...presetSubjectTotals };
     const created: UserAddedSubject[] = [];
+
     for (const it of items) {
       const rows: ScheduleRowInput[] =
         it.schedules && it.schedules.length
           ? it.schedules
           : parseDayList(it.days || '').map(d => ({ day: d, time: it.time || '' }));
+
       const storedSchedules = rows.map(r => ({ day: r.day, ...canonTokens(rowTime(r)) }));
+
       const record: UserAddedSubject = {
         name: it.name,
         subjectType: it.subjectType,
@@ -608,12 +948,16 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         clinicalSubject: (it as any).clinicalSubject,
         id: '',
       };
+
+      const isRecordSGT = isSGTSubjectRecord(record);
+
       const existingIdx = nextUserAdded.findIndex(
-        e => e.name.trim().toLowerCase() === record.name.trim().toLowerCase()
+        e => e.name.trim().toLowerCase() === record.name.trim().toLowerCase() &&
+             isSGTSubjectRecord(e) === isRecordSGT
       );
+
       if (existingIdx !== -1) {
         record.id = nextUserAdded[existingIdx].id;
-        // Merge with existing to preserve SGT fields if not overwritten
         const existingRec = nextUserAdded[existingIdx];
         record.startDate = record.startDate ?? existingRec.startDate;
         record.endDate = record.endDate ?? existingRec.endDate;
@@ -623,28 +967,36 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         record.id = genId('ua');
         nextUserAdded.push(record);
       }
+
       created.push(record);
-      if (record.subjectType !== 'allied-parent') {
+
+      /* DOMAIN WALL: SGT + parents never enter the academic timetable/totals */
+      if (record.subjectType !== 'allied-parent' && !isRecordSGT) {
         nextTimetable = syncSubjectSchedules(nextTimetable, record.name, rows);
         nextTotals[record.name] = record.plannedClasses;
       }
     }
+
     saveUserAdded(nextUserAdded);
     saveTimetable(nextTimetable);
     saveTotals(nextTotals);
     return created;
   };
+
   const addUserAddedSubject = (
     s: Omit<UserAddedSubject, 'id'> & { schedules?: ScheduleRowInput[] }
   ): UserAddedSubject => addUserAddedSubjects([s])[0];
+
   const updateUserAddedSubject = (
     id: string,
     patch: Partial<Omit<UserAddedSubject, 'id'> & { schedules?: ScheduleRowInput[] }>
   ) => {
     const existing = userAddedSubjects.find(e => e.id === id);
     if (!existing) return;
+
     const normalized: Partial<Omit<UserAddedSubject, 'id'> & { schedules?: ScheduleRowInput[] }> = { ...patch };
     const merged: UserAddedSubject = { ...existing };
+
     if (normalized.name !== undefined) merged.name = normalized.name;
     if (normalized.subjectType !== undefined) merged.subjectType = normalized.subjectType;
     if (normalized.parentName !== undefined) merged.parentName = normalized.parentName;
@@ -653,7 +1005,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     if ((normalized as any).startDate !== undefined) (merged as any).startDate = (normalized as any).startDate;
     if ((normalized as any).endDate !== undefined) (merged as any).endDate = (normalized as any).endDate;
     if ((normalized as any).clinicalSubject !== undefined) (merged as any).clinicalSubject = (normalized as any).clinicalSubject;
+
     if (merged.subjectType === 'allied' && merged.parentName) merged.category = merged.parentName;
+
     let rows: ScheduleRowInput[];
     if (normalized.schedules !== undefined) {
       rows = normalized.schedules;
@@ -666,11 +1020,15 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         ? existing.schedules.map(s => ({ day: s.day, start: s.start, end: s.end }))
         : parseDayList(existing.days).map(d => ({ day: d, time: existing.time }));
     }
+
     merged.schedules = rows.map(r => ({ day: r.day, ...canonTokens(rowTime(r)) }));
     merged.days = rows.map(r => r.day).join(', ');
     merged.time = rows.length ? rowTime(rows[0]) : merged.time;
+
     const nameChanged = merged.name.trim().toLowerCase() !== existing.name.trim().toLowerCase();
+
     let nextUserAdded = userAddedSubjects.map(e => (e.id === id ? merged : e));
+
     if (nameChanged) {
       const oldName = existing.name.trim().toLowerCase();
       nextUserAdded = nextUserAdded.map(e =>
@@ -679,30 +1037,49 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
           : e
       );
     }
+
     saveUserAdded(nextUserAdded);
-    if (existing.subjectType !== 'allied-parent' || merged.subjectType !== 'allied-parent') {
+
+    /* ══════════════════════════════════════════════════════════════
+       DOMAIN WALL (the core bug fix)
+       Only ACADEMIC records (non-SGT, non-parent) live in the
+       timetable & totals. SGT records NEVER touch them, so a
+       same-named SGT can no longer wipe an academic subject.
+       ══════════════════════════════════════════════════════════════ */
+    const isSGT = isSGTSubjectRecord(merged);
+    const wasSGT = isSGTSubjectRecord(existing);
+    const isAcademicNow = merged.subjectType !== 'allied-parent' && !isSGT;
+    const wasAcademic = existing.subjectType !== 'allied-parent' && !wasSGT;
+
+    if (wasAcademic || isAcademicNow) {
       let tt = presetTimetableRef.current;
-      if (nameChanged) tt = removeSubjectFromTimetable(tt, existing.name);
-      if (merged.subjectType !== 'allied-parent') {
-        tt = syncSubjectSchedules(tt, merged.name, rows);
-      } else {
+      // Remove the old academic entry only if it actually was academic
+      if (wasAcademic && (nameChanged || !isAcademicNow)) {
         tt = removeSubjectFromTimetable(tt, existing.name);
       }
+      // Sync the new academic entry
+      if (isAcademicNow) {
+        tt = syncSubjectSchedules(tt, merged.name, rows);
+      }
       saveTimetable(tt);
+
       const totals = { ...presetSubjectTotals };
-      if (nameChanged) {
+      if (wasAcademic && nameChanged) {
         const prevVal = normalized.plannedClasses !== undefined ? normalized.plannedClasses : totals[existing.name];
         delete totals[existing.name];
-        if (prevVal !== undefined && merged.subjectType !== 'allied-parent') totals[merged.name] = prevVal;
+        if (prevVal !== undefined && isAcademicNow) totals[merged.name] = prevVal;
         saveTotals(totals);
-      } else if (normalized.plannedClasses !== undefined) {
+      } else if (normalized.plannedClasses !== undefined && isAcademicNow) {
         saveTotals({ ...presetSubjectTotals, [merged.name]: merged.plannedClasses });
       }
     }
+    /* SGT→SGT or SGT-only updates: timetable & totals are intentionally untouched. */
   };
+
   const removeUserAddedSubject = (id: string) => {
     const target = userAddedSubjects.find(e => e.id === id);
     if (!target) return;
+
     const toRemove = new Set<string>([id]);
     if (target.subjectType === 'allied-parent') {
       const tName = target.name.trim().toLowerCase();
@@ -712,22 +1089,30 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     }
+
     const removedEntries = userAddedSubjects.filter(e => toRemove.has(e.id));
     saveUserAdded(userAddedSubjects.filter(e => !toRemove.has(e.id)));
+
     let tt = presetTimetableRef.current;
     const totals = { ...presetSubjectTotals };
+
     for (const r of removedEntries) {
-      if (r.subjectType === 'allied-parent') continue;
+      const isSGT = isSGTSubjectRecord(r);
+      /* DOMAIN WALL: SGT/parents were never in the timetable */
+      if (r.subjectType === 'allied-parent' || isSGT) continue;
       tt = removeSubjectFromTimetable(tt, r.name);
       delete totals[r.name];
     }
+
     saveTimetable(tt);
     saveTotals(totals);
   };
+
   const isUserAddedName = (name: string): boolean => {
     const n = name.trim().toLowerCase();
     return userAddedSubjects.some(e => e.name.trim().toLowerCase() === n);
   };
+
   /* ── PRELOADED · ward schedule editing ── */
   const addPresetWardEntry = (
     entry: Omit<PresetWardEntry, 'addedByUser'> & { addedByUser?: boolean }
@@ -740,6 +1125,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     };
     saveWardSchedule(sortWardEntries([...presetWardSchedule, withDefaults]));
   };
+
   const updatePresetWardEntry = (index: number, patch: Partial<PresetWardEntry>) => {
     if (!presetWardSchedule[index]) return;
     const normalized: Partial<PresetWardEntry> = { ...patch };
@@ -748,10 +1134,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     const updated = presetWardSchedule.map((e, i) => (i === index ? { ...e, ...normalized } : e));
     saveWardSchedule(sortWardEntries(updated));
   };
+
   const removePresetWardEntry = (index: number) => {
     if (!presetWardSchedule[index]) return;
     saveWardSchedule(presetWardSchedule.filter((_, i) => i !== index));
   };
+
   const renamePresetWard = (oldName: string, newName: string) => {
     const oldL = oldName.trim().toLowerCase();
     const trimmedNew = newName.trim();
@@ -761,7 +1149,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     );
     saveWardSchedule(updated);
   };
-  /* LIVE-REF read → back-to-back slot writes compose (fixes Medicine move) */
+
   const updatePresetTimetableSlot = (
     currentDay: number,
     slotIndex: number,
@@ -772,10 +1160,13 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     const src = asMutable(presetTimetableRef.current);
     const slot = src[currentDay]?.[slotIndex];
     if (!slot) return;
+
     const canon = canonicalizeTimeRange(updatedTime);
     const newSlot: MutableSlot = { ...slot, time: canon, subjects: updatedSubjects };
+
     const next: Record<number, MutableSlot[]> = {};
     for (const key of Object.keys(src)) next[Number(key)] = [...src[Number(key)]];
+
     if (currentDay === targetDay) {
       next[currentDay] = [...(next[currentDay] || [])];
       next[currentDay][slotIndex] = newSlot;
@@ -783,16 +1174,20 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       next[currentDay] = (next[currentDay] || []).filter((_, i) => i !== slotIndex);
       next[targetDay] = [...(next[targetDay] || []), newSlot];
     }
+
     for (const k of Object.keys(next)) {
       next[Number(k)] = next[Number(k)].filter(s => isWardSlotType(s.type) || s.subjects.length > 0);
     }
+
     saveTimetable(asTimetable(next));
   };
+
   const addSubjectToSlot = (day: number, time: string, name: string) => {
     const canon = canonicalizeTimeRange(time);
     const tt = insertSubjectSlot(presetTimetableRef.current, name, DAY_ABBRS[day], canon);
     saveTimetable(tt);
   };
+
   const updatePresetWardSchedule = (
     index: number,
     start: string,
@@ -807,26 +1202,25 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       ...(eveningTime !== undefined ? { eveningTime } : {}),
     });
   };
+
   const updatePresetSubjectTotal = (subjectName: string, total: number) => {
     saveTotals({ ...presetSubjectTotals, [subjectName]: total });
   };
 
-  // ── PRESET SUBJECT RENAME OVERRIDE ──
+  /* ── PRESET SUBJECT RENAME OVERRIDE ── */
   const getPresetSubjectDisplayName = (originalName: string): string => {
     return renamedPresetSubjects[originalName] ?? originalName;
   };
 
   const setPresetSubjectRename = (oldName: string, newName: string) => {
-    // Update the override map
     const nextRenames = { ...renamedPresetSubjects };
     nextRenames[oldName] = newName;
     saveRenames(nextRenames);
 
-    // Rewrite the timetable atomically
     const currentTt = presetTimetableRef.current;
-    // Deep clone to avoid mutating the ref
     const newTt: typeof TIMETABLE = JSON.parse(JSON.stringify(currentTt));
     let changed = false;
+
     for (let day = 0; day < 7; day++) {
       const slots = newTt[day] || [];
       for (let i = 0; i < slots.length; i++) {
@@ -837,6 +1231,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     }
+
     if (changed) {
       saveTimetable(newTt);
     }
@@ -849,6 +1244,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     setSubjectMode(mode);
     setSetupDone(true);
   };
+
   const startFresh = () => {
     storageRemoveItem(CUSTOM_SUBJECTS_KEY);
     storageRemoveItem(CUSTOM_WARDS_KEY);
@@ -858,10 +1254,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     setUserAddedSubjects([]);
     completeSetup('custom');
   };
+
   const changeSubjectMode = (mode: SubjectMode) => {
     storageSetItem(SUBJECT_MODE_KEY, mode);
     setSubjectMode(mode);
   };
+
   const clearRoutineData = (modeToClear: SubjectMode) => {
     if (modeToClear === 'preloaded') {
       storageRemoveItem(PRESET_TIMETABLE_KEY);
@@ -880,26 +1278,34 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       setCustomWards([]);
     }
   };
+
   /* ── Lookups & validation ── */
   const getSubjectPlannedTotal = (subjectName: string): number => {
     if (!subjectName) return 40;
+
     if (presetSubjectTotals[subjectName] !== undefined) return presetSubjectTotals[subjectName];
+
     const matchKey = Object.keys(presetSubjectTotals).find(
       k => k.toLowerCase() === subjectName.toLowerCase()
     );
     if (matchKey !== undefined && presetSubjectTotals[matchKey] !== undefined) {
       return presetSubjectTotals[matchKey];
     }
+
     for (const cat of CATEGORIES) {
       const sub = cat.subjects.find(s => s.name.toLowerCase() === subjectName.toLowerCase());
       if (sub) return sub.total;
     }
+
     const intSub = INTEGRATED_SUBJECTS.find(s => s.name.toLowerCase() === subjectName.toLowerCase());
     if (intSub) return intSub.total;
+
     const wardSub = WARD_SUBJECTS.find(s => s.name.toLowerCase() === subjectName.toLowerCase());
     if (wardSub) return wardSub.total;
+
     return 40;
   };
+
   const getCurrentPresetWard = (
     date: Date = new Date()
   ): { ward: string; morningTime?: string; eveningTime?: string } | null => {
@@ -914,41 +1320,17 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
     return null;
   };
-  const getPresetWardTotalPlanned = (wardName: string): number => {
-    let count = 0;
-    for (const slot of presetWardSchedule) {
-      if (slot.ward !== wardName) continue;
-      try {
-        const start = new Date(slot.start + 'T12:00:00');
-        const end = new Date(slot.end + 'T12:00:00');
-        const cur = new Date(start);
-        while (cur <= end) {
-          if (cur.getDay() !== 5) count++;
-          cur.setDate(cur.getDate() + 1);
-        }
-      } catch { /* ignore */ }
-    }
-    return count * 2;
-  };
-  const getCustomWardTotalPlanned = (startDateStr: string, endDateStr: string): number => {
-    let count = 0;
-    try {
-      const start = new Date(startDateStr + 'T12:00:00');
-      const end = new Date(endDateStr + 'T12:00:00');
-      const cur = new Date(start);
-      while (cur <= end) {
-        if (cur.getDay() !== 5) count++;
-        cur.setDate(cur.getDate() + 1);
-      }
-    } catch { /* ignore */ }
-    return count * 2;
-  };
+
+  const getPresetWardTotalPlanned = (wardName: string): number => getPresetWardTotalPlannedLocal(wardName);
+  const getCustomWardTotalPlanned = (startDateStr: string, endDateStr: string): number => getCustomWardTotalPlannedLocal(startDateStr, endDateStr);
+
   const getParentOptions = (): string[] => {
     const opts: string[] = [];
     const push = (n: string) => {
       const t = n.trim();
       if (t && !opts.some(o => o.toLowerCase() === t.toLowerCase())) opts.push(t);
     };
+
     if (subjectMode === 'preloaded') {
       for (const cat of CATEGORIES) {
         push(cat.name);
@@ -979,13 +1361,16 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         if (s.subjectType === 'single') push(s.name);
       }
     }
+
     return opts;
   };
+
   const isExistingParent = (name: string): boolean => {
     const n = name.trim().toLowerCase();
     if (!n) return false;
     return getParentOptions().some(o => o.toLowerCase() === n);
   };
+
   const getAlliedChildCount = (parentName: string): number => {
     const p = parentName.trim().toLowerCase();
     if (!p) return 0;
@@ -998,32 +1383,51 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
     return n;
   };
+
   const getCustomAlliedChildren = (parentName: string): CustomSubject[] => {
     const p = parentName.trim().toLowerCase();
     return customSubjects.filter(
       s => s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p
     );
   };
+
   const getUserAddedAlliedChildren = (parentName: string): UserAddedSubject[] => {
     const p = parentName.trim().toLowerCase();
     return userAddedSubjects.filter(
       s => s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p
     );
   };
-  const isSubjectNameTaken = (name: string, excludeName?: string): boolean => {
+
+  const isSubjectNameTaken = (name: string, excludeName?: string, domain: SubjectDomain = 'academic'): boolean => {
     const n = name.trim().toLowerCase();
     if (!n) return false;
     const ex = excludeName?.trim().toLowerCase();
     const pool: string[] = [];
+
     if (subjectMode === 'preloaded') {
-      for (const cat of CATEGORIES) for (const s of cat.subjects) pool.push(s.name);
-      for (const s of INTEGRATED_SUBJECTS) pool.push(s.name);
-      for (const s of WARD_SUBJECTS) pool.push(s.name);
-      for (const s of userAddedSubjects) pool.push(s.name);
+      if (domain === 'academic') {
+        for (const cat of CATEGORIES) for (const s of cat.subjects) pool.push(s.name);
+        for (const s of INTEGRATED_SUBJECTS) pool.push(s.name);
+        for (const s of userAddedSubjects) {
+          if (!isSGTSubjectRecord(s)) pool.push(s.name);
+        }
+      } else if (domain === 'clinical') {
+        for (const s of userAddedSubjects) {
+          if (isSGTSubjectRecord(s)) pool.push(s.name);
+        }
+      }
     }
-    for (const s of customSubjects) pool.push(s.name);
+
+    for (const s of customSubjects) {
+      const isSGT = isSGTSubjectRecord(s);
+      if (domain === 'academic' && isSGT) continue;
+      if (domain === 'clinical' && !isSGT) continue;
+      pool.push(s.name);
+    }
+
     return pool.some(p => p.trim().toLowerCase() === n && p.trim().toLowerCase() !== ex);
   };
+
   const isWardNameTaken = (name: string, excludeWard?: string): boolean => {
     const n = name.trim().toLowerCase();
     if (!n) return false;
@@ -1036,50 +1440,105 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     for (const w of customWards) pool.push(w.name);
     return pool.some(p => p.trim().toLowerCase() === n && p.trim().toLowerCase() !== ex);
   };
+
   const findSubjectTimeConflicts = (
     days: string[],
     time: string,
-    excludeName?: string
+    excludeName?: string,
+    domain: SubjectDomain = 'academic'
   ): SubjectTimeConflict[] => {
     const conflicts: SubjectTimeConflict[] = [];
     const daySet = new Set(days.map(d => d.trim()).filter(Boolean));
     const ex = excludeName?.trim().toLowerCase();
+
     if (subjectMode === 'preloaded') {
-      const tt = asMutable(presetTimetableRef.current);
-      for (let day = 0; day < 7; day++) {
-        const abbr = DAY_ABBRS[day];
-        if (!daySet.has(abbr)) continue;
-        for (const slot of tt[day] || []) {
-          if (isWardSlotType(slot.type)) continue;
-          if (ex && slot.subjects.some(s => s.trim().toLowerCase() === ex)) continue;
-          if (timesOverlap(slot.time, time)) {
-            conflicts.push({ day: abbr, time: slot.time, subjects: [...slot.subjects], exact: sameRange(slot.time, time) });
+      if (domain === 'academic') {
+        const tt = asMutable(presetTimetableRef.current);
+        for (let day = 0; day < 7; day++) {
+          const abbr = DAY_ABBRS[day];
+          if (!daySet.has(abbr)) continue;
+          for (const slot of tt[day] || []) {
+            if (isWardSlotType(slot.type)) continue;
+            if (ex && slot.subjects.some(s => s.trim().toLowerCase() === ex)) continue;
+            if (timesOverlap(slot.time, time)) {
+              conflicts.push({ day: abbr, time: slot.time, subjects: [...slot.subjects], exact: sameRange(slot.time, time) });
+            }
+          }
+        }
+      } else {
+        const sgtSubjects = userAddedSubjects.filter(s => isSGTSubjectRecord(s));
+        for (const s of sgtSubjects) {
+          if (ex && s.name.trim().toLowerCase() === ex) continue;
+          const sDays = new Set<string>(parseDayList(s.days));
+          const ranges: string[] = [];
+          if (s.schedules && s.schedules.length) {
+            for (const sch of s.schedules) {
+              const range = (sch as any).time ? canonicalizeTimeRange((sch as any).time) : canonicalTimeRange(sch.start || '', sch.end || '');
+              if (range) ranges.push(range);
+              sDays.add(sch.day);
+            }
+          } else if (s.time) {
+            ranges.push(s.time);
+          }
+          const hitDays = [...daySet].filter(d => sDays.has(d));
+          if (hitDays.length === 0) continue;
+          for (const r of ranges) {
+            if (!timesOverlap(r, time)) continue;
+            for (const d of hitDays) {
+              conflicts.push({ day: d, time: r, subjects: [s.name], exact: sameRange(r, time) });
+            }
           }
         }
       }
     } else {
-      for (const s of customSubjects) {
-        if (ex && s.name.trim().toLowerCase() === ex) continue;
-        if (s.subjectType === 'allied-parent') continue;
-        const sDays = new Set<string>([
-          ...parseDayList(s.days),
-          ...(s.schedules || []).map(sch => sch.day),
-        ]);
-        const hitDays = [...daySet].filter(d => sDays.has(d));
-        if (hitDays.length === 0) continue;
-        const ranges: string[] = [];
-        if (parseDayList(s.days).length > 0 && s.time) ranges.push(s.time);
-        for (const sch of s.schedules || []) ranges.push(sch.time);
-        for (const r of ranges) {
-          if (!timesOverlap(r, time)) continue;
-          for (const d of hitDays) {
-            conflicts.push({ day: d, time: r, subjects: [s.name], exact: sameRange(r, time) });
+      if (domain === 'academic') {
+        for (const s of customSubjects) {
+          const isSGT = isSGTSubjectRecord(s);
+          if (isSGT) continue;
+          if (ex && s.name.trim().toLowerCase() === ex) continue;
+          if (s.subjectType === 'allied-parent') continue;
+          const sDays = new Set<string>([
+            ...parseDayList(s.days),
+            ...(s.schedules || []).map(sch => sch.day),
+          ]);
+          const hitDays = [...daySet].filter(d => sDays.has(d));
+          if (hitDays.length === 0) continue;
+          const ranges: string[] = [];
+          if (parseDayList(s.days).length > 0 && s.time) ranges.push(s.time);
+          for (const sch of s.schedules || []) ranges.push(sch.time);
+          for (const r of ranges) {
+            if (!timesOverlap(r, time)) continue;
+            for (const d of hitDays) {
+              conflicts.push({ day: d, time: r, subjects: [s.name], exact: sameRange(r, time) });
+            }
+          }
+        }
+      } else {
+        const sgtSubjects = customSubjects.filter(s => isSGTSubjectRecord(s));
+        for (const s of sgtSubjects) {
+          if (ex && s.name.trim().toLowerCase() === ex) continue;
+          const sDays = new Set<string>([
+            ...parseDayList(s.days),
+            ...(s.schedules || []).map(sch => sch.day),
+          ]);
+          const hitDays = [...daySet].filter(d => sDays.has(d));
+          if (hitDays.length === 0) continue;
+          const ranges: string[] = [];
+          if (parseDayList(s.days).length > 0 && s.time) ranges.push(s.time);
+          for (const sch of s.schedules || []) ranges.push(sch.time);
+          for (const r of ranges) {
+            if (!timesOverlap(r, time)) continue;
+            for (const d of hitDays) {
+              conflicts.push({ day: d, time: r, subjects: [s.name], exact: sameRange(r, time) });
+            }
           }
         }
       }
     }
+
     return conflicts;
   };
+
   const findWardDateConflicts = (
     startDate: string,
     endDate: string,
@@ -1091,12 +1550,15 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       subjectMode === 'preloaded'
         ? presetWardSchedule.map(e => ({ ward: e.ward, start: e.start, end: e.end }))
         : customWards.map(w => ({ ward: w.name, start: w.startDate, end: w.endDate }));
+
     return list
       .filter(e => !(ex && e.ward.trim().toLowerCase() === ex))
       .filter(e => startDate <= e.end && e.start <= endDate)
       .map(e => ({ ward: e.ward, start: e.start, end: e.end }));
   };
-  /** R7 · Apply hierarchy moves and auto-delete empty allied-parent containers. */
+
+  /** R7 · Apply hierarchy moves and auto-delete empty allied-parent containers.
+      DOMAIN WALL: SGT records keep parentName='Small Group Teaching' always. */
   const bulkUpdateSubjectHierarchy = (
     moves: Array<{
       id: string;
@@ -1108,31 +1570,56 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     let nextUA = userAddedSubjects.map(s => {
       const move = moves.find(m => m.store === 'userAdded' && m.id === s.id);
       if (!move) return s;
-      let updated = { ...s };
-      if (s.parentName === 'Small Group Teaching' && move.newParentName && move.newParentName !== 'Small Group Teaching') {
-        updated = { ...updated, clinicalSubject: move.newParentName };
+
+      const wasSGT = isSGTSubjectRecord(s);
+      // DOMAIN WALL: an SGT stays an SGT. Only its clinicalSubject may change.
+      if (wasSGT) {
+        let updated = { ...s };
+        if (move.newParentName && move.newParentName !== 'Small Group Teaching') {
+          updated = { ...updated, clinicalSubject: move.newParentName };
+        }
+        return {
+          ...updated,
+          subjectType: 'allied' as const,
+          parentName: 'Small Group Teaching',
+          category: 'Small Group Teaching',
+        } as UserAddedSubject;
       }
+
       return {
-        ...updated,
+        ...s,
         subjectType: move.newSubjectType,
         parentName: move.newParentName,
         category: move.newSubjectType === 'allied' ? move.newParentName : undefined,
       } as UserAddedSubject;
     });
+
     let nextCS = customSubjects.map(s => {
       const move = moves.find(m => m.store === 'custom' && m.id === s.id);
       if (!move) return s;
-      let updated = { ...s };
-      if (s.parentName === 'Small Group Teaching' && move.newParentName && move.newParentName !== 'Small Group Teaching') {
-        updated = { ...updated, clinicalSubject: move.newParentName };
+
+      const wasSGT = isSGTSubjectRecord(s);
+      if (wasSGT) {
+        let updated = { ...s };
+        if (move.newParentName && move.newParentName !== 'Small Group Teaching') {
+          updated = { ...updated, clinicalSubject: move.newParentName };
+        }
+        return {
+          ...updated,
+          subjectType: 'allied' as const,
+          parentName: 'Small Group Teaching',
+          category: 'Small Group Teaching',
+        } as CustomSubject;
       }
+
       return {
-        ...updated,
+        ...s,
         subjectType: move.newSubjectType,
         parentName: move.newParentName,
         category: move.newSubjectType === 'allied' ? move.newParentName : undefined,
       } as CustomSubject;
     });
+
     const filterEmptyParents = <T extends { id: string; name: string; subjectType: string; parentName?: string; category?: string }>(list: T[]): T[] => {
       const parents = list.filter(s => s.subjectType === 'allied-parent');
       const toDelete = new Set<string>();
@@ -1144,8 +1631,10 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       }
       return list.filter(s => !toDelete.has(s.id));
     };
+
     nextUA = filterEmptyParents(nextUA);
     nextCS = filterEmptyParents(nextCS);
+
     saveUserAdded(nextUA);
     saveSubjects(nextCS);
     return moves.length;
@@ -1206,12 +1695,16 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         clearRoutineData,
         getPresetSubjectDisplayName,
         setPresetSubjectRename,
+        subjectRegistry,
+        getSubjectById,
+        getSubjectIdByName,
       }}
     >
       {children}
     </CustomDataContext.Provider>
   );
 };
+
 export const useCustomData = () => {
   const ctx = useContext(CustomDataContext);
   if (!ctx) throw new Error('useCustomData must be used within CustomDataProvider');

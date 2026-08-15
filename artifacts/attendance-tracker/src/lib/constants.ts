@@ -4,60 +4,59 @@ export const CATEGORIES = [
   {
     name: 'Medicine & Allied',
     subjects: [
-      { name: 'Medicine', total: 90 },
-      { name: 'Pediatrics', total: 22 },
-      { name: 'Psychiatry', total: 18 },
-      { name: 'Physical Medicine', total: 4 },
-      { name: 'Radiology', total: 5 },
-      { name: 'Radiotherapy', total: 8 },
-      { name: 'Nuclear Medicine', total: 2 },
+      { id: 'acad:medicine', name: 'Medicine', total: 90 },
+      { id: 'acad:pediatrics', name: 'Pediatrics', total: 22 },
+      { id: 'acad:psychiatry', name: 'Psychiatry', total: 18 },
+      { id: 'acad:physical_medicine', name: 'Physical Medicine', total: 4 },
+      { id: 'acad:radiology', name: 'Radiology', total: 5 },
+      { id: 'acad:radiotherapy', name: 'Radiotherapy', total: 8 },
+      { id: 'acad:nuclear_medicine', name: 'Nuclear Medicine', total: 2 },
     ]
   },
   {
     name: 'Surgery & Allied',
     subjects: [
-      { name: 'Surgery', total: 60 },
-      { name: 'Orthopedics', total: 45 },
-      { name: 'Ophthalmology', total: 26 },
-      { name: 'Otolaryngology', total: 26 },
-      { name: 'Dermatology', total: 18 },
-      { name: 'Neurosurgery', total: 5 },
-      { name: 'Urology', total: 10 },
-      { name: 'Pediatric Surgery', total: 10 },
-      { name: 'Burn & Plastic Surgery', total: 5 },
+      { id: 'acad:surgery', name: 'Surgery', total: 60 },
+      { id: 'acad:orthopedics', name: 'Orthopedics', total: 45 },
+      { id: 'acad:ophthalmology', name: 'Ophthalmology', total: 26 },
+      { id: 'acad:otolaryngology', name: 'Otolaryngology', total: 26 },
+      { id: 'acad:dermatology', name: 'Dermatology', total: 18 },
+      { id: 'acad:neurosurgery', name: 'Neurosurgery', total: 5 },
+      { id: 'acad:urology', name: 'Urology', total: 10 },
+      { id: 'acad:pediatric_surgery', name: 'Pediatric Surgery', total: 10 },
+      { id: 'acad:burn_plastic_surgery', name: 'Burn & Plastic Surgery', total: 5 },
     ]
   },
   {
     name: 'Obstetrics & Gynaecology',
     subjects: [
-      { name: 'Obstetrics & Gynaecology', total: 60 },
+      { id: 'acad:obstetrics_gynaecology', name: 'Obstetrics & Gynaecology', total: 60 },
     ]
   }
 ];
 
 // Integrated Teaching subjects — tracked separately from academic subjects.
-// Totals based on Sundays (Phase) and Thursdays (Departmental) across the
-// Jan 24 – Nov 6 academic year, excluding holiday periods.
 export const INTEGRATED_SUBJECTS = [
-  { name: 'Phase Integrated Teaching', total: 36 },
-  { name: 'Departmental Integrated Teaching', total: 36 },
+  { id: 'int:phase_integrated_teaching', name: 'Phase Integrated Teaching', total: 36 },
+  { id: 'int:departmental_integrated_teaching', name: 'Departmental Integrated Teaching', total: 36 },
 ];
 
 // Preset allied-parent groups — clinical-type rotations, once daily.
 export const PRESET_PARENTS = ['Small Group Teaching'];
+
 export const WARD_SUBJECTS = [
-  { name: 'General Surgery', total: 60 },
-  { name: 'Pediatrics', total: 60 },
-  { name: 'Internal Medicine', total: 60 },
-  { name: 'Dermatology', total: 60 },
-  { name: 'Urology', total: 60 },
-  { name: 'Pediatric Surgery', total: 60 },
-  { name: 'Burn & Plastic Surgery', total: 60 },
-  { name: 'Orthopaedics', total: 60 },
-  { name: 'Obstetrics & Gynaecology', total: 60 },
-  { name: 'Psychiatry', total: 60 },
-  { name: 'Otolaryngology', total: 60 },
-  { name: 'Ophthalmology', total: 60 },
+  { id: 'ward:general_surgery', name: 'General Surgery', total: 60 },
+  { id: 'ward:pediatrics', name: 'Pediatrics', total: 60 },
+  { id: 'ward:internal_medicine', name: 'Internal Medicine', total: 60 },
+  { id: 'ward:dermatology', name: 'Dermatology', total: 60 },
+  { id: 'ward:urology', name: 'Urology', total: 60 },
+  { id: 'ward:pediatric_surgery', name: 'Pediatric Surgery', total: 60 },
+  { id: 'ward:burn_plastic_surgery', name: 'Burn & Plastic Surgery', total: 60 },
+  { id: 'ward:orthopaedics', name: 'Orthopaedics', total: 60 },
+  { id: 'ward:obstetrics_gynaecology', name: 'Obstetrics & Gynaecology', total: 60 },
+  { id: 'ward:psychiatry', name: 'Psychiatry', total: 60 },
+  { id: 'ward:otolaryngology', name: 'Otolaryngology', total: 60 },
+  { id: 'ward:ophthalmology', name: 'Ophthalmology', total: 60 },
 ];
 
 // B5: dates authored in human dd/mm/yy via D(); stored value is yyyy-mm-dd.
@@ -128,16 +127,10 @@ export const TIMETABLE: Record<number, Array<{time: string, type: string, subjec
   ]
 };
 
-/**
- * Compute the number of scheduled ward sessions for a given ward subject by
- * iterating every day across all matching WARD_SCHEDULE entries and excluding
- * Fridays (day index 5 – no ward sessions on Fridays).
- */
 export function getWardTotalPlanned(wardName: string): number {
   let count = 0;
   for (const slot of WARD_SCHEDULE) {
     if (slot.ward !== wardName) continue;
-    // Use noon local time to avoid DST / UTC-offset midnight edge cases
     const start = new Date(slot.start + 'T12:00:00');
     const end   = new Date(slot.end   + 'T12:00:00');
     const cur   = new Date(start);
@@ -146,13 +139,10 @@ export function getWardTotalPlanned(wardName: string): number {
       cur.setDate(cur.getDate() + 1);
     }
   }
-  // Double the count to reflect the planned classes
-  // across both the morning ward slot and the evening ward-replacement slot.
   return count * 2;
 }
 
 export function getCurrentWard(date: Date = new Date()): string | null {
-  // Use local date string (not UTC) to avoid day-boundary misclassification
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
@@ -166,8 +156,7 @@ export function getCurrentWard(date: Date = new Date()): string | null {
 }
 
 /* B6: register the ordered preset subject list so getSubjectColor() assigns
-the fixed palette order to preset subjects (custom names hash stably).
-Registration order: academic categories → integrated → wards. */
+the fixed palette order to preset subjects (custom names hash stably). */
 registerPresetSubjects([
   ...CATEGORIES.flatMap(c => c.subjects.map(s => s.name)),
   ...INTEGRATED_SUBJECTS.map(s => s.name),

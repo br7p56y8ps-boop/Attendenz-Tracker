@@ -152,10 +152,10 @@ export const SubjectCard = ({
           : customSubjects?.find(s => s.id === sgtId);
       originalPlannedClasses = sgtSub ? sgtSub.plannedClasses : getSubjectPlannedTotal(subject);
     } else if (subjectMode === 'preloaded') {
-      const uaSub = userAddedSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase());
+     const uaSub = userAddedSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase() && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'));
       originalPlannedClasses = uaSub ? uaSub.plannedClasses : getSubjectPlannedTotal(subject);
     } else {
-      const customSub = customSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase());
+     const customSub = customSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase() && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'));
       originalPlannedClasses = customSub ? customSub.plannedClasses : getSubjectPlannedTotal(subject);
     }
   }

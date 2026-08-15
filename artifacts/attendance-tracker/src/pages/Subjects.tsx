@@ -8,7 +8,7 @@ import type { CustomSubject, UserAddedSubject } from '@/contexts/CustomDataConte
 import { motion, AnimatePresence } from 'framer-motion';
 import { pctColor, cn } from '@/lib/utils';
 import { useLocation } from 'wouter';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, GraduationCap, Stethoscope } from 'lucide-react';
 
 // ── SVG Circular Progress Component ──
 const CircularProgress = ({
@@ -28,27 +28,8 @@ const CircularProgress = ({
   return (
     <div className="relative flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="transform -rotate-90">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke="currentColor"
-          strokeWidth={strokeWidth}
-          className="text-muted/20"
-          fill="transparent"
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          fill="transparent"
-          className="transition-all duration-500 ease-out"
-        />
+        <circle cx={size / 2} cy={size / 2} r={radius} stroke="currentColor" strokeWidth={strokeWidth} className="text-muted/20" fill="transparent" />
+        <circle cx={size / 2} cy={size / 2} r={radius} stroke={color} strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" fill="transparent" className="transition-all duration-500 ease-out" />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
         <span className="text-xs font-extrabold leading-none" style={{ color }}>
@@ -58,6 +39,15 @@ const CircularProgress = ({
     </div>
   );
 };
+
+/* ── Section heading with divider (always visible) ── */
+const SectionHeading = ({ icon, label }: { icon?: React.ReactNode; label: string }) => (
+  <div className="flex items-center gap-2.5 pt-2">
+    {icon}
+    <h2 className="text-sm font-extrabold uppercase tracking-wide text-primary shrink-0">{label}</h2>
+    <div className="h-px flex-1 bg-border/70" />
+  </div>
+);
 
 interface ChildDetail {
   name: string;
@@ -71,7 +61,6 @@ interface ChildDetail {
   isImpossible: boolean;
   needsAttention: boolean;
 }
-
 interface CategorySummary {
   att: number;
   mis: number;
@@ -84,7 +73,6 @@ interface CategorySummary {
   urgentList: ChildDetail[];
   attentionList: ChildDetail[];
 }
-
 interface CategoryCardProps {
   title: string;
   sectionKey: string;
@@ -115,14 +103,13 @@ const CategoryCard = ({
         backgroundColor: `${overallColor}14`,
         borderColor: `${overallColor}40`,
       };
-
   return (
     <motion.div
       style={cardStyle}
       className={cn(
-        "border rounded-2xl shadow-sm transition-all overflow-hidden p-4 sm:p-5 space-y-3.5",
+        'border rounded-2xl shadow-sm transition-all overflow-hidden p-4 sm:p-5 space-y-3.5',
         cardBgColor,
-        isOpen ? "hover:shadow-md" : "hover:shadow-md"
+        isOpen ? 'hover:shadow-md' : 'hover:shadow-md'
       )}
       initial={false}
       animate={{
@@ -131,12 +118,7 @@ const CategoryCard = ({
       }}
       transition={{ duration: 0.4, ease: 'easeInOut' }}
     >
-      {/* Clickable Header */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full text-left transition-all active:scale-[0.99] cursor-pointer"
-      >
+      <button type="button" onClick={onToggle} className="w-full text-left transition-all active:scale-[0.99] cursor-pointer">
         <div className="flex items-center gap-4 min-w-0">
           <CircularProgress percentage={summary.pct} color={overallColor} size={56} strokeWidth={5} />
           <div className="min-w-0 flex-1">
@@ -155,8 +137,6 @@ const CategoryCard = ({
           </div>
         </div>
       </button>
-
-      {/* Children list */}
       <AnimatePresence initial={false}>
         {isOpen && (
           <motion.div
@@ -189,36 +169,34 @@ export default function Subjects() {
     getCustomWardTotalPlanned,
   } = useCustomData();
   const [, setLocation] = useLocation();
-
   const today = new Date();
   const customWard = getCurrentCustomWard();
   const presetWardObj = subjectMode === 'preloaded' ? getCurrentPresetWard(today) : null;
   const activeWard = customWard ? customWard.name : (presetWardObj ? presetWardObj.ward : null);
   const isWardHoliday = activeWard === 'Holiday';
-
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
   const toggleCategory = (catName: string) => {
     setOpenCategories(prev => ({ ...prev, [catName]: !prev[catName] }));
   };
-
   const norm = (s?: string) => (s || '').trim().toLowerCase();
   const INTEGRATED_PARENT = 'integrated teaching';
 
+  /* FIX: SGT detection FIRST (used by plannedFor to avoid name collisions) */
+  const isSGTSubject = (s: { subjectType: string; parentName?: string }) =>
+    s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
+
   /**
-   * Planned-total lookup that also honours the preloaded user-added store,
-   * so edited planned counts stay correct everywhere.
+   * FIX: planned lookup for ACADEMIC subjects must NEVER resolve to an SGT record.
+   * Skips SGT records so a same-named SGT can't leak its planned count into
+   * an academic subject's total.
    */
   const plannedFor = (name: string): number => {
-    const cSub = customSubjects.find(s => norm(s.name) === norm(name));
+    const cSub = customSubjects.find(s => norm(s.name) === norm(name) && !isSGTSubject(s));
     if (cSub) return cSub.plannedClasses;
-    const uaSub = userAddedSubjects.find(s => norm(s.name) === norm(name));
+    const uaSub = userAddedSubjects.find(s => norm(s.name) === norm(name) && !isSGTSubject(s));
     if (uaSub) return uaSub.plannedClasses;
     return getSubjectPlannedTotal(name) || 40;
   };
-
-  // Helper to detect SGT subject
-  const isSGTSubject = (s: { subjectType: string; parentName?: string }) =>
-    s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
 
   const calcSummary = (
     subjectList: Array<{ name: string; total?: number; isSGT?: boolean; sgtId?: string }>,
@@ -227,14 +205,12 @@ export default function Subjects() {
     let att = 0, mis = 0, planned = 0;
     const childDetails: ChildDetail[] = [];
     const targetPct = preferredPercentage || 75;
-
     subjectList.forEach(sub => {
       const key = isWardGroup
         ? `ward-${sub.name}`
         : sub.isSGT && sub.sgtId
           ? getSGTKey(sub.sgtId)
           : sub.name;
-
       const d = (isWardGroup ? wards : subjects)[key] || { attended: 0, missed: 0 };
       let p = 0;
       if (isWardGroup) {
@@ -245,10 +221,8 @@ export default function Subjects() {
           p = cWard ? getCustomWardTotalPlanned(cWard.startDate, cWard.endDate) : (sub.total || 40);
         }
       } else {
-        p = sub.isSGT && sub.sgtId
-          ? (plannedFor(sub.name))  // plannedFor uses name, but SGT may duplicate name; better use id lookup
-          : plannedFor(sub.name);
-        // For SGT, we should find the actual subject by id to get plannedClasses
+        p = plannedFor(sub.name);
+        // For SGT, resolve planned by ID (never by name) to avoid collisions
         if (sub.isSGT && sub.sgtId) {
           const sgt =
             subjectMode === 'preloaded'
@@ -279,7 +253,6 @@ export default function Subjects() {
         needsAttention,
       });
     });
-
     const conducted = att + mis;
     const pct = conducted === 0 ? 100 : (att / conducted) * 100;
     const remainingTotal = Math.max(0, planned - conducted);
@@ -290,9 +263,10 @@ export default function Subjects() {
   };
 
   /* ──────────────────────────────────────────────────────────────────────────
-     PRELOADED MODE — merge userAddedSubjects into the built-in cards.
-  ────────────────────────────────────────────────────────────────────────── */
-  const uaAllied = userAddedSubjects.filter(s => s.subjectType === 'allied');
+     PRELOADED MODE — SGT records are pulled OUT of academic groups entirely.
+     ────────────────────────────────────────────────────────────────────────── */
+  const uaSGTs = userAddedSubjects.filter(s => isSGTSubject(s));
+  const uaAllied = userAddedSubjects.filter(s => s.subjectType === 'allied' && !isSGTSubject(s));
   const uaParents = userAddedSubjects.filter(s => s.subjectType === 'allied-parent');
   const uaSingles = userAddedSubjects.filter(s => s.subjectType === 'single');
 
@@ -304,7 +278,6 @@ export default function Subjects() {
       cat => norm(cat.name) === p || cat.subjects.some(sub => norm(sub.name) === p)
     );
   };
-
   const parentMatchesCategory = (
     parent: string | undefined,
     cat: { name: string; subjects: { name: string }[] }
@@ -314,16 +287,12 @@ export default function Subjects() {
     if (norm(cat.name) === p) return true;
     return cat.subjects.some(sub => norm(sub.name) === p);
   };
-
   const uaChildrenForCategory = (cat: { name: string; subjects: { name: string }[] }): UserAddedSubject[] =>
     uaAllied.filter(s => parentMatchesCategory(getEffectiveParentName(s), cat));
-
   const uaChildrenForIntegrated = uaAllied.filter(
     s => norm(getEffectiveParentName(s)) === INTEGRATED_PARENT
   );
-
   const standaloneUaParents = uaParents.filter(p => !isBuiltInParentName(p.name));
-
   const uaOrphanMap: Record<string, { title: string; children: UserAddedSubject[] }> = {};
   for (const c of uaAllied) {
     const p = getEffectiveParentName(c) || 'Uncategorised';
@@ -332,7 +301,6 @@ export default function Subjects() {
     if (!uaOrphanMap[norm(p)]) uaOrphanMap[norm(p)] = { title: p, children: [] };
     uaOrphanMap[norm(p)].children.push(c);
   }
-
   const extraWardNames = (() => {
     const seen = new Set<string>(WARD_SUBJECTS.map(w => norm(w.name)));
     const out: string[] = [];
@@ -345,31 +313,27 @@ export default function Subjects() {
     return out;
   })();
 
-  /* ── CUSTOM MODE ── */
-  const alliedChildren = customSubjects.filter(s => s.subjectType === 'allied');
+  /* ── CUSTOM MODE — SGT pulled out of academic groups too ── */
+  const customSGTs = customSubjects.filter(s => isSGTSubject(s));
+  const alliedChildren = customSubjects.filter(s => s.subjectType === 'allied' && !isSGTSubject(s));
   const parentContainers = customSubjects.filter(s => s.subjectType === 'allied-parent');
   const singleSubjects = customSubjects.filter(s => s.subjectType === 'single');
-
   const childrenOf = (parentName: string): CustomSubject[] =>
     alliedChildren.filter(s => norm(getEffectiveParentName(s)) === norm(parentName));
-
   const hostingSingles = singleSubjects.filter(s => childrenOf(s.name).length > 0);
   const standaloneSingles = singleSubjects.filter(s => childrenOf(s.name).length === 0);
-
   const customParentCards: Array<{
     key: string;
     title: string;
     host?: CustomSubject;
     children: CustomSubject[];
   }> = [];
-
   for (const pc of parentContainers) {
     customParentCards.push({ key: `ap_${pc.id}`, title: pc.name, children: childrenOf(pc.name) });
   }
   for (const s of hostingSingles) {
     customParentCards.push({ key: `hs_${s.id}`, title: s.name, host: s, children: childrenOf(s.name) });
   }
-
   const accountedParents = new Set<string>([
     ...parentContainers.map(p => norm(p.name)),
     ...singleSubjects.map(s => norm(s.name)),
@@ -384,6 +348,9 @@ export default function Subjects() {
   for (const [k, g] of Object.entries(orphanMap)) {
     customParentCards.push({ key: `og_${k}`, title: g.title, children: g.children });
   }
+
+  /* ── SGT list for the Clinical section ── */
+  const sgtList = subjectMode === 'preloaded' ? uaSGTs : customSGTs;
 
   return (
     <Layout>
@@ -408,6 +375,9 @@ export default function Subjects() {
             </button>
           </div>
         )}
+
+        {/* ══════════════════ ACADEMIC SECTION ══════════════════ */}
+        <SectionHeading icon={<GraduationCap className="w-4 h-4 text-primary" />} label="Academic" />
 
         {/* ── Built-in Academic Categories (preloaded mode only) ── */}
         {subjectMode === 'preloaded' && CATEGORIES.map((cat) => {
@@ -437,8 +407,6 @@ export default function Subjects() {
                       subject={s.name}
                       totalPlanned={plannedFor(s.name)}
                       isNested
-                      isSGT={isSGTSubject(s)}
-                      sgtId={s.id}
                     />
                   ))}
                 </>
@@ -447,14 +415,12 @@ export default function Subjects() {
           );
         })}
 
-        {/* ── Preloaded: created parent cards + orphaned allied groups ── */}
+        {/* ── Preloaded: created parent cards ── */}
         {subjectMode === 'preloaded' && standaloneUaParents.map(p => {
           const kids = uaAllied.filter(c => norm(getEffectiveParentName(c)) === norm(p.name));
           const summary = calcSummary(kids.map(k => ({
             name: k.name,
             total: k.plannedClasses,
-            isSGT: isSGTSubject(k),
-            sgtId: k.id,
           })));
           const sectionKey = `uap_${p.id}`;
           return (
@@ -477,8 +443,6 @@ export default function Subjects() {
                       subject={k.name}
                       totalPlanned={plannedFor(k.name)}
                       isNested
-                      isSGT={isSGTSubject(k)}
-                      sgtId={k.id}
                     />
                   ))}
                 </>
@@ -487,12 +451,11 @@ export default function Subjects() {
           );
         })}
 
+        {/* ── Preloaded: orphaned allied groups (academic only) ── */}
         {subjectMode === 'preloaded' && Object.entries(uaOrphanMap).map(([groupKey, group]) => {
           const summary = calcSummary(group.children.map(k => ({
             name: k.name,
             total: k.plannedClasses,
-            isSGT: isSGTSubject(k),
-            sgtId: k.id,
           })));
           const sectionKey = `uag_${groupKey}`;
           return (
@@ -512,8 +475,6 @@ export default function Subjects() {
                       subject={k.name}
                       totalPlanned={plannedFor(k.name)}
                       isNested
-                      isSGT={isSGTSubject(k)}
-                      sgtId={k.id}
                     />
                   ))}
                 </>
@@ -522,15 +483,13 @@ export default function Subjects() {
           );
         })}
 
-        {/* ── Custom mode: parent cards (containers, hosting singles, orphan groups) ── */}
+        {/* ── Custom mode: parent cards ── */}
         {subjectMode === 'custom' && customParentCards.map(card => {
           const subjectList = [
             ...(card.host ? [{ name: card.host.name, total: card.host.plannedClasses }] : []),
             ...card.children.map(c => ({
               name: c.name,
               total: c.plannedClasses,
-              isSGT: isSGTSubject(c),
-              sgtId: c.id,
             })),
           ];
           const summary = calcSummary(subjectList);
@@ -562,8 +521,6 @@ export default function Subjects() {
                       subject={c.name}
                       totalPlanned={c.plannedClasses}
                       isNested
-                      isSGT={isSGTSubject(c)}
-                      sgtId={c.id}
                     />
                   ))}
                 </>
@@ -572,7 +529,7 @@ export default function Subjects() {
           );
         })}
 
-        {/* ── Custom SINGLE subjects as ring-style CategoryCards ── */}
+        {/* ── Custom SINGLE subjects ── */}
         {subjectMode === 'custom' && standaloneSingles.map(s => {
           const summary = calcSummary([{ name: s.name, total: s.plannedClasses }]);
           const sectionKey = `single_${s.id}`;
@@ -592,7 +549,7 @@ export default function Subjects() {
           );
         })}
 
-        {/* ── Preloaded single subjects (user-added) — ring-style cards ── */}
+        {/* ── Preloaded single subjects (user-added) ── */}
         {subjectMode === 'preloaded' && uaSingles.map(s => {
           const summary = calcSummary([{ name: s.name, total: s.plannedClasses }]);
           const sectionKey = `uas_${s.id}`;
@@ -611,6 +568,44 @@ export default function Subjects() {
             />
           );
         })}
+
+        {/* ── Integrated Teaching (academic) ── */}
+        {subjectMode === 'preloaded' && (() => {
+          const merged = uaChildrenForIntegrated;
+          const subjectList = [
+            ...INTEGRATED_SUBJECTS.map(sub => ({ name: sub.name, total: sub.total })),
+            ...merged.map(s => ({ name: s.name, total: s.plannedClasses })),
+          ];
+          const integratedSummary = calcSummary(subjectList);
+          return (
+            <CategoryCard
+              title="Integrated Teaching"
+              sectionKey="Integrated Teaching"
+              isOpen={openCategories['Integrated Teaching'] || false}
+              onToggle={() => toggleCategory('Integrated Teaching')}
+              summary={integratedSummary}
+              preferredPercentage={preferredPercentage}
+              renderChildren={() => (
+                <>
+                  {INTEGRATED_SUBJECTS.map(sub => (
+                    <SubjectCard key={sub.name} subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
+                  ))}
+                  {merged.map(s => (
+                    <SubjectCard
+                      key={s.id}
+                      subject={s.name}
+                      totalPlanned={plannedFor(s.name)}
+                      isNested
+                    />
+                  ))}
+                </>
+              )}
+            />
+          );
+        })()}
+
+        {/* ══════════════════ CLINICAL SECTION ══════════════════ */}
+        <SectionHeading icon={<Stethoscope className="w-4 h-4 text-primary" />} label="Clinical" />
 
         {/* ── Ward Rotations (Grouped in ONE Card) ── */}
         {(subjectMode === 'preloaded' || customWards.length > 0) && (() => {
@@ -668,35 +663,31 @@ export default function Subjects() {
           );
         })()}
 
-        {/* ── Integrated Teaching (preloaded mode only) — user-added allied
-               children with parent "Integrated Teaching" merge in here ── */}
-        {subjectMode === 'preloaded' && (() => {
-          const merged = uaChildrenForIntegrated;
-          const subjectList = [
-            ...INTEGRATED_SUBJECTS.map(sub => ({ name: sub.name, total: sub.total })),
-            ...merged.map(s => ({ name: s.name, total: s.plannedClasses, isSGT: isSGTSubject(s), sgtId: s.id })),
-          ];
-          const integratedSummary = calcSummary(subjectList);
+        {/* ── Small Group Teaching (moved to Clinical) ── */}
+        {sgtList.length > 0 && (() => {
+          const summary = calcSummary(sgtList.map(s => ({
+            name: s.name,
+            total: s.plannedClasses,
+            isSGT: true,
+            sgtId: s.id,
+          })));
           return (
             <CategoryCard
-              title="Integrated Teaching"
-              sectionKey="Integrated Teaching"
-              isOpen={openCategories['Integrated Teaching'] || false}
-              onToggle={() => toggleCategory('Integrated Teaching')}
-              summary={integratedSummary}
+              title="Small Group Teaching"
+              sectionKey="sgt"
+              isOpen={openCategories['sgt'] || false}
+              onToggle={() => toggleCategory('sgt')}
+              summary={summary}
               preferredPercentage={preferredPercentage}
               renderChildren={() => (
                 <>
-                  {INTEGRATED_SUBJECTS.map(sub => (
-                    <SubjectCard key={sub.name} subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
-                  ))}
-                  {merged.map(s => (
+                  {sgtList.map(s => (
                     <SubjectCard
                       key={s.id}
                       subject={s.name}
-                      totalPlanned={plannedFor(s.name)}
+                      totalPlanned={s.plannedClasses}
                       isNested
-                      isSGT={isSGTSubject(s)}
+                      isSGT
                       sgtId={s.id}
                     />
                   ))}
@@ -709,4 +700,3 @@ export default function Subjects() {
     </Layout>
   );
 }
-

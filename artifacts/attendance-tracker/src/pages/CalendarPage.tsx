@@ -4,7 +4,7 @@ import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { motion } from 'framer-motion';
 import { Grid, ChevronDown, TrendingUp, AlertTriangle } from 'lucide-react';
-import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, rangeStartMinutes } from '@/lib/utils';
+import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, rangeStartMinutes, canonicalizeTimeRange } from '@/lib/utils';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 
 const DAYS_ORDER = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -67,6 +67,41 @@ export default function CalendarPage() {
   } = useCustomData();
   const today = new Date();
   const target = preferredPercentage || 75;
+
+  /* ═══════════ SGT entries for the weekly grid ═══════════
+     SGTs render INSIDE the academic table (short name + SGT tag).
+     They persist on their assigned days until the placement period
+     is over (endDate < today) — then they disappear from the table. */
+  const todayStr = useMemo(() => {
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, [today]);
+
+  const sgtEntries = useMemo(() => {
+    const store = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+    const entries: Array<{ day: string; range: string; name: string; start: number; end: number }> = [];
+    store.forEach(s => {
+      if (!(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')) return;
+      const end = (s as any).endDate;
+      if (end && end < todayStr) return; // period over → remove from weekly table
+      const scheds: Array<{ day: string; range: string }> = [];
+      (s.schedules || []).forEach((sch: any) => {
+        const range = sch.time ? canonicalizeTimeRange(sch.time) : `${sch.start}–${sch.end}`;
+        if (range) scheds.push({ day: sch.day, range });
+      });
+      if (scheds.length === 0 && s.days) {
+        s.days.split(',').map((d: string) => d.trim()).filter(Boolean)
+          .forEach((d: string) => scheds.push({ day: d, range: s.time }));
+      }
+      scheds.forEach(sch => {
+        const m = parseRangeToMinutes(sch.range);
+        if (m) entries.push({ day: sch.day, range: sch.range, name: s.name, start: m.start, end: m.end });
+      });
+    });
+    return entries;
+  }, [subjectMode, userAddedSubjects, customSubjects, todayStr]);
 
   /* ═══════════ STATISTICS ═══════════ */
   const allEntities = useMemo(() => {
@@ -167,8 +202,8 @@ export default function CalendarPage() {
       const y = today.getFullYear();
       const mo = String(today.getMonth() + 1).padStart(2, '0');
       const da = String(today.getDate()).padStart(2, '0');
-      const todayStr = `${y}-${mo}-${da}`;
-      const entry = presetWardSchedule.find(s => todayStr >= s.start && todayStr <= s.end);
+      const todayStr2 = `${y}-${mo}-${da}`;
+      const entry = presetWardSchedule.find(s => todayStr2 >= s.start && todayStr2 <= s.end);
       startStr = entry?.start;
       endStr = entry?.end;
     } else {
@@ -217,8 +252,8 @@ export default function CalendarPage() {
   const lastX = useRef(0);
   const totalItems = allRotations.length;
   const wrapIndex = (idx: number) => ((idx % totalItems) + totalItems) % totalItems;
-  useEffect(() => { setActiveIndex(currentIndex); }, [currentIndex]);
 
+  useEffect(() => { setActiveIndex(currentIndex); }, [currentIndex]);
   useEffect(() => {
     const onDoc = (e: PointerEvent) => {
       if (wheelRef.current && !wheelRef.current.contains(e.target as Node)) {
@@ -272,10 +307,9 @@ export default function CalendarPage() {
     { item: allRotations[wrapIndex(activeIndex)], position: 'center' },
     { item: allRotations[wrapIndex(activeIndex + 1)], position: 'right' },
   ];
-
   const todayAbbr = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][today.getDay()];
 
-  /* ── Columns: base preset + extra (custom), chronological ── */
+  /* ── Columns: base preset + extra (custom + SGT), chronological ── */
   const columns = useMemo<GridColumn[]>(() => {
     const extra: GridColumn[] = [];
     const push = (r: { start: number; end: number }) => {
@@ -290,37 +324,56 @@ export default function CalendarPage() {
         if (m) push(m);
       });
     });
+    // SGT time ranges also contribute columns
+    sgtEntries.forEach(e => push({ start: e.start, end: e.end }));
     const base = BASE_PRESET_COLS.map((c, i) => ({ ...c, base: true, id: `b${i}` }));
     return [...base, ...extra].sort((a, b) => a.start - b.start);
-  }, [presetTimetable]);
+  }, [presetTimetable, sgtEntries]);
 
-  /* ── Grid cells ── */
+  /* ── Grid cells (academic slots + SGT merged into the same table) ── */
   const timetableGrid = useMemo(() => {
     const rows = DAYS_ORDER.map(day => {
-      if (day === 'Fri') return { day, cells: [{ key: 'hol', colStart: 0, span: columns.length, subjects: [] as string[], isRest: false, isHoliday: true, rowspan: 1, hidden: false }] };
+      if (day === 'Fri') return { day, cells: [{ key: 'hol', colStart: 0, span: columns.length, subjects: [] as string[], sgt: [] as string[], isRest: false, isHoliday: true, rowspan: 1, hidden: false }] };
       const dayIdx = DAY_INDEX_MAP[day];
-      const slots = (presetTimetable[dayIdx] || []).filter(s => s.type !== 'ward' && s.type !== 'ward_replacement' && s.subjects && s.subjects.length > 0);
+
+      // Academic slots for this day
+      const slots: Array<{ time: string; subjects: string[]; sgt: string[] }> = (presetTimetable[dayIdx] || [])
+        .filter(s => s.type !== 'ward' && s.type !== 'ward_replacement' && s.subjects && s.subjects.length > 0)
+        .map(s => ({ time: s.time, subjects: s.subjects, sgt: [] as string[] }));
+
+      // Merge SGT entries into the same day: attach to a matching academic
+      // column when start times match, otherwise create their own slot.
+      sgtEntries.filter(e => e.day === day).forEach(e => {
+        const host = slots.find(sl => {
+          const m = parseRangeToMinutes(sl.time);
+          return m && m.start === e.start;
+        });
+        if (host) host.sgt.push(e.name);
+        else slots.push({ time: e.range, subjects: [], sgt: [e.name] });
+      });
+
       const consumed = new Set<string>();
-      const cells: Array<{ key: string; colStart: number; span: number; subjects: string[]; isRest: boolean; isHoliday?: boolean; rowspan: number; hidden: boolean }> = [];
+      const cells: Array<{ key: string; colStart: number; span: number; subjects: string[]; sgt: string[]; isRest: boolean; isHoliday?: boolean; rowspan: number; hidden: boolean }> = [];
       columns.forEach((col, ci) => {
         if (consumed.has(col.id)) return;
         const covering = slots.find(s => {
           const m = parseRangeToMinutes(s.time);
           return m && m.start === col.start;
         });
-        if (!covering) { consumed.add(col.id); cells.push({ key: col.id, colStart: ci, span: 1, subjects: [], isRest: false, rowspan: 1, hidden: false }); return; }
+        if (!covering) { consumed.add(col.id); cells.push({ key: col.id, colStart: ci, span: 1, subjects: [], sgt: [], isRest: false, rowspan: 1, hidden: false }); return; }
         const m = parseRangeToMinutes(covering.time)!;
         let span = 1;
         for (let k = ci + 1; k < columns.length; k++) {
           if (columns[k].end <= m.end) { span++; consumed.add(columns[k].id); } else break;
         }
         consumed.add(col.id);
-        cells.push({ key: col.id, colStart: ci, span, subjects: covering.subjects, isRest: covering.subjects[0] === 'Rest', rowspan: 1, hidden: false });
+        cells.push({ key: col.id, colStart: ci, span, subjects: covering.subjects, sgt: covering.sgt, isRest: covering.subjects[0] === 'Rest', rowspan: 1, hidden: false });
       });
       return { day, cells };
     });
-    const sig = (c: { isHoliday?: boolean; subjects: string[]; colStart: number; span: number; isRest: boolean }) =>
-      (c.isHoliday || c.subjects.length === 0) ? null : `${c.colStart}|${c.span}|${c.isRest ? 'REST' : c.subjects.join('/')}`;
+
+    const sig = (c: { isHoliday?: boolean; subjects: string[]; sgt: string[]; colStart: number; span: number; isRest: boolean }) =>
+      (c.isHoliday || (c.subjects.length === 0 && c.sgt.length === 0)) ? null : `${c.colStart}|${c.span}|${c.isRest ? 'REST' : [...c.subjects, ...c.sgt.map(n => `SGT:${n}`)].join('/')}`;
     for (let r = 1; r < rows.length; r++) {
       for (const cell of rows[r].cells) {
         const s = sig(cell);
@@ -337,7 +390,7 @@ export default function CalendarPage() {
       }
     }
     return rows;
-  }, [presetTimetable, columns]);
+  }, [presetTimetable, columns, sgtEntries]);
 
   const dense = columns.length >= 6;
   const overallColor = overall.pct >= target ? 'text-emerald-500' : overall.pct >= target - 10 ? 'text-amber-500' : 'text-rose-500';
@@ -356,7 +409,7 @@ export default function CalendarPage() {
           <h1 className="text-lg font-extrabold text-foreground leading-tight">Weekly Routine & Rotations</h1>
         </div>
 
-        {/* ═══════════ WEEKLY TIME TABLE ═══════════ */}
+        {/* ═══════════ WEEKLY TIME TABLE (academic + SGT in one grid) ═══════════ */}
         <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-3">
           <h3 className="text-sm font-extrabold uppercase tracking-wide text-primary text-center">Academic</h3>
           <div className="overflow-x-auto rounded-xl border border-border/40">
@@ -385,13 +438,23 @@ export default function CalendarPage() {
                       <td key={cell.key} colSpan={cell.span} className="border border-border/40 text-center text-[10px] font-bold text-muted-foreground tracking-[0.3em] py-4">HOLIDAY</td>
                     ) : (
                       <td key={cell.key} colSpan={cell.span} rowSpan={cell.rowspan > 1 ? cell.rowspan : undefined} className={cn('border border-border/40 p-1 text-center align-middle', cell.isRest && 'bg-muted/20')}>
-                        {cell.subjects.length === 0 ? (
+                        {cell.subjects.length === 0 && cell.sgt.length === 0 ? (
                           <span className="text-muted-foreground/40 text-[9px]">—</span>
                         ) : cell.isRest ? (
                           <span className="text-[9px] font-bold text-muted-foreground">Rest</span>
                         ) : (
-                          <span className="text-[9px] font-semibold leading-tight" style={{ color: getSubjectColor(cell.subjects[0]) }}>
-                            {cell.subjects.map(shortenSubject).join(' / ')}
+                          <span className="text-[9px] font-semibold leading-tight flex flex-wrap items-center justify-center gap-x-1 gap-y-0.5">
+                            {cell.subjects.length > 0 && (
+                              <span style={{ color: getSubjectColor(cell.subjects[0]) }}>
+                                {cell.subjects.map(shortenSubject).join(' / ')}
+                              </span>
+                            )}
+                            {cell.sgt.map(n => (
+                              <span key={n} className="inline-flex items-center gap-0.5" style={{ color: getSubjectColor(n) }}>
+                                {shortenSubject(n)}
+                                <span className="text-[6px] font-extrabold uppercase tracking-wider px-1 py-px rounded-full bg-purple-500/10 text-purple-500 border border-purple-500/30">SGT</span>
+                              </span>
+                            ))}
                           </span>
                         )}
                       </td>
@@ -444,7 +507,7 @@ export default function CalendarPage() {
 
         {/* ═══════════ STATISTICS ═══════════ */}
         <section className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-                    <div className="p-3.5 space-y-4">
+          <div className="p-3.5 space-y-4">
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Overall — every subject & ward combined</p>
               <div className="flex items-center gap-3">
@@ -464,7 +527,6 @@ export default function CalendarPage() {
                 <span className="text-[9px] font-extrabold px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shrink-0">Can miss {overall.canMiss}</span>
               </div>
             </div>
-
             {rotation && (
               <div className="border-t border-border/40 pt-3">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-1.5">Current posting · info only</p>
@@ -478,50 +540,48 @@ export default function CalendarPage() {
                 <p className="text-[8px] text-muted-foreground/60 mt-1">This line does not change the numbers above.</p>
               </div>
             )}
-
-             <div className="border-t border-border/40 pt-3">
-                    <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Last 6 Months</p>
-                    <div className="flex items-end justify-between gap-1.5 h-14">
-                      {months.map((m, i) => (
-                        <button key={m.key} type="button" onClick={() => setMonthSel(prev => prev === i ? null : i)} className="flex-1 flex flex-col items-center gap-1 cursor-pointer">
-                          <div className={cn('w-full rounded-t-md transition-all', monthSel === i ? 'bg-primary' : m.pct === null ? 'bg-muted/30' : m.pct >= target ? 'bg-emerald-500/70' : m.pct >= target - 10 ? 'bg-amber-500/70' : 'bg-rose-500/70')} style={{ height: m.pct === null ? 4 : `${Math.max(8, m.pct * 0.4)}px` }} />
-                          <span className="text-[8px] font-bold text-muted-foreground">{m.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                    {monthSel !== null && months[monthSel] && (
-                      <p className="text-[10px] text-foreground font-semibold text-center mt-2">
-                        {months[monthSel].label}: {months[monthSel].pct === null ? 'no classes' : `${months[monthSel].pct.toFixed(0)}% (${months[monthSel].att}/${months[monthSel].att + months[monthSel].mis})`}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Needs Attention</p>
-                    {attention.length === 0 ? (
-                      <p className="text-[10px] text-emerald-500 font-semibold">All subjects on track.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {attention.map(a => (
-                          <button key={a.name} type="button" onClick={() => setAttnOpen(o => !o)} className="text-[9px] font-bold px-2 py-1 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20 cursor-pointer">
-                            {a.name} · {a.pct.toFixed(0)}%
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {attnOpen && attention.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {attention.map(a => (
-                          <p key={a.name} className="text-[10px] text-muted-foreground">
-                            <strong className="text-foreground">{a.name}</strong> — attend next <strong className="text-rose-500">{a.needed}</strong> to recover.
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+            <div className="border-t border-border/40 pt-3">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Last 6 Months</p>
+              <div className="flex items-end justify-between gap-1.5 h-14">
+                {months.map((m, i) => (
+                  <button key={m.key} type="button" onClick={() => setMonthSel(prev => prev === i ? null : i)} className="flex-1 flex flex-col items-center gap-1 cursor-pointer">
+                    <div className={cn('w-full rounded-t-md transition-all', monthSel === i ? 'bg-primary' : m.pct === null ? 'bg-muted/30' : m.pct >= target ? 'bg-emerald-500/70' : m.pct >= target - 10 ? 'bg-amber-500/70' : 'bg-rose-500/70')} style={{ height: m.pct === null ? 4 : `${Math.max(8, m.pct * 0.4)}px` }} />
+                    <span className="text-[8px] font-bold text-muted-foreground">{m.label}</span>
+                  </button>
+                ))}
+              </div>
+              {monthSel !== null && months[monthSel] && (
+                <p className="text-[10px] text-foreground font-semibold text-center mt-2">
+                  {months[monthSel].label}: {months[monthSel].pct === null ? 'no classes' : `${months[monthSel].pct.toFixed(0)}% (${months[monthSel].att}/${months[monthSel].att + months[monthSel].mis})`}
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Needs Attention</p>
+              {attention.length === 0 ? (
+                <p className="text-[10px] text-emerald-500 font-semibold">All subjects on track.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {attention.map(a => (
+                    <button key={a.name} type="button" onClick={() => setAttnOpen(o => !o)} className="text-[9px] font-bold px-2 py-1 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20 cursor-pointer">
+                      {a.name} · {a.pct.toFixed(0)}%
+                    </button>
+                  ))}
                 </div>
-             </section>
-        </motion.div>
+              )}
+              {attnOpen && attention.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {attention.map(a => (
+                    <p key={a.name} className="text-[10px] text-muted-foreground">
+                      <strong className="text-foreground">{a.name}</strong> — attend next <strong className="text-rose-500">{a.needed}</strong> to recover.
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </motion.div>
     </Layout>
   );
 }
-
