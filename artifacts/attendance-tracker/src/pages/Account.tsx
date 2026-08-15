@@ -17,6 +17,19 @@ import femaleStudentProfile from '@/assets/images/female_student_profile_1784286
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
 
 const SNAPSHOTS_KEY = 'attendenz_snapshots_v1';
+// Returns 1 if a>b, -1 if a<b, 0 if equal
+function compareVersions(a: string, b: string): number {
+  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x > y) return 1;
+    if (x < y) return -1;
+  }
+  return 0;
+}
+
 
 export default function Account() {
   const { username, updateUsername, profileImage, updateProfileImage, isPersistentStorage, requestPersistentStorage } = useAuth();
@@ -31,7 +44,15 @@ export default function Account() {
   const backupFileInputRef = useRef<HTMLInputElement>(null);
   const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
   const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
-  const [installedVersion, setInstalledVersion] = useState<string>(() => localStorage.getItem('att_app_version') || APP_VERSION);
+  const [installedVersion, setInstalledVersion] = useState<string>(() => {
+  const stored = localStorage.getItem('att_app_version') || APP_VERSION;
+  if (compareVersions(APP_VERSION, stored) > 0) {
+    localStorage.setItem('att_app_version', APP_VERSION);
+    return APP_VERSION;
+  }
+  return stored;
+  });
+
   const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
     useEffect(() => {
@@ -39,7 +60,9 @@ export default function Account() {
     window.addEventListener('attendenz:update-ready', on);
     return () => window.removeEventListener('attendenz:update-ready', on);
   }, []);
-   const isUpdateAvailable = installedVersion !== LATEST_VERSION || pwaReady;
+   const isUpdateAvailable =
+  compareVersions(serverVersion, installedVersion) > 0 ||
+  (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
    const [updatingNow, setUpdatingNow] = useState(false);
    const [dots, setDots] = useState(1);
    useEffect(() => {
