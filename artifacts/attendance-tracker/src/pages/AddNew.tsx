@@ -40,9 +40,11 @@ const btnDanger =
 const labelCls = 'block text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wide';
 const inlineErrCls =
   'text-[11px] font-semibold text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2';
+
 const CREATE_NEW = '__create_new__';
 const SINGLE_DEST = '__single__';
 const BUNDLE_VERSION = 2;
+
 const genId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 const splitRange = (range: string): { start: string; end: string } => {
@@ -51,6 +53,7 @@ const splitRange = (range: string): { start: string; end: string } => {
   if (m) return { start: m[1], end: m[2] };
   return { start: '09:00 AM', end: '10:00 AM' };
 };
+
 const to24 = (mins: number): string => {
   const m = ((mins % 1440) + 1440) % 1440;
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -168,29 +171,56 @@ const newRow = (usedDays: string[]): ScheduleRow => {
   return { id: genId('row'), day, startTime: '09:00 AM', endTime: '10:00 AM' };
 };
 
+/*  Human-readable history details */
+const formatHistoryDetail = (entry: any): string => {
+  const d = entry.data;
+  if (!d) return '';
+  switch (entry.type) {
+    case 'Move Subjects':
+      return `${(d.names || []).join(', ')} · ${DAY_ABBRS[d.fromDay] || '?'} ${d.fromTime || ''} → ${DAY_ABBRS[d.toDay] || '?'} ${d.toTime || ''}`;
+    case 'Rename':
+      return `"${d.old}" → "${d.new}"`;
+    case 'Add Slot':
+      return `${d.subject} · ${DAY_ABBRS[d.day] || '?'} ${d.time || ''}`;
+    case 'Remove from Slot':
+      return `${d.subject} · ${DAY_ABBRS[d.day] || '?'} ${d.time || ''}`;
+    case 'Delete Subject':
+      return d.name || '';
+    case 'Delete Ward':
+    case 'Delete Rotation':
+      return d.ward || d.name || '';
+    case 'Edit Subject':
+      return d.new?.name || d.old?.name || '';
+    case 'Edit Ward':
+      return d.new?.name || d.old?.name || '';
+    case 'Change Parent':
+      return `→ ${d.newParent || 'Single'}`;
+    case 'Change Clinical Subject':
+      return `${d.name || ''}: ${d.from || '—'} → ${d.to || ''}`;
+    case 'Add Subject':
+      return (d.names || []).join(', ');
+    case 'Add Rotation':
+      return `${d.name || ''} (${d.start || ''} – ${d.end || ''})`;
+    case 'Add SGT':
+      return `${d.name || ''} under ${d.clinicalSubject || ''} · ${d.planned || 0} planned`;
+    case 'Import Merge':
+      return `${d.subjects || 0} subject(s), ${d.rotations || 0} rotation(s)`;
+    case 'Import Replace':
+      return `Mode: ${d.mode || 'unknown'}`;
+    default:
+      return '';
+  }
+};
+
 // ── Clinical Group Card Component ──
 function ClinicalGroupCard({
-  name,
-  hasRotation,
-  hasSGT,
-  rotation,
-  sgt,
-  onAddRotation,
-  onAddSGT,
-  onEditRotation,
-  onEditSGT,
-  onDeleteRotation,
-  onDeleteSGT,
+  name, hasRotation, hasSGT, rotation, sgt,
+  onAddRotation, onAddSGT, onEditRotation, onEditSGT, onDeleteRotation, onDeleteSGT,
 }: any) {
   const [expanded, setExpanded] = useState(false);
-
   return (
     <div className="border border-border/60 rounded-xl overflow-hidden bg-background/30">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between p-3 hover:bg-muted/20 transition-colors text-left"
-      >
+      <button type="button" onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between p-3 hover:bg-muted/20 transition-colors text-left">
         <div className="flex items-center gap-2">
           <span className="font-extrabold text-foreground" style={{ color: getSubjectColor(name) }}>{name}</span>
           {hasRotation && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full">Rotation</span>}
@@ -209,12 +239,8 @@ function ClinicalGroupCard({
                 </p>
               </div>
               <div className="flex gap-1">
-                <button type="button" onClick={onEditRotation} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer">
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <button type="button" onClick={onDeleteRotation} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <button type="button" onClick={onEditRotation} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"><Pencil className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={onDeleteRotation} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             </div>
           ) : (
@@ -231,12 +257,8 @@ function ClinicalGroupCard({
                 </p>
               </div>
               <div className="flex gap-1">
-                <button type="button" onClick={onEditSGT} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer">
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <button type="button" onClick={onDeleteSGT} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <button type="button" onClick={onEditSGT} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"><Pencil className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={onDeleteSGT} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             </div>
           ) : (
@@ -258,7 +280,6 @@ function SubjectTriageCard({
   const [showParentDropdown, setShowParentDropdown] = useState(false);
   const isEditing = opdEditing[id] || false;
   const renameValue = opdRename[id] !== undefined ? opdRename[id] : name;
-
   return (
     <div className="flex items-center gap-2 bg-card border border-border/50 rounded-lg p-2.5">
       {isEditing ? (
@@ -317,9 +338,9 @@ export default function AddNew() {
     getPresetSubjectDisplayName,
     setPresetSubjectRename,
   } = useCustomData();
+
   const { removeSubjectData, removeWardData, renameSubjectData, renameWardData, removeAttendanceByKey } = useAttendance();
 
-  // Local ref for latest timetable
   const timetableRef = useRef(presetTimetable);
   useEffect(() => { timetableRef.current = presetTimetable; }, [presetTimetable]);
 
@@ -338,7 +359,6 @@ export default function AddNew() {
   const [section, setSection] = useState<'academic' | 'clinical'>('academic');
   const [selDay, setSelDay] = useState<number>(new Date().getDay());
 
-  // ── Academic More state ──
   const [subjectType, setSubjectType] = useState<'single' | 'allied'>('single');
   const [subjectName, setSubjectName] = useState('');
   const [parentChoice, setParentChoice] = useState('');
@@ -349,7 +369,6 @@ export default function AddNew() {
   const [childStart, setChildStart] = useState('');
   const [childEnd, setChildEnd] = useState('');
 
-  // ── Clinical More state ──
   const [clinicalParentChoice, setClinicalParentChoice] = useState<'rotation' | 'sgt'>('rotation');
   const [wardName, setWardName] = useState('');
   const [wardStart, setWardStart] = useState('');
@@ -359,14 +378,12 @@ export default function AddNew() {
   const [eveStart, setEveStart] = useState('07:00 PM');
   const [eveEnd, setEveEnd] = useState('09:00 PM');
 
-  // SGT form fields
   const [sgtClinicalSubject, setSgtClinicalSubject] = useState('');
   const [sgtName, setSgtName] = useState('');
   const [sgtStartDate, setSgtStartDate] = useState('');
   const [sgtEndDate, setSgtEndDate] = useState('');
   const [sgtRows, setSgtRows] = useState<ScheduleRow[]>([newRow([])]);
 
-  // ── Edit Slot state ──
   const [editSlot, setEditSlot] = useState<EditSlotState | null>(null);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [slotMoveTargetDay, setSlotMoveTargetDay] = useState<number>(0);
@@ -378,18 +395,15 @@ export default function AddNew() {
   const [slotRemoveConfirm, setSlotRemoveConfirm] = useState(false);
   const [showMoveForm, setShowMoveForm] = useState(false);
 
-  // ── Subject Triage state ──
   const [opdOpen, setOpdOpen] = useState(false);
   const [opdRename, setOpdRename] = useState<Record<string, string>>({});
   const [opdEditing, setOpdEditing] = useState<Record<string, boolean>>({});
   const [triageTop, setTriageTop] = useState<'preset' | 'added'>('preset');
   const [triageSub, setTriageSub] = useState<'academic' | 'clinical'>('academic');
 
-  // ── Delete & Conflict sheets ──
   const [deleteSheet, setDeleteSheet] = useState<{ title: string; lines: string[]; onConfirm: () => void } | null>(null);
   const [conflictSheet, setConflictSheet] = useState<{ messages: string[]; onConfirm: () => void } | null>(null);
 
-  // ── Import/Export state ──
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -399,41 +413,52 @@ export default function AddNew() {
   const [preview, setPreview] = useState<{ bundle: ImportBundle; report: ImportReport } | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
 
-  // ── Edit Subject & Edit Ward states ──
   const [editSubject, setEditSubject] = useState<EditSubjectState | null>(null);
   const [editWard, setEditWard] = useState<EditWardState | null>(null);
 
-  // ── Add Slot state ──
   const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [addSlotSubject, setAddSlotSubject] = useState('');
   const [addSlotStart, setAddSlotStart] = useState('09:00 AM');
   const [addSlotEnd, setAddSlotEnd] = useState('10:00 AM');
   const [addSlotPlanned, setAddSlotPlanned] = useState(0);
 
-  // ── History state ──
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
 
-  // ── Derived data ──
   const isAllied = subjectType === 'allied';
   const resolvedParent = parentChoice === CREATE_NEW ? newParentName.trim() : parentChoice.trim();
   const parentIsNew = resolvedParent ? !(PRESET_PARENTS.includes(resolvedParent) || isExistingParent(resolvedParent)) : false;
   const parentIsSGT = resolvedParent ? PRESET_PARENTS.includes(resolvedParent) : false;
+
+  /* Record-level SGT guard */
+  const isSGTRecord = (s: { subjectType: string; parentName?: string }): boolean =>
+    s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
+
+  /* Resolve a display name back to its original preset name (chained renames) */
+  const resolvePresetOriginalName = (displayName: string): string => {
+    const all = [
+      ...CATEGORIES.flatMap(c => c.subjects.map(s => s.name)),
+      ...INTEGRATED_SUBJECTS.map(s => s.name),
+      ...WARD_SUBJECTS.map(w => w.name),
+    ];
+    return all.find(n => getPresetSubjectDisplayName(n) === displayName) ?? displayName;
+  };
 
   const academicParentOptions = useMemo(() => {
     const all = getParentOptions();
     return all.filter(p => p !== 'Small Group Teaching');
   }, [getParentOptions]);
 
+  /* SGT records excluded from "singles" */
   const groupedParents = useMemo(() => {
     const store = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-    const derived = store.filter(s => s.subjectType === 'allied').map(s => getEffectiveParentName(s)).filter((p): p is string => !!p);
+    const derived = store.filter(s => s.subjectType === 'allied' && !isSGTRecord(s)).map(s => getEffectiveParentName(s)).filter((p): p is string => !!p);
     const allParents = Array.from(new Set([
       ...(subjectMode === 'preloaded' ? [...PRESET_PARENTS.filter(p => p !== 'Small Group Teaching'), ...CATEGORIES.map(c => c.name), 'Integrated Teaching'] : []),
       ...store.filter(s => s.subjectType === 'allied-parent').map(s => s.name),
       ...derived,
     ]));
-    const allSubjects = store.map(s => s.name);
+    const allSubjects = store.filter(s => !isSGTRecord(s)).map(s => s.name);
     const singles = allSubjects.filter(n => !allParents.includes(n));
     return { parents: allParents, singles };
   }, [subjectMode, userAddedSubjects, customSubjects]);
@@ -454,7 +479,6 @@ export default function AddNew() {
     return opts;
   }, [allClinicalSubjects]);
 
-  // ── Helpers ──
   const getSGTForSubject = (clinicalName: string) => {
     if (subjectMode === 'preloaded') {
       return userAddedSubjects.find(
@@ -480,19 +504,14 @@ export default function AddNew() {
     return null;
   };
 
-  // FIX: Academic subject detection should use type, not name.
   const isAcademicSubject = (subjectName: string): boolean => {
     if (subjectMode === 'preloaded') {
       const presetAcademic = CATEGORIES.flatMap(c => c.subjects).some(s => s.name === subjectName);
       const integrated = INTEGRATED_SUBJECTS.some(s => s.name === subjectName);
-      const userAddedAcademic = userAddedSubjects.some(s =>
-        s.name === subjectName && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')
-      );
+      const userAddedAcademic = userAddedSubjects.some(s => s.name === subjectName && !isSGTRecord(s));
       return presetAcademic || integrated || userAddedAcademic;
     } else {
-      return customSubjects.some(s =>
-        s.name === subjectName && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')
-      );
+      return customSubjects.some(s => s.name === subjectName && !isSGTRecord(s));
     }
   };
 
@@ -504,6 +523,8 @@ export default function AddNew() {
     return allSGTs.some(s => s.name.toLowerCase() === name);
   };
 
+  /* Rename only rewrites the timetable. Totals stay keyed by the ORIGINAL
+     preset name (never renamed), so planned values can no longer be lost/zeroed. */
   const renamePresetAcademicSubject = (oldName: string, newName: string) => {
     const tt = timetableRef.current;
     for (let day = 0; day < 7; day++) {
@@ -514,15 +535,6 @@ export default function AddNew() {
           const newSubjects = slot.subjects.map(s => s === oldName ? newName : s);
           updatePresetTimetableSlot(day, i, slot.time, newSubjects, day);
         }
-      }
-    }
-    const totals = { ...presetSubjectTotals };
-    if (totals[oldName] !== undefined) {
-      totals[newName] = totals[oldName];
-      delete totals[oldName];
-      if (totals[newName] !== undefined) {
-        updatePresetSubjectTotal(newName, totals[newName]);
-        updatePresetSubjectTotal(oldName, 0);
       }
     }
   };
@@ -541,50 +553,54 @@ export default function AddNew() {
     }
     return total;
   };
+
   const computedPlanned = useMemo(() => computeSGTPlanned(), [sgtStartDate, sgtEndDate, sgtRows]);
 
+  /* Only update the SGTs that were actually migrated */
   useEffect(() => {
     const migrateSGTs = () => {
       let changed = false;
+      const migratedIds = new Set<string>();
       const nextUA = userAddedSubjects.map(s => {
         if (s.parentName === 'Small Group Teaching' && !(s as any).clinicalSubject) {
           const derived = s.name.replace(/\s*SGT\s*$/i, '').trim() || s.name;
           changed = true;
+          migratedIds.add(s.id);
           return { ...s, clinicalSubject: derived };
         }
         return s;
       });
+
       if (changed) {
         nextUA.forEach(s => {
-          if (s.id && (s as any).clinicalSubject) {
+          if (migratedIds.has(s.id) && (s as any).clinicalSubject) {
             updateUserAddedSubject(s.id, { clinicalSubject: (s as any).clinicalSubject } as any);
           }
         });
         showToast('Migrated existing SGT subjects to new structure.', 'info');
       }
     };
+
     migrateSGTs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Academic subjects for Add Slot dropdown
   const academicAddSlotSubjects = useMemo(() => {
     const set = new Set<string>();
     if (subjectMode === 'preloaded') {
       CATEGORIES.forEach(c => c.subjects.forEach(s => set.add(s.name)));
       INTEGRATED_SUBJECTS.forEach(s => set.add(s.name));
       userAddedSubjects
-        .filter(s => !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'))
+        .filter(s => !isSGTRecord(s))
         .forEach(s => set.add(s.name));
     } else {
       customSubjects
-        .filter(s => !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'))
+        .filter(s => !isSGTRecord(s))
         .forEach(s => set.add(s.name));
     }
     return Array.from(set).sort();
   }, [subjectMode, userAddedSubjects, customSubjects]);
 
-  // History persistence
   const HISTORY_KEY = 'att_manage_history';
   useEffect(() => {
     try {
@@ -614,6 +630,7 @@ export default function AddNew() {
     setAddSlotOpen(true);
   };
 
+  /* Add Slot also syncs the user-added subject's stored schedules */
   const saveAddSlot = () => {
     if (!addSlotSubject) {
       setFormError('Select a subject.');
@@ -625,9 +642,7 @@ export default function AddNew() {
       setFormError(`Time overlaps with ${conflicts.map(c => c.subjects.join(', ')).join('; ')}.`);
       return;
     }
-
     recordHistory('Add Slot', { subject: addSlotSubject, day: selDay, time });
-
     if (subjectMode === 'preloaded') {
       const tt = timetableRef.current;
       const existingIdx = (tt[selDay] || []).findIndex(s => canonicalizeTimeRange(s.time) === time);
@@ -637,6 +652,17 @@ export default function AddNew() {
         updatePresetTimetableSlot(selDay, existingIdx, existing.time, merged, selDay);
       } else {
         addSubjectToSlot(selDay, time, addSlotSubject);
+      }
+
+      const ua = userAddedSubjects.find(u => u.name === addSlotSubject && !isSGTRecord(u));
+      if (ua) {
+        const { start, end } = splitRange(time);
+        const existingSchedules = ua.schedules || [];
+        const alreadyExists = existingSchedules.some(s => s.day === DAY_ABBRS[selDay] && s.start === start && s.end === end);
+        if (!alreadyExists) {
+          const updated = [...existingSchedules, { day: DAY_ABBRS[selDay], start, end }];
+          updateUserAddedSubject(ua.id, { schedules: updated, days: updated.map(s => s.day).join(', ') } as any);
+        }
       }
     } else {
       const target = customSubjects.find(s => s.name === addSlotSubject);
@@ -655,7 +681,6 @@ export default function AddNew() {
     showToast('Slot added.');
   };
 
-  // ── Academic functions ──
   const addSubjectRow = () => {
     if (subjectRows.length >= 7) { setFormError('Maximum 7 day & time rows.'); return; }
     setSubjectRows(prev => [...prev, newRow(prev.map(r => r.day))]);
@@ -689,6 +714,7 @@ export default function AddNew() {
     setSubjectName(''); setPlanned(''); setSubjectRows([newRow([])]); setChildStart(''); setChildEnd('');
   };
 
+  /* Records Add Subject */
   const commitSubjects = (items: any[]) => {
     try {
       if (subjectMode === 'preloaded') {
@@ -710,6 +736,12 @@ export default function AddNew() {
           startDate: it.startDate, endDate: it.endDate, clinicalSubject: it.clinicalSubject,
         })));
       }
+
+      const academicItems = items.filter((i: any) => i.subjectType !== 'allied-parent');
+      if (academicItems.length > 0) {
+        recordHistory('Add Subject', { names: academicItems.map((i: any) => i.name) });
+      }
+
       setSubjectName(''); setPlanned(''); setSubjectRows([newRow([])]); setStagedChildren([]); setNewParentName(''); setChildStart(''); setChildEnd('');
       setFormError(null);
       showToast(items.length > 1 ? `${items.length} items added.` : 'Added successfully.');
@@ -802,7 +834,6 @@ export default function AddNew() {
     }
   };
 
-  // ── Clinical functions ──
   const addSgtRow = () => {
     if (sgtRows.length >= 7) { setFormError('Maximum 7 day & time rows.'); return; }
     setSgtRows(prev => [...prev, newRow(prev.map(r => r.day))]);
@@ -810,10 +841,12 @@ export default function AddNew() {
   const updateSgtRow = (id: string, patch: Partial<ScheduleRow>) => setSgtRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
   const removeSgtRow = (id: string) => setSgtRows(prev => prev.filter(r => r.id !== id));
 
+  /* Records Add Rotation */
   const commitWard = (name: string, start: string, end: string, morningTime: string, eveningTime: string) => {
     try {
       if (subjectMode === 'preloaded') addPresetWardEntry({ start, end, ward: name, morningTime, eveningTime, addedByUser: true });
       else addCustomWard({ name, startDate: start, endDate: end, morningTime, eveningTime });
+      recordHistory('Add Rotation', { name, start, end });
       setWardName(''); setWardStart(''); setWardEnd('');
       setFormError(null);
       showToast('Rotation added.');
@@ -861,8 +894,17 @@ export default function AddNew() {
       const rp = rowProblem(sgtRows);
       if (rp) { setFormError(rp); return; }
       const rows = buildRowsFromForm(sgtRows);
+
+      /* One SGT per clinical subject */
+      const existingSGTForSubject = (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects)
+        .find(s => isSGTRecord(s) && (s as any).clinicalSubject === clinicalSubjectName);
+      if (existingSGTForSubject) {
+        setFormError(`"${clinicalSubjectName}" already has an SGT ("${existingSGTForSubject.name}"). Each clinical subject can only have one SGT.`);
+        return;
+      }
+
       const existingSGTNames = (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects)
-        .filter(s => s.parentName === 'Small Group Teaching')
+        .filter(s => isSGTRecord(s))
         .map(s => s.name.toLowerCase());
       if (existingSGTNames.includes(finalSgtName.toLowerCase())) {
         setFormError(`An SGT subject named "${finalSgtName}" already exists.`);
@@ -890,6 +932,7 @@ export default function AddNew() {
       } else {
         addCustomSubjects([newSubject as any]);
       }
+      recordHistory('Add SGT', { name: finalSgtName, clinicalSubject: clinicalSubjectName, planned: pc });
       setSgtClinicalSubject('');
       setSgtName('');
       setSgtStartDate('');
@@ -901,7 +944,6 @@ export default function AddNew() {
     }
   };
 
-  // ── Edit Slot functions ──
   const openEditSlot = (day: number, index: number) => {
     const slot = presetTimetable[day]?.[index];
     if (!slot || !slot.subjects || slot.subjects.length === 0) {
@@ -957,8 +999,11 @@ export default function AddNew() {
     setSlotMovePlanned(prev => ({ ...prev, [id]: value }));
   };
 
+  /* Type-guarded lookup (never resolves to an SGT) */
   const updateSubjectSchedule = (name: string, oldDay: number, newDay: number, oldStart: string, oldEnd: string, newStart: string, newEnd: string) => {
-    const ua = userAddedSubjects.find(u => u.name.toLowerCase() === name.toLowerCase());
+    const ua = userAddedSubjects.find(u =>
+      u.name.toLowerCase() === name.toLowerCase() && !isSGTRecord(u)
+    );
     if (!ua) return;
     const existing = ua.schedules || [];
     let filtered = existing;
@@ -1027,6 +1072,7 @@ export default function AddNew() {
         addSubjectToSlot(targetDay, time, name);
       });
     }
+
     const plannedUpdates = targetIds.map(id => {
       const sub = editSlot.subjects.find(s => s.id === id);
       if (sub) {
@@ -1034,18 +1080,27 @@ export default function AddNew() {
         return { name: sub.name, planned: newPlanned };
       }
       return null;
-    }).filter(Boolean);
+    }).filter(Boolean) as Array<{ name: string; planned: number }>;
+
+    /*  Type-guarded + only save when actually changed */
     plannedUpdates.forEach(({ name, planned }) => {
-      const ua = userAddedSubjects.find(u => u.name === name);
+      const ua = userAddedSubjects.find(u => u.name === name && !isSGTRecord(u));
       if (ua) {
-        updateUserAddedSubject(ua.id, { plannedClasses: planned } as any);
+        if (ua.plannedClasses !== planned) {
+          updateUserAddedSubject(ua.id, { plannedClasses: planned } as any);
+        }
       } else {
-        updatePresetSubjectTotal(name, planned);
+        const key = resolvePresetOriginalName(name);
+        if (getSubjectPlannedTotal(key) !== planned) {
+          updatePresetSubjectTotal(key, planned);
+        }
       }
     });
+
     names.forEach(name => {
       updateSubjectSchedule(name, currentDay, targetDay, oldStart, oldEnd, slotMoveStart, slotMoveEnd);
     });
+
     const remaining = editSlot.subjects.filter(s => !targetIds.includes(s.id));
     if (remaining.length === 0) {
       setEditSlot(null);
@@ -1061,6 +1116,7 @@ export default function AddNew() {
     showToast(`Moved ${names.length} subject(s).`);
   };
 
+  /* Type-guarded lookup */
   const confirmSlotRemove = () => {
     if (!slotRemove) return;
     try {
@@ -1072,7 +1128,9 @@ export default function AddNew() {
         } else {
           updatePresetTimetableSlot(slotRemove.day, slotRemove.index, slot.time, remaining, slotRemove.day);
         }
-        const ua = userAddedSubjects.find(u => u.name.toLowerCase() === slotRemove.subject.toLowerCase());
+        const ua = userAddedSubjects.find(u =>
+          u.name.toLowerCase() === slotRemove.subject.toLowerCase() && !isSGTRecord(u)
+        );
         if (ua) {
           const existing = ua.schedules || [];
           const filtered = existing.filter(s => !(s.day === DAY_ABBRS[slotRemove.day] && s.start === slotRemove.start && s.end === slotRemove.end));
@@ -1092,7 +1150,6 @@ export default function AddNew() {
     }
   };
 
-  // ── Delete functions ──
   const requestDeleteSubject = (store: 'userAdded' | 'custom', id: string) => {
     const item = store === 'userAdded' ? userAddedSubjects.find(x => x.id === id) : customSubjects.find(x => x.id === id);
     if (!item) return;
@@ -1111,7 +1168,7 @@ export default function AddNew() {
           }
           if (store === 'userAdded') removeUserAddedSubject(id);
           else removeCustomSubject(id);
-          if (item.subjectType === 'allied' && item.parentName === 'Small Group Teaching') {
+          if (isSGTRecord(item)) {
             removeAttendanceByKey(getSGTKey(item.id));
           } else {
             for (const n of namesToPurge) removeSubjectData(n);
@@ -1160,7 +1217,6 @@ export default function AddNew() {
     }
   };
 
-  // ── Edit Subject & Edit Ward ──
   const openEditSubject = (store: 'userAdded' | 'custom', id: string) => {
     const item = store === 'userAdded' ? userAddedSubjects.find(x => x.id === id) : customSubjects.find(x => x.id === id);
     if (!item) return;
@@ -1206,7 +1262,7 @@ export default function AddNew() {
       const rp = rowProblem(editSubject.rows);
       if (rp) { setEditError(rp); return; }
     }
-    recordHistory('Edit Subject', { old: editSubject, new: { ...editSubject } });
+    recordHistory('Edit Subject', { old: { name: editSubject.originalName }, new: { name: editSubject.name } });
     try {
       if (editSubject.subjectType === 'allied-parent') {
         const patch = { name: editSubject.name };
@@ -1219,6 +1275,7 @@ export default function AddNew() {
         };
         if (editSubject.store === 'userAdded') patch.schedules = rows.map(r => ({ day: r.day, start: r.start, end: r.end }));
         else patch.schedules = rows.map(r => ({ day: r.day, time: r.time }));
+
         if (editSubject.subjectType === 'allied' && editSubject.parentName !== 'Small Group Teaching') {
           patch.parentName = editSubject.parentName;
           patch.category = editSubject.parentName;
@@ -1226,7 +1283,21 @@ export default function AddNew() {
           patch.clinicalSubject = editSubject.clinicalSubject;
           patch.parentName = 'Small Group Teaching';
           patch.category = 'Small Group Teaching';
+
+          /* Auto-rename SGT when its clinical subject changes
+             (only if it was named after the old subject and the name is untouched) */
+          const originalItem = editSubject.store === 'userAdded'
+            ? userAddedSubjects.find(x => x.id === editSubject.id)
+            : customSubjects.find(x => x.id === editSubject.id);
+          const oldClinical = (originalItem as any)?.clinicalSubject || '';
+          const nameWasSubjectName = editSubject.originalName.toLowerCase() === oldClinical.toLowerCase();
+          const subjectChanged = editSubject.clinicalSubject !== oldClinical;
+          const nameUntouched = editSubject.name === editSubject.originalName;
+          if (nameWasSubjectName && subjectChanged && nameUntouched) {
+            patch.name = editSubject.clinicalSubject;
+          }
         }
+
         if (editSubject.subjectType === 'allied' && PRESET_PARENTS.includes(editSubject.parentName)) {
           patch.startDate = editSubject.startDate;
           patch.endDate = editSubject.endDate;
@@ -1244,12 +1315,20 @@ export default function AddNew() {
     } catch { showToast('Failed to save changes — please try again.', 'err'); }
   };
 
+  /* Date-conflict check when editing a rotation */
   const saveEditWard = () => {
     if (!editWard) return;
     if (!editWard.name.trim()) { setEditError('Ward name cannot be empty.'); return; }
     if (!editWard.startDate || !editWard.endDate) { setEditError('Pick start and end dates.'); return; }
     if (editWard.endDate < editWard.startDate) { setEditError('End date must be after start date.'); return; }
-    recordHistory('Edit Ward', { old: editWard, new: { ...editWard } });
+
+    const dateConflicts = findWardDateConflicts(editWard.startDate, editWard.endDate, editWard.originalName);
+    if (dateConflicts.length > 0) {
+      setEditError(`Dates overlap with: ${dateConflicts.map(c => `"${c.ward}"`).join(', ')}. Please adjust.`);
+      return;
+    }
+
+    recordHistory('Edit Ward', { old: { name: editWard.originalName }, new: { name: editWard.name } });
     try {
       const morningTime = canonicalTimeRange(editWard.mornStart, editWard.mornEnd);
       const eveningTime = canonicalTimeRange(editWard.eveStart, editWard.eveEnd);
@@ -1262,7 +1341,6 @@ export default function AddNew() {
     } catch { showToast('Failed to save rotation — please try again.', 'err'); }
   };
 
-  // ── Subject Triage ──
   const openOpd = () => {
     setOpdRename({});
     setOpdEditing({});
@@ -1274,17 +1352,21 @@ export default function AddNew() {
   const toggleOpdEdit = (id: string) => setOpdEditing(prev => ({ ...prev, [id]: !prev[id] }));
   const updateOpdRename = (id: string, value: string) => setOpdRename(prev => ({ ...prev, [id]: value }));
 
+  /* Preset cards pass id = ORIGINAL preset name, so chained renames resolve */
   const saveOpdRename = (id: string, store: 'userAdded' | 'custom', currentName: string) => {
     const newName = opdRename[id]?.trim() || currentName;
     if (newName === currentName) { toggleOpdEdit(id); return; }
-    const isPresetAcademic = CATEGORIES.flatMap(c => c.subjects).some(s => s.name === currentName) ||
-                             INTEGRATED_SUBJECTS.some(s => s.name === currentName);
-    const isPresetClinical = WARD_SUBJECTS.some(s => s.name === currentName);
+
+    const isPresetAcademic = CATEGORIES.flatMap(c => c.subjects).some(s => s.name === id) ||
+      INTEGRATED_SUBJECTS.some(s => s.name === id);
+    const isPresetClinical = WARD_SUBJECTS.some(s => s.name === id);
+
     recordHistory('Rename', { old: currentName, new: newName, type: isPresetAcademic ? 'preset-academic' : isPresetClinical ? 'preset-clinical' : 'subject' });
+
     if (isPresetAcademic) {
       renameSubjectData(currentName, newName);
       renamePresetAcademicSubject(currentName, newName);
-      setPresetSubjectRename(currentName, newName);
+      setPresetSubjectRename(id, newName); /* key the rename map by ORIGINAL name */
       showToast(`Renamed to "${newName}".`);
       toggleOpdEdit(id);
       return;
@@ -1297,7 +1379,7 @@ export default function AddNew() {
       return;
     }
     const target = store === 'userAdded' ? userAddedSubjects.find(s => s.id === id) : customSubjects.find(s => s.id === id);
-    if (target?.subjectType === 'allied' && target.parentName === 'Small Group Teaching') {
+    if (target && isSGTRecord(target)) {
       if (store === 'userAdded') updateUserAddedSubject(id, { name: newName }); else updateCustomSubject(id, { name: newName });
       showToast(`Renamed to "${newName}".`);
       toggleOpdEdit(id);
@@ -1311,16 +1393,16 @@ export default function AddNew() {
     toggleOpdEdit(id);
   };
 
-  const saveOpdParent = (id: string, store: 'userAdded' | 'custom', newParent: string) => {
-    recordHistory('Change Parent', { id, store, newParent });
-    const moves = [{ id, store, newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
-    bulkUpdateSubjectHierarchy(moves);
-    const item = store === 'userAdded' ? userAddedSubjects.find(s => s.id === id) : customSubjects.find(s => s.id === id);
-    if (item && item.parentName === 'Small Group Teaching' && newParent !== SINGLE_DEST) {
-      const patch = { clinicalSubject: newParent };
-      if (store === 'userAdded') updateUserAddedSubject(id, patch as any); else updateCustomSubject(id, patch as any);
+  /* SGT reassignment = direct update, never bulkUpdateSubjectHierarchy */
+  const handleSGTParentChange = (s: any, store: 'userAdded' | 'custom', newParent: string) => {
+    const updates: any = { clinicalSubject: newParent };
+    if (s.name.toLowerCase() === ((s as any).clinicalSubject || '').toLowerCase()) {
+      updates.name = newParent;
     }
-    showToast('Parent updated.');
+    if (store === 'userAdded') updateUserAddedSubject(s.id, updates);
+    else updateCustomSubject(s.id, updates);
+    recordHistory('Change Clinical Subject', { name: s.name, from: (s as any).clinicalSubject, to: newParent });
+    showToast('Clinical subject updated.');
   };
 
   const deleteOpdSubject = (id: string, store: 'userAdded' | 'custom', name: string) => {
@@ -1331,7 +1413,7 @@ export default function AddNew() {
         recordHistory('Delete Subject', { name, store, id });
         const target = store === 'userAdded' ? userAddedSubjects.find(s => s.id === id) : customSubjects.find(s => s.id === id);
         if (store === 'userAdded') removeUserAddedSubject(id); else removeCustomSubject(id);
-        if (target?.subjectType === 'allied' && target.parentName === 'Small Group Teaching') removeAttendanceByKey(getSGTKey(id));
+        if (target && isSGTRecord(target)) removeAttendanceByKey(getSGTKey(id));
         else removeSubjectData(name);
         setDeleteSheet(null);
         showToast(`Deleted "${name}".`);
@@ -1352,8 +1434,7 @@ export default function AddNew() {
       },
     });
   };
-  
-// ── Import/Export ──
+
   const bundleJson = () => {
     const added = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
     const bundle = {
@@ -1447,17 +1528,19 @@ export default function AddNew() {
     return { ok: true, bundle: b };
   };
 
+  /* Domain-aware duplicate validation */
   const buildReport = (b: ImportBundle): ImportReport => {
     const subjectsSkip: string[] = [];
     let subjectsAdd = 0;
     for (const s of b.addedSubjects || []) {
-      if (isSubjectNameTaken(s.name)) { subjectsSkip.push(`${s.name} (duplicate name)`); continue; }
+      const domain = s.parentCategory === 'Small Group Teaching' ? 'clinical' as const : 'academic' as const;
+      if (isSubjectNameTaken(s.name, undefined, domain)) { subjectsSkip.push(`${s.name} (duplicate name)`); continue; }
       const rows = (s.schedules || []).map(sch => {
         const st = to12h(sch.start || '09:00');
         const en = to12h(sch.end || '10:00');
         return { day: sch.day, time: canonicalTimeRange(st, en) };
       });
-      const overlaps = rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined).some(c => !c.exact));
+      const overlaps = rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined, domain).some(c => !c.exact));
       if (overlaps) { subjectsSkip.push(`${s.name} (time overlap)`); continue; }
       subjectsAdd++;
     }
@@ -1491,20 +1574,22 @@ export default function AddNew() {
     showToast('Bundle valid — review the preview.', 'info');
   };
 
+  /* FIX #8 + #16 */
   const applyMerge = () => {
     if (!preview) return;
     try {
       const b = preview.bundle;
       const items: any[] = [];
       for (const s of b.addedSubjects || []) {
-        if (isSubjectNameTaken(s.name)) continue;
+        const domain = s.parentCategory === 'Small Group Teaching' ? 'clinical' as const : 'academic' as const;
+        if (isSubjectNameTaken(s.name, undefined, domain)) continue;
         const rows = (s.schedules || []).map(sch => {
           const st = to12h(sch.start || '09:00');
           const en = to12h(sch.end || '10:00');
           return { day: sch.day, time: canonicalTimeRange(st, en), start: st, end: en };
         });
         if (!rows.length) rows.push({ day: 'Mon', time: canonicalTimeRange('09:00 AM', '10:00 AM'), start: '09:00 AM', end: '10:00 AM' });
-        const overlaps = rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined).some(c => !c.exact));
+        const overlaps = rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined, domain).some(c => !c.exact));
         if (overlaps) continue;
         items.push({
           name: s.name,
@@ -1540,6 +1625,7 @@ export default function AddNew() {
         rotationsAdded++;
       }
       if (items.length) commitSubjects(items);
+      recordHistory('Import Merge', { subjects: items.length, rotations: wardsAdded + rotationsAdded });
       setPreview(null);
       const total = items.length + wardsAdded + rotationsAdded;
       if (total === 0) showToast('Nothing new to merge (duplicates or preset-only data). Use Replace to adopt the bundle.', 'info');
@@ -1550,6 +1636,7 @@ export default function AddNew() {
   const applyReplace = () => {
     if (!preview) return;
     const b = preview.bundle;
+    recordHistory('Import Replace', { mode: b.subjectMode });
     import('@/utils/snapshotUtils')
       .then(({ snapshotBeforeEdit }) => {
         snapshotBeforeEdit('Replace Routine Import');
@@ -1619,7 +1706,6 @@ export default function AddNew() {
       .catch(() => showToast('Replace failed — could not load storage utils.', 'err'));
   };
 
-  // ── Render helpers ──
   const renderRowList = (
     rows: ScheduleRow[],
     onUpdate: (id: string, patch: Partial<ScheduleRow>) => void,
@@ -1652,7 +1738,6 @@ export default function AddNew() {
   return (
     <Layout>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pb-24">
-        {/* Header with History button */}
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-extrabold text-foreground leading-tight">Manage Subjects & Rotations</h1>
           <button
@@ -1664,6 +1749,7 @@ export default function AddNew() {
             <SendToBack className="w-5 h-5" />
           </button>
         </div>
+
         <div className="grid grid-cols-2 gap-2">
           <button type="button" onClick={() => setExportOpen(true)} className="h-10 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-emerald-500/20 transition-all cursor-pointer">
             <Upload className="w-3.5 h-3.5" /> Export
@@ -1679,7 +1765,6 @@ export default function AddNew() {
           </button>
         </div>
 
-        {/* ── Section toggle ── */}
         <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-3.5">
           <div className="h-10 rounded-lg p-1 bg-muted/30 flex gap-1">
             <button type="button" onClick={() => setSection('academic')}
@@ -1694,7 +1779,6 @@ export default function AddNew() {
             </button>
           </div>
 
-          {/* ── Academic Section ── */}
           {section === 'academic' && (
             <div className="space-y-3">
               <div className="bg-background/60 border border-border/50 rounded-xl p-1 flex justify-between gap-1">
@@ -1726,9 +1810,10 @@ export default function AddNew() {
                         {displayNames.join(', ')}
                       </p>
                       <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                        {academicSubjects.map((s, index) => `${displayNames[index]}: ${getSubjectPlannedTotal(s)} planned`).join(' · ')}
+                        {academicSubjects.map((s, index) => `${displayNames[index]}: ${getSubjectPlannedTotal(resolvePresetOriginalName(s))} planned`).join(' · ')}
                       </p>
-                      {academicSubjects.some(s => isUserAddedName(s)) && <div className="mt-1"><AddedBadge /></div>}
+                      {/* Badge only for non-SGT user-added subjects */}
+                      {academicSubjects.some(s => userAddedSubjects.some(u => u.name === s && !isSGTRecord(u))) && <div className="mt-1"><AddedBadge /></div>}
                     </div>
                     <button
                       type="button"
@@ -1758,7 +1843,6 @@ export default function AddNew() {
                     </div>
                   ));
                 })}
-              {/* Add Slot button below last slot */}
               <button
                 type="button"
                 onClick={openAddSlot}
@@ -1770,7 +1854,6 @@ export default function AddNew() {
             </div>
           )}
 
-          {/* ── Clinical Section ── */}
           {section === 'clinical' && (
             <div className="space-y-3">
               <div className="space-y-2">
@@ -1796,16 +1879,16 @@ export default function AddNew() {
                         setMoreOpen(true);
                       }}
                       onEditRotation={() => {
-                        if (group.rotation.store === 'preset') openEditWardPreset(group.rotation.index!);
-                        else openEditWardCustom(group.rotation.id!);
+                        if (group.rotation!.store === 'preset') openEditWardPreset(group.rotation!.index!);
+                        else openEditWardCustom(group.rotation!.id!);
                       }}
                       onEditSGT={() => {
                         const store = getSGTStore(group.sgt);
                         openEditSubject(store, group.sgt!.id);
                       }}
                       onDeleteRotation={() => {
-                        if (group.rotation.store === 'preset') requestDeleteWard('preset', group.rotation.index!);
-                        else requestDeleteWard('custom', group.rotation.id!);
+                        if (group.rotation!.store === 'preset') requestDeleteWard('preset', group.rotation!.index!);
+                        else requestDeleteWard('custom', group.rotation!.id!);
                       }}
                       onDeleteSGT={() => {
                         const store = getSGTStore(group.sgt);
@@ -1822,7 +1905,7 @@ export default function AddNew() {
           )}
         </section>
 
-{/* ── More Modal ── */}
+        {/* ── More Modal ── */}
         <OverlayModal open={moreOpen} onClose={() => { setMoreOpen(false); setFormError(null); }} maxW="max-w-lg">
           <div className="p-4 sm:p-5 space-y-3.5">
             <div className="flex items-center justify-between">
@@ -1836,7 +1919,6 @@ export default function AddNew() {
             </p>
             <Note note={note} />
             {formError && <p className={inlineErrCls}>{formError}</p>}
-
             {section === 'academic' ? (
               <>
                 <div>
@@ -1971,7 +2053,6 @@ export default function AddNew() {
                     </button>
                   </div>
                 </div>
-
                 {clinicalParentChoice === 'rotation' ? (
                   <>
                     <div>
@@ -2125,11 +2206,14 @@ export default function AddNew() {
                 <p className="text-xs text-muted-foreground text-center py-5">No Manage actions yet.</p>
               ) : (
                 historyEntries.map(entry => (
-                  <div key={entry.id} className="flex items-center justify-between bg-background border border-border/60 rounded-xl p-2.5">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-foreground truncate">{entry.type}</p>
+                  <div key={entry.id} className="bg-background border border-border/60 rounded-xl p-2.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-foreground">{entry.type}</p>
                       <p className="text-[10px] text-muted-foreground">{new Date(entry.timestamp).toLocaleString()}</p>
                     </div>
+                    {formatHistoryDetail(entry) && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{formatHistoryDetail(entry)}</p>
+                    )}
                   </div>
                 ))
               )}
@@ -2137,7 +2221,7 @@ export default function AddNew() {
           </div>
         </OverlayModal>
 
-{/* ── Edit Subject Modal ── */}
+        {/* ── Edit Subject Modal ── */}
         <OverlayModal open={!!editSubject} onClose={() => { setEditSubject(null); setEditError(null); }} maxW="max-w-lg">
           {editSubject && (
             <div className="p-4 sm:p-5 space-y-3.5">
@@ -2243,7 +2327,7 @@ export default function AddNew() {
           )}
         </OverlayModal>
 
-        {/* ── Edit Slot Modal ── */}
+        {/* ── Edit Slot Modal (E2: shows current position) ── */}
         <OverlayModal open={!!editSlot} onClose={closeEditSlot} maxW="max-w-lg">
           {editSlot && (
             <div className="p-4 sm:p-5 space-y-3.5">
@@ -2316,7 +2400,6 @@ export default function AddNew() {
                           <label className="text-[10px] font-medium text-muted-foreground">Select All</label>
                         </div>
                       </div>
-
                       {showMoveForm && selectedSubjects.length > 0 && (
                         <div className="border-t border-border/40 pt-3 mt-3 space-y-2">
                           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Move selected subjects</p>
@@ -2343,31 +2426,19 @@ export default function AddNew() {
                               </div>
                             );
                           })}
-                          {slotConflict ? (
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2 text-amber-500">
-                                <AlertTriangle className="w-4 h-4 shrink-0" />
-                                <p className="text-xs font-bold">Conflict detected:</p>
-                              </div>
-                              {slotConflict.messages.map((m, i) => (
-                                <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                              ))}
-                              <div className="flex gap-2">
-                                <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                                <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex gap-2 justify-end pt-2">
-                              <button type="button" onClick={() => { setShowMoveForm(false); setSelectedSubjects([]); setEditError(null); setSlotConflict(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-                              <button type="button" onClick={doMoveSubjects} className={cn(btnPrimary, 'flex-1')}>Move Selected</button>
-                            </div>
-                          )}
+                          <div className="flex gap-2 justify-end pt-2">
+                            <button type="button" onClick={() => { setShowMoveForm(false); setSelectedSubjects([]); setEditError(null); setSlotConflict(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
+                            <button type="button" onClick={doMoveSubjects} className={cn(btnPrimary, 'flex-1')}>Move Selected</button>
+                          </div>
                         </div>
                       )}
                     </>
                   ) : (
                     <>
+                      {/* E2: current position reference */}
+                      <p className="text-[10px] text-muted-foreground bg-muted/20 rounded-lg px-3 py-1.5">
+                        Currently: <span className="font-semibold text-foreground">{DAY_ABBRS[editSlot.day]} {canonicalTimeRange(editSlot.startTime, editSlot.endTime)}</span>
+                      </p>
                       <div>
                         <label className={labelCls}>Target Day</label>
                         <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
@@ -2390,31 +2461,15 @@ export default function AddNew() {
                           </div>
                         </div>
                       </div>
-                      {slotConflict ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-amber-500">
-                            <AlertTriangle className="w-4 h-4 shrink-0" />
-                            <p className="text-xs font-bold">Conflict detected:</p>
-                          </div>
-                          {slotConflict.messages.map((m, i) => (
-                            <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
-                          ))}
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                            <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex gap-2 justify-end">
-                          <button type="button" onClick={closeEditSlot} className={btnGhost}>Cancel</button>
-                          <button type="button" onClick={() => {
-                            if (editSlot) {
-                              const onlyId = editSlot.subjects[0].id;
-                              doMoveSubjects([onlyId]);  // Now uses conflict detection
-                            }
-                          }} className={btnPrimary}>Apply</button>
-                        </div>
-                      )}
+                      <div className="flex gap-2 justify-end">
+                        <button type="button" onClick={closeEditSlot} className={btnGhost}>Cancel</button>
+                        <button type="button" onClick={() => {
+                          if (editSlot) {
+                            const onlyId = editSlot.subjects[0].id;
+                            doMoveSubjects([onlyId]);
+                          }
+                        }} className={btnPrimary}>Apply</button>
+                      </div>
                     </>
                   )}
                 </>
@@ -2453,66 +2508,32 @@ export default function AddNew() {
               <button type="button" onClick={() => setOpdOpen(false)} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
             <Note note={note} />
-
-            {/* Top level: Preset / Added buttons - full width with flex-1 */}
             <div className="flex gap-2 w-full">
               {subjectMode === 'preloaded' && (
-                <button
-                  type="button"
-                  onClick={() => setTriageTop('preset')}
-                  className={cn(
-                    'flex-1 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border',
-                    triageTop === 'preset'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-foreground border-border hover:bg-muted/40'
-                  )}
-                >
+                <button type="button" onClick={() => setTriageTop('preset')}
+                  className={cn('flex-1 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border',
+                    triageTop === 'preset' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted/40')}>
                   Preset
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setTriageTop('added')}
-                className={cn(
-                  'flex-1 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border',
-                  triageTop === 'added'
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-background text-foreground border-border hover:bg-muted/40'
-                )}
-              >
+              <button type="button" onClick={() => setTriageTop('added')}
+                className={cn('flex-1 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border',
+                  triageTop === 'added' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted/40')}>
                 {subjectMode === 'preloaded' ? 'Added' : 'Custom'}
               </button>
             </div>
-
-            {/* Secondary dropdown: Academic / Clinical (full width, lighter) */}
             <div className="flex gap-2 w-full">
-              <button
-                type="button"
-                onClick={() => setTriageSub('academic')}
-                className={cn(
-                  'flex-1 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer border',
-                  triageSub === 'academic'
-                    ? 'bg-primary/10 text-primary border-primary/30'
-                    : 'bg-muted/5 text-muted-foreground border-border hover:bg-muted/10'
-                )}
-              >
+              <button type="button" onClick={() => setTriageSub('academic')}
+                className={cn('flex-1 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer border',
+                  triageSub === 'academic' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-muted/5 text-muted-foreground border-border hover:bg-muted/10')}>
                 Academic
               </button>
-              <button
-                type="button"
-                onClick={() => setTriageSub('clinical')}
-                className={cn(
-                  'flex-1 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer border',
-                  triageSub === 'clinical'
-                    ? 'bg-primary/10 text-primary border-primary/30'
-                    : 'bg-muted/5 text-muted-foreground border-border hover:bg-muted/10'
-                )}
-              >
+              <button type="button" onClick={() => setTriageSub('clinical')}
+                className={cn('flex-1 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer border',
+                  triageSub === 'clinical' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-muted/5 text-muted-foreground border-border hover:bg-muted/10')}>
                 Clinical
               </button>
             </div>
-
-            {/* Subject list based on selection – with fixed height */}
             <div className="space-y-1 h-[50vh] overflow-y-auto pr-1">
               {triageTop === 'preset' && subjectMode === 'preloaded' && (
                 <>
@@ -2581,7 +2602,8 @@ export default function AddNew() {
                           saveRename={saveOpdRename}
                         />
                       ))}
-                      {userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
+                      {/* SGT reassignment via direct update */}
+                      {userAddedSubjects.filter(s => isSGTRecord(s)).map(s => (
                         <SubjectTriageCard
                           key={s.id}
                           name={s.name}
@@ -2599,29 +2621,19 @@ export default function AddNew() {
                           toggleEdit={toggleOpdEdit}
                           updateRename={updateOpdRename}
                           saveRename={saveOpdRename}
-                          onParentChange={(newParent) => {
-                            const moves = [{ id: s.id, store: 'userAdded', newSubjectType: 'allied', newParentName: newParent }];
-                            bulkUpdateSubjectHierarchy(moves);
-                            const updates: any = { clinicalSubject: newParent };
-                            if (s.name.toLowerCase() === (s as any).clinicalSubject?.toLowerCase()) {
-                              updates.name = newParent;
-                            }
-                            updateUserAddedSubject(s.id, updates);
-                            showToast('Clinical subject updated.');
-                          }}
+                          onParentChange={(newParent: string) => handleSGTParentChange(s, 'userAdded', newParent)}
                         />
                       ))}
                     </>
                   )}
                 </>
               )}
-
               {triageTop === 'added' && (
                 <>
                   {triageSub === 'academic' ? (
                     <>
                       {subjectMode === 'preloaded' ? (
-                        userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (
+                        userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !isSGTRecord(s)).map(s => (
                           <SubjectTriageCard
                             key={s.id}
                             name={s.name}
@@ -2639,15 +2651,16 @@ export default function AddNew() {
                             toggleEdit={toggleOpdEdit}
                             updateRename={updateOpdRename}
                             saveRename={saveOpdRename}
-                            onParentChange={(newParent) => {
-                              const moves = [{ id: s.id, store: 'userAdded', newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
+                            onParentChange={(newParent: string) => {
+                              const moves = [{ id: s.id, store: 'userAdded' as const, newSubjectType: (newParent === SINGLE_DEST ? 'single' : 'allied') as any, newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
                               bulkUpdateSubjectHierarchy(moves);
+                              recordHistory('Change Parent', { id: s.id, store: 'userAdded', newParent });
                               showToast('Parent updated.');
                             }}
                           />
                         ))
                       ) : (
-                        customSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).map(s => (
+                        customSubjects.filter(s => s.subjectType !== 'allied-parent' && !isSGTRecord(s)).map(s => (
                           <SubjectTriageCard
                             key={s.id}
                             name={s.name}
@@ -2665,9 +2678,10 @@ export default function AddNew() {
                             toggleEdit={toggleOpdEdit}
                             updateRename={updateOpdRename}
                             saveRename={saveOpdRename}
-                            onParentChange={(newParent) => {
-                              const moves = [{ id: s.id, store: 'custom', newSubjectType: newParent === SINGLE_DEST ? 'single' : 'allied', newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
+                            onParentChange={(newParent: string) => {
+                              const moves = [{ id: s.id, store: 'custom' as const, newSubjectType: (newParent === SINGLE_DEST ? 'single' : 'allied') as any, newParentName: newParent === SINGLE_DEST ? undefined : newParent }];
                               bulkUpdateSubjectHierarchy(moves);
+                              recordHistory('Change Parent', { id: s.id, store: 'custom', newParent });
                               showToast('Parent updated.');
                             }}
                           />
@@ -2698,7 +2712,7 @@ export default function AddNew() {
                               saveRename={saveOpdRename}
                             />
                           ))}
-                          {userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
+                          {userAddedSubjects.filter(s => isSGTRecord(s)).map(s => (
                             <SubjectTriageCard
                               key={s.id}
                               name={s.name}
@@ -2716,16 +2730,7 @@ export default function AddNew() {
                               toggleEdit={toggleOpdEdit}
                               updateRename={updateOpdRename}
                               saveRename={saveOpdRename}
-                              onParentChange={(newParent) => {
-                                const moves = [{ id: s.id, store: 'userAdded', newSubjectType: 'allied', newParentName: newParent }];
-                                bulkUpdateSubjectHierarchy(moves);
-                                const updates: any = { clinicalSubject: newParent };
-                                if (s.name.toLowerCase() === (s as any).clinicalSubject?.toLowerCase()) {
-                                  updates.name = newParent;
-                                }
-                                updateUserAddedSubject(s.id, updates);
-                                showToast('Clinical subject updated.');
-                              }}
+                              onParentChange={(newParent: string) => handleSGTParentChange(s, 'userAdded', newParent)}
                             />
                           ))}
                         </>
@@ -2751,7 +2756,7 @@ export default function AddNew() {
                               saveRename={saveOpdRename}
                             />
                           ))}
-                          {customSubjects.filter(s => s.parentName === 'Small Group Teaching').map(s => (
+                          {customSubjects.filter(s => isSGTRecord(s)).map(s => (
                             <SubjectTriageCard
                               key={s.id}
                               name={s.name}
@@ -2769,16 +2774,7 @@ export default function AddNew() {
                               toggleEdit={toggleOpdEdit}
                               updateRename={updateOpdRename}
                               saveRename={saveOpdRename}
-                              onParentChange={(newParent) => {
-                                const moves = [{ id: s.id, store: 'custom', newSubjectType: 'allied', newParentName: newParent }];
-                                bulkUpdateSubjectHierarchy(moves);
-                                const updates: any = { clinicalSubject: newParent };
-                                if (s.name.toLowerCase() === (s as any).clinicalSubject?.toLowerCase()) {
-                                  updates.name = newParent;
-                                }
-                                updateCustomSubject(s.id, updates);
-                                showToast('Clinical subject updated.');
-                              }}
+                              onParentChange={(newParent: string) => handleSGTParentChange(s, 'custom', newParent)}
                             />
                           ))}
                         </>
@@ -2787,18 +2783,15 @@ export default function AddNew() {
                   )}
                 </>
               )}
-
-              {/* Empty state — centered in the fixed height list area */}
               {((triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'academic' && CATEGORIES.flatMap(c => c.subjects).length === 0 && INTEGRATED_SUBJECTS.length === 0) ||
-                (triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'clinical' && WARD_SUBJECTS.length === 0 && userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0) ||
-                (triageTop === 'added' && triageSub === 'academic' && (subjectMode === 'preloaded' ? userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).length === 0 : customSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).length === 0)) ||
-                (triageTop === 'added' && triageSub === 'clinical' && (subjectMode === 'preloaded' ? customWards.length === 0 && userAddedSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0 : customWards.length === 0 && customSubjects.filter(s => s.parentName === 'Small Group Teaching').length === 0))) && (
+                (triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'clinical' && WARD_SUBJECTS.length === 0 && userAddedSubjects.filter(s => isSGTRecord(s)).length === 0) ||
+                (triageTop === 'added' && triageSub === 'academic' && (subjectMode === 'preloaded' ? userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !isSGTRecord(s)).length === 0 : customSubjects.filter(s => s.subjectType !== 'allied-parent' && !isSGTRecord(s)).length === 0)) ||
+                (triageTop === 'added' && triageSub === 'clinical' && (subjectMode === 'preloaded' ? customWards.length === 0 && userAddedSubjects.filter(s => isSGTRecord(s)).length === 0 : customWards.length === 0 && customSubjects.filter(s => isSGTRecord(s)).length === 0))) && (
                 <div className="h-full flex items-center justify-center">
                   <p className="text-xs text-muted-foreground text-center py-5">No subjects found in this section.</p>
                 </div>
               )}
             </div>
-
             <div className="flex justify-end">
               <button type="button" onClick={() => setOpdOpen(false)} className={btnPrimary}>Close</button>
             </div>
@@ -2806,7 +2799,6 @@ export default function AddNew() {
         </OverlayModal>
 
         {/* ── Delete/Conflict/Import/Export modals ── */}
-
         <OverlayModal open={!!deleteSheet} onClose={() => setDeleteSheet(null)}>
           {deleteSheet && (
             <div className="p-4 sm:p-5 space-y-3">
@@ -2829,7 +2821,6 @@ export default function AddNew() {
             </div>
           )}
         </OverlayModal>
-
         <OverlayModal open={!!conflictSheet} onClose={() => setConflictSheet(null)}>
           {conflictSheet && (
             <div className="p-4 sm:p-5 space-y-3">
@@ -2852,8 +2843,6 @@ export default function AddNew() {
             </div>
           )}
         </OverlayModal>
-
-        {/* ── Export Modal ── */}
         <OverlayModal open={exportOpen} onClose={() => setExportOpen(false)}>
           <div className="p-4 sm:p-5 space-y-2.5">
             <h3 className="text-sm font-bold text-foreground">Export Routine</h3>
@@ -2864,8 +2853,6 @@ export default function AddNew() {
             <button type="button" onClick={doCopy} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Copy className="w-4 h-4" /> Copy to Clipboard</button>
           </div>
         </OverlayModal>
-
-        {/* ── Import Modal ── */}
         <OverlayModal open={importOpen} onClose={() => { setImportOpen(false); setImportError(null); }}>
           <div className="p-4 sm:p-5 space-y-2.5">
             <h3 className="text-sm font-bold text-foreground">Import Routine</h3>
@@ -2887,45 +2874,7 @@ export default function AddNew() {
               <p className="text-[10px] text-muted-foreground font-medium mb-2">Need a routine bundle? Copy this prompt to an AI assistant:</p>
               <button
                 onClick={async () => {
-                  const prompt = `You are helping me build a routine bundle for "Attendenz Tracker". Respond with ONLY a valid JSON object matching this exact schema:
-{
-  "version": 2,
-  "subjectMode": "preloaded" | "custom",
-  "addedSubjects": [
-    {
-      "name": "string",
-      "type": "single" | "allied" | "allied-parent",
-      "parentCategory": "string" | null,
-      "planned": number,
-      "schedules": [{ "day": "Mon", "start": "HH:MM", "end": "HH:MM" }],
-      "clinicalSubject": "string" | null,
-      "startDate": "yyyy-mm-dd" | null,
-      "endDate": "yyyy-mm-dd" | null
-    }
-  ],
-  "customWards": [
-    {
-      "name": "string",
-      "startDate": "yyyy-mm-dd",
-      "endDate": "yyyy-mm-dd",
-      "morningTime": "hh:mm AM–hh:mm PM",
-      "eveningTime": "hh:mm PM–hh:mm PM"
-    }
-  ],
-  "presetTimetable": {
-    "0": [{ "time": "hh:mm AM–hh:mm AM", "type": "lecture", "subjects": ["string"] }]
-  },
-  "presetWardSchedule": [
-    { "start": "yyyy-mm-dd", "end": "yyyy-mm-dd", "ward": "string", "morningTime": "...", "eveningTime": "..." }
-  ],
-  "presetSubjectTotals": { "Subject": number }
-}
-Rules:
-- Schedules use 24h HH:MM (the app canonicalizes on import).
-- Never include attendance data (attended/missed/off marks, student names, etc.).
-- For clinical rotations, use a single continuous date range (do not split on holidays).
-- The app handles holidays internally.
-- Include only routine data – no personal information.`;
+                  const prompt = `You are helping me build a routine bundle for "Attendenz Tracker". Respond with ONLY a valid JSON object matching this exact schema:\n{\n  "version": 2,\n  "subjectMode": "preloaded" | "custom",\n  "addedSubjects": [\n    {\n      "name": "string",\n      "type": "single" | "allied" | "allied-parent",\n      "parentCategory": "string" | null,\n      "planned": number,\n      "schedules": [{ "day": "Mon", "start": "HH:MM", "end": "HH:MM" }],\n      "clinicalSubject": "string" | null,\n      "startDate": "yyyy-mm-dd" | null,\n      "endDate": "yyyy-mm-dd" | null\n    }\n  ],\n  "customWards": [\n    {\n      "name": "string",\n      "startDate": "yyyy-mm-dd",\n      "endDate": "yyyy-mm-dd",\n      "morningTime": "hh:mm AM–hh:mm PM",\n      "eveningTime": "hh:mm PM–hh:mm PM"\n    }\n  ],\n  "presetTimetable": {\n    "0": [{ "time": "hh:mm AM–hh:mm AM", "type": "lecture", "subjects": ["string"] }]\n  },\n  "presetWardSchedule": [\n    { "start": "yyyy-mm-dd", "end": "yyyy-mm-dd", "ward": "string", "morningTime": "...", "eveningTime": "..." }\n  ],\n  "presetSubjectTotals": { "Subject": number }\n}\nRules:\n- Schedules use 24h HH:MM (the app canonicalizes on import).\n- Never include attendance data (attended/missed/off marks, student names, etc.).\n- For clinical rotations, use a single continuous date range (do not split on holidays).\n- The app handles holidays internally.\n- Include only routine data – no personal information.`;
                   await navigator.clipboard.writeText(prompt);
                   showToast('AI prompt copied to clipboard.');
                 }}
@@ -2936,8 +2885,6 @@ Rules:
             </div>
           </div>
         </OverlayModal>
-
-        {/* ── Paste JSON Modal ── */}
         <OverlayModal open={pasteOpen} onClose={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} maxW="max-w-lg">
           <div className="p-4 sm:p-5 space-y-2.5">
             <h3 className="text-sm font-bold text-foreground">Paste Bundle JSON</h3>
@@ -2950,8 +2897,6 @@ Rules:
             </div>
           </div>
         </OverlayModal>
-
-        {/* ── Import Preview Modal ── */}
         <OverlayModal open={!!preview} onClose={() => setPreview(null)} maxW="max-w-lg">
           {preview && (
             <div className="p-4 sm:p-5 space-y-3">
