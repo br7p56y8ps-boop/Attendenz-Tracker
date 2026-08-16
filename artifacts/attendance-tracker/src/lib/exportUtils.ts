@@ -536,10 +536,15 @@ export async function generatePDFReport(options: ExportReportOptions) {
       currentY += 8;
     }
 
-    currentY += 2;
+        currentY += 2;
+
+    // ── Common legend entry: explain the SGT tag whenever any SGT row is present ──
+    if (tableItems.some(i => i.name.includes('(SGT)'))) {
+      legendMap.set('SGT', 'Small Group Teaching');
+    }
 
     // ── Legend anchored at the BOTTOM of this section (3-column aligned grid) ──
-    if (legendMap.size > 0) {
+      if (legendMap.size > 0) {
       currentY += 4;
       if (currentY > 270) { doc.addPage(); currentY = 20; }
       doc.setFontSize(7);
