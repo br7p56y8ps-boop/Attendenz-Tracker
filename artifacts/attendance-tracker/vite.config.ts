@@ -4,8 +4,6 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-
-
 const port = Number(process.env.PORT ?? 3000);
 
 if (Number.isNaN(port) || port <= 0) {
@@ -20,9 +18,8 @@ export default defineConfig({
     tailwindcss(),
 
     VitePWA({
-
       registerType: 'prompt',
-      filename: 'gen-sw.js', 
+      filename: 'gen-sw.js',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
         name: 'Attendenz Tracker',
@@ -30,21 +27,39 @@ export default defineConfig({
         description: 'Attendance Tracking Application',
         theme_color: '#ffffff',
         icons: [
-          {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
+          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+        ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}']
-      }
+        // 1) Precache EVERYTHING the shell + UI needs (added jpg/jpeg/webp/mp3/woff/woff2)
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,jpg,jpeg,webp,mp3,woff,woff2}'],
+
+        // 2) THE offline fix: serve the cached app shell for any navigation when offline
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/\.well-known\//],
+
+        // 3) Drop stale caches from old deploys + claim open tabs on activate
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+
+        // 4) Cache-first for media/fonts the precache might miss (logo, avatars, music)
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) =>
+              request.destination === 'image' ||
+              request.destination === 'font' ||
+              request.destination === 'audio' ||
+              request.destination === 'media',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'static-assets',
+              expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
+      },
     }),
   ],
   resolve: {
