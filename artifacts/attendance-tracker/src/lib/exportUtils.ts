@@ -23,12 +23,14 @@ export interface ExportReportOptions {
   overallPct: number;
 }
 
-// ── Shortened subject map (identical to HomeCard / CalendarPage) ──
+// ── Shortened subject map ──
 const SHORTEN_MAP: Record<string, string> = {
   'Surgery': 'Surg.',
+  'General Surgery': 'Gen. Surg.',
   'Obstetrics & Gynaecology': 'Obs & Gyn.',
   'Pediatrics': 'Peds.',
   'Orthopedics': 'Ortho.',
+  'Orthopaedics': 'Ortho.',
   'Ophthalmology': 'Ophtha.',
   'Otolaryngology': 'ENT',
   'Dermatology': 'Derm.',
@@ -45,14 +47,30 @@ const SHORTEN_MAP: Record<string, string> = {
   'Departmental Integrated Teaching': 'Dept. Integrated',
 };
 
-function shortenSubject(name: string): string {
-  // (SGT) tag: shorten base, keep tag
+/**
+ * Smart shortening:
+ * - If the full name fits the column (<= 20 chars), use the full name (no legend entry).
+ * - If it doesn't fit, apply the abbreviation map and flag it for the legend.
+ */
+function shortenSubject(name: string): { display: string; wasShortened: boolean; shortForm: string; fullForm: string } {
   const sgtMatch = name.match(/^(.+?)\s*\(SGT\)$/);
-  if (sgtMatch) return `${SHORTEN_MAP[sgtMatch[1]] || sgtMatch[1]} (SGT)`;
-  // (Ward) tag: shorten base, strip tag
-  const wardMatch = name.match(/^(.+?)\s*\(Ward\)$/);
-  if (wardMatch) return SHORTEN_MAP[wardMatch[1]] || wardMatch[1];
-  return SHORTEN_MAP[name] || name;
+  let base = name;
+  let tag = '';
+  
+  if (sgtMatch) {
+    base = sgtMatch[1];
+    tag = ' (SGT)';
+  }
+
+  const mappedBase = SHORTEN_MAP[base] || base;
+  const fullDisplay = base + tag;
+  const shortDisplay = mappedBase + tag;
+
+  if (fullDisplay.length <= 20) {
+    return { display: fullDisplay, wasShortened: false, shortForm: '', fullForm: '' };
+  }
+  
+  return { display: shortDisplay, wasShortened: true, shortForm: mappedBase, fullForm: base };
 }
 
 // ── Helper: load image as base64 ──
@@ -89,11 +107,9 @@ export async function generatePDFReport(options: ExportReportOptions) {
     overallPct,
   } = options;
 
-  // FIX: SGT goes to Clinical, NOT Academic
   const academicItems = items.filter(item => !item.name.includes('(Ward)') && !item.name.includes('(SGT)'));
   const clinicalItems = items.filter(item => item.name.includes('(Ward)') || item.name.includes('(SGT)'));
 
-  // Strip "(Ward)" but KEEP "(SGT)" so it differentiates
   const displayClinicalItems = clinicalItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/, '')
@@ -103,7 +119,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
   const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
   const clinicalOverallPct = clinicalOverallTotal > 0 ? (clinicalOverallAttended / clinicalOverallTotal) * 100 : 0;
 
-  // ── Load logo ──
   let logoBase64 = '';
   let logoDimensions = { width: 1, height: 1 };
   try {
@@ -117,7 +132,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
   const pageWidth = doc.internal.pageSize.getWidth();
   let y = 18;
 
-  // ── 1. LOGO ──
   if (logoBase64) {
     const logoHeight = 26;
     const aspectRatio = logoDimensions.width / logoDimensions.height;
@@ -133,7 +147,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
     y += 12;
   }
 
-  // ── 2. TITLE ──
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
@@ -155,7 +168,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
     }
   }
 
-  // ── 3. METADATA CARD ──
   const pad = 4;
   const rowH = 8;
   const photoW = 32;
@@ -216,7 +228,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
   });
   y += cardH + 6;
 
-  // ── Table Drawing Helper (with bottom legend) ──
   const drawTable = (
     title: string,
     tableItems: AttendanceReportItem[],
@@ -226,11 +237,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
   ): number => {
     let currentY = startY;
     const legendMap = new Map<string, string>();
-    const trackLegend = (fullName: string) => {
-      const baseName = fullName.replace(/\s*\((SGT|Ward)\)$/, '');
-      const shortBase = SHORTEN_MAP[baseName] || baseName;
-      if (shortBase !== baseName && !legendMap.has(shortBase)) legendMap.set(shortBase, baseName);
-    };
 
     let sortedItems = tableItems;
     if (applySorting) {
@@ -273,7 +279,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
       sortedItems = [...splitGroup, ...mergedGroup, ...zeroGroup];
     }
 
-    // ── Section title ──
     if (isClinical) {
       doc.setFillColor(239, 246, 255);
       doc.setDrawColor(191, 219, 254);
@@ -294,7 +299,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
     const subHeaderRowHeight = 7;
     const totalHeaderHeight = headerRowHeight + subHeaderRowHeight;
 
-    // ── Draw header ──
     doc.setFillColor(isClinical ? 30 : 30, isClinical ? 58 : 41, isClinical ? 138 : 59);
     doc.rect(15, currentY, pageWidth - 30, totalHeaderHeight, 'F');
     const headerBlockCenterY = currentY + totalHeaderHeight / 2;
@@ -313,7 +317,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
     doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subRowCenterY, { align: 'center' });
     doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subRowCenterY, { align: 'center' });
 
-    // ── Borders ─
     doc.setDrawColor(85, 85, 85);
     doc.setLineWidth(0.4);
     doc.line(15, currentY, pageWidth - 15, currentY);
@@ -330,7 +333,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
     doc.setFontSize(8.5);
     doc.setLineWidth(0.2);
 
-    // ── Rows ──
     for (let idx = 0; idx < sortedItems.length; idx++) {
       const item = sortedItems[idx];
       if (currentY > 260) {
@@ -373,18 +375,26 @@ export async function generatePDFReport(options: ExportReportOptions) {
         doc.rect(15, currentY, pageWidth - 30, 8, 'F');
       }
 
-      // FIX: shorten long names + track for legend
+      // SMART SHORTENING LOGIC
       const displayName = item.name;
-      trackLegend(displayName);
-      let subName = shortenSubject(displayName);
-      if (subName.length > 20) subName = subName.substring(0, 18) + '..';
+      const shortened = shortenSubject(displayName);
+      let subName = shortened.display;
+      
+      if (shortened.wasShortened) {
+        if (!legendMap.has(shortened.shortForm)) {
+          legendMap.set(shortened.shortForm, shortened.fullForm);
+        }
+      }
+      
+      if (subName.length > 20) {
+        subName = subName.substring(0, 18) + '..';
+      }
 
       const target = targetPct;
       const conducted = item.total;
       const attended = item.attended;
       const plannedTotal = item.plannedTotal;
 
-      // ── Compute Remarks ──
       let remark1Text = '';
       let remark1Color = [15, 23, 42];
       if (conducted === 0) {
@@ -447,7 +457,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
 
       const isYetToBeConducted = conducted === 0;
 
-      // ── Borders ─
       doc.setDrawColor(85, 85, 85);
       doc.setLineWidth(0.3);
       doc.line(15, currentY, pageWidth - 15, currentY);
@@ -471,7 +480,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
         continue;
       }
 
-      // ── Normal row ──
       for (let i = 0; i <= 6; i++) {
         if (mergeRemarks && i >= 3 && i <= 5) continue;
         doc.line(colX[i], currentY, colX[i], currentY + 8);
@@ -554,25 +562,21 @@ export async function generatePDFReport(options: ExportReportOptions) {
         
         const x = leftMargin + (col * colWidth);
         
-        // bullet
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(148, 163, 184);
         doc.text(bullet, x, currentY);
         
-        // abbreviation — BOLD
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(51, 65, 85);
         const bulletWidth = doc.getTextWidth(bullet);
         const shortWidth = doc.getTextWidth(short);
         doc.text(short, x + bulletWidth, currentY);
         
-        // " = "
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(148, 163, 184);
         const eqWidth = doc.getTextWidth(eq);
         doc.text(eq, x + bulletWidth + shortWidth, currentY);
         
-        // long form — ITALIC
         doc.setFont('helvetica', 'italic');
         doc.setTextColor(100, 116, 139);
         doc.text(full, x + bulletWidth + shortWidth + eqWidth, currentY, { maxWidth: colWidth - 10 });
@@ -592,13 +596,11 @@ export async function generatePDFReport(options: ExportReportOptions) {
     return currentY;
   };
 
-  // ── ACADEMIC SECTION ──
   if (academicItems.length > 0) {
     y = drawTable('Academic Subjects', academicItems, y, false, true);
     y += 12;
   }
 
-  // ── CLINICAL SECTION (Wards + SGT) ──
   if (displayClinicalItems.length > 0) {
     if (y > 235) {
       doc.addPage();
@@ -608,7 +610,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
     y += 8;
   }
 
-  // ── SUMMARY CARD ──
   if (y > 235) {
     doc.addPage();
     y = 20;
@@ -665,7 +666,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
   }
   y += boxHeight + 6;
 
-  // ── FOOTER ──
   doc.setDrawColor(203, 213, 225);
   doc.line(15, 280, pageWidth - 15, 280);
   doc.setFontSize(8);
@@ -675,7 +675,6 @@ export async function generatePDFReport(options: ExportReportOptions) {
   doc.save(`Attendance_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
-// ── Excel Export ──
 export function generateExcelReport(options: ExportReportOptions) {
   const {
     studentName,
@@ -834,7 +833,6 @@ export function generateExcelReport(options: ExportReportOptions) {
   XLSX.writeFile(workbook, `Attendance_Report_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-// ── CSV Export ──
 export function generateCSVReport(options: ExportReportOptions) {
   const { items, overallAttended, overallTotal } = options;
 
