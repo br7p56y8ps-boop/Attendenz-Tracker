@@ -207,7 +207,7 @@ export default function Account() {
       for (const s of INTEGRATED_SUBJECTS) pushEntity(s.name, 'Academic', false, getSubjectPlannedTotal(s.name));
       for (const ua of userAddedSubjects) {
         if (ua.subjectType === 'allied' && ua.parentName === 'Small Group Teaching') {
-          pushEntity(ua.name, 'Clinical Wards', false, ua.plannedClasses || getSubjectPlannedTotal(ua.name), true, ua.id);
+          pushEntity(ua.name, 'Clinical Wards', false, ua.plannedClasses || 0, true, ua.id);
         } else {
           pushEntity(ua.name, 'Added by you', false, ua.plannedClasses || getSubjectPlannedTotal(ua.name));
         }
@@ -221,7 +221,7 @@ export default function Account() {
     } else {
       for (const cs of customSubjects) {
         if (cs.subjectType === 'allied' && cs.parentName === 'Small Group Teaching') {
-          pushEntity(cs.name, 'Clinical Wards', false, cs.plannedClasses || getSubjectPlannedTotal(cs.name), true, cs.id);
+          pushEntity(cs.name, 'Clinical Wards', false, cs.plannedClasses || 0, true, cs.id);
         } else {
           pushEntity(cs.name, cs.category || 'Custom Subject', false, cs.plannedClasses);
         }
@@ -279,7 +279,7 @@ export default function Account() {
         if (ua.subjectType === 'allied' && ua.parentName === 'Small Group Teaching') {
           const sgtKey = getSGTKey(ua.id);
           const data = subjects[sgtKey] || { attended: 0, missed: 0 };
-          rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || getSubjectPlannedTotal(ua.name) || 0 });
+          rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || 0 });
         } else {
           const data = subjects[ua.name] || { attended: 0, missed: 0 };
           rawItems.push({ name: ua.name, category: 'Added by you', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || getSubjectPlannedTotal(ua.name) || 0 });
@@ -303,7 +303,7 @@ export default function Account() {
         if (cs.subjectType === 'allied' && cs.parentName === 'Small Group Teaching') {
           const sgtKey = getSGTKey(cs.id);
           const data = subjects[sgtKey] || { attended: 0, missed: 0 };
-          rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || getSubjectPlannedTotal(cs.name) || 0 });
+          rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || 0 });
         } else {
           const data = subjects[cs.name] || { attended: 0, missed: 0 };
           rawItems.push({ name: cs.name, category: cs.category || 'Custom Subject', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || getSubjectPlannedTotal(cs.name) || 0 });
