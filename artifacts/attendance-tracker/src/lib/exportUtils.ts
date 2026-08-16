@@ -23,6 +23,38 @@ export interface ExportReportOptions {
   overallPct: number;
 }
 
+// ── Shortened subject map (identical to HomeCard / CalendarPage) ──
+const SHORTEN_MAP: Record<string, string> = {
+  'Surgery': 'Surg.',
+  'Obstetrics & Gynaecology': 'Obs & Gyn.',
+  'Pediatrics': 'Peds.',
+  'Orthopedics': 'Ortho.',
+  'Ophthalmology': 'Ophtha.',
+  'Otolaryngology': 'ENT',
+  'Dermatology': 'Derm.',
+  'Psychiatry': 'Psych.',
+  'Physical Medicine': 'PMR',
+  'Radiology': 'Radio.',
+  'Radiotherapy': 'RadioT.',
+  'Nuclear Medicine': 'Nuc Med.',
+  'Neurosurgery': 'NeuroS.',
+  'Pediatric Surgery': 'Peds Surg.',
+  'Burn & Plastic Surgery': 'Plastic S.',
+  'Internal Medicine': 'Medicine',
+  'Phase Integrated Teaching': 'Phase Integrated',
+  'Departmental Integrated Teaching': 'Dept. Integrated',
+};
+
+function shortenSubject(name: string): string {
+  // (SGT) tag: shorten base, keep tag
+  const sgtMatch = name.match(/^(.+?)\s*\(SGT\)$/);
+  if (sgtMatch) return `${SHORTEN_MAP[sgtMatch[1]] || sgtMatch[1]} (SGT)`;
+  // (Ward) tag: shorten base, strip tag
+  const wardMatch = name.match(/^(.+?)\s*\(Ward\)$/);
+  if (wardMatch) return SHORTEN_MAP[wardMatch[1]] || wardMatch[1];
+  return SHORTEN_MAP[name] || name;
+}
+
 // ── Helper: load image as base64 ──
 async function loadImageAsBase64(url: string): Promise<string> {
   const response = await fetch(url);
@@ -57,19 +89,19 @@ export async function generatePDFReport(options: ExportReportOptions) {
     overallPct,
   } = options;
 
-  // Keep original names for filtering
-  const academicItems = items.filter(item => !item.name.includes('(Ward)'));
-  const wardItems = items.filter(item => item.name.includes('(Ward)'));
+  // FIX: SGT goes to Clinical, NOT Academic
+  const academicItems = items.filter(item => !item.name.includes('(Ward)') && !item.name.includes('(SGT)'));
+  const clinicalItems = items.filter(item => item.name.includes('(Ward)') || item.name.includes('(SGT)'));
 
-  // For display, remove "(Ward)" from ward names
-  const displayWardItems = wardItems.map(item => ({
+  // Strip "(Ward)" but KEEP "(SGT)" so it differentiates
+  const displayClinicalItems = clinicalItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/, '')
   }));
 
-  const wardOverallAttended = wardItems.reduce((acc, curr) => acc + curr.attended, 0);
-  const wardOverallTotal = wardItems.reduce((acc, curr) => acc + curr.total, 0);
-  const wardOverallPct = wardOverallTotal > 0 ? (wardOverallAttended / wardOverallTotal) * 100 : 0;
+  const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
+  const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
+  const clinicalOverallPct = clinicalOverallTotal > 0 ? (clinicalOverallAttended / clinicalOverallTotal) * 100 : 0;
 
   // ── Load logo ──
   let logoBase64 = '';
@@ -92,15 +124,10 @@ export async function generatePDFReport(options: ExportReportOptions) {
     const logoWidth = logoHeight * aspectRatio;
     const logoX = (pageWidth - logoWidth) / 2;
     const logoY = y;
-
-    // Black border
     doc.setDrawColor(0, 0, 0);
     doc.setLineWidth(0.5);
     doc.rect(logoX - 1, logoY - 1, logoWidth + 2, logoHeight + 2, 'S');
-
     doc.addImage(logoBase64, 'JPEG', logoX, logoY, logoWidth, logoHeight);
-
-    // +1 line space (increased gap from logo to title)
     y += logoHeight + 12;
   } else {
     y += 12;
@@ -111,25 +138,24 @@ export async function generatePDFReport(options: ExportReportOptions) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
   doc.text('ATTENDANCE REPORT', pageWidth / 2, y, { align: 'center' });
-  y += 6; // -1 line space (was 8, now 6)
+  y += 6;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
   doc.text('Attendenz Tracker • Local Device Academic Record', pageWidth / 2, y, { align: 'center' });
-  y += 12; // 2 line breaks after description
+  y += 12;
 
-    // ── Helper: get ordinal suffix (st, nd, rd, th)
-function getOrdinalSuffix(day: number): string {
-  if (day >= 11 && day <= 13) return 'th';
-  switch (day % 10) {
-    case 1: return 'st';
-    case 2: return 'nd';
-    case 3: return 'rd';
-    default: return 'th';
+  function getOrdinalSuffix(day: number): string {
+    if (day >= 11 && day <= 13) return 'th';
+    switch (day % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
+    }
   }
-}
 
-// ── 3. METADATA CARD (text-sensitive chart header — sizes to content, centered, no dead space) ──
+  // ── 3. METADATA CARD ──
   const pad = 4;
   const rowH = 8;
   const photoW = 32;
@@ -190,16 +216,21 @@ function getOrdinalSuffix(day: number): string {
   });
   y += cardH + 6;
 
-
-  // ── Table Drawing Helper ──
+  // ── Table Drawing Helper (with bottom legend) ──
   const drawTable = (
     title: string,
     tableItems: AttendanceReportItem[],
     startY: number,
-    isWard: boolean = false,
+    isClinical: boolean = false,
     applySorting: boolean = false
   ): number => {
     let currentY = startY;
+    const legendMap = new Map<string, string>();
+    const trackLegend = (fullName: string) => {
+      const baseName = fullName.replace(/\s*\((SGT|Ward)\)$/, '');
+      const shortBase = SHORTEN_MAP[baseName] || baseName;
+      if (shortBase !== baseName && !legendMap.has(shortBase)) legendMap.set(shortBase, baseName);
+    };
 
     let sortedItems = tableItems;
     if (applySorting) {
@@ -210,7 +241,6 @@ function getOrdinalSuffix(day: number): string {
         const attended = item.attended;
         const target = targetPct;
         if (plannedTotal <= 0) return 'split';
-
         const totalNeeded = Math.ceil((target * plannedTotal) / 100);
         if (attended >= totalNeeded) {
           const conductedPct = conducted > 0 ? (attended / conducted) * 100 : 0;
@@ -229,26 +259,22 @@ function getOrdinalSuffix(day: number): string {
           else return 'merged';
         }
       };
-
       const splitGroup: AttendanceReportItem[] = [];
       const mergedGroup: AttendanceReportItem[] = [];
       const zeroGroup: AttendanceReportItem[] = [];
-
       for (const item of tableItems) {
         const status = computeMergeStatus(item);
         if (status === 'zero') zeroGroup.push(item);
         else if (status === 'split') splitGroup.push(item);
         else mergedGroup.push(item);
       }
-
       splitGroup.sort((a, b) => b.pct - a.pct);
       mergedGroup.sort((a, b) => b.pct - a.pct);
-
       sortedItems = [...splitGroup, ...mergedGroup, ...zeroGroup];
     }
 
     // ── Section title ──
-    if (isWard) {
+    if (isClinical) {
       doc.setFillColor(239, 246, 255);
       doc.setDrawColor(191, 219, 254);
     } else {
@@ -263,56 +289,41 @@ function getOrdinalSuffix(day: number): string {
     currentY += 9;
 
     const colWidth = (pageWidth - 30) / 6;
-    const colX = [
-      15,
-      15 + colWidth,
-      15 + colWidth * 2,
-      15 + colWidth * 3,
-      15 + colWidth * 4,
-      15 + colWidth * 5,
-      15 + colWidth * 6,
-    ];
-
+    const colX = [15, 15 + colWidth, 15 + colWidth * 2, 15 + colWidth * 3, 15 + colWidth * 4, 15 + colWidth * 5, 15 + colWidth * 6];
     const headerRowHeight = 9;
     const subHeaderRowHeight = 7;
     const totalHeaderHeight = headerRowHeight + subHeaderRowHeight;
 
     // ── Draw header ──
-    doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
+    doc.setFillColor(isClinical ? 30 : 30, isClinical ? 58 : 41, isClinical ? 138 : 59);
     doc.rect(15, currentY, pageWidth - 30, totalHeaderHeight, 'F');
-
     const headerBlockCenterY = currentY + totalHeaderHeight / 2;
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
-    const headerLabel1 = isWard ? 'Rotation' : 'Subject';
+    const headerLabel1 = isClinical ? 'Rotation / SGT' : 'Subject';
     doc.text(headerLabel1, (colX[0] + colX[1]) / 2, headerBlockCenterY, { align: 'center' });
     doc.text('Class Conducted', (colX[1] + colX[2]) / 2, headerBlockCenterY, { align: 'center' });
     doc.text('Present', (colX[2] + colX[3]) / 2, headerBlockCenterY, { align: 'center' });
     doc.text('Current %', (colX[5] + colX[6]) / 2, headerBlockCenterY, { align: 'center' });
-
     const topRowCenterY = currentY + headerRowHeight / 2;
     doc.text('Remarks', (colX[3] + colX[5]) / 2, topRowCenterY, { align: 'center' });
-
     const subRowCenterY = currentY + headerRowHeight + subHeaderRowHeight / 2;
     doc.setFontSize(6.5);
     doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subRowCenterY, { align: 'center' });
     doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subRowCenterY, { align: 'center' });
 
-    // ── Borders ──
+    // ── Borders ─
     doc.setDrawColor(85, 85, 85);
     doc.setLineWidth(0.4);
-
     doc.line(15, currentY, pageWidth - 15, currentY);
     doc.line(15, currentY + totalHeaderHeight, pageWidth - 15, currentY + totalHeaderHeight);
     doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
-
     for (let i = 0; i <= 6; i++) {
       if (i === 4) continue;
       doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
     }
     doc.line(colX[4], currentY + headerRowHeight, colX[4], currentY + totalHeaderHeight);
-
     currentY += totalHeaderHeight;
 
     doc.setFont('helvetica', 'normal');
@@ -325,14 +336,13 @@ function getOrdinalSuffix(day: number): string {
       if (currentY > 260) {
         doc.addPage();
         currentY = 20;
-        // Redraw headers on new page
-        doc.setFillColor(isWard ? 30 : 30, isWard ? 58 : 41, isWard ? 138 : 59);
+        doc.setFillColor(isClinical ? 30 : 30, isClinical ? 58 : 41, isClinical ? 138 : 59);
         doc.rect(15, currentY, pageWidth - 30, totalHeaderHeight, 'F');
         const hbCenter = currentY + totalHeaderHeight / 2;
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
-        const h1 = isWard ? 'Rotation' : 'Subject';
+        const h1 = isClinical ? 'Rotation / SGT' : 'Subject';
         doc.text(h1, (colX[0] + colX[1]) / 2, hbCenter, { align: 'center' });
         doc.text('Class Conducted', (colX[1] + colX[2]) / 2, hbCenter, { align: 'center' });
         doc.text('Present', (colX[2] + colX[3]) / 2, hbCenter, { align: 'center' });
@@ -363,8 +373,12 @@ function getOrdinalSuffix(day: number): string {
         doc.rect(15, currentY, pageWidth - 30, 8, 'F');
       }
 
-      const displayName = isWard ? item.name : item.name;
-      const subName = displayName.length > 20 ? displayName.substring(0, 18) + '..' : displayName;
+      // FIX: shorten long names + track for legend
+      const displayName = item.name;
+      trackLegend(displayName);
+      let subName = shortenSubject(displayName);
+      if (subName.length > 20) subName = subName.substring(0, 18) + '..';
+
       const target = targetPct;
       const conducted = item.total;
       const attended = item.attended;
@@ -397,7 +411,6 @@ function getOrdinalSuffix(day: number): string {
       let remark2Text = '';
       let remark2Color = [15, 23, 42];
       let mergeRemarks = false;
-
       if (conducted === 0) {
         remark2Text = 'Yet to be Conducted';
         remark2Color = [148, 163, 184];
@@ -406,14 +419,11 @@ function getOrdinalSuffix(day: number): string {
         if (attended >= totalNeeded) {
           remark2Text = 'Target Achieved';
           remark2Color = [16, 185, 129];
-          if (remark1Text === 'Target Achieved') {
-            mergeRemarks = true;
-          }
+          if (remark1Text === 'Target Achieved') mergeRemarks = true;
         } else {
           const remaining = plannedTotal - conducted;
           const neededFromRemaining = totalNeeded - attended;
           const canMiss = remaining - neededFromRemaining;
-
           if (canMiss > 0) {
             remark2Text = `Can miss ${canMiss}`;
             remark2Color = [255, 165, 0];
@@ -437,7 +447,7 @@ function getOrdinalSuffix(day: number): string {
 
       const isYetToBeConducted = conducted === 0;
 
-      // ── Borders ──
+      // ── Borders ─
       doc.setDrawColor(85, 85, 85);
       doc.setLineWidth(0.3);
       doc.line(15, currentY, pageWidth - 15, currentY);
@@ -447,16 +457,12 @@ function getOrdinalSuffix(day: number): string {
         doc.line(colX[0], currentY, colX[0], currentY + 8);
         doc.line(colX[1], currentY, colX[1], currentY + 8);
         doc.line(colX[6], currentY, colX[6], currentY + 8);
-
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(15, 23, 42);
         doc.text(subName, (colX[0] + colX[1]) / 2, currentY + 4, { align: 'center' });
         doc.setFont('helvetica', 'normal');
-
         const mergedText = 'Yet to be Conducted';
-        const startX = colX[1];
-        const endX = colX[6];
-        const centerX = (startX + endX) / 2;
+        const centerX = (colX[1] + colX[6]) / 2;
         doc.setTextColor(148, 163, 184);
         doc.setFont('helvetica', 'italic');
         doc.text(mergedText, centerX, currentY + 4, { align: 'center' });
@@ -476,7 +482,6 @@ function getOrdinalSuffix(day: number): string {
       }
 
       const cellCenterY = currentY + 4;
-
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(15, 23, 42);
       doc.text(subName, (colX[0] + colX[1]) / 2, cellCenterY, { align: 'center' });
@@ -503,7 +508,6 @@ function getOrdinalSuffix(day: number): string {
         }
         doc.text(remark1Text, (colX[3] + colX[4]) / 2, cellCenterY, { align: 'center' });
         doc.setFont('helvetica', 'normal');
-
         doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
         if (remark2Text.includes('Can miss') || remark2Text === 'Target Achieved') {
           doc.setFont('helvetica', 'bold');
@@ -525,23 +529,44 @@ function getOrdinalSuffix(day: number): string {
     }
 
     currentY += 2;
+
+    // ── Legend anchored at the BOTTOM of this section ──
+    if (legendMap.size > 0) {
+      currentY += 4;
+      if (currentY > 270) { doc.addPage(); currentY = 20; }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Abbreviations used:', 17, currentY);
+      currentY += 3.5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      legendMap.forEach((full, short) => {
+        if (currentY > 275) { doc.addPage(); currentY = 20; }
+        doc.setTextColor(71, 85, 105);
+        doc.text(`${short} = ${full}`, 17, currentY);
+        currentY += 3.2;
+      });
+    }
+
+    currentY += 2;
     return currentY;
   };
 
   // ── ACADEMIC SECTION ──
   if (academicItems.length > 0) {
     y = drawTable('Academic Subjects', academicItems, y, false, true);
-    y += 12; // 3 line breaks after Academic
+    y += 12;
   }
 
-  // ── CLINICAL SECTION ──
-  if (displayWardItems.length > 0) {
+  // ── CLINICAL SECTION (Wards + SGT) ──
+  if (displayClinicalItems.length > 0) {
     if (y > 235) {
       doc.addPage();
       y = 20;
     }
-    y = drawTable('Clinical Rotations (Wards)', displayWardItems, y, true, false);
-    y += 8; // 2 line breaks after Clinical
+    y = drawTable('Clinical Rotations & SGT', displayClinicalItems, y, true, false);
+    y += 8;
   }
 
   // ── SUMMARY CARD ──
@@ -550,8 +575,8 @@ function getOrdinalSuffix(day: number): string {
     y = 20;
   }
 
-  const combinedAttended = overallAttended + wardOverallAttended;
-  const combinedTotal = overallTotal + wardOverallTotal;
+  const combinedAttended = overallAttended + clinicalOverallAttended;
+  const combinedTotal = overallTotal + clinicalOverallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
 
   let academicRemark = `On Track (Target: ${targetPct}%)`;
@@ -559,14 +584,14 @@ function getOrdinalSuffix(day: number): string {
   else if (overallPct >= targetPct) academicRemark = `Satisfactory Attendance (Meets ${targetPct}% Target)`;
   else academicRemark = `Attention Required (Below ${targetPct}% Required Threshold)`;
 
-  let wardRemark = `On Track (Target: ${targetPct}%)`;
-  if (wardOverallPct >= 85) wardRemark = `Excellent Performance (Above ${targetPct}% Target)`;
-  else if (wardOverallPct >= targetPct) wardRemark = `Satisfactory Attendance (Meets ${targetPct}% Target)`;
-  else if (wardItems.length > 0 && wardOverallTotal > 0)
-    wardRemark = `Attention Required (Below ${targetPct}% Required Threshold)`;
-  else wardRemark = 'No Ward Data Available';
+  let clinicalRemark = `On Track (Target: ${targetPct}%)`;
+  if (clinicalOverallPct >= 85) clinicalRemark = `Excellent Performance (Above ${targetPct}% Target)`;
+  else if (clinicalOverallPct >= targetPct) clinicalRemark = `Satisfactory Attendance (Meets ${targetPct}% Target)`;
+  else if (clinicalItems.length > 0 && clinicalOverallTotal > 0)
+    clinicalRemark = `Attention Required (Below ${targetPct}% Required Threshold)`;
+  else clinicalRemark = 'No Clinical Data Available';
 
-  const boxHeight = wardItems.length > 0 ? 44 : 26;
+  const boxHeight = clinicalItems.length > 0 ? 44 : 26;
   doc.setFillColor(240, 253, 244);
   doc.setDrawColor(187, 247, 208);
   doc.roundedRect(15, y, pageWidth - 30, boxHeight, 3, 3, 'FD');
@@ -580,8 +605,8 @@ function getOrdinalSuffix(day: number): string {
   let summaryY = y + 15;
   doc.text(`Academic Overall Percentage: ${overallPct.toFixed(1)}%`, pageWidth / 2, summaryY, { align: 'center' });
   summaryY += 7;
-  if (wardItems.length > 0) {
-    doc.text(`Ward/Clinical Rotation Overall Percentage: ${wardOverallPct.toFixed(1)}%`, pageWidth / 2, summaryY, { align: 'center' });
+  if (clinicalItems.length > 0) {
+    doc.text(`Clinical Overall Percentage: ${clinicalOverallPct.toFixed(1)}%`, pageWidth / 2, summaryY, { align: 'center' });
     summaryY += 7;
   }
   doc.setTextColor(15, 23, 42);
@@ -591,13 +616,13 @@ function getOrdinalSuffix(day: number): string {
   doc.setTextColor(21, 128, 61);
   doc.text(academicRemark, 55, summaryY + 2);
   summaryY += 7;
-  if (wardItems.length > 0) {
+  if (clinicalItems.length > 0) {
     doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Ward Remarks: `, 21, summaryY + 2);
+    doc.text(`Clinical Remarks: `, 21, summaryY + 2);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(21, 128, 61);
-    doc.text(wardRemark, 50, summaryY + 2);
+    doc.text(clinicalRemark, 50, summaryY + 2);
   }
   y += boxHeight + 6;
 
@@ -624,30 +649,25 @@ export function generateExcelReport(options: ExportReportOptions) {
     targetPct,
   } = options;
 
-  // Keep original names for filtering
-  const academicItems = items.filter(item => !item.name.includes('(Ward)'));
-  const wardItems = items.filter(item => item.name.includes('(Ward)'));
-
-  // For display, remove "(Ward)" from ward names
-  const displayWardItems = wardItems.map(item => ({
+  const academicItems = items.filter(item => !item.name.includes('(Ward)') && !item.name.includes('(SGT)'));
+  const clinicalItems = items.filter(item => item.name.includes('(Ward)') || item.name.includes('(SGT)'));
+  const displayClinicalItems = clinicalItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/, '')
   }));
 
-  const wardOverallAttended = wardItems.reduce((acc, curr) => acc + curr.attended, 0);
-  const wardOverallTotal = wardItems.reduce((acc, curr) => acc + curr.total, 0);
-  const wardOverallPct = wardOverallTotal > 0 ? (wardOverallAttended / wardOverallTotal) * 100 : 0;
+  const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
+  const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
+  const clinicalOverallPct = clinicalOverallTotal > 0 ? (clinicalOverallAttended / clinicalOverallTotal) * 100 : 0;
 
   const workbook = XLSX.utils.book_new();
 
-  // Academic Sheet
   if (academicItems.length > 0) {
     const rows = academicItems.map(item => {
       const conducted = item.total;
       const attended = item.attended;
       const plannedTotal = item.plannedTotal;
       const target = targetPct;
-
       let remark1 = '';
       let remark2 = '';
       if (conducted === 0) {
@@ -655,39 +675,27 @@ export function generateExcelReport(options: ExportReportOptions) {
         remark2 = 'Yet to be Conducted';
       } else {
         const pct = (attended / conducted) * 100;
-        if (pct >= target) {
-          remark1 = 'Target Achieved';
-        } else {
+        if (pct >= target) remark1 = 'Target Achieved';
+        else {
           const needed = Math.ceil((target * conducted) / 100) - attended;
           remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
         }
-
         if (plannedTotal > 0) {
           const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-          if (attended >= totalNeeded) {
-            remark2 = 'Target Achieved';
-          } else {
+          if (attended >= totalNeeded) remark2 = 'Target Achieved';
+          else {
             const remaining = plannedTotal - conducted;
             const neededFromRemaining = totalNeeded - attended;
             const canMiss = remaining - neededFromRemaining;
-            if (canMiss > 0) {
-              remark2 = `Can miss ${canMiss}`;
-            } else if (canMiss === 0) {
+            if (canMiss > 0) remark2 = `Can miss ${canMiss}`;
+            else if (canMiss === 0) {
               const classText = remaining === 1 ? 'Class' : 'Classes';
               remark2 = `Must Attend remaining ${remaining} ${classText}`;
-            } else {
-              remark2 = 'Better Luck Next Life';
-            }
+            } else remark2 = 'Better Luck Next Life';
           }
-        } else {
-          remark2 = 'No Planned Classes';
-        }
-
-        if (remark1 === remark2) {
-          remark2 = '';
-        }
+        } else remark2 = 'No Planned Classes';
+        if (remark1 === remark2) remark2 = '';
       }
-
       return {
         Subject: item.name,
         'Class Conducted': conducted === 0 ? 'Yet to be Conducted' : conducted,
@@ -697,7 +705,6 @@ export function generateExcelReport(options: ExportReportOptions) {
         'Current %': conducted === 0 ? '' : Number(item.pct.toFixed(1)),
       };
     });
-
     rows.push({
       Subject: 'ACADEMIC SUMMARY',
       'Class Conducted': overallTotal,
@@ -706,27 +713,17 @@ export function generateExcelReport(options: ExportReportOptions) {
       'Based on Planned Classes': overallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
       'Current %': Number(overallPct.toFixed(1)),
     });
-
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 32 },
-      { wch: 18 },
-      { wch: 15 },
-      { wch: 22 },
-      { wch: 28 },
-      { wch: 16 },
-    ];
+    ws['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 15 }, { wch: 22 }, { wch: 28 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(workbook, ws, 'Academic Subjects');
   }
 
-  // Ward Sheet
-  if (displayWardItems.length > 0) {
-    const rows = displayWardItems.map(item => {
+  if (displayClinicalItems.length > 0) {
+    const rows = displayClinicalItems.map(item => {
       const conducted = item.total;
       const attended = item.attended;
       const plannedTotal = item.plannedTotal;
       const target = targetPct;
-
       let remark1 = '';
       let remark2 = '';
       if (conducted === 0) {
@@ -734,41 +731,29 @@ export function generateExcelReport(options: ExportReportOptions) {
         remark2 = 'Yet to be Conducted';
       } else {
         const pct = (attended / conducted) * 100;
-        if (pct >= target) {
-          remark1 = 'Target Achieved';
-        } else {
+        if (pct >= target) remark1 = 'Target Achieved';
+        else {
           const needed = Math.ceil((target * conducted) / 100) - attended;
           remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
         }
-
         if (plannedTotal > 0) {
           const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-          if (attended >= totalNeeded) {
-            remark2 = 'Target Achieved';
-          } else {
+          if (attended >= totalNeeded) remark2 = 'Target Achieved';
+          else {
             const remaining = plannedTotal - conducted;
             const neededFromRemaining = totalNeeded - attended;
             const canMiss = remaining - neededFromRemaining;
-            if (canMiss > 0) {
-              remark2 = `Can miss ${canMiss}`;
-            } else if (canMiss === 0) {
+            if (canMiss > 0) remark2 = `Can miss ${canMiss}`;
+            else if (canMiss === 0) {
               const classText = remaining === 1 ? 'Class' : 'Classes';
               remark2 = `Must Attend remaining ${remaining} ${classText}`;
-            } else {
-              remark2 = 'Better Luck Next Life';
-            }
+            } else remark2 = 'Better Luck Next Life';
           }
-        } else {
-          remark2 = 'No Planned Classes';
-        }
-
-        if (remark1 === remark2) {
-          remark2 = '';
-        }
+        } else remark2 = 'No Planned Classes';
+        if (remark1 === remark2) remark2 = '';
       }
-
       return {
-        Rotation: item.name,
+        'Rotation / SGT': item.name,
         'Class Conducted': conducted === 0 ? 'Yet to be Conducted' : conducted,
         Present: conducted === 0 ? '' : attended,
         'To Reach Preferred %': remark1,
@@ -776,31 +761,21 @@ export function generateExcelReport(options: ExportReportOptions) {
         'Current %': conducted === 0 ? '' : Number(item.pct.toFixed(1)),
       };
     });
-
     rows.push({
-      Rotation: 'WARD ROTATIONS SUMMARY',
-      'Class Conducted': wardOverallTotal,
-      Present: wardOverallAttended,
-      'To Reach Preferred %': wardOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
-      'Based on Planned Classes': wardOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
-      'Current %': Number(wardOverallPct.toFixed(1)),
+      'Rotation / SGT': 'CLINICAL SUMMARY',
+      'Class Conducted': clinicalOverallTotal,
+      Present: clinicalOverallAttended,
+      'To Reach Preferred %': clinicalOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
+      'Based on Planned Classes': clinicalOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
+      'Current %': Number(clinicalOverallPct.toFixed(1)),
     });
-
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 32 },
-      { wch: 18 },
-      { wch: 15 },
-      { wch: 22 },
-      { wch: 28 },
-      { wch: 16 },
-    ];
-    XLSX.utils.book_append_sheet(workbook, ws, 'Ward Rotations');
+    ws['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 15 }, { wch: 22 }, { wch: 28 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(workbook, ws, 'Clinical Rotations');
   }
 
-  // Metadata sheet
-  const combinedAttended = overallAttended + wardOverallAttended;
-  const combinedTotal = overallTotal + wardOverallTotal;
+  const combinedAttended = overallAttended + clinicalOverallAttended;
+  const combinedTotal = overallTotal + clinicalOverallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
   const meta = [
     { Property: 'Student Name', Value: studentName || 'Medical Student' },
@@ -809,9 +784,9 @@ export function generateExcelReport(options: ExportReportOptions) {
     { Property: 'Minimum Target (%)', Value: `${targetPct}%` },
     { Property: 'Overall Percentage', Value: `${combinedPct.toFixed(1)}%` },
     { Property: 'Academic Overall Percentage', Value: `${overallPct.toFixed(1)}%` },
-    { Property: 'Ward Overall Percentage', Value: `${wardOverallPct.toFixed(1)}%` },
+    { Property: 'Clinical Overall Percentage', Value: `${clinicalOverallPct.toFixed(1)}%` },
     { Property: 'Academic Remarks', Value: overallPct >= targetPct ? 'Target Achieved' : 'Action Needed' },
-    { Property: 'Ward Remarks', Value: wardOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed' },
+    { Property: 'Clinical Remarks', Value: clinicalOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed' },
     { Property: 'Generated Date', Value: new Date().toLocaleString() },
   ];
   const metaSheet = XLSX.utils.json_to_sheet(meta);
@@ -824,31 +799,20 @@ export function generateExcelReport(options: ExportReportOptions) {
 export function generateCSVReport(options: ExportReportOptions) {
   const { items, overallAttended, overallTotal } = options;
 
-  // Keep original names for filtering
-  const academicItems = items.filter(item => !item.name.includes('(Ward)'));
-  const wardItems = items.filter(item => item.name.includes('(Ward)'));
-
-  // For display, remove "(Ward)" from ward names
-  const displayWardItems = wardItems.map(item => ({
+  const academicItems = items.filter(item => !item.name.includes('(Ward)') && !item.name.includes('(SGT)'));
+  const clinicalItems = items.filter(item => item.name.includes('(Ward)') || item.name.includes('(SGT)'));
+  const displayClinicalItems = clinicalItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/, '')
   }));
 
-  const wardOverallAttended = wardItems.reduce((acc, curr) => acc + curr.attended, 0);
-  const wardOverallTotal = wardItems.reduce((acc, curr) => acc + curr.total, 0);
-  const combinedAttended = overallAttended + wardOverallAttended;
-  const combinedTotal = overallTotal + wardOverallTotal;
+  const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
+  const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
+  const combinedAttended = overallAttended + clinicalOverallAttended;
+  const combinedTotal = overallTotal + clinicalOverallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
 
-  const headers = [
-    'Type',
-    'Subject/Rotation',
-    'Class Conducted',
-    'Present',
-    'To Reach Preferred %',
-    'Based on Planned Classes',
-    'Current %',
-  ];
+  const headers = ['Type', 'Subject/Rotation', 'Class Conducted', 'Present', 'To Reach Preferred %', 'Based on Planned Classes', 'Current %'];
   const rows: any[] = [];
 
   academicItems.forEach(i => {
@@ -863,9 +827,9 @@ export function generateCSVReport(options: ExportReportOptions) {
     ]);
   });
 
-  displayWardItems.forEach(i => {
+  displayClinicalItems.forEach(i => {
     rows.push([
-      'Ward',
+      'Clinical',
       `"${i.name.replace(/"/g, '""')}"`,
       i.total === 0 ? 'Yet to be Conducted' : i.total,
       i.total === 0 ? '' : i.attended,
