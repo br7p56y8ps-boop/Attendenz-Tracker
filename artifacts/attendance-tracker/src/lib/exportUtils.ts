@@ -46,10 +46,8 @@ const SHORTEN_MAP: Record<string, string> = {
 };
 
 function shortenSubject(name: string): string {
-  // (SGT) tag: shorten base, keep tag
   const sgtMatch = name.match(/^(.+?)\s*\(SGT\)$/);
   if (sgtMatch) return `${SHORTEN_MAP[sgtMatch[1]] || sgtMatch[1]} (SGT)`;
-  // (Ward) tag: shorten base, strip tag
   const wardMatch = name.match(/^(.+?)\s*\(Ward\)$/);
   if (wardMatch) return SHORTEN_MAP[wardMatch[1]] || wardMatch[1];
   return SHORTEN_MAP[name] || name;
@@ -89,814 +87,1566 @@ export async function generatePDFReport(options: ExportReportOptions) {
     overallPct,
   } = options;
 
-  // FIX: SGT goes to Clinical, NOT Academic
   const academicItems = items.filter(item => !item.name.includes('(Ward)') && !item.name.includes('(SGT)'));
   const clinicalItems = items.filter(item => item.name.includes('(Ward)') || item.name.includes('(SGT)'));
-
-  // Strip "(Ward)" but KEEP "(SGT)" so it differentiates
-  const displayClinicalItems = clinicalItems.map(item => ({
+  const displayClinicalItems = || item.name.includes('(SGT)'));
+  const displayClinicalItems = clinicalItems.map(item clinicalItems.map(item => ({
+    => ({
     ...item,
-    name: item.name.replace(/ \(Ward\)$/, '')
+ ...item,
+    name: item    name: item.name.replace(/ \(.name.replace(/ \(Ward\)$Ward\)$/, '')
   }));
 
-  const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
-  const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
-  const clinicalOverallPct = clinicalOverallTotal > 0 ? (clinicalOverallAttended / clinicalOverallTotal) * 100 : 0;
+ /, '')
+  }));
 
-  // ── Load logo ──
-  let logoBase64 = '';
-  let logoDimensions = { width: 1, height: 1 };
+  const clinicalOverallAtt const clinicalOverallAttended = clinicalItemsended = clinicalItems.reduce((acc,.reduce((acc, curr) => acc curr) => acc + curr.attended + curr.attended, 0);, 0);
+  const clinical
+  const clinicalOverallTotal = clinicalOverallTotal = clinicalItems.reduce((accItems.reduce((acc, curr) =>, curr) => acc + curr.total acc + curr.total, 0);, 0);
+  const clinical
+  const clinicalOverallPct =OverallPct = clinicalOverallTotal > clinicalOverallTotal > 0 ? ( 0 ? (clinicalOverallAttendedclinicalOverallAttended / clinicalOverallTotal / clinicalOverallTotal) * 1) * 100 : 00 : 0;
+
+ 0;
+
+  let logoBase6 let logoBase64 = '';
+4 = '';
+  let logoDimensions  let logoDimensions = { width: = { width: 1, height 1, height: 1 };: 1 };
   try {
-    logoBase64 = await loadImageAsBase64('/Logo.jpeg');
-    logoDimensions = await getImageDimensions(logoBase64);
-  } catch {
-    logoBase64 = '';
+  try {
+    logoBase
+    logoBase64 = await64 = await loadImageAsBase6 loadImageAsBase64('/Logo.jpeg4('/Logo.jpeg');
+    logo');
+    logoDimensions = await getImageDimensions = await getImageDimensions(logoBaseDimensions(logoBase64);
+64);
+  } catch {  } catch {
+    logoBase
+    logoBase64 = '';64 = '';
   }
 
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  let y = 18;
 
-  // ── 1. LOGO ──
-  if (logoBase64) {
-    const logoHeight = 26;
-    const aspectRatio = logoDimensions.width / logoDimensions.height;
-    const logoWidth = logoHeight * aspectRatio;
-    const logoX = (pageWidth - logoWidth) / 2;
-    const logoY = y;
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(0.5);
-    doc.rect(logoX - 1, logoY - 1, logoWidth + 2, logoHeight + 2, 'S');
-    doc.addImage(logoBase64, 'JPEG', logoX, logoY, logoWidth, logoHeight);
-    y += logoHeight + 12;
+  }
+
+  const doc =  const doc = new jsPDF({ new jsPDF({ orientation: 'portrait orientation: 'portrait', unit: '', unit: 'mm', format:mm', format: 'a4' 'a4' });
+  const });
+  const pageWidth = doc pageWidth = doc.internal.pageSize.getWidth();.internal.pageSize.getWidth();
+  let y
+  let y = 18 = 18;
+
+  if;
+
+  if (logoBase6 (logoBase64) {
+4) {
+    const logoHeight    const logoHeight = 26 = 26;
+    const;
+    const aspectRatio = logo aspectRatio = logoDimensions.width / logoDimensions.height;
+Dimensions.width / logoDimensions.height;
+    const logoWidth = logoHeight *    const logoWidth = logoHeight * aspectRatio;
+ aspectRatio;
+    const logoX    const logoX = (pageWidth = (pageWidth - logoWidth) - logoWidth) / 2; / 2;
+    const logo
+    const logoY = y;Y = y;
+    doc.set
+    doc.setDrawColor(0DrawColor(0, 0,, 0, 0);
+ 0);
+    doc.setLineWidth    doc.setLineWidth(0.5(0.5);
+    doc);
+    doc.rect(logoX.rect(logoX - 1, - 1, logoY -  logoY - 1, logoWidth1, logoWidth + 2, + 2, logoHeight +  logoHeight + 2, 'S');
+    doc2, 'S');
+    doc.addImage(logo.addImage(logoBase64,Base64, 'JPEG', logo 'JPEG', logoX, logoYX, logoY, logoWidth,, logoWidth, logoHeight);
+ logoHeight);
+    y += logo    y += logoHeight + 1Height + 12;
+ 2;
   } else {
-    y += 12;
+ } else {
+    y +=     y += 12;
+12;
   }
 
-  // ── 2. TITLE ──
-  doc.setTextColor(15, 23, 42);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.text('ATTENDANCE REPORT', pageWidth / 2, y, { align: 'center' });
-  y += 6;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(100, 100, 100);
-  doc.text('Attendenz Tracker • Local Device Academic Record', pageWidth / 2, y, { align: 'center' });
+   }
+
+  doc.setTextColor(1 doc.setTextColor(15, 25, 23, 43, 42);
+  doc.setFont('hel2);
+  doc.setFont('helvetica', 'boldvetica', 'bold');
+  doc');
+  doc.setFontSize(2.setFontSize(22);
+ 2);
+  doc.text('ATT doc.text('ATTENDANCE REPORT',ENDANCE REPORT', pageWidth /  pageWidth / 2, y,2, y, { align: ' { align: 'center' });
+center' });
+  y +=   y += 6;
+ 6;
+  doc.setFont('hel doc.setFont('helvetica', 'normalvetica', 'normal');
+  doc');
+  doc.setFontSize(1.setFontSize(10);
+ 0);
+  doc.setTextColor(1 doc.setTextColor(100, 00, 100,100, 100 100);
+  doc);
+  doc.text('Attendenz Tracker • Local Device.text('Attendenz Tracker • Local Device Academic Record', page Academic Record', pageWidth / 2Width / 2, y, {, y, { align: 'center align: 'center' });
+  y += 1' });
   y += 12;
 
-  function getOrdinalSuffix(day: number): string {
-    if (day >= 11 && day <= 13) return 'th';
-    switch (day % 10) {
-      case 1: return 'st';
-      case 2: return 'nd';
+ 2;
+
+  function getOrdinalSuffix function getOrdinalSuffix(day: number):(day: number): string {
+    string {
+    if (day >= if (day >= 11 && 11 && day <= 1 day <= 13) return '3) return 'th';
+   th';
+    switch (day % switch (day % 10) 10) {
+      case {
+      case 1: return 1: return 'st';
+ 'st';
+      case 2      case 2: return 'nd: return 'nd';
+      case 3: return';
       case 3: return 'rd';
-      default: return 'th';
+ 'rd';
+      default: return      default: return 'th';
+ 'th';
     }
+     }
   }
 
-  // ── 3. METADATA CARD ──
+  const pad = 4 }
+
   const pad = 4;
-  const rowH = 8;
-  const photoW = 32;
-  const gapPV = 5;
-  const gapLV = 4;
+  const;
+  const rowH =  rowH = 8;
+ 8;
+  const photoW = const photoW = 32; 32;
+  const gap
+  const gapPV = 5PV = 5;
+  const;
+  const gapLV =  gapLV = 4;
+ 4;
   const now = new Date();
-  const day = now.getDate();
-  const suf = getOrdinalSuffix(day);
-  const timeStr = now.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase();
-  const rows: Array<[string, string]> = [
-    ['Name:', studentName || 'Medical Student'],
+  const now = new Date();
+  const day = now const day = now.getDate();
+ .getDate();
+  const suf = get const suf = getOrdinalSuffix(day);OrdinalSuffix(day);
+  const time
+  const timeStr = now.toLocaleStr = now.toLocaleString('en-US', { hour:String('en-US', { hour: '2-digit', minute: '2 '2-digit', minute: '2-digit', hour1-digit', hour12: true }).2: true }).toLowerCase();
+ toLowerCase();
+  const rows: Array const rows: Array<[string, string<[string, string]> = [
+]> = [
+    ['Name:',    ['Name:', studentName || ' studentName || 'Medical Student'],
+    ['Routine ModeMedical Student'],
     ['Routine Mode:', routineMode],
-    ['Exported:', `${day}${suf} ${now.toLocaleString('en-US', { month: 'short' })} ${now.getFullYear()} at ${timeStr}`],
-    ['Scope:', filterTitle],
+    ['Export:', routineMode],
+    ['Exported:', `${day}${suf}ed:', `${day}${suf} ${now.toLocaleString ${now.toLocaleString('en-US',('en-US', { month: ' { month: 'short' })}short' })} ${now.getFullYear()} ${now.getFullYear()} at ${timeStr at ${timeStr}`],
+   }`],
+    ['Scope:', filter ['Scope:', filterTitle],
+ Title],
   ];
-  const maxPageW = pageWidth - 30;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-  let labelW = 0;
-  rows.forEach(([l]) => { labelW = Math.max(labelW, doc.getTextWidth(l)); });
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-  let valueW = 0;
-  rows.forEach(([, v]) => { valueW = Math.max(valueW, doc.getTextWidth(v)); });
-  const fixedW = 3 + photoW + gapPV + labelW + gapLV;
-  const availForValue = maxPageW - fixedW - pad;
-  let usedValueW = valueW;
-  let extraLines = 0;
-  if (valueW > availForValue) {
-    usedValueW = availForValue;
-    rows.forEach(([, v]) => { extraLines += doc.splitTextToSize(v, availForValue).length - 1; });
+  const ];
+  const maxPageW = maxPageW = pageWidth -  pageWidth - 30;
+30;
+  doc.setFont('  doc.setFont('helvetica', 'helvetica', 'bold'); doc.setFontbold'); doc.setFontSize(9);Size(9);
+  let label
+  let labelW = 0W = 0;
+  rows;
+  rows.forEach(([l]).forEach(([l]) => { labelW => { labelW = Math.max(labelW, doc.getText = Math.max(labelW, doc.getTextWidth(l)); });Width(l)); });
+  doc.setFont
+  doc.setFont('helvetica',('helvetica', 'normal'); doc 'normal'); doc.setFontSize(8.5);
+.setFontSize(8.5);
+  let valueW  let valueW = 0; = 0;
+  rows.forEach
+  rows.forEach(([, v])(([, v]) => { valueW => { valueW = Math.max(value = Math.max(valueW, doc.getTextW, doc.getTextWidth(v)); });Width(v)); });
+  const fixed
+  const fixedW = 3W = 3 + photoW + + photoW + gapPV + label gapPV + labelW + gapLVW + gapLV;
+  const;
+  const availForValue = availForValue = maxPageW - maxPageW - fixedW - pad fixedW - pad;
+  let;
+  let usedValueW = usedValueW = valueW;
+ valueW;
+  let extraLines  let extraLines = 0; = 0;
+  if (
+  if (valueW > availvalueW > availForValue) {ForValue) {
+    usedValue
+    usedValueW = availForW = availForValue;
+   Value;
+    rows.forEach(([, rows.forEach(([, v]) => { v]) => { extraLines += doc extraLines += doc.splitTextToSize.splitTextToSize(v, availFor(v, availForValue).length -Value).length - 1; }); 1; });
   }
-  const cardH = Math.max(photoW + 6, (4 + extraLines) * rowH + pad * 2);
-  const cardW = Math.min(maxPageW, fixedW + usedValueW + pad);
-  const cardX = (pageWidth - cardW) / 2;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(cardX, y, cardW, cardH, 3, 3, 'FD');
-  let photoBase64 = '';
-  try {
-    const src = options.profileImage;
-    if (src) photoBase64 = src.startsWith('data:') ? src : await loadImageAsBase64(src);
-  } catch { photoBase64 = ''; }
-  const py = y + (cardH - photoW) / 2;
-  if (photoBase64) {
-    doc.setDrawColor(203, 213, 225);
-    doc.roundedRect(cardX + 3, py, photoW, photoW, 2, 2, 'S');
-    doc.addImage(photoBase64, 'JPEG', cardX + 3, py, photoW, photoW);
-  }
-  const labelX = cardX + 3 + photoW + gapPV;
-  const valueX = labelX + labelW + gapLV;
-  let ry = y + pad + 5;
-  rows.forEach(([label, value]) => {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(51, 65, 85);
-    doc.text(label, labelX, ry);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(71, 85, 105);
-    const lines = usedValueW < valueW ? doc.splitTextToSize(value, usedValueW) : [value];
-    doc.text(lines, valueX, ry);
-    ry += rowH * lines.length;
-  });
-  y += cardH + 6;
 
-  // ── Table Drawing Helper (with bottom legend) ──
-  const drawTable = (
+  }
+  const cardH  const cardH = Math.max(photo = Math.max(photoW + 6W + 6, (4 +, (4 + extraLines) * extraLines) * rowH + pad rowH + pad * 2); * 2);
+  const card
+  const cardW = Math.minW = Math.min(maxPageW,(maxPageW, fixedW + used fixedW + usedValueW + padValueW + pad);
+  const);
+  const cardX = ( cardX = (pageWidth - cardpageWidth - cardW) / W) / 2;
+ 2;
+  doc.setFillColor( doc.setFillColor(248,248, 250 250, 25, 252);
+ 2);
+  doc.setDrawColor doc.setDrawColor(226(226, 23, 232, 22, 240);
+  doc.rounded40);
+  doc.roundedRect(cardX,Rect(cardX, y, cardW y, cardW, cardH, 3, , cardH, 3, 3, 'FD3, 'FD');
+  let');
+  let photoBase64 photoBase64 = '';
+  = '';
+  try {
+    try {
+    const src = options const src = options.profileImage;
+.profileImage;
+    if (src    if (src) photoBase6) photoBase64 = src.startsWith4 = src.startsWith('data:') ?('data:') ? src : await loadImage src : await loadImageAsBase64AsBase64(src);
+ (src);
+  } catch { photo } catch { photoBase64 =Base64 = ''; }
+  ''; }
+  const py = y const py = y + (cardH - photoW) + (cardH - photoW) / 2; / 2;
+  if (
+  if (photoBase64) {
+   photoBase64) {
+    doc.setDrawColor doc.setDrawColor(203(203, 21, 213, 23, 225);
+25);
+    doc.rounded    doc.roundedRect(cardX +Rect(cardX + 3, py 3, py, photoW, photoW, , photoW, photoW, 2, 22, 2, 'S');, 'S');
+    doc.add
+    doc.addImage(photoBase6Image(photoBase64, 'JPEG', cardX +4, 'JPEG', cardX + 3, py 3, py, photoW,, photoW, photoW);
+ photoW);
+  }
+   }
+  const labelX = const labelX = cardX +  cardX + 3 + photoW3 + photoW + gapPV; + gapPV;
+  const value
+  const valueX = labelXX = labelX + labelW + + labelW + gapLV;
+ gapLV;
+  let ry =  let ry = y + pad + y + pad + 5;
+ 5;
+  rows.forEach(([  rows.forEach(([label, value])label, value]) => {
+    => {
+    doc.setFont('hel doc.setFont('helvetica', 'boldvetica', 'bold'); doc.setFontSize'); doc.setFontSize(9); doc(9); doc.setTextColor(51.setTextColor(51, 65, 65, 85, 85);
+    doc);
+    doc.text(label, label.text(label, labelX, ry);X, ry);
+    doc.setFont
+    doc.setFont('helvetica',('helvetica', 'normal'); doc 'normal'); doc.setFontSize(8.setFontSize(8.5); doc.5); doc.setTextColor(71.setTextColor(71, 85, 85, 10, 105);
+   5);
+    const lines = used const lines = usedValueW < valueValueW < valueW ? doc.splitW ? doc.splitTextToSize(valueTextToSize(value, usedValueW, usedValueW) : [value) : [value];
+    doc];
+    doc.text(lines, value.text(lines, valueX, ry);X, ry);
+    ry +=
+    ry += rowH * lines rowH * lines.length;
+ .length;
+  });
+  y });
+  y += cardH + += cardH + 6;
+
+ 6;
+
+  const drawTable  const drawTable = (
+    = (
     title: string,
-    tableItems: AttendanceReportItem[],
+    tableItems title: string,
+    tableItems: AttendanceReportItem: AttendanceReportItem[],
+    startY[],
     startY: number,
-    isClinical: boolean = false,
-    applySorting: boolean = false
+: number,
+    isClinical:    isClinical: boolean = false, boolean = false,
+    applySorting
+    applySorting: boolean = false: boolean = false
+  ): number
   ): number => {
-    let currentY = startY;
-    const legendMap = new Map<string, string>();
-    const trackLegend = (fullName: string) => {
-      const baseName = fullName.replace(/\s*\((SGT|Ward)\)$/, '');
-      const shortBase = SHORTEN_MAP[baseName] || baseName;
-      if (shortBase !== baseName && !legendMap.has(shortBase)) legendMap.set(shortBase, baseName);
+    => {
+    let currentY = let currentY = startY;
+    startY;
+    const legendMap = const legendMap = new Map<string, new Map<string, string>();
+    string>();
+    const trackLegend = const trackLegend = (fullName: string (fullName: string) => {
+) => {
+      const baseName      const baseName = fullName.replace(/\s*\((SG = fullName.replace(/\s*\((SGT|WardT|Ward)\)$/, '');)\)$/, '');
+      const short
+      const shortBase = SHORTENBase = SHORTEN_MAP[baseName_MAP[baseName] || baseName] || baseName;
+      if;
+      if (shortBase !== (shortBase !== baseName && ! baseName && !legendMap.has(shortlegendMap.has(shortBase)) legendMap.set(shortBase,Base)) legendMap.set(shortBase, baseName);
+ baseName);
     };
 
-    let sortedItems = tableItems;
-    if (applySorting) {
-      const computeMergeStatus = (item: AttendanceReportItem): 'split' | 'merged' | 'zero' => {
-        const conducted = item.total;
-        if (conducted === 0) return 'zero';
-        const plannedTotal = item.plannedTotal;
-        const attended = item.attended;
-        const target = targetPct;
-        if (plannedTotal <= 0) return 'split';
-        const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-        if (attended >= totalNeeded) {
-          const conductedPct = conducted > 0 ? (attended / conducted) * 100 : 0;
-          let remark1IsTarget = false;
-          if (conducted > 0 && conductedPct >= target) remark1IsTarget = true;
+       };
+
+    let sortedItems = let sortedItems = tableItems;
+ tableItems;
+    if (apply    if (applySorting) {
+Sorting) {
+      const computeMerge      const computeMergeStatus = (itemStatus = (item: AttendanceReportItem: AttendanceReportItem): 'split'): 'split' | 'merged' | 'merged' | 'zero' | 'zero' => {
+        => {
+        const conducted = item const conducted = item.total;
+        if (conducted.total;
+        if (conducted === 0) return 'zero'; === 0) return 'zero';
+        const planned
+        const plannedTotal = item.plTotal = item.plannedTotal;
+annedTotal;
+        const attended =        const attended = item.attended; item.attended;
+        const target
+        const target = targetPct = targetPct;
+        if;
+        if (plannedTotal (plannedTotal <= 0) <= 0) return 'split'; return 'split';
+        const total
+        const totalNeeded = Math.ceilNeeded = Math.ceil((target * planned((target * plannedTotal) / 100);Total) / 100);
+        if (
+        if (attended >= totalNeededattended >= totalNeeded) {
+         ) {
+          const conductedPct const conductedPct = conducted >  = conducted > 0 ? (attended0 ? (attended / conducted) * / conducted) * 100 100 : 0; : 0;
+          let remark
+          let remark1IsTarget =1IsTarget = false;
+          false;
+          if (conducted if (conducted > 0 && > 0 && conductedPct >= conductedPct >= target) remark1 target) remark1IsTarget = trueIsTarget = true;
+          else;
           else {
-            const needed1 = Math.ceil((target * conducted) / 100) - attended;
-            remark1IsTarget = needed1 <= 0;
+            const {
+            const needed1 = Math needed1 = Math.ceil((target *.ceil((target * conducted) /  conducted) / 100)100) - attended;
+ - attended;
+            remark1IsTarget = needed1            remark1IsTarget = needed1 <= 0; <= 0;
           }
-          return remark1IsTarget ? 'merged' : 'split';
+
+          }
+          return remark1          return remark1IsTarget ? 'IsTarget ? 'merged' : 'merged' : 'split';
+       split';
         } else {
-          const remaining = plannedTotal - conducted;
-          const neededFromRemaining = totalNeeded - attended;
-          const canMiss = remaining - neededFromRemaining;
-          if (canMiss > 0) return 'split';
-          else return 'merged';
+ } else {
+          const remaining =          const remaining = plannedTotal - conducted;
+          const plannedTotal - conducted;
+          const neededFromRemaining = totalNeeded - attended neededFromRemaining = totalNeeded - attended;
+          const;
+          const canMiss = remaining canMiss = remaining - neededFromRemaining;
+          if - neededFromRemaining;
+          if (canMiss > 0) return (canMiss > 0) return 'split';
+ 'split';
+          else return '          else return 'merged';
+       merged';
         }
+      }; }
       };
-      const splitGroup: AttendanceReportItem[] = [];
-      const mergedGroup: AttendanceReportItem[] = [];
-      const zeroGroup: AttendanceReportItem[] = [];
-      for (const item of tableItems) {
-        const status = computeMergeStatus(item);
-        if (status === 'zero') zeroGroup.push(item);
-        else if (status === 'split') splitGroup.push(item);
-        else mergedGroup.push(item);
+      const split
+      const splitGroup: AttendanceReportGroup: AttendanceReportItem[] = [];Item[] = [];
+      const merged
+      const mergedGroup: AttendanceReportGroup: AttendanceReportItem[] = [];Item[] = [];
+      const zero
+      const zeroGroup: AttendanceReportGroup: AttendanceReportItem[] = [];Item[] = [];
+      for (
+      for (const item of tableconst item of tableItems) {
+Items) {
+        const status =        const status = computeMergeStatus(item computeMergeStatus(item);
+        if);
+        if (status === ' (status === 'zero') zeroGroupzero') zeroGroup.push(item);
+.push(item);
+        else if (        else if (status === 'splitstatus === 'split') splitGroup.push') splitGroup.push(item);
+       (item);
+        else mergedGroup.push else mergedGroup.push(item);
+     (item);
       }
-      splitGroup.sort((a, b) => b.pct - a.pct);
-      mergedGroup.sort((a, b) => b.pct - a.pct);
-      sortedItems = [...splitGroup, ...mergedGroup, ...zeroGroup];
+      split }
+      splitGroup.sort((aGroup.sort((a, b) =>, b) => b.pct - b.pct - a.pct); a.pct);
+      mergedGroup
+      mergedGroup.sort((a,.sort((a, b) => b b) => b.pct - a.pct - a.pct);
+.pct);
+      sortedItems = [...splitGroup,      sortedItems = [...splitGroup, ...mergedGroup, ...mergedGroup, ...zeroGroup]; ...zeroGroup];
     }
 
-    // ── Section title ──
-    if (isClinical) {
-      doc.setFillColor(239, 246, 255);
-      doc.setDrawColor(191, 219, 254);
+
+    }
+
+    if (is    if (isClinical) {
+Clinical) {
+      doc.setFillColor      doc.setFillColor(239(239, 24, 246, 26, 255);
+55);
+      doc.setDraw      doc.setDrawColor(19Color(191, 21, 219, 19, 254);254);
+    } else
     } else {
-      doc.setFillColor(240, 253, 244);
-      doc.setDrawColor(187, 247, 208);
+      doc {
+      doc.setFillColor(2.setFillColor(240, 40, 253,253, 244 244);
+      doc);
+      doc.setDrawColor(.setDrawColor(187,187, 247 247, 20, 208);
+   8);
     }
-    doc.roundedRect(15, currentY, pageWidth - 30, 9, 3, 3, 'FD');
-    doc.setTextColor(15, 23, 42);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text(title, pageWidth / 2, currentY + 6, { align: 'center' });
-    currentY += 9;
+    doc }
+    doc.roundedRect(.roundedRect(15, current15, currentY, pageWidthY, pageWidth - 30 - 30, 9,, 9, 3,  3, 3, 'FD3, 'FD');
+    doc');
+    doc.setTextColor(15.setTextColor(15, 23, 23, 42, 42);
+    doc);
+    doc.setFont('helvetica.setFont('helvetica', 'bold');', 'bold');
+    doc.setFont
+    doc.setFontSize(11Size(11);
+    doc);
+    doc.text(title, page.text(title, pageWidth / 2Width / 2, currentY +, currentY + 6, { 6, { align: 'center align: 'center' });
+   ' });
+    currentY +=  currentY += 9;
 
-    const colWidth = (pageWidth - 30) / 6;
-    const colX = [15, 15 + colWidth, 15 + colWidth * 2, 15 + colWidth * 3, 15 + colWidth * 4, 15 + colWidth * 5, 15 + colWidth * 6];
-    const headerRowHeight = 9;
-    const subHeaderRowHeight = 7;
-    const totalHeaderHeight = headerRowHeight + subHeaderRowHeight;
+   9;
 
-    // ── Draw header ──
-    doc.setFillColor(isClinical ? 30 : 30, isClinical ? 58 : 41, isClinical ? 138 : 59);
-    doc.rect(15, currentY, pageWidth - 30, totalHeaderHeight, 'F');
-    const headerBlockCenterY = currentY + totalHeaderHeight / 2;
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    const headerLabel1 = isClinical ? 'Rotation / SGT' : 'Subject';
-    doc.text(headerLabel1, (colX[0] + colX[1]) / 2, headerBlockCenterY, { align: 'center' });
-    doc.text('Class Conducted', (colX[1] + colX[2]) / 2, headerBlockCenterY, { align: 'center' });
-    doc.text('Present', (colX[2] + colX[3]) / 2, headerBlockCenterY, { align: 'center' });
-    doc.text('Current %', (colX[5] + colX[6]) / 2, headerBlockCenterY, { align: 'center' });
-    const topRowCenterY = currentY + headerRowHeight / 2;
-    doc.text('Remarks', (colX[3] + colX[5]) / 2, topRowCenterY, { align: 'center' });
-    const subRowCenterY = currentY + headerRowHeight + subHeaderRowHeight / 2;
-    doc.setFontSize(6.5);
-    doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subRowCenterY, { align: 'center' });
-    doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subRowCenterY, { align: 'center' });
+    const colWidth = const colWidth = (pageWidth - 30) (pageWidth - 30) / 6; / 6;
+    const col
+    const colX = [1X = [15, 15, 15 + colWidth5 + colWidth, 15, 15 + colWidth * + colWidth * 2,  2, 15 + col15 + colWidth * 3Width * 3, 15, 15 + colWidth * + colWidth * 4,  4, 15 + col15 + colWidth * 5Width * 5, 15, 15 + colWidth * + colWidth * 6];
+ 6];
+    const headerRow    const headerRowHeight = 9Height = 9;
+    const;
+    const subHeaderRowHeight subHeaderRowHeight = 7; = 7;
+    const total
+    const totalHeaderHeight = headerHeaderHeight = headerRowHeight + subRowHeight + subHeaderRowHeight;HeaderRowHeight;
 
-    // ── Borders ─
-    doc.setDrawColor(85, 85, 85);
-    doc.setLineWidth(0.4);
-    doc.line(15, currentY, pageWidth - 15, currentY);
-    doc.line(15, currentY + totalHeaderHeight, pageWidth - 15, currentY + totalHeaderHeight);
-    doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
-    for (let i = 0; i <= 6; i++) {
-      if (i === 4) continue;
-      doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
+    doc.set
+
+    doc.setFillColor(isClinical ?FillColor(isClinical ? 30 : 30 : 30, 30, isClinical ?  isClinical ? 58 : 58 : 41, is41, isClinical ? 1Clinical ? 138 : 38 : 59);
+59);
+    doc.rect(    doc.rect(15, current15, currentY, pageWidthY, pageWidth - 30 - 30, totalHeaderHeight, totalHeaderHeight, 'F');, 'F');
+    const header
+    const headerBlockCenterY =BlockCenterY = currentY + total currentY + totalHeaderHeight / HeaderHeight / 2;
+   2;
+    doc.setTextColor(2 doc.setTextColor(255, 55, 255,255, 255 255);
+    doc);
+    doc.setFont('helvetica.setFont('helvetica', 'bold');', 'bold');
+    doc.setFont
+    doc.setFontSize(7.Size(7.5);
+   5);
+    const headerLabel1 const headerLabel1 = isClinical ? = isClinical ? 'Rotation / S 'Rotation / SGT' : 'GT' : 'Subject';
+   Subject';
+    doc.text(headerLabel doc.text(headerLabel1, (colX[0]1, (colX[0] + colX[ + colX[1]) / 1]) / 2, headerBlock2, headerBlockCenterY, {CenterY, { align: 'center align: 'center' });
+   ' });
+    doc.text('Class Conducted', ( doc.text('Class Conducted', (colX[1] + colXcolX[1] + colX[2]) /[2]) / 2, header 2, headerBlockCenterY,BlockCenterY, { align: ' { align: 'center' });
+center' });
+    doc.text('    doc.text('Present', (colPresent', (colX[2]X[2] + colX[3]) /  + colX[3]) / 2, headerBlock2, headerBlockCenterY, {CenterY, { align: 'center align: 'center' });
+   ' });
+    doc.text('Current doc.text('Current %', (col %', (colX[5]X[5] + colX[ + colX[6]) / 6]) / 2, headerBlock2, headerBlockCenterY, {CenterY, { align: 'center align: 'center' });
+   ' });
+    const topRowCenter const topRowCenterY = currentYY = currentY + headerRowHeight + headerRowHeight / 2; / 2;
+    doc.text
+    doc.text('Remarks', (('Remarks', (colX[3colX[3] + colX] + colX[5]) /[5]) / 2, top 2, topRowCenterY,RowCenterY, { align: ' { align: 'center' });
+center' });
+    const subRow    const subRowCenterY = currentCenterY = currentY + headerRowY + headerRowHeight + subHeaderHeight + subHeaderRowHeight / RowHeight / 2;
+   2;
+    doc.setFontSize( doc.setFontSize(6.5);6.5);
+    doc.text('To Reach Preferred
+    doc.text('To Reach Preferred %', (col %', (colX[3]X[3] + colX[ + colX[4]) / 4]) / 2, subRowCenterY, {2, subRowCenterY, { align: 'center align: 'center' });
+   ' });
+    doc.text('Based doc.text('Based on Planned Classes', on Planned Classes', (colX[ (colX[4] + col4] + colX[5])X[5]) / 2, / 2, subRowCenterY subRowCenterY, { align:, { align: 'center' }); 'center' });
+
+    doc.set
+
+    doc.setDrawColor(8DrawColor(85, 85, 85, 85, 85);
+   5);
+    doc.setLineWidth(0.4); doc.setLineWidth(0.4);
+    doc.line
+    doc.line(15,(15, currentY, page currentY, pageWidth - 1Width - 15, currentY5, currentY);
+    doc);
+    doc.line(15.line(15, currentY +, currentY + totalHeaderHeight, totalHeaderHeight, pageWidth -  pageWidth - 15, current15, currentY + totalHeaderY + totalHeaderHeight);
+   Height);
+    doc.line(colX doc.line(colX[3], current[3], currentY + headerRowY + headerRowHeight, colX[5], currentHeight, colX[5], currentY + headerRowY + headerRowHeight);
+   Height);
+    for (let i for (let i = 0; = 0; i <= 6 i <= 6; i++) {; i++) {
+      if (
+      if (i === 4i === 4) continue;
+) continue;
+      doc.line(col      doc.line(colX[i], currentX[i], currentY, colXY, colX[i], currentY + totalHeaderHeight[i], currentY + totalHeaderHeight);
+    });
     }
-    doc.line(colX[4], currentY + headerRowHeight, colX[4], currentY + totalHeaderHeight);
+    doc.line
+    doc.line(colX[4(colX[4], currentY +], currentY + headerRowHeight, headerRowHeight, colX[4 colX[4], currentY +], currentY + totalHeaderHeight); totalHeaderHeight);
+    currentY += totalHeaderHeight
     currentY += totalHeaderHeight;
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setLineWidth(0.2);
+    doc;
 
-    // ── Rows ──
-    for (let idx = 0; idx < sortedItems.length; idx++) {
-      const item = sortedItems[idx];
-      if (currentY > 260) {
+    doc.setFont('helvetica.setFont('helvetica', 'normal');
+    doc.setFont', 'normal');
+    doc.setFontSize(8.Size(8.5);
+   5);
+    doc.setLineWidth( doc.setLineWidth(0.2);0.2);
+
+    for (
+
+    for (let idx = let idx = 0; idx 0; idx < sortedItems.length;< sortedItems.length; idx++) {
+ idx++) {
+      const item =      const item = sortedItems[idx]; sortedItems[idx];
+      if (
+      if (currentY > currentY > 260)260) {
+        doc {
         doc.addPage();
-        currentY = 20;
-        doc.setFillColor(isClinical ? 30 : 30, isClinical ? 58 : 41, isClinical ? 138 : 59);
-        doc.rect(15, currentY, pageWidth - 30, totalHeaderHeight, 'F');
-        const hbCenter = currentY + totalHeaderHeight / 2;
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        const h1 = isClinical ? 'Rotation / SGT' : 'Subject';
-        doc.text(h1, (colX[0] + colX[1]) / 2, hbCenter, { align: 'center' });
-        doc.text('Class Conducted', (colX[1] + colX[2]) / 2, hbCenter, { align: 'center' });
-        doc.text('Present', (colX[2] + colX[3]) / 2, hbCenter, { align: 'center' });
-        doc.text('Current %', (colX[5] + colX[6]) / 2, hbCenter, { align: 'center' });
-        const topCenter = currentY + headerRowHeight / 2;
-        doc.text('Remarks', (colX[3] + colX[5]) / 2, topCenter, { align: 'center' });
-        doc.setFontSize(6.5);
-        const subCenter = currentY + headerRowHeight + subHeaderRowHeight / 2;
-        doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subCenter, { align: 'center' });
-        doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subCenter, { align: 'center' });
-        doc.setDrawColor(85, 85, 85);
-        doc.setLineWidth(0.4);
-        doc.line(15, currentY, pageWidth - 15, currentY);
-        doc.line(15, currentY + totalHeaderHeight, pageWidth - 15, currentY + totalHeaderHeight);
-        doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
-        for (let i = 0; i <= 6; i++) {
-          if (i === 4) continue;
-          doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
+.addPage();
+        currentY =        currentY = 20; 20;
+        doc.set
+        doc.setFillColor(isClinical ?FillColor(isClinical ? 30 : 30 : 30, 30, isClinical ?  isClinical ? 58 : 58 : 41, is41, isClinical ? 1Clinical ? 138 : 38 : 59);
+59);
+        doc.rect(15, current        doc.rect(15, currentY, pageWidthY, pageWidth - 30 - 30, totalHeaderHeight, totalHeaderHeight, 'F');, 'F');
+        const hb
+        const hbCenter = currentYCenter = currentY + totalHeaderHeight + totalHeaderHeight / 2; / 2;
+        doc.setTextColor
+        doc.setTextColor(255(255, 25, 255, 25, 255);
+55);
+        doc.setFont('        doc.setFont('helvetica', 'helvetica', 'bold');
+       bold');
+        doc.setFontSize(7.5); doc.setFontSize(7.5);
+        const h
+        const h1 = isClinical1 = isClinical ? 'Rotation / ? 'Rotation / SGT' : SGT' : 'Subject';
+ 'Subject';
+        doc.text(h        doc.text(h1, (col1, (colX[0]X[0] + colX[ + colX[1]) / 1]) / 2, hbCenter2, hbCenter, { align:, { align: 'center' });
+        doc.text 'center' });
+        doc.text('Class Conducted', (col('Class Conducted', (colX[1]X[1] + colX[ + colX[2]) / 2, hbCenter2]) / 2, hbCenter, { align:, { align: 'center' }); 'center' });
+        doc.text
+        doc.text('Present', (('Present', (colX[2] + colXcolX[2] + colX[3]) /[3]) / 2, hb 2, hbCenter, { alignCenter, { align: 'center': 'center' });
+        doc.text('Current % });
+        doc.text('Current %', (colX', (colX[5] +[5] + colX[6 colX[6]) / 2]) / 2, hbCenter,, hbCenter, { align: ' { align: 'center' });
+center' });
+        const topCenter        const topCenter = currentY + = currentY + headerRowHeight / headerRowHeight / 2;
+ 2;
+        doc.text('        doc.text('Remarks', (colRemarks', (colX[3]X[3] + colX[ + colX[5]) / 5]) / 2, topCenter2, topCenter, { align:, { align: 'center' }); 'center' });
+        doc.setFont
+        doc.setFontSize(6.Size(6.5);
+       5);
+        const subCenter = const subCenter = currentY + header currentY + headerRowHeight + subRowHeight + subHeaderRowHeight /HeaderRowHeight / 2;
+ 2;
+        doc.text('        doc.text('To Reach Preferred %To Reach Preferred %', (colX', (colX[3] +[3] + colX[4 colX[4]) / 2, subCenter,]) / 2, subCenter, { align: ' { align: 'center' });
+center' });
+        doc.text('        doc.text('Based on Planned ClassesBased on Planned Classes', (colX', (colX[4] +[4] + colX[5 colX[5]) / 2]) / 2, subCenter, { align: ', subCenter, { align: 'center' });
+center' });
+        doc.setDraw        doc.setDrawColor(85, 85Color(85, 85, 85, 85);
+       );
+        doc.setLineWidth( doc.setLineWidth(0.4);0.4);
+        doc.line
+        doc.line(15,(15, currentY, page currentY, pageWidth - 1Width - 15, currentY5, currentY);
+        doc);
+        doc.line(15.line(15, currentY +, currentY + totalHeaderHeight, totalHeaderHeight, pageWidth -  pageWidth - 15, currentY + totalHeader15, currentY + totalHeaderHeight);
+       Height);
+        doc.line(colX doc.line(colX[3], current[3], currentY + headerRowY + headerRowHeight, colXHeight, colX[5], current[5], currentY + headerRowY + headerRowHeight);
+       Height);
+        for (let i for (let i = 0; = 0; i <= 6 i <= 6; i++) {; i++) {
+          if (
+          if (i === 4i === 4) continue;
+) continue;
+          doc.line(col          doc.line(colX[i], currentX[i], currentY, colXY, colX[i], currentY + totalHeaderHeight[i], currentY + totalHeaderHeight);
+        });
         }
-        doc.line(colX[4], currentY + headerRowHeight, colX[4], currentY + totalHeaderHeight);
-        currentY += totalHeaderHeight;
+        doc.line
+        doc.line(colX[4(colX[4], currentY +], currentY + headerRowHeight, colX[4 headerRowHeight, colX[4], currentY +], currentY + totalHeaderHeight); totalHeaderHeight);
+        currentY
+        currentY += totalHeaderHeight += totalHeaderHeight;
+        doc.setLineWidth(0;
         doc.setLineWidth(0.2);
+.2);
       }
 
-      const isEven = idx % 2 === 0;
-      if (isEven) {
-        doc.setFillColor(241, 245, 249);
-        doc.rect(15, currentY, pageWidth - 30, 8, 'F');
+           }
+
+      const isEven = idx % 2 const isEven = idx % 2 === 0; === 0;
+      if (
+      if (isEven) {isEven) {
+        doc.set
+        doc.setFillColor(24FillColor(241, 21, 245, 45, 249);249);
+        doc.rect
+        doc.rect(15,(15, currentY, page currentY, pageWidth - 3Width - 30, 8, 'F');0, 8, 'F');
       }
 
-      // FIX: shorten long names + track for legend
-      const displayName = item.name;
-      trackLegend(displayName);
-      let subName = shortenSubject(displayName);
-      if (subName.length > 20) subName = subName.substring(0, 18) + '..';
+
+      }
+
+      const displayName =      const displayName = item.name;
+ item.name;
+      trackLegend(display      trackLegend(displayName);
+     Name);
+      let subName = let subName = shortenSubject(displayName shortenSubject(displayName);
+      if);
+      if (subName.length (subName.length > 20 > 20) subName =) subName = subName.substring( subName.substring(0, 10, 18) + '..8) + '..';
+
+      const target = targetP';
 
       const target = targetPct;
-      const conducted = item.total;
-      const attended = item.attended;
-      const plannedTotal = item.plannedTotal;
+     ct;
+      const conducted = item const conducted = item.total;
+     .total;
+      const attended = item const attended = item.attended;
+.attended;
+      const plannedTotal      const plannedTotal = item.planned = item.plannedTotal;
 
-      // ── Compute Remarks ──
-      let remark1Text = '';
-      let remark1Color = [15, 23, 42];
-      if (conducted === 0) {
-        remark1Text = 'Yet to be Conducted';
-        remark1Color = [148, 163, 184];
+     Total;
+
+      let remark1Text let remark1Text = '';
+      = '';
+      let remark1Color let remark1Color = [15 = [15, 23, 23, 42, 42];
+      if];
+      if (conducted === (conducted === 0) { 0) {
+        remark1
+        remark1Text = 'Yet to be ConductedText = 'Yet to be Conducted';
+        remark1Color = [';
+        remark1Color = [148,148, 163 163, 18, 184];
+     4];
       } else {
-        const pct = (attended / conducted) * 100;
-        if (pct >= target) {
-          remark1Text = 'Target Achieved';
-          remark1Color = [16, 185, 129];
+ } else {
+        const pct =        const pct = (attended / conducted) * 1 (attended / conducted) * 100;
+00;
+        if (p        if (pct >= target)ct >= target) {
+          remark {
+          remark1Text = '1Text = 'Target Achieved';Target Achieved';
+          remark1
+          remark1Color = [1Color = [16, 185, 6, 185, 129];129];
+        } else
         } else {
-          const needed = Math.ceil((target * conducted) / 100) - attended;
-          if (needed > 0) {
-            const classText = needed === 1 ? 'Class' : 'Classes';
-            remark1Text = `Attend next ${needed} ${classText}`;
-            remark1Color = [255, 165, 0];
+          const {
+          const needed = Math.ceil needed = Math.ceil((target * conducted((target * conducted) / 1) / 100) -00) - attended;
+          attended;
+          if (needed > if (needed > 0) { 0) {
+            const class
+            const classText = needed ===Text = needed === 1 ? ' 1 ? 'Class' : 'Class' : 'Classes';
+           Classes';
+            remark1Text = remark1Text = `Attend next ${ `Attend next ${needed} ${classneeded} ${classText}`;
+            remark1ColorText}`;
+            remark1Color = [25 = [255, 15, 165, 65, 0];
+         0];
           } else {
-            remark1Text = 'Target Achieved';
-            remark1Color = [16, 185, 129];
+ } else {
+            remark1Text            remark1Text = 'Target Achie = 'Target Achieved';
+           ved';
+            remark1Color = remark1Color = [16, [16, 185 185, 12, 129];
+         9];
           }
+        } }
         }
+      }
+
+      let remark2
       }
 
       let remark2Text = '';
-      let remark2Color = [15, 23, 42];
-      let mergeRemarks = false;
-      if (conducted === 0) {
-        remark2Text = 'Yet to be Conducted';
-        remark2Color = [148, 163, 184];
-      } else if (plannedTotal > 0) {
-        const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-        if (attended >= totalNeeded) {
-          remark2Text = 'Target Achieved';
-          remark2Color = [16, 185, 129];
-          if (remark1Text === 'Target Achieved') mergeRemarks = true;
+Text = '';
+      let remark2      let remark2Color = [1Color = [15, 25, 23, 43, 42];
+     2];
+      let mergeRemarks = let mergeRemarks = false;
+      false;
+      if (conducted if (conducted === 0) === 0) {
+        remark {
+        remark2Text = '2Text = 'Yet to be ConductYet to be Conducted';
+       ed';
+        remark2Color = remark2Color = [148 [148, 16, 163, 13, 184];
+84];
+      } else if      } else if (plannedTotal (plannedTotal > 0) > 0) {
+        const {
+        const totalNeeded = Math totalNeeded = Math.ceil((target * plannedTotal) /.ceil((target * plannedTotal) / 100 100);
+        if);
+        if (attended >= total (attended >= totalNeeded) {
+Needed) {
+          remark2Text          remark2Text = 'Target Achie = 'Target Achieved';
+          remark2Color =ved';
+          remark2Color = [16, [16, 185 185, 12, 129];
+         9];
+          if (remark1 if (remark1Text === 'TargetText === 'Target Achieved') merge Achieved') mergeRemarks = true;Remarks = true;
+        } else {
+          const
         } else {
           const remaining = plannedTotal - conducted;
-          const neededFromRemaining = totalNeeded - attended;
-          const canMiss = remaining - neededFromRemaining;
-          if (canMiss > 0) {
-            remark2Text = `Can miss ${canMiss}`;
-            remark2Color = [255, 165, 0];
-            mergeRemarks = false;
-          } else if (canMiss === 0) {
-            const classText = remaining === 1 ? 'Class' : 'Classes';
-            remark2Text = `Must Attend remaining ${remaining} ${classText}`;
-            remark2Color = [139, 0, 0];
+ remaining = plannedTotal - conducted;
+          const neededFrom          const neededFromRemaining = totalNeededRemaining = totalNeeded - attended;
+ - attended;
+          const canMiss          const canMiss = remaining - needed = remaining - neededFromRemaining;
+FromRemaining;
+          if (can          if (canMiss > 0Miss > 0) {
+           ) {
+            remark2Text = remark2Text = `Can miss ${ `Can miss ${canMiss}`;canMiss}`;
+            remark2
+            remark2Color = [2Color = [255, 165,55, 165, 0];
+ 0];
+            mergeRemarks =            mergeRemarks = false;
+          false;
+          } else if ( } else if (canMiss === canMiss === 0) {
+0) {
+            const classText            const classText = remaining ===  = remaining === 1 ? 'Class1 ? 'Class' : 'Classes' : 'Classes';
+            remark';
+            remark2Text = `2Text = `Must Attend remaining ${Must Attend remaining ${remaining} ${classremaining} ${classText}`;
+Text}`;
+            remark2Color            remark2Color = [13 = [139, 09, 0, 0];, 0];
+            mergeRemarks
             mergeRemarks = true;
-          } else {
-            remark2Text = 'Better Luck Next Life';
-            remark2Color = [128, 0, 128];
-            mergeRemarks = true;
+ = true;
+          } else {          } else {
+            remark2
+            remark2Text = 'BetterText = 'Better Luck Next Life'; Luck Next Life';
+            remark2
+            remark2Color = [1Color = [128, 28, 0, 10, 128];
+28];
+            mergeRemarks =            mergeRemarks = true;
+          true;
           }
         }
+      } else }
+        }
       } else {
-        remark2Text = 'No Planned Classes';
-        remark2Color = [148, 163, 184];
-        mergeRemarks = false;
+        remark {
+        remark2Text = '2Text = 'No Planned Classes';No Planned Classes';
+        remark2
+        remark2Color = [1Color = [148, 48, 163,163, 184 184];
+        merge];
+        mergeRemarks = false;Remarks = false;
       }
 
-      const isYetToBeConducted = conducted === 0;
 
-      // ── Borders ─
-      doc.setDrawColor(85, 85, 85);
-      doc.setLineWidth(0.3);
-      doc.line(15, currentY, pageWidth - 15, currentY);
-      doc.line(15, currentY + 8, pageWidth - 15, currentY + 8);
+      }
 
-      if (isYetToBeConducted) {
-        doc.line(colX[0], currentY, colX[0], currentY + 8);
-        doc.line(colX[1], currentY, colX[1], currentY + 8);
-        doc.line(colX[6], currentY, colX[6], currentY + 8);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(15, 23, 42);
-        doc.text(subName, (colX[0] + colX[1]) / 2, currentY + 4, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-        const mergedText = 'Yet to be Conducted';
-        const centerX = (colX[1] + colX[6]) / 2;
-        doc.setTextColor(148, 163, 184);
-        doc.setFont('helvetica', 'italic');
-        doc.text(mergedText, centerX, currentY + 4, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-        currentY += 8;
+      const isYet      const isYetToBeConducted = conducted === ToBeConducted = conducted === 0;
+
+     0;
+
+      doc.setDrawColor doc.setDrawColor(85,(85, 85, 85, 85); 85);
+      doc.set
+      doc.setLineWidth(0.LineWidth(0.3);
+     3);
+      doc.line(1 doc.line(15, currentY5, currentY, pageWidth -, pageWidth - 15, 15, currentY);
+ currentY);
+      doc.line(      doc.line(15, current15, currentY + 8Y + 8, pageWidth -, pageWidth - 15, 15, currentY +  currentY + 8);
+
+     8);
+
+      if (isYetToBeConducted if (isYetToBeConducted) {
+       ) {
+        doc.line(colX doc.line(colX[0], current[0], currentY, colXY, colX[0], current[0], currentY + 8Y + 8);
+        doc);
+        doc.line(colX[.line(colX[1], currentY1], currentY, colX[, colX[1], currentY1], currentY + 8); + 8);
+        doc.line
+        doc.line(colX[6(colX[6], currentY,], currentY, colX[6 colX[6], currentY +], currentY + 8);
+ 8);
+        doc.setFont('        doc.setFont('helvetica', 'helvetica', 'bold');
+        doc.setTextColor(1bold');
+        doc.setTextColor(15, 25, 23, 43, 42);
+       2);
+        doc.text(subName doc.text(subName, (colX, (colX[0] +[0] + colX[1 colX[1]) / 2]) / 2, currentY +, currentY + 4, { 4, { align: 'center align: 'center' });
+       ' });
+        doc.setFont('hel doc.setFont('helvetica', 'normalvetica', 'normal');
+        const');
+        const mergedText = ' mergedText = 'Yet to be Conducted';
+       Yet to be Conducted';
+        const centerX = (colX[1 const centerX = (colX[1] + colX] + colX[6]) /[6]) / 2;
+ 2;
+        doc.setTextColor(        doc.setTextColor(148,148, 163 163, 18, 184);
+       4);
+        doc.setFont('helvetica', 'italic doc.setFont('helvetica', 'italic');
+        doc');
+        doc.text(mergedText.text(mergedText, centerX, current, centerX, currentY + 4Y + 4, { align:, { align: 'center' }); 'center' });
+        doc.setFont
+        doc.setFont('helvetica',('helvetica', 'normal');
+ 'normal');
+        currentY +=        currentY += 8;
+ 8;
+        continue;
         continue;
       }
 
-      // ── Normal row ──
-      for (let i = 0; i <= 6; i++) {
-        if (mergeRemarks && i >= 3 && i <= 5) continue;
-        doc.line(colX[i], currentY, colX[i], currentY + 8);
+           }
+
+      for (let i for (let i = 0; = 0; i <= 6 i <= 6; i++) {; i++) {
+        if (
+        if (mergeRemarks && imergeRemarks && i >= 3 && >= 3 && i <= 5 i <= 5) continue;
+) continue;
+        doc.line(col        doc.line(colX[i], currentX[i], currentY, colXY, colX[i], currentY[i], currentY + 8); + 8);
       }
+
+      }
+      if (merge      if (mergeRemarks) {
+Remarks) {
+        doc.line(col        doc.line(colX[3],X[3], currentY, col currentY, colX[3],X[3], currentY +  currentY + 8);
+       8);
+        doc.line(colX doc.line(colX[5], current[5], currentY, colXY, colX[5], current[5], currentY + 8Y + 8);
+      });
+      }
+
+      const cell
+
+      const cellCenterY = currentCenterY = currentY + 4Y + 4;
+      doc;
+      doc.setFont('helvetica.setFont('helvetica', 'bold');', 'bold');
+      doc.setTextColor
+      doc.setTextColor(15,(15, 23, 23, 42); 42);
+      doc.text
+      doc.text(subName, ((subName, (colX[0colX[0] + colX] + colX[1]) /[1]) / 2, cell 2, cellCenterY, {CenterY, { align: 'center align: 'center' });
+     ' });
+      doc.setFont('hel doc.setFont('helvetica', 'normal');
+
+      docvetica', 'normal');
+
+      doc.text(String(conducted.text(String(conducted), (colX), (colX[1] +[1] + colX[2 colX[2]) / 2]) / 2, cellCenterY, cellCenterY, { align:, { align: 'center' }); 'center' });
+      doc.text
+      doc.text(String(attended),(String(attended), (colX[2] + col (colX[2] + colX[3])X[3]) / 2, / 2, cellCenterY, { align: ' cellCenterY, { align: 'center' });
+
+      if (mergecenter' });
+
       if (mergeRemarks) {
-        doc.line(colX[3], currentY, colX[3], currentY + 8);
-        doc.line(colX[5], currentY, colX[5], currentY + 8);
+Remarks) {
+        const startX =        const startX = colX[3 colX[3];
+        const];
+        const endX = col endX = colX[5];X[5];
+        const centerX
+        const centerX = (startX = (startX + endX) + endX) / 2; / 2;
+        const display
+        const displayText = remark2Text = remark2Text;
+       Text;
+        doc.setTextColor(remark doc.setTextColor(remark2Color[02Color[0], remark2Color], remark2Color[1], remark[1], remark2Color[22Color[2]);
+        if]);
+        if (displayText === ' (displayText === 'Better Luck Next LifeBetter Luck Next Life' || displayText' || displayText.includes('Must Attend.includes('Must Attend')) {
+         ')) {
+          doc.setFont('hel doc.setFont('helvetica', 'boldvetica', 'bold');
+        }');
+        }
+        doc.text
+        doc.text(displayText, centerX(displayText, centerX, cellCenterY, cellCenterY, { align:, { align: 'center' }); 'center' });
+        doc.setFont
+        doc.setFont('helvetica',('helvetica', 'normal');
+ 'normal');
+      } else {      } else {
+        doc.setTextColor
+        doc.setTextColor(remark1Color(remark1Color[0], remark[0], remark1Color[11Color[1], remark1Color], remark1Color[2]);
+[2]);
+        if (remark        if (remark1Text.includes('1Text.includes('Attend')) {
+Attend')) {
+          doc.setFont('          doc.setFont('helvetica', 'helvetica', 'bold');
+       bold');
+        }
+        doc }
+        doc.text(remark1.text(remark1Text, (colText, (colX[3]X[3] + colX[ + colX[4]) / 4]) / 2, cellCenter2, cellCenterY, { alignY, { align: 'center': 'center' });
+        doc });
+        doc.setFont('helvetica.setFont('helvetica', 'normal');', 'normal');
+        doc.setTextColor
+        doc.setTextColor(remark2Color(remark2Color[0], remark[0], remark2Color[12Color[1], remark2Color], remark2Color[2]);
+[2]);
+        if (remark        if (remark2Text.includes('2Text.includes('Can miss') ||Can miss') || remark2Text === remark2Text === 'Target Achieved 'Target Achieved') {
+         ') {
+          doc.setFont('hel doc.setFont('helvetica', 'boldvetica', 'bold');
+        }');
+        }
+        doc.text
+        doc.text(remark2Text(remark2Text, (colX, (colX[4] +[4] + colX[5 colX[5]) / 2]) / 2, cellCenterY, cellCenterY, { align:, { align: 'center' }); 'center' });
+        doc.setFont
+        doc.setFont('helvetica',('helvetica', 'normal');
+ 'normal');
       }
 
-      const cellCenterY = currentY + 4;
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text(subName, (colX[0] + colX[1]) / 2, cellCenterY, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
+           }
 
-      doc.text(String(conducted), (colX[1] + colX[2]) / 2, cellCenterY, { align: 'center' });
-      doc.text(String(attended), (colX[2] + colX[3]) / 2, cellCenterY, { align: 'center' });
-
-      if (mergeRemarks) {
-        const startX = colX[3];
-        const endX = colX[5];
-        const centerX = (startX + endX) / 2;
-        const displayText = remark2Text;
-        doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
-        if (displayText === 'Better Luck Next Life' || displayText.includes('Must Attend')) {
-          doc.setFont('helvetica', 'bold');
-        }
-        doc.text(displayText, centerX, cellCenterY, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
+      if (item.p if (item.pct >= targetPct >= targetPct) {
+ct) {
+        doc.setTextColor(        doc.setTextColor(16, 185,16, 185, 129 129);
+      });
       } else {
-        doc.setTextColor(remark1Color[0], remark1Color[1], remark1Color[2]);
-        if (remark1Text.includes('Attend')) {
-          doc.setFont('helvetica', 'bold');
-        }
-        doc.text(remark1Text, (colX[3] + colX[4]) / 2, cellCenterY, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
-        if (remark2Text.includes('Can miss') || remark2Text === 'Target Achieved') {
-          doc.setFont('helvetica', 'bold');
-        }
-        doc.text(remark2Text, (colX[4] + colX[5]) / 2, cellCenterY, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
+        else {
+        doc.setTextColor(2 doc.setTextColor(225, 25, 29, 29, 72);
+72);
       }
+           }
+      doc.setFont('hel doc.setFont('helvetica', 'boldvetica', 'bold');
+      doc');
+      doc.text(`${item.p.text(`${item.pct.toFixed(1ct.toFixed(1)}%`, ()}%`, (colX[5colX[5] + colX] + colX[6]) /[6]) / 2, cell 2, cellCenterY, {CenterY, { align: 'center align: 'center' });
+     ' });
+      doc.setFont('hel doc.setFont('helvetica', 'normalvetica', 'normal');
 
-      if (item.pct >= targetPct) {
-        doc.setTextColor(16, 185, 129);
-      } else {
-        doc.setTextColor(225, 29, 72);
-      }
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${item.pct.toFixed(1)}%`, (colX[5] + colX[6]) / 2, cellCenterY, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
+      current');
 
-      currentY += 8;
+      currentY += 8Y += 8;
+    };
     }
 
-    currentY += 2;
+    currentY
 
- // ── Legend anchored at the bottom (multi-column flow, bold short + italic full) ──
-    if (legendMap.size > 0) {
-      currentY += 4;
-      if (currentY > 270) { doc.addPage(); currentY = 20; }
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(100, 116, 139);
-      doc.text('Abbreviations used:', 17, currentY);
-      currentY += 4;
+    currentY += 2; += 2;
 
-      const leftMargin = 17;
-      const rightLimit = pageWidth - 15;
-      const colGap = 6;
-      const bullet = '• ';
+    //
+
+    // ── Legend anchored ── Legend anchored at the bottom ( at the bottom (3-column aligned grid3-column aligned grid) ──) ──
+    if (
+    if (legendMap.size >legendMap.size > 0) { 0) {
+      currentY
+      currentY += 4; += 4;
+      if (
+      if (currentY > currentY > 270)270) { doc.addPage { doc.addPage(); currentY =(); currentY = 20; 20; }
+      doc }
+      doc.setFontSize(7.setFontSize(7);
+      doc);
+      doc.setFont('helvetica.setFont('helvetica', 'bold');', 'bold');
+      doc.setTextColor
+      doc.setTextColor(100(100, 11, 116, 16, 139);
+39);
+      doc.text('      doc.text('Abbreviations usedAbbreviations used:', 17, currentY);:', 17, currentY);
+      currentY
+      currentY += 4; += 4;
+
+      const left
+
+      const leftMargin = 1Margin = 17;
+     7;
+      const colWidth = const colWidth = (pageWidth - 30) (pageWidth - 30) / 3;
+      const bullet / 3;
+      const bullet = '• '; = '• ';
+      const eq
       const eq = ' = ';
 
-      const measure = (short: string, full: string) => {
-        doc.setFont('helvetica', 'normal');
-        const bw = doc.getTextWidth(bullet);
-        const ew = doc.getTextWidth(eq);
-        doc.setFont('helvetica', 'bold');
-        const sw = doc.getTextWidth(short);
-        doc.setFont('helvetica', 'italic');
-        const fw = doc.getTextWidth(full);
-        return { bw, ew, sw, fw, total: bw + sw + ew + fw };
-      };
+      let col = ' = ';
 
-      let x = leftMargin;
-      legendMap.forEach((full, short) => {
-        const m = measure(short, full);
-        // wrap to a new line when this entry would overflow the row
-        if (x + m.total > rightLimit && x > leftMargin) {
-          x = leftMargin;
-          currentY += 4;
-          if (currentY > 275) { doc.addPage(); currentY = 20; }
+      let col = 0; = 0;
+      legendMap
+      legendMap.forEach((full,.forEach((full, short) => { short) => {
+        if (
+        if (col === 0col === 0 && currentY > 275 && currentY > 275) { 
+          doc.addPage();) { 
+          doc.addPage(); 
+          currentY 
+          currentY = 20 = 20; 
+        }; 
         }
-        // bullet
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(148, 163, 184);
-        doc.text(bullet, x, currentY);
-        let cx = x + m.bw;
-        // abbreviation — BOLD
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(51, 65, 85);
-        doc.text(short, cx, currentY);
-        cx += m.sw;
-        // " = "
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(148, 163, 184);
-        doc.text(eq, cx, currentY);
-        cx += m.ew;
-        // long form — ITALIC
-        doc.setFont('helvetica', 'italic');
-        doc.setTextColor(100, 116, 139);
-        doc.text(full, cx, currentY);
-        x += m.total + colGap;
+        
+        const
+        
+        const x = leftMargin x = leftMargin + (col * + (col * colWidth);
+ colWidth);
+        
+        doc.setFont        
+        doc.setFont('helvetica',('helvetica', 'normal');
+ 'normal');
+        doc.setTextColor(        doc.setTextColor(148,148, 163 163, 18, 184);
+       4);
+        doc.text(bullet doc.text(bullet, x, currentY);
+        
+, x, currentY);
+        
+        doc.setFont('        doc.setFont('helvetica', 'helvetica', 'bold');
+       bold');
+        doc.setTextColor(5 doc.setTextColor(51, 61, 65, 85, 85);
+        const shortWidth =5);
+        const shortWidth = doc.getTextWidth(short doc.getTextWidth(short);
+        doc);
+        doc.text(short, x.text(short, x + doc.getTextWidth + doc.getTextWidth(bullet), current(bullet), currentY);
+        
+Y);
+        
+        doc.setFont('        doc.setFont('helvetica', 'helvetica', 'normal');
+       normal');
+        doc.setTextColor(1 doc.setTextColor(148, 48, 163,163, 184 184);
+        doc);
+        doc.text(eq, x.text(eq, x + doc.getTextWidth + doc.getTextWidth(bullet) +(bullet) + shortWidth, current shortWidth, currentY);
+        
+Y);
+        
+        doc.setFont('        doc.setFont('helvetica', 'italic');
+       helvetica', 'italic');
+        doc.setTextColor(100,  doc.setTextColor(100, 116,116, 139 139);
+        doc);
+        doc.text(full, x.text(full, x + doc.getTextWidth + doc.getTextWidth(bullet) +(bullet) + shortWidth + doc.getTextWidth(eq), shortWidth + doc.getTextWidth(eq), currentY, { maxWidth: colWidth currentY, { maxWidth: colWidth - 10 });
+        
+        - 10 });
+        
+        col++;
+        col++;
+        if (col >= if (col >= 3) { 3) {
+          col =
+          col = 0;
+ 0;
+          currentY +=          currentY += 4;
+ 4;
+        }
+             }
       });
-
-      doc.setFont('helvetica', 'normal');
-      currentY += 2;
+      
+      });
+      
+      if (col !== if (col !== 0) current 0) currentY += 4Y += 4;
+      doc;
+      doc.setFont('helvetica.setFont('helvetica', 'normal');', 'normal');
     }
 
 
-  // ── ACADEMIC SECTION ──
-  if (academicItems.length > 0) {
-    y = drawTable('Academic Subjects', academicItems, y, false, true);
-    y += 12;
+    }
+
+    currentY +=    currentY += 2;
+ 2;
+    return currentY;
+  };    return currentY;
+  };
+
+  if (
+
+  if (academicItems.length >academicItems.length > 0) { 0) {
+    y =
+    y = drawTable('Ac drawTable('Academic Subjects', academicademic Subjects', academicItems, y,Items, y, false, true); false, true);
+    y +=
+    y += 12; 12;
   }
 
-  // ── CLINICAL SECTION (Wards + SGT) ──
-  if (displayClinicalItems.length > 0) {
-    if (y > 235) {
+
+  }
+
+  if (display  if (displayClinicalItems.length >ClinicalItems.length > 0) { 0) {
+    if (
+    if (y > 2y > 235) {35) {
+      doc.add
       doc.addPage();
-      y = 20;
+     Page();
+      y = 2 y = 20;
+   0;
     }
-    y = drawTable('Clinical Rotations & SGT', displayClinicalItems, y, true, false);
-    y += 8;
+    y }
+    y = drawTable(' = drawTable('Clinical Rotations &Clinical Rotations & SGT', display SGT', displayClinicalItems, yClinicalItems, y, true, false, true, false);
+    y);
+    y += 8; += 8;
   }
 
-  // ── SUMMARY CARD ──
-  if (y > 235) {
-    doc.addPage();
-    y = 20;
+
   }
 
-  const combinedAttended = overallAttended + clinicalOverallAttended;
-  const combinedTotal = overallTotal + clinicalOverallTotal;
-  const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
+  if (y > 23  if (y > 235) {
+5) {
+    doc.addPage    doc.addPage();
+    y();
+    y = 20 = 20;
+  };
+  }
 
-  let academicRemark = `On Track (Target: ${targetPct}%)`;
-  if (overallPct >= 85) academicRemark = `Excellent Performance (Above ${targetPct}% Target)`;
-  else if (overallPct >= targetPct) academicRemark = `Satisfactory Attendance (Meets ${targetPct}% Target)`;
-  else academicRemark = `Attention Required (Below ${targetPct}% Required Threshold)`;
+  const combined
 
-  let clinicalRemark = `On Track (Target: ${targetPct}%)`;
-  if (clinicalOverallPct >= 85) clinicalRemark = `Excellent Performance (Above ${targetPct}% Target)`;
-  else if (clinicalOverallPct >= targetPct) clinicalRemark = `Satisfactory Attendance (Meets ${targetPct}% Target)`;
-  else if (clinicalItems.length > 0 && clinicalOverallTotal > 0)
-    clinicalRemark = `Attention Required (Below ${targetPct}% Required Threshold)`;
-  else clinicalRemark = 'No Clinical Data Available';
+  const combinedAttended = overallAttended = overallAttended + clinicalAttended + clinicalOverallAttended;OverallAttended;
+  const combined
+  const combinedTotal = overallTotalTotal = overallTotal + clinicalOverallTotal + clinicalOverallTotal;
+  const;
+  const combinedPct = combinedPct = combinedTotal ===  combinedTotal === 0 ? 00 ? 0 : (combinedAtt : (combinedAttended / combinedTotalended / combinedTotal) * 1) * 100;
 
-  const boxHeight = clinicalItems.length > 0 ? 44 : 26;
-  doc.setFillColor(240, 253, 244);
-  doc.setDrawColor(187, 247, 208);
-  doc.roundedRect(15, y, pageWidth - 30, boxHeight, 3, 3, 'FD');
-  doc.setTextColor(21, 128, 61);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text(`Overall Percentage: ${combinedPct.toFixed(1)}%`, pageWidth / 2, y + 8, { align: 'center' });
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(51, 65, 85);
-  let summaryY = y + 15;
-  doc.text(`Academic Overall Percentage: ${overallPct.toFixed(1)}%`, pageWidth / 2, summaryY, { align: 'center' });
-  summaryY += 7;
-  if (clinicalItems.length > 0) {
-    doc.text(`Clinical Overall Percentage: ${clinicalOverallPct.toFixed(1)}%`, pageWidth / 2, summaryY, { align: 'center' });
+00;
+
+  let academicRemark  let academicRemark = `On Track = `On Track (Target: ${ (Target: ${targetPct}targetPct}%)`;
+ %)`;
+  if (overallP if (overallPct >= 8ct >= 85) academicRemark5) academicRemark = `Excellent Performance = `Excellent Performance (Above ${target (Above ${targetPct}% TargetPct}% Target)`;
+ )`;
+  else if (overall else if (overallPct >= targetPct >= targetPct) academicPct) academicRemark = `SRemark = `Satisfactory Attendance (atisfactory Attendance (Meets ${targetMeets ${targetPct}% TargetPct}% Target)`;
+ )`;
+  else academicRemark = `Attention Required ( else academicRemark = `Attention Required (Below ${targetPBelow ${targetPct}% Required Thresholdct}% Required Threshold)`;
+
+  let clinicalRemark =)`;
+
+  let clinicalRemark = `On Track ( `On Track (Target: ${targetTarget: ${targetPct}%)Pct}%)`;
+  if`;
+  if (clinicalOverallP (clinicalOverallPct >= 8ct >= 85) clinicalRemark5) clinicalRemark = `Excellent Performance = `Excellent Performance (Above ${target (Above ${targetPct}% TargetPct}% Target)`;
+ )`;
+  else if (clinical else if (clinicalOverallPct >=OverallPct >= targetPct) targetPct) clinicalRemark = ` clinicalRemark = `Satisfactory AttendanceSatisfactory Attendance (Meets ${ (Meets ${targetPct}%targetPct}% Target)`;
+ Target)`;
+  else if (  else if (clinicalItems.length >clinicalItems.length > 0 && clinical 0 && clinicalOverallTotal > OverallTotal > 0)
+   0)
+    clinicalRemark = ` clinicalRemark = `Attention Required (BelowAttention Required (Below ${targetPct ${targetPct}% Required Threshold)`}% Required Threshold)`;
+  else;
+  else clinicalRemark = ' clinicalRemark = 'No Clinical Data AvailableNo Clinical Data Available';
+
+  const';
+
+  const boxHeight = clinical boxHeight = clinicalItems.length > Items.length > 0 ? 40 ? 44 : 24 : 26;
+  doc.setFillColor(6;
+  doc.setFillColor(240,240, 253 253, 24, 244);
+ 4);
+  doc.setDrawColor doc.setDrawColor(187(187, 24, 247, 27, 208);
+  doc.rounded08);
+  doc.roundedRect(15Rect(15, y, page, y, pageWidth - 30, boxHeightWidth - 30, boxHeight, 3, 3, ', 3, 3, 'FD');
+ FD');
+  doc.setTextColor(2 doc.setTextColor(21, 11, 128, 28, 61);
+  doc.setFont('61);
+  doc.setFont('helvetica', 'helvetica', 'bold');
+ bold');
+  doc.setFontSize( doc.setFontSize(11);
+11);
+  doc.text(`  doc.text(`Overall Percentage: ${Overall Percentage: ${combinedPct.toFixedcombinedPct.toFixed(1)}%(1)}%`, pageWidth /`, pageWidth / 2, y 2, y + 8, + 8, { align: ' { align: 'center' });
+center' });
+  doc.setFontSize  doc.setFontSize(9);
+(9);
+  doc.setFont('  doc.setFont('helvetica', 'helvetica', 'normal');
+ normal');
+  doc.setTextColor(5 doc.setTextColor(51, 61, 65, 85, 85);
+ 5);
+  let summaryY = let summaryY = y + 1 y + 15;
+ 5;
+  doc.text(`Ac doc.text(`Academic Overall Percentage:ademic Overall Percentage: ${overallPct ${overallPct.toFixed(1)}.toFixed(1)}%`, pageWidth%`, pageWidth / 2, / 2, summaryY, { summaryY, { align: 'center align: 'center' });
+ ' });
+  summaryY +=  summaryY += 7;
+ 7;
+  if (clinicalItems if (clinicalItems.length > 0.length > 0) {
+   ) {
+    doc.text(`Clinical doc.text(`Clinical Overall Percentage: ${ Overall Percentage: ${clinicalOverallPctclinicalOverallPct.toFixed(1)}.toFixed(1)}%`, pageWidth%`, pageWidth / 2, / 2, summaryY, { summaryY, { align: 'center align: 'center' });
+   ' });
     summaryY += 7;
-  }
-  doc.setTextColor(15, 23, 42);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Academic Remarks: `, 21, summaryY + 2);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(21, 128, 61);
-  doc.text(academicRemark, 55, summaryY + 2);
   summaryY += 7;
-  if (clinicalItems.length > 0) {
-    doc.setTextColor(15, 23, 42);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Clinical Remarks: `, 21, summaryY + 2);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(21, 128, 61);
-    doc.text(clinicalRemark, 50, summaryY + 2);
   }
-  y += boxHeight + 6;
+  doc }
+  doc.setTextColor(15.setTextColor(15, 23, 42, 23, 42);
+  doc);
+  doc.setFont('helvetica.setFont('helvetica', 'bold');
+  doc.text', 'bold');
+  doc.text(`Academic Remarks(`Academic Remarks: `, 2: `, 21, summaryY1, summaryY + 2); + 2);
+  doc.setFont
+  doc.setFont('helvetica',('helvetica', 'normal');
+ 'normal');
+  doc.setTextColor(  doc.setTextColor(21, 21, 128,128, 61); 61);
+  doc.text
+  doc.text(academicRemark,(academicRemark, 55, 55, summaryY +  summaryY + 2);
+ 2);
+  summaryY +=  summaryY += 7;
+ 7;
+  if (clinicalItems if (clinicalItems.length > 0.length > 0) {
+   ) {
+    doc.setTextColor(1 doc.setTextColor(15, 25, 23, 43, 42);
+   2);
+    doc.setFont('hel doc.setFont('helvetica', 'bold');
+    docvetica', 'bold');
+    doc.text(`Clinical Remarks.text(`Clinical Remarks: `, 2: `, 21, summaryY1, summaryY + 2); + 2);
+    doc.setFont
+    doc.setFont('helvetica',('helvetica', 'normal');
+ 'normal');
+    doc.setTextColor(    doc.setTextColor(21, 128,21, 128, 61); 61);
+    doc.text
+    doc.text(clinicalRemark(clinicalRemark, 50, 50, summaryY +, summaryY + 2);
+ 2);
+  }
+   }
+  y += boxHeight y += boxHeight + 6; + 6;
 
-  // ── FOOTER ──
-  doc.setDrawColor(203, 213, 225);
-  doc.line(15, 280, pageWidth - 15, 280);
-  doc.setFontSize(8);
-  doc.setTextColor(148, 163, 184);
-  doc.text('Generated by Attendance Tracker • 100% Local Device Privacy', pageWidth / 2, 285, { align: 'center' });
+  doc.set
 
-  doc.save(`Attendance_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.setDrawColor(2DrawColor(203, 03, 213, 225213, 225);
+  doc);
+  doc.line(15.line(15, 280, pageWidth, 280, pageWidth - 15 - 15, 28, 280);
+ 0);
+  doc.setFontSize( doc.setFontSize(8);
+ 8);
+  doc.setTextColor(1 doc.setTextColor(148, 48, 163,163, 184 184);
+  doc);
+  doc.text('Generated by.text('Generated by Attendance Tracker •  Attendance Tracker • 100%100% Local Device Privacy', Local Device Privacy', pageWidth /  pageWidth / 2, 22, 285, {85, { align: 'center align: 'center' });
+
+ ' });
+
+  doc.save(`Attendance doc.save(`Attendance_Report_${new Date_Report_${new Date().toISOString().slice().toISOString().slice(0, 10)}.pdf(0, 10)}.pdf`);
+}`);
 }
 
-// ── Excel Export ──
-export function generateExcelReport(options: ExportReportOptions) {
+export
+
+export function generateExcelReport function generateExcelReport(options: ExportReport(options: ExportReportOptions) {
+Options) {
   const {
-    studentName,
+  const {
+    studentName,    studentName,
+    routineMode
     routineMode,
+    filter,
     filterTitle,
+   Title,
     items,
-    overallAttended,
+    items,
+    overallAttended, overallAttended,
+    overallTotal
     overallTotal,
+    overall,
     overallPct,
-    targetPct,
+Pct,
+    targetPct    targetPct,
+  },
   } = options;
 
-  const academicItems = items.filter(item => !item.name.includes('(Ward)') && !item.name.includes('(SGT)'));
-  const clinicalItems = items.filter(item => item.name.includes('(Ward)') || item.name.includes('(SGT)'));
-  const displayClinicalItems = clinicalItems.map(item => ({
+ = options;
+
+  const academicItems  const academicItems = items.filter(item = items.filter(item => !item.name => !item.name.includes('(Ward.includes('(Ward)') && !)') && !item.name.includes('(item.name.includes('(SGT)'));SGT)'));
+  const clinical
+  const clinicalItems = items.filterItems = items.filter(item => item.name(item => item.name.includes('(Ward)') || item.includes('(Ward)') || item.name.includes('(SG.name.includes('(SGT)'));
+T)'));
+  const displayClinical  const displayClinicalItems = clinicalItemsItems = clinicalItems.map(item => ({.map(item => ({
+    ...item
     ...item,
-    name: item.name.replace(/ \(Ward\)$/, '')
+    name,
+    name: item.name.replace: item.name.replace(/ \(Ward(/ \(Ward\)$/, '')\)$/, '')
+  }));
   }));
 
-  const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
-  const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
-  const clinicalOverallPct = clinicalOverallTotal > 0 ? (clinicalOverallAttended / clinicalOverallTotal) * 100 : 0;
+  const clinical
 
-  const workbook = XLSX.utils.book_new();
+  const clinicalOverallAttended =OverallAttended = clinicalItems.reduce(( clinicalItems.reduce((acc, curr)acc, curr) => acc + curr => acc + curr.attended, .attended, 0);
+ 0);
+  const clinicalOverallTotal const clinicalOverallTotal = clinicalItems.reduce = clinicalItems.reduce((acc, curr((acc, curr) => acc +) => acc + curr.total,  curr.total, 0);
+ 0);
+  const clinicalOverallP const clinicalOverallPct = clinicalOverallct = clinicalOverallTotal > 0 ? (clinicalOverallTotal > 0 ? (clinicalOverallAttended / clinicalAttended / clinicalOverallTotal) *OverallTotal) * 100 100 : 0; : 0;
 
-  if (academicItems.length > 0) {
-    const rows = academicItems.map(item => {
-      const conducted = item.total;
-      const attended = item.attended;
+  const workbook
+
+  const workbook = XLSX = XLSX.utils.book_new();.utils.book_new();
+
+  if (
+
+  if (academicItems.length >academicItems.length > 0) { 0) {
+    const rows
+    const rows = academicItems.map = academicItems.map(item => {
+(item => {
+      const conducted =      const conducted = item.total;
+ item.total;
+      const attended =      const attended = item.attended; item.attended;
+      const planned
       const plannedTotal = item.plannedTotal;
-      const target = targetPct;
+Total = item.plannedTotal;
+      const target = targetPct;      const target = targetPct;
+      let remark
       let remark1 = '';
-      let remark2 = '';
-      if (conducted === 0) {
-        remark1 = 'Yet to be Conducted';
-        remark2 = 'Yet to be Conducted';
+1 = '';
+      let remark2      let remark2 = '';
+      = '';
+      if (conducted if (conducted === 0) === 0) {
+        remark {
+        remark1 = 'Yet1 = 'Yet to be Conducted to be Conducted';
+        remark';
+        remark2 = 'Yet2 = 'Yet to be Conducted to be Conducted';
+      }';
       } else {
-        const pct = (attended / conducted) * 100;
-        if (pct >= target) remark1 = 'Target Achieved';
         else {
-          const needed = Math.ceil((target * conducted) / 100) - attended;
-          remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
+        const pct = ( const pct = (attended / conducted)attended / conducted) * 10 * 100;
+       0;
+        if (pct if (pct >= target) remark >= target) remark1 = 'Target1 = 'Target Achieved';
+ Achieved';
+        else {
+          const needed =        else {
+          const needed = Math.ceil((target Math.ceil((target * conducted) / * conducted) / 100 100) - attended;) - attended;
+          remark1
+          remark1 = needed >  = needed > 0 ? `Attend0 ? `Attend next ${needed} next ${needed} ${needed ===  ${needed === 1 ? 'Class1 ? 'Class' : 'Classes' : 'Classes'}` : ''}` : 'Target Achieved';Target Achieved';
         }
-        if (plannedTotal > 0) {
-          const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-          if (attended >= totalNeeded) remark2 = 'Target Achieved';
+
+        }
+        if (pl        if (plannedTotal > annedTotal > 0) {
+0) {
+          const totalNeeded          const totalNeeded = Math.ceil(( = Math.ceil((target * plannedTotaltarget * plannedTotal) / 1) / 100);
+00);
+          if (attended          if (attended >= totalNeeded) >= totalNeeded) remark2 = ' remark2 = 'Target Achieved';Target Achieved';
           else {
-            const remaining = plannedTotal - conducted;
-            const neededFromRemaining = totalNeeded - attended;
-            const canMiss = remaining - neededFromRemaining;
-            if (canMiss > 0) remark2 = `Can miss ${canMiss}`;
-            else if (canMiss === 0) {
-              const classText = remaining === 1 ? 'Class' : 'Classes';
-              remark2 = `Must Attend remaining ${remaining} ${classText}`;
-            } else remark2 = 'Better Luck Next Life';
+          else {
+            const remaining
+            const remaining = plannedTotal - = plannedTotal - conducted;
+            conducted;
+            const neededFromRemaining const neededFromRemaining = totalNeeded - = totalNeeded - attended;
+            const canMiss = attended;
+            const canMiss = remaining - neededFrom remaining - neededFromRemaining;
+           Remaining;
+            if (canMiss if (canMiss > 0) > 0) remark2 = ` remark2 = `Can miss ${canCan miss ${canMiss}`;
+Miss}`;
+            else if (            else if (canMiss === canMiss === 0) {
+0) {
+              const classText              const classText = remaining ===  = remaining === 1 ? 'Class1 ? 'Class' : 'Classes' : 'Classes';
+              remark';
+              remark2 = `Must2 = `Must Attend remaining ${remaining Attend remaining ${remaining} ${classText} ${classText}`;
+           }`;
+            } else remark2 } else remark2 = 'Better Luck = 'Better Luck Next Life';
+ Next Life';
           }
-        } else remark2 = 'No Planned Classes';
-        if (remark1 === remark2) remark2 = '';
+                 }
+        } else remark2 } else remark2 = 'No Planned Classes';
+        = 'No Planned Classes';
+        if (remark1 if (remark1 === remark2) === remark2) remark2 = '';
+      }
+ remark2 = '';
       }
       return {
+        Subject: item      return {
         Subject: item.name,
-        'Class Conducted': conducted === 0 ? 'Yet to be Conducted' : conducted,
-        Present: conducted === 0 ? '' : attended,
-        'To Reach Preferred %': remark1,
-        'Based on Planned Classes': remark2,
-        'Current %': conducted === 0 ? '' : Number(item.pct.toFixed(1)),
+       .name,
+        'Class Conducted 'Class Conducted': conducted === ': conducted === 0 ? 'Yet0 ? 'Yet to be Conducted to be Conducted' : conducted,' : conducted,
+        Present:
+        Present: conducted === 0 conducted === 0 ? '' : attended ? '' : attended,
+        ',
+        'To Reach Preferred %To Reach Preferred %': remark1,': remark1,
+        'Based
+        'Based on Planned Classes': on Planned Classes': remark2,
+ remark2,
+        'Current %        'Current %': conducted === ': conducted === 0 ? '' :0 ? '' : Number(item.pct Number(item.pct.toFixed(1)),.toFixed(1)),
+      };
+
       };
     });
+       });
     rows.push({
-      Subject: 'ACADEMIC SUMMARY',
+ rows.push({
+      Subject: '      Subject: 'ACADEMIC SUMMARY',
       'Class Conducted': overallTotal,
       Present: overallAttended,
-      'To Reach Preferred %': overallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
-      'Based on Planned Classes': overallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
-      'Current %': Number(overallPct.toFixed(1)),
+      'To Reach Preferred %': overallPct >= targetPct ? 'ACADEMIC SUMMARY',
+      'Class Conducted': overallTotal,
+      Present: overallAttended,
+      'To Reach Preferred %': overallPct >= targetPct ? 'Target Achieved'Target Achieved' : 'Action Needed : 'Action Needed',
+      '',
+      'Based on Planned ClassesBased on Planned Classes': overallPct': overallPct >= targetPct >= targetPct ? 'Target Achie ? 'Target Achieved' : 'ved' : 'Action Needed',
+Action Needed',
+      'Current %      'Current %': Number(overall': Number(overallPct.toFixed(Pct.toFixed(1)),
+   1)),
     });
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 15 }, { wch: 22 }, { wch: 28 }, { wch: 16 }];
-    XLSX.utils.book_append_sheet(workbook, ws, 'Academic Subjects');
+    const });
+    const ws = XLS ws = XLSX.utils.json_toX.utils.json_to_sheet(rows);
+_sheet(rows);
+    ws['!    ws['!cols'] = [{cols'] = [{ wch:  wch: 32 }, {32 }, { wch:  wch: 18 }, { wch: 18 }, { wch: 15 }, {15 }, { wch:  wch: 22 }, {22 }, { wch:  wch: 28 }, {28 }, { wch:  wch: 16 }];16 }];
+    XLS
+    XLSX.utils.book_appendX.utils.book_append_sheet(workbook,_sheet(workbook, ws, 'Ac ws, 'Academic Subjects');
+ademic Subjects');
   }
+
+  if (displayClinical  }
 
   if (displayClinicalItems.length > 0) {
-    const rows = displayClinicalItems.map(item => {
+Items.length > 0) {
+    const rows =    const rows = displayClinicalItems.map displayClinicalItems.map(item => {
+      const conducted =(item => {
       const conducted = item.total;
-      const attended = item.attended;
-      const plannedTotal = item.plannedTotal;
-      const target = targetPct;
+ item.total;
+      const attended =      const attended = item.attended; item.attended;
+      const planned
+      const plannedTotal = item.plTotal = item.plannedTotal;
+annedTotal;
+      const target =      const target = targetPct; targetPct;
+      let remark
       let remark1 = '';
-      let remark2 = '';
-      if (conducted === 0) {
-        remark1 = 'Yet to be Conducted';
-        remark2 = 'Yet to be Conducted';
+1 = '';
+      let remark2      let remark2 = '';
+      = '';
+      if (conducted if (conducted === 0) === 0) {
+        remark {
+        remark1 = 'Yet1 = 'Yet to be Conducted to be Conducted';
+        remark';
+        remark2 = 'Yet2 = 'Yet to be Conducted to be Conducted';
+      }';
       } else {
-        const pct = (attended / conducted) * 100;
-        if (pct >= target) remark1 = 'Target Achieved';
         else {
-          const needed = Math.ceil((target * conducted) / 100) - attended;
-          remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
+        const pct = ( const pct = (attended / conducted)attended / conducted) * 10 * 100;
+       0;
+        if (pct >= target) remark if (pct >= target) remark1 = 'Target1 = 'Target Achieved';
+ Achieved';
+        else {
+        else {
+          const needed =          const needed = Math.ceil((target Math.ceil((target * conducted) / * conducted) / 100 100) - attended;) - attended;
+          remark1
+          remark1 = needed >  = needed > 0 ? `Attend0 ? `Attend next ${needed} next ${needed} ${needed === 1 ? 'Class ${needed === 1 ? 'Class' : 'Classes' : 'Classes'}` : ''}` : 'Target Achieved';Target Achieved';
         }
-        if (plannedTotal > 0) {
-          const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-          if (attended >= totalNeeded) remark2 = 'Target Achieved';
+
+        }
+        if (pl        if (plannedTotal > annedTotal > 0) {
+0) {
+          const totalNeeded          const totalNeeded = Math.ceil(( = Math.ceil((target * plannedTotaltarget * plannedTotal) / 1) / 100);
+00);
+          if (attended          if (attended >= totalNeeded) >= totalNeeded) remark2 = ' remark2 = 'Target Achieved';Target Achieved';
           else {
-            const remaining = plannedTotal - conducted;
-            const neededFromRemaining = totalNeeded - attended;
-            const canMiss = remaining - neededFromRemaining;
-            if (canMiss > 0) remark2 = `Can miss ${canMiss}`;
-            else if (canMiss === 0) {
-              const classText = remaining === 1 ? 'Class' : 'Classes';
-              remark2 = `Must Attend remaining ${remaining} ${classText}`;
-            } else remark2 = 'Better Luck Next Life';
+            const remaining
+          else {
+            const remaining = plannedTotal - = plannedTotal - conducted;
+            conducted;
+            const neededFromRemaining const neededFromRemaining = totalNeeded - = totalNeeded - attended;
+            attended;
+            const canMiss = const canMiss = remaining - neededFrom remaining - neededFromRemaining;
+           Remaining;
+            if (canMiss if (canMiss > 0) > 0) remark2 = ` remark2 = `Can miss ${canCan miss ${canMiss}`;
+Miss}`;
+            else if (            else if (canMiss === canMiss === 0) {
+0) {
+              const classText              const classText = remaining ===  = remaining === 1 ? 'Class1 ? 'Class' : 'Classes' : 'Classes';
+              remark';
+              remark2 = `Must2 = `Must Attend remaining ${remaining Attend remaining ${remaining} ${classText} ${classText}`;
+           }`;
+            } else remark2 } else remark2 = 'Better Luck = 'Better Luck Next Life';
+ Next Life';
           }
-        } else remark2 = 'No Planned Classes';
-        if (remark1 === remark2) remark2 = '';
+                 }
+        } else remark2 } else remark2 = 'No Planned = 'No Planned Classes';
+        Classes';
+        if (remark1 if (remark1 === remark2) === remark2) remark2 = ''; remark2 = '';
+      }
+
       }
       return {
-        'Rotation / SGT': item.name,
-        'Class Conducted': conducted === 0 ? 'Yet to be Conducted' : conducted,
-        Present: conducted === 0 ? '' : attended,
-        'To Reach Preferred %': remark1,
-        'Based on Planned Classes': remark2,
-        'Current %': conducted === 0 ? '' : Number(item.pct.toFixed(1)),
+      return {
+        'Rotation /        'Rotation / SGT': item SGT': item.name,
+       .name,
+        'Class Conducted 'Class Conducted': conducted === ': conducted === 0 ? 'Yet0 ? 'Yet to be Conducted to be Conducted' : conducted,' : conducted,
+        Present:
+        Present: conducted === 0 conducted === 0 ? '' : attended ? '' : attended,
+        ',
+        'To Reach Preferred %To Reach Preferred %': remark1,': remark1,
+        'Based
+        'Based on Planned Classes': on Planned Classes': remark2,
+ remark2,
+        'Current %        'Current %': conducted === ': conducted === 0 ? '' :0 ? '' : Number(item.pct Number(item.pct.toFixed(1)),.toFixed(1)),
+      };
+
       };
     });
+       });
     rows.push({
-      'Rotation / SGT': 'CLINICAL SUMMARY',
-      'Class Conducted': clinicalOverallTotal,
-      Present: clinicalOverallAttended,
-      'To Reach Preferred %': clinicalOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
-      'Based on Planned Classes': clinicalOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
-      'Current %': Number(clinicalOverallPct.toFixed(1)),
+ rows.push({
+      'Rotation /      'Rotation / SGT': ' SGT': 'CLINICAL SUMMARY',
+      'CLINICAL SUMMARY',
+      'Class Conducted':Class Conducted': clinicalOverallTotal, clinicalOverallTotal,
+      Present:
+      Present: clinicalOverallAttended clinicalOverallAttended,
+      'To Reach Preferred %,
+      'To Reach Preferred %': clinicalOverallP': clinicalOverallPct >= targetPct >= targetPct ? 'Targetct ? 'Target Achieved' : Achieved' : 'Action Needed',
+      'Based 'Action Needed',
+      'Based on Planned Classes': on Planned Classes': clinicalOverallPct clinicalOverallPct >= targetPct >= targetPct ? 'Target Achie ? 'Target Achieved' : 'ved' : 'Action Needed',
+Action Needed',
+      'Current %': Number(clin      'Current %': Number(clinicalOverallPcticalOverallPct.toFixed(1)),.toFixed(1)),
     });
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 15 }, { wch: 22 }, { wch: 28 }, { wch: 16 }];
-    XLSX.utils.book_append_sheet(workbook, ws, 'Clinical Rotations');
+
+    });
+    const ws =    const ws = XLSX.utils XLSX.utils.json_to_sheet(rows.json_to_sheet(rows);
+    ws);
+    ws['!cols']['!cols'] = [{ wch = [{ wch: 32: 32 }, { wch }, { wch: 18: 18 }, { wch }, { wch: 15: 15 }, { wch }, { wch: 22: 22 }, { wch }, { wch: 28: 28 }, { wch }, { wch: 16: 16 }];
+    }];
+    XLSX.utils XLSX.utils.book_append_sheet(work.book_append_sheet(workbook, ws,book, ws, 'Clinical Rotations 'Clinical Rotations');
+  }');
   }
 
-  const combinedAttended = overallAttended + clinicalOverallAttended;
-  const combinedTotal = overallTotal + clinicalOverallTotal;
-  const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
-  const meta = [
-    { Property: 'Student Name', Value: studentName || 'Medical Student' },
-    { Property: 'Routine Mode', Value: routineMode },
-    { Property: 'Export Scope', Value: filterTitle },
-    { Property: 'Minimum Target (%)', Value: `${targetPct}%` },
-    { Property: 'Overall Percentage', Value: `${combinedPct.toFixed(1)}%` },
-    { Property: 'Academic Overall Percentage', Value: `${overallPct.toFixed(1)}%` },
-    { Property: 'Clinical Overall Percentage', Value: `${clinicalOverallPct.toFixed(1)}%` },
-    { Property: 'Academic Remarks', Value: overallPct >= targetPct ? 'Target Achieved' : 'Action Needed' },
-    { Property: 'Clinical Remarks', Value: clinicalOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed' },
-    { Property: 'Generated Date', Value: new Date().toLocaleString() },
+  const combined
+
+  const combinedAttended = overallAttended = overallAttended + clinicalAttended + clinicalOverallAttended;OverallAttended;
+  const combined
+  const combinedTotal = overallTotalTotal = overallTotal + clinicalOverallTotal + clinicalOverallTotal;
+  const;
+  const combinedPct = combinedPct = combinedTotal ===  combinedTotal === 0 ? 00 ? 0 : (combinedAtt : (combinedAttended / combinedTotalended / combinedTotal) * 1) * 100;
+00;
+  const meta =  const meta = [
+    { [
+    { Property: 'Student Property: 'Student Name', Value: Name', Value: studentName || ' studentName || 'Medical Student' },Medical Student' },
+    { Property
+    { Property: 'Routine Mode: 'Routine Mode', Value: routine', Value: routineMode },
+   Mode },
+    { Property: ' { Property: 'Export Scope', ValueExport Scope', Value: filterTitle },: filterTitle },
+    { Property
+    { Property: 'Minimum Target: 'Minimum Target (%)', Value: (%)', Value: `${targetPct `${targetPct}%` },
+}%` },
+    { Property:    { Property: 'Overall Percentage', 'Overall Percentage', Value: `${combined Value: `${combinedPct.toFixed(Pct.toFixed(1)}%`1)}%` },
+    { },
+    { Property: 'Ac Property: 'Academic Overall Percentage',ademic Overall Percentage', Value: `${overall Value: `${overallPct.toFixed(Pct.toFixed(1)}%`1)}%` },
+    { Property: 'Clinical },
+    { Property: 'Clinical Overall Percentage', Value Overall Percentage', Value: `${clinicalOverall: `${clinicalOverallPct.toFixed(Pct.toFixed(1)}%`1)}%` },
+    { },
+    { Property: 'Ac Property: 'Academic Remarks', Valueademic Remarks', Value: overallPct: overallPct >= targetPct >= targetPct ? 'Target Achie ? 'Target Achieved' : 'ved' : 'Action Needed' },Action Needed' },
+    { Property
+    { Property: 'Clinical Remarks: 'Clinical Remarks', Value: clinical', Value: clinicalOverallPct >=OverallPct >= targetPct ? targetPct ? 'Target Achieved 'Target Achieved' : 'Action' : 'Action Needed' },
+ Needed' },
+    { Property:    { Property: 'Generated Date', 'Generated Date', Value: new Date Value: new Date().toLocaleString()().toLocaleString() },
+  ]; },
   ];
-  const metaSheet = XLSX.utils.json_to_sheet(meta);
-  metaSheet['!cols'] = [{ wch: 24 }, { wch: 40 }];
-  XLSX.utils.book_append_sheet(workbook, metaSheet, 'Report Metadata');
-  XLSX.writeFile(workbook, `Attendance_Report_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  const meta
+  const metaSheet = XLSSheet = XLSX.utils.json_toX.utils.json_to_sheet(meta);
+_sheet(meta);
+  metaSheet['  metaSheet['!cols'] = [{ wch:!cols'] = [{ wch: 24 }, 24 }, { wch: { wch: 40 } 40 }];
+  X];
+  XLSX.utils.bookLSX.utils.book_append_sheet(workbook_append_sheet(workbook, metaSheet,, metaSheet, 'Report Metadata'); 'Report Metadata');
+  XLS
+  XLSX.writeFile(workbookX.writeFile(workbook, `Attendance_Report, `Attendance_Report_${new Date()._${new Date().toISOString().slice(toISOString().slice(0, 10, 10)}.xlsx`0)}.xlsx`);
 }
 
-// ── CSV Export ──
-export function generateCSVReport(options: ExportReportOptions) {
-  const { items, overallAttended, overallTotal } = options;
+);
+}
 
-  const academicItems = items.filter(item => !item.name.includes('(Ward)') && !item.name.includes('(SGT)'));
-  const clinicalItems = items.filter(item => item.name.includes('(Ward)') || item.name.includes('(SGT)'));
-  const displayClinicalItems = clinicalItems.map(item => ({
+export function generateCSVexport function generateCSVReport(options: ExportReport(options: ExportReportOptions) {ReportOptions) {
+  const {
+  const { items, overallAtt items, overallAttended, overallTotalended, overallTotal } = options;
+
+  const academic } = options;
+
+  const academicItems = items.filter(item => !itemItems = items.filter(item => !item.name.includes('(Ward)') &&.name.includes('(Ward)') && !item.name.includes !item.name.includes('(SGT)('(SGT)'));
+  const'));
+  const clinicalItems = items clinicalItems = items.filter(item => item.filter(item => item.name.includes('(W.name.includes('(Ward)') ||ard)') || item.name.includes('( item.name.includes('(SGT)'));SGT)'));
+  const display
+  const displayClinicalItems = clinicalClinicalItems = clinicalItems.map(item =>Items.map(item => ({
+    ... ({
     ...item,
-    name: item.name.replace(/ \(Ward\)$/, '')
+   item,
+    name: item.name name: item.name.replace(/ \(W.replace(/ \(Ward\)$/,ard\)$/, '')
+  } '')
   }));
 
-  const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
-  const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
-  const combinedAttended = overallAttended + clinicalOverallAttended;
-  const combinedTotal = overallTotal + clinicalOverallTotal;
-  const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
+  const));
 
-  const headers = ['Type', 'Subject/Rotation', 'Class Conducted', 'Present', 'To Reach Preferred %', 'Based on Planned Classes', 'Current %'];
-  const rows: any[] = [];
+  const clinicalOverallAttended clinicalOverallAttended = clinicalItems.reduce = clinicalItems.reduce((acc, curr((acc, curr) => acc +) => acc + curr.attended, curr.attended, 0);
+ 0);
+  const clinicalOverall  const clinicalOverallTotal = clinicalItemsTotal = clinicalItems.reduce((acc,.reduce((acc, curr) => acc curr) => acc + curr.total, + curr.total, 0);
+ 0);
+  const combinedAtt  const combinedAttended = overallAttended = overallAttended + clinicalOverallended + clinicalOverallAttended;
+Attended;
+  const combinedTotal  const combinedTotal = overallTotal + = overallTotal + clinicalOverallTotal; clinicalOverallTotal;
+  const combinedPct = combined
+  const combinedPct = combinedTotal === 0Total === 0 ? 0 : ? 0 : (combinedAttended (combinedAttended / combinedTotal) / combinedTotal) * 10 * 100;
 
-  academicItems.forEach(i => {
+ 0;
+
+  const headers = [' const headers = ['Type', 'SubjectType', 'Subject/Rotation', '/Rotation', 'Class Conducted',Class Conducted', 'Present', ' 'Present', 'To Reach Preferred %To Reach Preferred %', 'Based on', 'Based on Planned Classes', ' Planned Classes', 'Current %'];
+Current %'];
+  const rows:  const rows: any[] = []; any[] = [];
+
+  academicItems
+
+  academicItems.forEach(i => {.forEach(i => {
+    rows.push
     rows.push([
+      '([
       'Academic',
-      `"${i.name.replace(/"/g, '""')}"`,
-      i.total === 0 ? 'Yet to be Conducted' : i.total,
-      i.total === 0 ? '' : i.attended,
-      i.total === 0 ? '' : `"${i.neededForTarget}"`,
-      i.total === 0 ? '' : `"${i.neededForTarget}"`,
-      i.total === 0 ? '' : i.pct.toFixed(1),
+Academic',
+      `"${i      `"${i.name.replace(/"/.name.replace(/"/g, '""g, '""')}"`,
+')}"`,
+      i.total ===      i.total === 0 ? ' 0 ? 'Yet to be ConductYet to be Conducted' : ied' : i.total,
+     .total,
+      i.total ===  i.total === 0 ? '' :0 ? '' : i.attended, i.attended,
+      i.total
+      i.total === 0 ? === 0 ? '' : `"${ '' : `"${i.neededFori.neededForTarget}"`,
+Target}"`,
+      i.total ===      i.total === 0 ? '' 0 ? '' : `"${i : `"${i.neededForTarget.neededForTarget}"`,
+     }"`,
+      i.total ===  i.total === 0 ? '' :0 ? '' : i.pct.toFixed i.pct.toFixed(1),
+(1),
+    ]);
+     ]);
+  });
+
+  display });
+
+  displayClinicalItems.forEach(iClinicalItems.forEach(i => {
+    => {
+    rows.push([
+ rows.push([
+      'Clinical',      'Clinical',
+      `"${
+      `"${i.name.replace(/i.name.replace(/"/g, '""')}"`,"/g, '""')}"`,
+      i.total
+      i.total === 0 ? === 0 ? 'Yet to be 'Yet to be Conducted' : Conducted' : i.total,
+ i.total,
+      i.total ===      i.total === 0 ? '' 0 ? '' : i.attended : i.attended,
+      i,
+      i.total === 0.total === 0 ? '' : `"${i.needed ? '' : `"${i.neededForTarget}"`,ForTarget}"`,
+      i.total
+      i.total === 0 ? === 0 ? '' : `"${ '' : `"${i.neededFori.neededForTarget}"`,
+Target}"`,
+      i.total ===      i.total === 0 ? '' 0 ? '' : i.pct : i.pct.toFixed(1),.toFixed(1),
+    ]);
+
     ]);
   });
 
-  displayClinicalItems.forEach(i => {
-    rows.push([
-      'Clinical',
-      `"${i.name.replace(/"/g, '""')}"`,
-      i.total === 0 ? 'Yet to be Conducted' : i.total,
-      i.total === 0 ? '' : i.attended,
-      i.total === 0 ? '' : `"${i.neededForTarget}"`,
-      i.total === 0 ? '' : `"${i.neededForTarget}"`,
-      i.total === 0 ? '' : i.pct.toFixed(1),
-    ]);
-  });
+   });
 
   rows.push([
-    'SUMMARY',
+ rows.push([
+    'SUMMARY    'SUMMARY',
+    '"',
     '"Combined Total"',
-    combinedTotal,
+Combined Total"',
+    combinedTotal,    combinedTotal,
+    combinedAtt
     combinedAttended,
+   ended,
+    '"Combined Summary"', '"Combined Summary"',
+    '"Combined
     '"Combined Summary"',
-    '"Combined Summary"',
-    combinedPct.toFixed(1),
+    Summary"',
+    combinedPct.toFixed combinedPct.toFixed(1),
+(1),
   ]);
 
-  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(link);
+   ]);
+
+  const csvContent = const csvContent = [headers.join(',' [headers.join(','), ...rows.map), ...rows.map(r => r.join(r => r.join(','))].join(','))].join('\n');
+('\n');
+  const blob =  const blob = new Blob([csv new Blob([csvContent], { typeContent], { type: 'text/csv: 'text/csv;charset=utf-8;charset=utf-8;' });
+ ;' });
+  const url = URL const url = URL.createObjectURL(blob);.createObjectURL(blob);
+  const link
+  const link = document.createElement(' = document.createElement('a');
+ a');
+  link.href = url link.href = url;
+  link;
+  link.download = `Attendance.download = `Attendance_Report_${new Date_Report_${new Date().toISOString().slice().toISOString().slice(0, (0, 10)}.csv10)}.csv`;
+  document`;
+  document.body.appendChild(link);.body.appendChild(link);
+  link.click
   link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  document();
+  document.body.removeChild(link);.body.removeChild(link);
+  URL.re
+  URL.revokeObjectURL(urlvokeObjectURL(url);
+}
+);
 }
