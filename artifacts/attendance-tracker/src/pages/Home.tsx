@@ -582,9 +582,11 @@ export default function Home() {
                   </p>
                 ) : (
                   <p className="text-muted-foreground text-sm max-w-xs leading-relaxed px-4">
-                    {isTodaySelected
-                      ? 'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
-                      : `No lectures or clinical ward postings were scheduled for ${fullDateDisplay}.`}
+                {isTodaySelected
+                   ? 'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
+                   : isFuture
+                  ? `No lectures or clinical ward postings are scheduled for ${fullDateDisplay}.`
+                   : `No lectures or clinical ward postings were scheduled for ${fullDateDisplay}.`}
                   </p>
                 )}
               </motion.div>
