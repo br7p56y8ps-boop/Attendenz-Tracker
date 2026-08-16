@@ -530,28 +530,68 @@ export async function generatePDFReport(options: ExportReportOptions) {
 
     currentY += 2;
 
-    // ── Legend anchored at the BOTTOM of this section ──
+ // ── Legend anchored at the bottom (multi-column flow, bold short + italic full) ──
     if (legendMap.size > 0) {
       currentY += 4;
       if (currentY > 270) { doc.addPage(); currentY = 20; }
-      doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
       doc.setTextColor(100, 116, 139);
       doc.text('Abbreviations used:', 17, currentY);
-      currentY += 3.5;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
+      currentY += 4;
+
+      const leftMargin = 17;
+      const rightLimit = pageWidth - 15;
+      const colGap = 6;
+      const bullet = '• ';
+      const eq = ' = ';
+
+      const measure = (short: string, full: string) => {
+        doc.setFont('helvetica', 'normal');
+        const bw = doc.getTextWidth(bullet);
+        const ew = doc.getTextWidth(eq);
+        doc.setFont('helvetica', 'bold');
+        const sw = doc.getTextWidth(short);
+        doc.setFont('helvetica', 'italic');
+        const fw = doc.getTextWidth(full);
+        return { bw, ew, sw, fw, total: bw + sw + ew + fw };
+      };
+
+      let x = leftMargin;
       legendMap.forEach((full, short) => {
-        if (currentY > 275) { doc.addPage(); currentY = 20; }
-        doc.setTextColor(71, 85, 105);
-        doc.text(`${short} = ${full}`, 17, currentY);
-        currentY += 3.2;
+        const m = measure(short, full);
+        // wrap to a new line when this entry would overflow the row
+        if (x + m.total > rightLimit && x > leftMargin) {
+          x = leftMargin;
+          currentY += 4;
+          if (currentY > 275) { doc.addPage(); currentY = 20; }
+        }
+        // bullet
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.text(bullet, x, currentY);
+        let cx = x + m.bw;
+        // abbreviation — BOLD
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(51, 65, 85);
+        doc.text(short, cx, currentY);
+        cx += m.sw;
+        // " = "
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.text(eq, cx, currentY);
+        cx += m.ew;
+        // long form — ITALIC
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(100, 116, 139);
+        doc.text(full, cx, currentY);
+        x += m.total + colGap;
       });
+
+      doc.setFont('helvetica', 'normal');
+      currentY += 2;
     }
 
-    currentY += 2;
-    return currentY;
-  };
 
   // ── ACADEMIC SECTION ──
   if (academicItems.length > 0) {
