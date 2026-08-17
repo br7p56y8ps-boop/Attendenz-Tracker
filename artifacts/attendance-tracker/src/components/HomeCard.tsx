@@ -52,7 +52,6 @@ const SeverityRing = ({ sev }: { sev: 'must' | 'can' | 'safe' }) => {
   );
 };
 
-// Typed status line: ONLY the status word is tappable (opens undo); counter is not.
 const TypedLine = ({ selection, conducted, planned, animate, onStatusTap }: {
   selection: string; conducted: number; planned: number | undefined; animate: boolean; onStatusTap: () => void;
 }) => {
@@ -101,13 +100,11 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const [markCount, setMarkCount] = useState(0);
   const [undoPending, setUndoPending] = useState(false);
 
-// Reset transient UI on date change; the status line replays via its key below
   useEffect(() => {
-  setPendingSelection(null);
-  setEcgPhase(null);
-  setUndoPending(false);
+    setPendingSelection(null);
+    setEcgPhase(null);
+    setUndoPending(false);
   }, [activeDateStr]);
-
 
   const attendanceKey = isSGT && sgtId ? getSGTKey(sgtId) : isWard ? `ward-${subject}` : subject;
   const data = isWard ? wards[attendanceKey] : subjects[attendanceKey];
@@ -268,7 +265,6 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     if (!undoPending) { setUndoPending(true); return; }
     setUndoPending(false);
     if (currentSelection) updateHomeSelection(selectionKey, attendanceKey, currentSelection, isWard);
-    setJustMarked(false);
   };
 
   useEffect(() => {
@@ -297,7 +293,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const tagEl = tag ? <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{tag}</span> : null;
 
   const todayBottom = ecgPhase ? (
-    <div key={ecgCount} className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
+    <div className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
       <svg className="absolute inset-0 w-full h-full opacity-40" preserveAspectRatio="none" viewBox="0 0 100 40">
         <motion.path d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 100 20" fill="none" stroke={ecgColor} strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeInOut' }} />
       </svg>
@@ -378,11 +374,11 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
           </div>
         )}
 
-        {/* ── BOTTOM (today) — smooth collapse ── */}
+        {/* ── BOTTOM (today) — keyed by confirm counter so ECG replays every confirm ── */}
         {effectiveMode === 'today' && (
           <AnimatePresence initial={false}>
             {todayBottom && (
-              <motion.div key="tb" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: 'easeInOut' }} className="overflow-hidden">
+              <motion.div key={`tb-${ecgCount}`} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: 'easeInOut' }} className="overflow-hidden">
                 <div className="mt-3 space-y-1 px-0.5">{todayBottom}</div>
               </motion.div>
             )}
