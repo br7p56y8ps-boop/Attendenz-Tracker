@@ -206,20 +206,23 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const canMissCount = Math.max(0, Math.floor((attended * 100) / preferredPercentage - total));
   const needToAttend = Math.max(1, Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage)));
   const futureMsg = (() => {
-    if (percentage < preferredPercentage) {
-      const N = needToAttend;
-      if (k < N) return { sev: 'must' as const, jsx: <span className="text-destructive font-semibold">Must attend this <strong className="font-extrabold">(+{N - k})</strong> more {cls(N - k)}!!</span> };
-      if (k === N) return { sev: 'must' as const, jsx: <span className="text-destructive font-semibold">Must attend this class!!</span> };
-      return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track (if you attend this)</span> };
-    }
-    if (canMissCount > 0) {
-      const M = canMissCount;
-      if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can miss this <strong className="font-extrabold">(+{M - k})</strong> {cls(M - k)}!!</span> };
-      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can miss this class</span> };
-      return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT miss this class</span> };
-    }
-    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT miss this class</span> };
-    return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT miss this <strong className="font-extrabold">(+{k - 1})</strong> {cls(k - 1)}</span> };
+  // BELOW TARGET: count down the must-attend classes
+  if (percentage < preferredPercentage) {
+    const N = needToAttend;
+    if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this <strong className="font-extrabold">(+{N - k})</strong> more {cls(N - k)}!!</span> };
+    if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this class!!</span> };
+    return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
+  }
+  // ON TRACK with miss budget: count down the can-miss classes
+  if (canMissCount > 0) {
+    const M = canMissCount;
+    if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can miss this <strong className="font-extrabold">(+{M - k})</strong> {cls(M - k)}!!</span> };
+    if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can miss this class</span> };
+    return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
+  }
+  // ON TARGET but zero miss budget
+  if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT miss this class</span> };
+  return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
   })();
 
   const getPercentageColor = (pct: number) => {
