@@ -275,50 +275,64 @@ function ClinicalGroupCard({
   );
 }
 
-// ── Subject Triage Card Component ──
-function SubjectTriageCard({
-  name, isPreset, store, id, parentOptions, currentParent, canChangeParent, canDelete,
-  onRename, onDelete, opdRename, opdEditing, toggleEdit, updateRename, saveRename, onParentChange
-}: any) {
-  const [showParentDropdown, setShowParentDropdown] = useState(false);
-  const isEditing = opdEditing[id] || false;
-  const renameValue = opdRename[id] !== undefined ? opdRename[id] : name;
-  return (
-    <div className="flex items-center gap-2 bg-card border border-border/50 rounded-lg p-2.5">
-      {isEditing ? (
-        <div className="flex-1 flex items-center gap-1">
-          <input value={renameValue} onChange={e => updateRename(id, e.target.value)} className={cn(inputCls, 'h-8 text-xs flex-1')} autoFocus />
-          <button type="button" onClick={() => saveRename(id, store, name)} className="p-1.5 rounded-lg text-primary hover:bg-primary/10"><Check className="w-3.5 h-3.5" /></button>
-          <button type="button" onClick={() => toggleEdit(id)} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted"><X className="w-3.5 h-3.5" /></button>
-        </div>
-      ) : (
-        <>
-          <span className="text-xs font-bold flex-1" style={{ color: getSubjectColor(name) }}>{name}</span>
-          {isPreset && <span className="text-[9px] text-muted-foreground bg-muted/30 px-2 py-0.5 rounded-full">Preset</span>}
-          <button type="button" onClick={() => toggleEdit(id)} className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"><Edit2 className="w-3.5 h-3.5" /></button>
-          {canChangeParent && (
-            <div className="relative">
-              <button type="button" onClick={() => setShowParentDropdown(!showParentDropdown)} className="p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10">
-                <ArrowRightLeft className="w-3.5 h-3.5" />
-              </button>
-              {showParentDropdown && (
-                <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg p-1 z-10 min-w-[150px]">
-                  {parentOptions.map((opt: any) => (
-                    <button key={opt.value || opt} onClick={() => { onParentChange(opt.value || opt); setShowParentDropdown(false); }} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-muted rounded-md">
-                      {opt.label || opt}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {canDelete && (
-            <button type="button" onClick={onDelete} className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10"><Trash2 className="w-3.5 h-3.5" /></button>
-          )}
-        </>
-      )}
-    </div>
-  );
+    // ── Subject Triage Card Component (collapsed by default; expand → 3 equal text buttons) ──
+      function SubjectTriageCard({
+        name, isPreset, store, id, parentOptions, currentParent, canChangeParent, canDelete,
+          onRename, onDelete, opdRename, opdEditing, toggleEdit, updateRename, saveRename, onParentChange
+            }: any) {
+              const [expanded, setExpanded] = useState(false);
+                const [showParentDropdown, setShowParentDropdown] = useState(false);
+                  const isEditing = opdEditing[id] || false;
+                    const renameValue = opdRename[id] !== undefined ? opdRename[id] : name;
+                     return (
+                      <div className="bg-card border border-border/50 rounded-lg overflow-hidden">
+                        {isEditing ? (
+                          <div className="p-2.5 flex items-center gap-1">
+                            <input value={renameValue} onChange={e => updateRename(id, e.target.value)} className={cn(inputCls, 'h-8 text-xs flex-1')} autoFocus />
+                               <button type="button" onClick={() => saveRename(id, store, name)} className="p-1.5 rounded-lg text-primary hover:bg-primary/10 cursor-pointer"><Check className="w-3.5 h-3.5" /></button>
+                                <button type="button" onClick={() => toggleEdit(id)} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted cursor-pointer"><X className="w-3.5 h-3.5" /></button>
+                                </div>
+                                ) : (
+                                <>
+                               <button type="button" onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between p-2.5 hover:bg-muted/20 transition-colors text-left">
+                              <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs font-bold truncate" style={{ color: getSubjectColor(name) }}>{name}</span>
+                            {isPreset ? (
+                           <span className="text-[9px] text-muted-foreground bg-muted/30 px-2 py-0.5 rounded-full shrink-0">Preset</span>
+                          ) : (
+                         <AddedBadge />
+                        )}
+                      </div>
+                    {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+                  </button>
+                 {expanded && (
+                  <div className="px-2.5 pb-2.5">
+                   <div className="grid grid-cols-3 gap-1.5">
+                    <button type="button" onClick={() => toggleEdit(id)} className="h-9 rounded-lg border border-border bg-background/70 text-foreground text-[11px] font-bold flex items-center justify-center gap-1 hover:bg-muted cursor-pointer">
+                    <Edit2 className="w-3 h-3" /> Rename
+                     </button>
+                      <button type="button" disabled={!canChangeParent} onClick={() => setShowParentDropdown(!showParentDropdown)} className={cn('h-9 rounded-lg border text-[11px] font-bold flex items-center justify-center gap-1', canChangeParent ? 'border-border bg-background/70 text-foreground hover:bg-muted cursor-pointer' : 'border-border/40 bg-muted/10 text-muted-foreground/40 cursor-not-allowed')}>
+                       <ArrowRightLeft className="w-3 h-3" /> Swap
+                        </button>
+                          <button type="button" disabled={!canDelete} onClick={onDelete} className={cn('h-9 rounded-lg border text-[11px] font-bold flex items-center justify-center gap-1', canDelete ? 'border-border bg-background/70 text-destructive hover:bg-destructive/10 cursor-pointer' : 'border-border/40 bg-muted/10 text-muted-foreground/40 cursor-not-allowed')}>
+                           <Trash2 className="w-3 h-3" /> Delete
+                            </button>
+                            </div>
+                            {showParentDropdown && canChangeParent && (
+                          <div className="mt-1.5 bg-card border border-border rounded-lg shadow-lg p-1 max-h-40 overflow-y-auto">
+                        {parentOptions.map((opt: any) => (
+                      <button key={opt.value || opt} onClick={() => { onParentChange(opt.value || opt); setShowParentDropdown(false); }} className={cn('block w-full text-left px-3 py-1.5 text-xs hover:bg-muted rounded-md', (opt.value || opt) === currentParent && 'text-primary font-bold')}>
+                    {opt.label || opt}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </>
+    )}
+  </div>
+ );
 }
 
 // ── Main Component ──
@@ -1754,33 +1768,32 @@ export default function AddNew() {
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => setExportOpen(true)} className="h-10 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-emerald-500/20 transition-all cursor-pointer">
-            <Upload className="w-3.5 h-3.5" /> Export
-          </button>
-          <button type="button" onClick={() => { setImportError(null); setImportOpen(true); }} className="h-10 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-primary/20 transition-all cursor-pointer">
-            <Download className="w-3.5 h-3.5" /> Import
-          </button>
-          <button type="button" onClick={() => { setFormError(null); setMoreOpen(true); }} className="h-10 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-amber-500/20 transition-all cursor-pointer">
-            <Plus className="w-3.5 h-3.5" /> More
-          </button>
-          <button type="button" onClick={openOpd} className="h-10 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-violet-500/20 transition-all cursor-pointer">
-            <Stethoscope className="w-3.5 h-3.5" /> Subject Triage
-          </button>
+        <button type="button" onClick={() => setExportOpen(true)} className="h-10 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-emerald-500/20 transition-all cursor-pointer">
+        <Upload className="w-3.5 h-3.5" /> Export
+         l</button>
+        <button type="button" onClick={() => { setImportError(null); setImportOpen(true); }} className="h-10 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-primary/20 transition-all cursor-pointer">
+        <Download className="w-3.5 h-3.5" /> Import
+        </button>
+        <button type="button" onClick={() => setSection('academic')}
+        className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',
+        section === 'academic' ? 'bg-primary/15 text-primary border-primary/30' : 'bg-muted/20 text-muted-foreground border-border hover:bg-muted/40')}>
+        <GraduationCap className="w-3.5 h-3.5" /> Academic Section
+        </button>
+        <button type="button" onClick={() => setSection('clinical')}
+        className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',
+        section === 'clinical' ? 'bg-primary/15 text-primary border-primary/30' : 'bg-muted/20 text-muted-foreground border-border hover:bg-muted/40')}>
+        <Stethoscope className="w-3.5 h-3.5" /> Clinical Section
+        </button>
         </div>
-
         <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-3.5">
-          <div className="h-10 rounded-lg p-1 bg-muted/30 flex gap-1">
-            <button type="button" onClick={() => setSection('academic')}
-              className={cn('flex-1 text-xs font-bold rounded-md flex items-center justify-center gap-1.5 transition-all cursor-pointer',
-                section === 'academic' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-muted/40')}>
-              <GraduationCap className="w-3.5 h-3.5" /> Academic Section
-            </button>
-            <button type="button" onClick={() => setSection('clinical')}
-              className={cn('flex-1 text-xs font-bold rounded-md flex items-center justify-center gap-1.5 transition-all cursor-pointer',
-                section === 'clinical' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-muted/40')}>
-              <Stethoscope className="w-3.5 h-3.5" /> Clinical Section
-            </button>
-          </div>
+        <div className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => { setFormError(null); setMoreOpen(true); }} className="h-10 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-amber-500/20 transition-all cursor-pointer">
+        <Plus className="w-3.5 h-3.5" /> More
+        </button>
+        <button type="button" onClick={openOpd} className="h-10 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-violet-500/20 transition-all cursor-pointer">
+        <Stethoscope className="w-3.5 h-3.5" /> Subject Triage
+        </button>
+        </div>
 
           {section === 'academic' && (
             <div className="space-y-3">
@@ -2514,22 +2527,11 @@ export default function AddNew() {
                 {subjectMode === 'preloaded' ? 'Added' : 'Custom'}
               </button>
             </div>
-            <div className="flex gap-2 w-full">
-              <button type="button" onClick={() => setTriageSub('academic')}
-                className={cn('flex-1 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer border',
-                  triageSub === 'academic' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-muted/5 text-muted-foreground border-border hover:bg-muted/10')}>
-                Academic
-              </button>
-              <button type="button" onClick={() => setTriageSub('clinical')}
-                className={cn('flex-1 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer border',
-                  triageSub === 'clinical' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-muted/5 text-muted-foreground border-border hover:bg-muted/10')}>
-                Clinical
-              </button>
-            </div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{section === 'academic' ? 'Academic subjects' : 'Clinical subjects'}</p>
             <div className="space-y-1 h-[50vh] overflow-y-auto pr-1">
               {triageTop === 'preset' && subjectMode === 'preloaded' && (
                 <>
-                  {triageSub === 'academic' ? (
+                  {section === 'academic' ? (
                     <>
                       {CATEGORIES.flatMap(c => c.subjects).map(s => (
                         <SubjectTriageCard
@@ -2622,7 +2624,7 @@ export default function AddNew() {
               )}
               {triageTop === 'added' && (
                 <>
-                  {triageSub === 'academic' ? (
+                  {section === 'academic' ? (
                     <>
                       {subjectMode === 'preloaded' ? (
                         userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !isSGTRecord(s)).map(s => (
@@ -2775,10 +2777,10 @@ export default function AddNew() {
                   )}
                 </>
               )}
-              {((triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'academic' && CATEGORIES.flatMap(c => c.subjects).length === 0 && INTEGRATED_SUBJECTS.length === 0) ||
-                (triageTop === 'preset' && subjectMode === 'preloaded' && triageSub === 'clinical' && WARD_SUBJECTS.length === 0 && userAddedSubjects.filter(s => isSGTRecord(s)).length === 0) ||
-                (triageTop === 'added' && triageSub === 'academic' && (subjectMode === 'preloaded' ? userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !isSGTRecord(s)).length === 0 : customSubjects.filter(s => s.subjectType !== 'allied-parent' && !isSGTRecord(s)).length === 0)) ||
-                (triageTop === 'added' && triageSub === 'clinical' && (subjectMode === 'preloaded' ? customWards.length === 0 && userAddedSubjects.filter(s => isSGTRecord(s)).length === 0 : customWards.length === 0 && customSubjects.filter(s => isSGTRecord(s)).length === 0))) && (
+              {((triageTop === 'preset' && subjectMode === 'preloaded' && section === 'academic' && CATEGORIES.flatMap(c => c.subjects).length === 0 && INTEGRATED_SUBJECTS.length === 0) ||
+                (triageTop === 'preset' && subjectMode === 'preloaded' && section === 'clinical' && WARD_SUBJECTS.length === 0 && userAddedSubjects.filter(s => isSGTRecord(s)).length === 0) ||
+                (triageTop === 'added' && section === 'academic' && (subjectMode === 'preloaded' ? userAddedSubjects.filter(s => s.subjectType !== 'allied-parent' && !isSGTRecord(s)).length === 0 : customSubjects.filter(s => s.subjectType !== 'allied-parent' && !isSGTRecord(s)).length === 0)) ||
+                (triageTop === 'added' && section === 'clinical' && (subjectMode === 'preloaded' ? customWards.length === 0 && userAddedSubjects.filter(s => isSGTRecord(s)).length === 0 : customWards.length === 0 && customSubjects.filter(s => isSGTRecord(s)).length === 0))) && (
                 <div className="h-full flex items-center justify-center">
                   <p className="text-xs text-muted-foreground text-center py-5">No subjects found in this section.</p>
                 </div>
