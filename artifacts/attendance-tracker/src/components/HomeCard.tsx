@@ -52,16 +52,19 @@ const SeverityRing = ({ sev }: { sev: 'must' | 'can' | 'safe' }) => {
   );
 };
 
-const TypedLine = ({ selection, conducted, planned, animate }: { selection: string; conducted: number; planned: number | undefined; animate: boolean }) => {
-  const word = selection === 'attended' ? 'Attended' : 'Bunked';
-  const wordC = selection === 'attended' ? 'text-emerald-500' : 'text-rose-500';
-  const segs = [
-    { t: word + ' ', c: wordC },
-    { t: '(Class - ', c: 'text-muted-foreground' },
+// Typed status line: ONLY the status word is tappable (opens undo); the class counter is not.
+const TypedLine = ({ selection, conducted, planned, animate, onStatusTap }: {
+  selection: string; conducted: number; planned: number | undefined; animate: boolean; onStatusTap: () => void;
+}) => {
+  const word = selection === 'attended' ? 'Attended' : selection === 'missed' ? 'Bunked' : 'Holiday';
+  const wordC = selection === 'attended' ? 'text-emerald-500' : selection === 'missed' ? 'text-rose-500' : 'text-amber-500';
+  const showClass = selection !== 'off';
+  const tail = showClass ? [
+    { t: ' (Class - ', c: 'text-muted-foreground' },
     { t: String(conducted), c: wordC },
     { t: '/' + (planned ?? conducted) + ')', c: 'text-foreground/80' },
-  ];
-  const full = segs.map(s => s.t).join('');
+  ] : [];
+  const full = word + tail.map(s => s.t).join('');
   const [n, setN] = useState(animate ? 0 : full.length);
   useEffect(() => {
     if (!animate) { setN(full.length); return; }
@@ -70,13 +73,23 @@ const TypedLine = ({ selection, conducted, planned, animate }: { selection: stri
     return () => clearInterval(id);
   }, [full, animate]);
   let rem = n;
-  const out: React.ReactNode[] = [];
-  segs.forEach((s, idx) => {
+  const wordShown = word.slice(0, Math.min(word.length, rem));
+  rem -= wordShown.length;
+  const tailOut: React.ReactNode[] = [];
+  tail.forEach((s, idx) => {
     const take = Math.max(0, Math.min(s.t.length, rem));
-    if (take > 0) out.push(<span key={idx} className={cn('font-extrabold', s.c)}>{s.t.slice(0, take)}</span>);
+    if (take > 0) tailOut.push(<span key={idx} className={cn('font-extrabold', s.c)}>{s.t.slice(0, take)}</span>);
     rem -= take;
   });
-  return <p className="text-base font-extrabold leading-tight">{out}</p>;
+  return (
+    <p className="text-base font-extrabold leading-tight">
+      <button type="button" onClick={onStatusTap}
+        className={cn('cursor-pointer underline decoration-dotted decoration-1 underline-offset-4', wordC)}>
+        {wordShown}
+      </button>
+      {tailOut}
+    </p>
+  );
 };
 
 export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, tagColor, sessionId, dateStr, mode, pastSelection, isSGT = false, sgtId }: HomeCardProps) => {
@@ -179,7 +192,6 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
 
   const canMissCount = Math.max(0, Math.floor((attended * 100) / preferredPercentage - total));
   const needToAttend = Math.max(1, Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage)));
-
   const futureMsg = (() => {
     if (percentage < preferredPercentage) {
       const N = needToAttend;
@@ -214,16 +226,14 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     return `Ooops!! ${classesShort} more classes and you could have flexed on your batchmates!`;
   };
 
-  // ── TODAY pre-mark advisory ──
   const renderTodayAdvisory = () => {
     if (isFinished) return <span className={cn('font-bold', getPercentageColor(percentage))}>{getFinishedMessage()}</span>;
     if (total === 0) return <span>No classes conducted yet</span>;
     if (percentage < preferredPercentage) {
       if (remainingClasses !== undefined && needToAttend > remainingClasses) {
         const maxPct = Math.round(((attended + remainingClasses) / (total + remainingClasses)) * 100);
-        const long = true;
         return (
-          <span className={cn('font-semibold text-rose-500', long ? 'text-xs sm:text-sm' : 'text-sm')}>
+          <span className="font-semibold text-rose-500 text-xs sm:text-sm">
             Attendance advised unless contraindicated!!{' '}
             <span className="whitespace-nowrap">Max. Possible (if Attended): {maxPct}%</span>
           </span>
@@ -254,14 +264,18 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     setJustMarked(false);
   };
 
+  // Global: click OUTSIDE the card resets pending confirm AND open undo
   useEffect(() => {
-    if (!pendingSelection) return;
+    if (!pendingSelection && !undoPending) return;
     const onDown = (e: PointerEvent) => {
-      if (cardRef.current && !cardRef.current.contains(e.target as Node)) setPendingSelection(null);
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        setPendingSelection(null);
+        setUndoPending(false);
+      }
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
-  }, [pendingSelection]);
+  }, [pendingSelection, undoPending]);
 
   const finishedTargetMet = totalPlannedClasses ? attended >= Math.ceil(totalPlannedClasses * (preferredPercentage / 100)) : true;
   const markTint = currentSelection === 'attended' ? 'bg-emerald-500/15' : currentSelection === 'missed' ? 'bg-rose-500/15' : currentSelection === 'off' ? 'bg-amber-500/15' : '';
@@ -275,6 +289,33 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const selBg = (s: string) => s === 'attended' ? 'bg-emerald-500/25 border-emerald-500/60' : s === 'missed' ? 'bg-rose-500/25 border-rose-500/60' : 'bg-amber-500/25 border-amber-500/60';
   const selWord = (s: string) => s === 'attended' ? 'Attended' : s === 'missed' ? 'Bunked' : 'Holiday';
   const tagEl = tag ? <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{tag}</span> : null;
+
+  // Today bottom content (animated collapse)
+  const todayBottom = ecgPhase ? (
+    <div className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
+      <svg className="absolute inset-0 w-full h-full opacity-40" preserveAspectRatio="none" viewBox="0 0 100 40">
+        <motion.path d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 100 20" fill="none" stroke={ecgColor} strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeInOut' }} />
+      </svg>
+      <CheckCircle2 className="w-4 h-4 relative z-10" />
+      <span className="text-xs font-extrabold capitalize relative z-10">{selWord(ecgPhase)}</span>
+    </div>
+  ) : isFinished && !currentSelection ? (
+    <div className={cn('w-full py-3.5 rounded-xl text-xs sm:text-sm font-black tracking-wider uppercase text-center border flex items-center justify-center gap-2',
+      finishedTargetMet ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/40' : 'bg-rose-500/20 text-rose-500 border-rose-500/40')}>
+      <CheckCircle2 className="w-4 h-4" /><span>NO MORE PLANNED CLASSES!!!</span>
+    </div>
+  ) : !currentSelection ? (
+    <div className="flex gap-2">
+      {(['attended', 'missed', 'off'] as const).map(s => (
+        <button key={s} type="button" onClick={() => handleSelection(s)}
+          className={cn('flex-1 h-11 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-background/70 text-muted-foreground border-border',
+            s === 'attended' && 'hover:bg-emerald-500/10 hover:text-emerald-600', s === 'missed' && 'hover:bg-rose-500/10 hover:text-rose-600', s === 'off' && 'hover:bg-amber-500/10 hover:text-amber-600',
+            pendingSelection === s && 'ring-2 font-extrabold', pendingSelection === s && (s === 'attended' ? 'ring-emerald-500 bg-emerald-500/20 text-emerald-500' : s === 'missed' ? 'ring-rose-500 bg-rose-500/20 text-rose-500' : 'ring-amber-500 bg-amber-500/20 text-amber-500'))}>
+          {pendingSelection === s ? 'Confirm?' : s === 'off' ? 'Holiday' : s === 'attended' ? 'Attended' : 'Missed'}
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   return (
     <div ref={cardRef} className={cn('relative rounded-2xl border overflow-hidden select-none mb-4 bg-card', borderCls)}
@@ -316,9 +357,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
                 undoPending ? (
                   <button type="button" onClick={handleUndoTap} className="text-base font-extrabold text-rose-500 leading-tight animate-pulse cursor-pointer">Confirm Undo?</button>
                 ) : (
-                  <div onClick={handleUndoTap} className="cursor-pointer">
-                    <TypedLine selection={currentSelection} conducted={total} planned={totalPlannedClasses} animate={justMarked} />
-                  </div>
+                  <TypedLine selection={currentSelection} conducted={total} planned={totalPlannedClasses} animate={justMarked} onStatusTap={handleUndoTap} />
                 )
               )}
               {effectiveMode === 'today' && !currentSelection && <div className="leading-tight">{renderTodayAdvisory()}</div>}
@@ -334,38 +373,15 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
           </div>
         )}
 
-        {/* ── BOTTOM (today) ── */}
+        {/* ── BOTTOM (today) — smooth height collapse ── */}
         {effectiveMode === 'today' && (
-          <div className="mt-3 space-y-1">
-            <AnimatePresence>
-              {ecgPhase && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
-                  <svg className="absolute inset-0 w-full h-full opacity-40" preserveAspectRatio="none" viewBox="0 0 100 40">
-                    <motion.path d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 100 20" fill="none" stroke={ecgColor} strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeInOut' }} />
-                  </svg>
-                  <CheckCircle2 className="w-4 h-4 relative z-10" />
-                  <span className="text-xs font-extrabold capitalize relative z-10">{selWord(ecgPhase)}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            {isFinished && !currentSelection ? (
-              <div className={cn('w-full py-3.5 rounded-xl text-xs sm:text-sm font-black tracking-wider uppercase text-center border flex items-center justify-center gap-2',
-                finishedTargetMet ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/40' : 'bg-rose-500/20 text-rose-500 border-rose-500/40')}>
-                <CheckCircle2 className="w-4 h-4" /><span>NO MORE PLANNED CLASSES!!!</span>
-              </div>
-            ) : !currentSelection && !ecgPhase ? (
-              <div className="flex gap-2">
-                {(['attended', 'missed', 'off'] as const).map(s => (
-                  <button key={s} type="button" onClick={() => handleSelection(s)}
-                    className={cn('flex-1 h-11 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-background/70 text-muted-foreground border-border',
-                      s === 'attended' && 'hover:bg-emerald-500/10 hover:text-emerald-600', s === 'missed' && 'hover:bg-rose-500/10 hover:text-rose-600', s === 'off' && 'hover:bg-amber-500/10 hover:text-amber-600',
-                      pendingSelection === s && 'ring-2 font-extrabold', pendingSelection === s && (s === 'attended' ? 'ring-emerald-500 bg-emerald-500/20 text-emerald-500' : s === 'missed' ? 'ring-rose-500 bg-rose-500/20 text-rose-500' : 'ring-amber-500 bg-amber-500/20 text-amber-500'))}>
-                    {pendingSelection === s ? 'Confirm?' : s === 'off' ? 'Holiday' : s === 'attended' ? 'Attended' : 'Missed'}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
+          <AnimatePresence initial={false}>
+            {todayBottom && (
+              <motion.div key="tb" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: 'easeInOut' }} className="overflow-hidden">
+                <div className="mt-3 space-y-1">{todayBottom}</div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         )}
 
         {/* ── BOTTOM (future) ── */}
