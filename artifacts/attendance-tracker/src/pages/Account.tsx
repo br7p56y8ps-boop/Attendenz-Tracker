@@ -100,11 +100,14 @@ export default function Account() {
   };
   
   const handleApplyUpdate = async (withBackup: boolean) => {
-  setShowUpdatePrompt(false);
+   if (!navigator.onLine) {
+   import('sonner').then(({ toast }) => toast.error("You're offline — connect to the internet once to update."));
+   return;
+  }
   localStorage.removeItem('att_pwa_update_ready');
   localStorage.setItem('att_just_updated', 'true');
   localStorage.removeItem('att_has_seen_welcome_v1');
-  localStorage.removeItem('att_app_version'); // Let the new app sync its own version on boot
+  localStorage.removeItem('att_app_version');
 
   if (withBackup) {
     setUpdatePhase('backing');
