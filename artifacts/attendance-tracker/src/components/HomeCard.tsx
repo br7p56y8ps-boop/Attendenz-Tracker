@@ -138,36 +138,12 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const currentSelection = effectiveMode === 'past' ? getPastAttendance() : homeSelections[selectionKey];
   const percentage = total === 0 ? 100 : (attended / total) * 100;
 
-  // Past as-of counts
-  const restMatches = (rest: string): boolean => {
-    const r = rest.toLowerCase();
-    const norms = [subject.toLowerCase(), shortenSubject(subject).toLowerCase(), attendanceKey.toLowerCase()];
-    if (isSGT && sgtId) norms.push(`sgt:${sgtId.toLowerCase()}`);
-    if (norms.some(n => r === n)) return true;
-    if (sessionId && (r === sessionId || r === `${attendanceKey.toLowerCase()}-${sessionId}` || r === `${subject.toLowerCase()}-${sessionId}`)) return true;
-    if (norms.some(n => r.startsWith(n + '-') || r.startsWith(n + '_'))) return true;
-    if (isWard && (r === `ward-${subject.toLowerCase()}` || r.startsWith(`ward-${subject.toLowerCase()}-`))) return true;
-    return false;
-  };
-  const pastCounts = (() => {
-    if (effectiveMode !== 'past') return null;
-    let att = 0, mis = 0;
-    for (const [fk, v] of Object.entries(homeSelections)) {
-      const d = fk.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > activeDateStr) continue;
-      if (v !== 'attended' && v !== 'missed') continue;
-      if (!restMatches(fk.slice(11))) continue;
-      if (v === 'attended') att++; else mis++;
-    }
-    return { att, mis, conducted: att + mis };
-  })();
-  const pastPct = pastCounts && pastCounts.conducted > 0 ? (pastCounts.att / pastCounts.conducted) * 100 : null;
-
-  // 7-day window + occurrence index k
+  // 7-day DISPLAY window only
   const todayStr = getCurrentDateStr();
   const daysFromToday = Math.round((new Date(activeDateStr + 'T12:00:00').getTime() - new Date(todayStr + 'T12:00:00').getTime()) / 86400000);
   const withinWeek = daysFromToday >= 0 && daysFromToday <= 7;
 
+  // k = position among the subject's SCHEDULED class days (not calendar days)
   const isScheduledOn = (d: Date): boolean => {
     const ds = toStr(d); const abbr = DAY_ABBRS[d.getDay()]; const dow = d.getDay();
     if (isWard) {
@@ -206,23 +182,20 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const canMissCount = Math.max(0, Math.floor((attended * 100) / preferredPercentage - total));
   const needToAttend = Math.max(1, Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage)));
   const futureMsg = (() => {
-  // BELOW TARGET: count down the must-attend classes
-  if (percentage < preferredPercentage) {
-    const N = needToAttend;
-    if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this <strong className="font-extrabold">(+{N - k})</strong> more {cls(N - k)}!!</span> };
-    if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this class!!</span> };
+    if (percentage < preferredPercentage) {
+      const N = needToAttend;
+      if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this <strong className="font-extrabold">(+{N - k})</strong> more {cls(N - k)}!!</span> };
+      if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this class!!</span> };
+      return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
+    }
+    if (canMissCount > 0) {
+      const M = canMissCount;
+      if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can miss this <strong className="font-extrabold">(+{M - k})</strong> {cls(M - k)}!!</span> };
+      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can miss this class</span> };
+      return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
+    }
+    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT miss this class</span> };
     return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
-  }
-  // ON TRACK with miss budget: count down the can-miss classes
-  if (canMissCount > 0) {
-    const M = canMissCount;
-    if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can miss this <strong className="font-extrabold">(+{M - k})</strong> {cls(M - k)}!!</span> };
-    if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can miss this class</span> };
-    return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
-  }
-  // ON TARGET but zero miss budget
-  if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT miss this class</span> };
-  return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
   })();
 
   const getPercentageColor = (pct: number) => {
@@ -252,7 +225,6 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     setJustMarked(false);
   };
 
-  // Global: click outside resets pending
   useEffect(() => {
     if (!pendingSelection) return;
     const onDown = (e: PointerEvent) => {
@@ -278,7 +250,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     <div ref={cardRef} className={cn('relative rounded-2xl border overflow-hidden select-none mb-4 bg-card', borderCls)}
       style={effectiveMode !== 'today' && !isFinished ? { borderColor: subjectColor } : undefined}>
       <div className={cn('p-5', effectiveMode === 'today' ? markTint : '')}>
-        {/* ── PAST ── */}
+        {/* ── PAST (real data) ── */}
         {effectiveMode === 'past' ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
@@ -294,17 +266,14 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
                   const c = sel === 'attended' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : sel === 'missed' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : sel === 'off' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-muted/30 text-muted-foreground border-border/50';
                   return <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border', c)}>{t}</span>;
                 })()}
-                {(currentSelection === 'attended' || currentSelection === 'missed') && pastCounts && (
-                  <span className="text-[11px] font-extrabold text-foreground">(Class - <span className={selColor(currentSelection)}>{pastCounts.conducted}</span>/{totalPlannedClasses ?? pastCounts.conducted})</span>
+                {(currentSelection === 'attended' || currentSelection === 'missed') && (
+                  <span className="text-[11px] font-extrabold text-foreground">(Class - <span className={selColor(currentSelection)}>{total}</span>/{totalPlannedClasses ?? total})</span>
                 )}
               </div>
             </div>
-            <div className={cn('text-lg font-bold min-w-max self-center', pastPct === null ? 'text-muted-foreground' : getPercentageColor(pastPct))}>
-              {pastPct === null ? '—' : `${pastPct.toFixed(0)}%`}
-            </div>
+            <div className={cn('text-lg font-bold min-w-max self-center', getPercentageColor(percentage))}>{total === 0 ? '—' : `${percentage.toFixed(0)}%`}</div>
           </div>
         ) : (
-          /* ── TODAY / FUTURE tight stack ── */
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
               <div className="flex items-center gap-2 flex-wrap">
@@ -336,21 +305,24 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
 
         {/* ── BOTTOM (today) ── */}
         {effectiveMode === 'today' && (
-          <div className="mt-3">
-            {ecgPhase ? (
-              <div className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
-                <svg className="absolute inset-0 w-full h-full opacity-40" preserveAspectRatio="none" viewBox="0 0 100 40">
-                  <motion.path d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 100 20" fill="none" stroke={ecgColor} strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeInOut' }} />
-                </svg>
-                <CheckCircle2 className="w-4 h-4 relative z-10" />
-                <span className="text-xs font-extrabold capitalize relative z-10">{ecgPhase === 'off' ? 'Holiday' : ecgPhase}</span>
-              </div>
-            ) : isFinished && !currentSelection ? (
+          <div className="mt-3 space-y-1">
+            <AnimatePresence>
+              {ecgPhase && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
+                  <svg className="absolute inset-0 w-full h-full opacity-40" preserveAspectRatio="none" viewBox="0 0 100 40">
+                    <motion.path d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 100 20" fill="none" stroke={ecgColor} strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeInOut' }} />
+                  </svg>
+                  <CheckCircle2 className="w-4 h-4 relative z-10" />
+                  <span className="text-xs font-extrabold capitalize relative z-10">{ecgPhase === 'off' ? 'Holiday' : ecgPhase}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {isFinished && !currentSelection ? (
               <div className={cn('w-full py-3.5 rounded-xl text-xs sm:text-sm font-black tracking-wider uppercase text-center border flex items-center justify-center gap-2',
                 finishedTargetMet ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/40' : 'bg-rose-500/20 text-rose-500 border-rose-500/40')}>
                 <CheckCircle2 className="w-4 h-4" /><span>NO MORE PLANNED CLASSES!!!</span>
               </div>
-            ) : !currentSelection ? (
+            ) : !currentSelection && !ecgPhase ? (
               <div className="flex gap-2">
                 {(['attended', 'missed', 'off'] as const).map(s => (
                   <button key={s} type="button" onClick={() => handleSelection(s)}
