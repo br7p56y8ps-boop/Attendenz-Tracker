@@ -37,7 +37,7 @@ function parseSelectionKey(key: string): { date: string; label: string } | null 
 
 const SeverityRing = ({ sev }: { sev: 'must' | 'can' | 'safe' }) => {
   const hex = sev === 'must' ? '#ef4444' : sev === 'can' ? '#f59e0b' : '#10b981';
-  const lines = sev === 'must' ? ['Must', 'Attend'] : sev === 'can' ? ['Can', 'Miss'] : ['Safe to', 'Miss'];
+  const lines = sev === 'must' ? ['Must', 'Attend'] : sev === 'can' ? ['Can', 'Bunk'] : ['Safe to', 'Bunk'];
   return (
     <div className="relative w-14 h-14 shrink-0">
       <svg width="56" height="56" viewBox="0 0 56 56">
@@ -53,7 +53,7 @@ const SeverityRing = ({ sev }: { sev: 'must' | 'can' | 'safe' }) => {
 };
 
 const TypedLine = ({ selection, conducted, planned, animate }: { selection: string; conducted: number; planned: number | undefined; animate: boolean }) => {
-  const word = selection === 'attended' ? 'Attended' : 'Missed';
+  const word = selection === 'attended' ? 'Attended' : 'Bunked';
   const wordC = selection === 'attended' ? 'text-emerald-500' : 'text-rose-500';
   const segs = [
     { t: word + ' ', c: wordC },
@@ -138,12 +138,10 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const currentSelection = effectiveMode === 'past' ? getPastAttendance() : homeSelections[selectionKey];
   const percentage = total === 0 ? 100 : (attended / total) * 100;
 
-  // 7-day DISPLAY window only
   const todayStr = getCurrentDateStr();
   const daysFromToday = Math.round((new Date(activeDateStr + 'T12:00:00').getTime() - new Date(todayStr + 'T12:00:00').getTime()) / 86400000);
   const withinWeek = daysFromToday >= 0 && daysFromToday <= 7;
 
-  // k = position among the subject's SCHEDULED class days (not calendar days)
   const isScheduledOn = (d: Date): boolean => {
     const ds = toStr(d); const abbr = DAY_ABBRS[d.getDay()]; const dow = d.getDay();
     if (isWard) {
@@ -181,21 +179,22 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
 
   const canMissCount = Math.max(0, Math.floor((attended * 100) / preferredPercentage - total));
   const needToAttend = Math.max(1, Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage)));
+
   const futureMsg = (() => {
     if (percentage < preferredPercentage) {
       const N = needToAttend;
-      if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this <strong className="font-extrabold">(+{N - k})</strong> more {cls(N - k)}!!</span> };
+      if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this <span className="whitespace-nowrap">(+{N - k}) more {cls(N - k)}!!</span></span> };
       if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this class!!</span> };
       return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
     }
     if (canMissCount > 0) {
       const M = canMissCount;
-      if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can miss this <strong className="font-extrabold">(+{M - k})</strong> {cls(M - k)}!!</span> };
-      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can miss this class</span> };
+      if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can bunk this <span className="whitespace-nowrap">(+{M - k}) {cls(M - k)}!!</span></span> };
+      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk this class</span> };
       return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
     }
-    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT miss this class</span> };
-    return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
+    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this class</span> };
+    return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this <span className="whitespace-nowrap">(+{k - 1}) {cls(k - 1)}</span></span> };
   })();
 
   const getPercentageColor = (pct: number) => {
@@ -205,6 +204,36 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   };
   const ecgColor = percentage >= 80 ? '#10b981' : percentage >= 75 ? '#f59e0b' : '#ef4444';
   const subjectColor = getSubjectColor(subject);
+
+  const getFinishedMessage = () => {
+    const targetNeeded = totalPlannedClasses !== undefined ? Math.ceil(totalPlannedClasses * (preferredPercentage / 100)) : Math.ceil(total * (preferredPercentage / 100));
+    if (attended >= targetNeeded) return `Congrats! Achieved Target (Attended ${attended} of ${totalPlannedClasses || total})`;
+    const classesShort = Math.max(1, targetNeeded - attended);
+    if (classesShort === 1) return `Ooops!! For 1 more class, you would have been a legend!`;
+    if (classesShort % 2 === 0) return `Ooops!! Just ${classesShort} classes short! Even a med student with no sleep could have done that!`;
+    return `Ooops!! ${classesShort} more classes and you could have flexed on your batchmates!`;
+  };
+
+  // ── TODAY pre-mark advisory ──
+  const renderTodayAdvisory = () => {
+    if (isFinished) return <span className={cn('font-bold', getPercentageColor(percentage))}>{getFinishedMessage()}</span>;
+    if (total === 0) return <span>No classes conducted yet</span>;
+    if (percentage < preferredPercentage) {
+      if (remainingClasses !== undefined && needToAttend > remainingClasses) {
+        const maxPct = Math.round(((attended + remainingClasses) / (total + remainingClasses)) * 100);
+        const long = true;
+        return (
+          <span className={cn('font-semibold text-rose-500', long ? 'text-xs sm:text-sm' : 'text-sm')}>
+            Attendance advised unless contraindicated!!{' '}
+            <span className="whitespace-nowrap">Max. Possible (if Attended): {maxPct}%</span>
+          </span>
+        );
+      }
+      return <span className="text-rose-500 font-semibold text-sm">Must ATTEND this class!!</span>;
+    }
+    if (canMissCount > 0) return <span className="text-emerald-500 font-semibold text-sm">On track, CAN bunk this class!!</span>;
+    return <span className="text-rose-500 font-semibold text-sm">At target limit, DO NOT bunk this class!!</span>;
+  };
 
   const handleSelection = (sel: 'off' | 'missed' | 'attended') => {
     if (effectiveMode !== 'today') return;
@@ -244,13 +273,14 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     : 'border-card-border';
   const selColor = (s: string) => s === 'attended' ? 'text-emerald-500' : s === 'missed' ? 'text-rose-500' : 'text-amber-500';
   const selBg = (s: string) => s === 'attended' ? 'bg-emerald-500/25 border-emerald-500/60' : s === 'missed' ? 'bg-rose-500/25 border-rose-500/60' : 'bg-amber-500/25 border-amber-500/60';
+  const selWord = (s: string) => s === 'attended' ? 'Attended' : s === 'missed' ? 'Bunked' : 'Holiday';
   const tagEl = tag ? <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{tag}</span> : null;
 
   return (
     <div ref={cardRef} className={cn('relative rounded-2xl border overflow-hidden select-none mb-4 bg-card', borderCls)}
       style={effectiveMode !== 'today' && !isFinished ? { borderColor: subjectColor } : undefined}>
       <div className={cn('p-5', effectiveMode === 'today' ? markTint : '')}>
-        {/* ── PAST (real data) ── */}
+        {/* ── PAST ── */}
         {effectiveMode === 'past' ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
@@ -262,7 +292,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
               <div className="flex items-center gap-2 flex-wrap">
                 {(() => {
                   const sel = currentSelection;
-                  const t = sel === 'attended' ? 'Attended' : sel === 'missed' ? 'Missed' : sel === 'off' ? 'Holiday' : isFinished ? 'No Planned Class' : 'Not Marked';
+                  const t = sel === 'attended' ? 'Attended' : sel === 'missed' ? 'Bunked' : sel === 'off' ? 'Holiday' : isFinished ? 'No Planned Class' : 'Not Marked';
                   const c = sel === 'attended' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : sel === 'missed' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : sel === 'off' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-muted/30 text-muted-foreground border-border/50';
                   return <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border', c)}>{t}</span>;
                 })()}
@@ -291,6 +321,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
                   </div>
                 )
               )}
+              {effectiveMode === 'today' && !currentSelection && <div className="leading-tight">{renderTodayAdvisory()}</div>}
               {effectiveMode === 'future' && !isFinished && withinWeek && <p className="text-base leading-tight">{futureMsg.jsx}</p>}
             </div>
             <div className="shrink-0 self-center">
@@ -313,7 +344,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
                     <motion.path d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 100 20" fill="none" stroke={ecgColor} strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeInOut' }} />
                   </svg>
                   <CheckCircle2 className="w-4 h-4 relative z-10" />
-                  <span className="text-xs font-extrabold capitalize relative z-10">{ecgPhase === 'off' ? 'Holiday' : ecgPhase}</span>
+                  <span className="text-xs font-extrabold capitalize relative z-10">{selWord(ecgPhase)}</span>
                 </motion.div>
               )}
             </AnimatePresence>
