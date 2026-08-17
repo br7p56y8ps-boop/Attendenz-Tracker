@@ -90,6 +90,15 @@ export default function Home() {
   const [updateNoticeDismissed, setUpdateNoticeDismissed] = useState<boolean>(() => sessionStorage.getItem('att_update_notice_dismissed') === 'true');
   const [updateInfoOpen, setUpdateInfoOpen] = useState(false);
   const showUpdatePill = isUpdateAvailable && !updateNoticeDismissed;
+  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  useEffect(() => {
+  const on = () => setOnline(true);
+  const off = () => setOnline(false);
+  window.addEventListener('online', on);
+  window.addEventListener('offline', off);
+  return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+
 
   // Earliest recorded date
   const earliestDateStr = useMemo(() => {
@@ -657,6 +666,11 @@ export default function Home() {
                   <button type="button" onClick={() => setUpdateInfoOpen(false)} className="w-7 h-7 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-3.5 h-3.5" /></button>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p>
+                  {!online && (
+                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5">
+                   <p className="text-[10px] font-bold text-amber-500">You're offline — connect to the Internet once to Install the Update.</p>
+                  </div>
+                  )}
                 <div className="bg-muted/30 border border-border/50 rounded-xl p-3 space-y-1">
                   <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-1">How to Update</p>
                   <p className="text-[10px] text-muted-foreground">1. Go to <strong className="text-foreground">Settings Tab</strong></p>
