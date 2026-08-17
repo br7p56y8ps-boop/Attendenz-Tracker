@@ -38,8 +38,12 @@ export const SubjectCard = ({
     getSubjectPlannedTotal,
     getPresetWardTotalPlanned,
     getCustomWardTotalPlanned,
+    getPresetSubjectDisplayName,
   } = useCustomData();
 
+  // Resolves preset renames for display; user-added/custom names pass through unchanged.
+  // The original `subject` prop is still used below for all data/attendance lookups.
+  const displayName = getPresetSubjectDisplayName(subject);
   // Build canonical attendance key
   const attendanceKey = isSGT && sgtId
     ? getSGTKey(sgtId)
@@ -179,8 +183,8 @@ export const SubjectCard = ({
     <div className="flex justify-between items-center gap-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <h4 className="font-semibold text-sm sm:text-base leading-tight truncate" style={{ color: subjectColor }}>
-            {subject}
+           <h4 className="font-semibold text-sm sm:text-base leading-tight truncate" style={{ color: subjectColor }}>
+            {displayName}
           </h4>
           {ongoingBadge}
         </div>
@@ -397,7 +401,7 @@ export const SubjectCard = ({
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 role="dialog"
                 aria-modal="true"
-                aria-label={`${subject} details`}
+                aria-label={`${displayName} details`}
                 className="bg-card border border-border rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-left relative"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -405,7 +409,7 @@ export const SubjectCard = ({
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-xl font-bold leading-tight" style={{ color: subjectColor }}>{subject}</h3>
+                     <h3 className="text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displayName}</h3>
                       {ongoingBadge}
                     </div>
                     <p className="text-muted-foreground text-xs mt-1">
