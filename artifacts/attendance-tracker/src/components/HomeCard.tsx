@@ -21,7 +21,7 @@ const SHORTEN_MAP: Record<string, string> = {
   'Departmental Integrated Teaching': 'Dept. Integrated',
 };
 const shortenSubject = (n: string) => SHORTEN_MAP[n] || n;
-const cls = (n: number) => (n === 1 ? 'class' : 'classes');
+const cls = (n: number) => (n === 1 ? 'Class' : 'Classes');
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const toStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
@@ -52,7 +52,7 @@ const SeverityRing = ({ sev }: { sev: 'must' | 'can' | 'safe' }) => {
   );
 };
 
-// Typed status line: ONLY the status word is tappable (opens undo); the class counter is not.
+// Typed status line: ONLY the status word is tappable (opens undo); counter is not.
 const TypedLine = ({ selection, conducted, planned, animate, onStatusTap }: {
   selection: string; conducted: number; planned: number | undefined; animate: boolean; onStatusTap: () => void;
 }) => {
@@ -83,10 +83,7 @@ const TypedLine = ({ selection, conducted, planned, animate, onStatusTap }: {
   });
   return (
     <p className="text-base font-extrabold leading-tight">
-      <button type="button" onClick={onStatusTap}
-        className={cn('cursor-pointer underline decoration-dotted decoration-1 underline-offset-4', wordC)}>
-        {wordShown}
-      </button>
+      <button type="button" onClick={onStatusTap} className={cn('cursor-pointer', wordC)}>{wordShown}</button>
       {tailOut}
     </p>
   );
@@ -100,8 +97,17 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
 
   const [pendingSelection, setPendingSelection] = useState<'off' | 'missed' | 'attended' | null>(null);
   const [ecgPhase, setEcgPhase] = useState<'off' | 'missed' | 'attended' | null>(null);
-  const [justMarked, setJustMarked] = useState(false);
+  const [ecgCount, setEcgCount] = useState(0);
+  const [markCount, setMarkCount] = useState(0);
   const [undoPending, setUndoPending] = useState(false);
+
+// Reset transient UI on date change; the status line replays via its key below
+  useEffect(() => {
+  setPendingSelection(null);
+  setEcgPhase(null);
+  setUndoPending(false);
+  }, [activeDateStr]);
+
 
   const attendanceKey = isSGT && sgtId ? getSGTKey(sgtId) : isWard ? `ward-${subject}` : subject;
   const data = isWard ? wards[attendanceKey] : subjects[attendanceKey];
@@ -196,16 +202,16 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     if (percentage < preferredPercentage) {
       const N = needToAttend;
       if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this <span className="whitespace-nowrap">(+{N - k}) more {cls(N - k)}!!</span></span> };
-      if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this class!!</span> };
+      if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this Class!!</span> };
       return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
     }
     if (canMissCount > 0) {
       const M = canMissCount;
       if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can bunk this <span className="whitespace-nowrap">(+{M - k}) {cls(M - k)}!!</span></span> };
-      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk this class</span> };
+      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk this Class</span> };
       return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
     }
-    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this class</span> };
+    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this Class</span> };
     return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this <span className="whitespace-nowrap">(+{k - 1}) {cls(k - 1)}</span></span> };
   })();
 
@@ -239,10 +245,10 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
           </span>
         );
       }
-      return <span className="text-rose-500 font-semibold text-sm">Must ATTEND this class!!</span>;
+      return <span className="text-rose-500 font-semibold text-sm">Must ATTEND this Class!!</span>;
     }
-    if (canMissCount > 0) return <span className="text-emerald-500 font-semibold text-sm">On track, CAN bunk this class!!</span>;
-    return <span className="text-rose-500 font-semibold text-sm">At target limit, DO NOT bunk this class!!</span>;
+    if (canMissCount > 0) return <span className="text-emerald-500 font-semibold text-sm">On track, CAN bunk this Class!!</span>;
+    return <span className="text-rose-500 font-semibold text-sm">At target limit, DO NOT bunk this Class!!</span>;
   };
 
   const handleSelection = (sel: 'off' | 'missed' | 'attended') => {
@@ -251,7 +257,8 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     if (pendingSelection === sel) {
       setPendingSelection(null);
       setEcgPhase(sel);
-      setJustMarked(true);
+      setEcgCount(c => c + 1);
+      setMarkCount(c => c + 1);
       setUndoPending(false);
       updateHomeSelection(selectionKey, attendanceKey, sel, isWard);
       setTimeout(() => setEcgPhase(null), 1500);
@@ -264,7 +271,6 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     setJustMarked(false);
   };
 
-  // Global: click OUTSIDE the card resets pending confirm AND open undo
   useEffect(() => {
     if (!pendingSelection && !undoPending) return;
     const onDown = (e: PointerEvent) => {
@@ -290,9 +296,8 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const selWord = (s: string) => s === 'attended' ? 'Attended' : s === 'missed' ? 'Bunked' : 'Holiday';
   const tagEl = tag ? <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{tag}</span> : null;
 
-  // Today bottom content (animated collapse)
   const todayBottom = ecgPhase ? (
-    <div className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
+    <div key={ecgCount} className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
       <svg className="absolute inset-0 w-full h-full opacity-40" preserveAspectRatio="none" viewBox="0 0 100 40">
         <motion.path d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 100 20" fill="none" stroke={ecgColor} strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeInOut' }} />
       </svg>
@@ -310,7 +315,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
         <button key={s} type="button" onClick={() => handleSelection(s)}
           className={cn('flex-1 h-11 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-background/70 text-muted-foreground border-border',
             s === 'attended' && 'hover:bg-emerald-500/10 hover:text-emerald-600', s === 'missed' && 'hover:bg-rose-500/10 hover:text-rose-600', s === 'off' && 'hover:bg-amber-500/10 hover:text-amber-600',
-            pendingSelection === s && 'ring-2 font-extrabold', pendingSelection === s && (s === 'attended' ? 'ring-emerald-500 bg-emerald-500/20 text-emerald-500' : s === 'missed' ? 'ring-rose-500 bg-rose-500/20 text-rose-500' : 'ring-amber-500 bg-amber-500/20 text-amber-500'))}>
+            pendingSelection === s && 'ring-2 ring-inset font-extrabold', pendingSelection === s && (s === 'attended' ? 'ring-emerald-500 bg-emerald-500/20 text-emerald-500' : s === 'missed' ? 'ring-rose-500 bg-rose-500/20 text-rose-500' : 'ring-amber-500 bg-amber-500/20 text-amber-500'))}>
           {pendingSelection === s ? 'Confirm?' : s === 'off' ? 'Holiday' : s === 'attended' ? 'Attended' : 'Missed'}
         </button>
       ))}
@@ -357,7 +362,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
                 undoPending ? (
                   <button type="button" onClick={handleUndoTap} className="text-base font-extrabold text-rose-500 leading-tight animate-pulse cursor-pointer">Confirm Undo?</button>
                 ) : (
-                  <TypedLine selection={currentSelection} conducted={total} planned={totalPlannedClasses} animate={justMarked} onStatusTap={handleUndoTap} />
+                  <TypedLine key={`${activeDateStr}-${markCount}`} selection={currentSelection} conducted={total} planned={totalPlannedClasses} animate onStatusTap={handleUndoTap} />
                 )
               )}
               {effectiveMode === 'today' && !currentSelection && <div className="leading-tight">{renderTodayAdvisory()}</div>}
@@ -373,12 +378,12 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
           </div>
         )}
 
-        {/* ── BOTTOM (today) — smooth height collapse ── */}
+        {/* ── BOTTOM (today) — smooth collapse ── */}
         {effectiveMode === 'today' && (
           <AnimatePresence initial={false}>
             {todayBottom && (
               <motion.div key="tb" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: 'easeInOut' }} className="overflow-hidden">
-                <div className="mt-3 space-y-1">{todayBottom}</div>
+                <div className="mt-3 space-y-1 px-0.5">{todayBottom}</div>
               </motion.div>
             )}
           </AnimatePresence>
