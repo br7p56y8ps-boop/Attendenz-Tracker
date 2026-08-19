@@ -56,7 +56,7 @@ function shortenSubject(name: string): { display: string; wasShortened: boolean;
   const sgtMatch = name.match(/^(.+?)\s*\(SGT\)$/);
   let base = name;
   let tag = '';
-  
+
   if (sgtMatch) {
     base = sgtMatch[1];
     tag = ' (SGT)';
@@ -69,7 +69,7 @@ function shortenSubject(name: string): { display: string; wasShortened: boolean;
   if (fullDisplay.length <= 20) {
     return { display: fullDisplay, wasShortened: false, shortForm: '', fullForm: '' };
   }
-  
+
   return { display: shortDisplay, wasShortened: true, shortForm: mappedBase, fullForm: base };
 }
 
@@ -379,13 +379,13 @@ export async function generatePDFReport(options: ExportReportOptions) {
       const displayName = item.name;
       const shortened = shortenSubject(displayName);
       let subName = shortened.display;
-      
+
       if (shortened.wasShortened) {
         if (!legendMap.has(shortened.shortForm)) {
           legendMap.set(shortened.shortForm, shortened.fullForm);
         }
       }
-      
+
       if (subName.length > 20) {
         subName = subName.substring(0, 18) + '..';
       }
@@ -536,15 +536,13 @@ export async function generatePDFReport(options: ExportReportOptions) {
       currentY += 8;
     }
 
-        currentY += 2;
+    currentY += 2;
 
-    // ── Common legend entry: explain the SGT tag whenever any SGT row is present ──
     if (tableItems.some(i => i.name.includes('(SGT)'))) {
       legendMap.set('SGT', 'Small Group Teaching');
     }
 
-    // ── Legend anchored at the BOTTOM of this section (3-column aligned grid) ──
-      if (legendMap.size > 0) {
+    if (legendMap.size > 0) {
       currentY += 4;
       if (currentY > 270) { doc.addPage(); currentY = 20; }
       doc.setFontSize(7);
@@ -554,45 +552,45 @@ export async function generatePDFReport(options: ExportReportOptions) {
       currentY += 4;
 
       const leftMargin = 17;
-      const colWidth = 60; // 3 columns
+      const colWidth = 60;
       const bullet = '• ';
       const eq = ' = ';
 
       let col = 0;
       legendMap.forEach((full, short) => {
-        if (col === 0 && currentY > 275) { 
-          doc.addPage(); 
-          currentY = 20; 
+        if (col === 0 && currentY > 275) {
+          doc.addPage();
+          currentY = 20;
         }
-        
+
         const x = leftMargin + (col * colWidth);
-        
+
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(148, 163, 184);
         doc.text(bullet, x, currentY);
-        
+
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(51, 65, 85);
         const bulletWidth = doc.getTextWidth(bullet);
         const shortWidth = doc.getTextWidth(short);
         doc.text(short, x + bulletWidth, currentY);
-        
+
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(148, 163, 184);
         const eqWidth = doc.getTextWidth(eq);
         doc.text(eq, x + bulletWidth + shortWidth, currentY);
-        
+
         doc.setFont('helvetica', 'italic');
         doc.setTextColor(100, 116, 139);
         doc.text(full, x + bulletWidth + shortWidth + eqWidth, currentY, { maxWidth: colWidth - 10 });
-        
+
         col++;
         if (col >= 3) {
           col = 0;
           currentY += 4;
         }
       });
-      
+
       if (col !== 0) currentY += 4;
       doc.setFont('helvetica', 'normal');
     }
@@ -858,26 +856,92 @@ export function generateCSVReport(options: ExportReportOptions) {
   const rows: any[] = [];
 
   academicItems.forEach(i => {
+    const conducted = i.total;
+    const attended = i.attended;
+    const plannedTotal = i.plannedTotal;
+    const target = options.targetPct;
+    let remark1 = '';
+    let remark2 = '';
+    if (conducted === 0) {
+      remark1 = 'Yet to be Conducted';
+      remark2 = 'Yet to be Conducted';
+    } else {
+      const pct = (attended / conducted) * 100;
+      if (pct >= target) remark1 = 'Target Achieved';
+      else {
+        const needed = Math.ceil((target * conducted) / 100) - attended;
+        remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
+      }
+      if (plannedTotal > 0) {
+        const totalNeeded = Math.ceil((target * plannedTotal) / 100);
+        if (attended >= totalNeeded) remark2 = 'Target Achieved';
+        else {
+          const remaining = plannedTotal - conducted;
+          const neededFromRemaining = totalNeeded - attended;
+          const canMiss = remaining - neededFromRemaining;
+          if (canMiss > 0) remark2 = `Can miss ${canMiss}`;
+          else if (canMiss === 0) {
+            const classText = remaining === 1 ? 'Class' : 'Classes';
+            remark2 = `Must Attend remaining ${remaining} ${classText}`;
+          } else remark2 = 'Better Luck Next Life';
+        }
+      } else remark2 = 'No Planned Classes';
+      if (remark1 === remark2) remark2 = '';
+    }
+
     rows.push([
       'Academic',
       `"${i.name.replace(/"/g, '""')}"`,
-      i.total === 0 ? 'Yet to be Conducted' : i.total,
-      i.total === 0 ? '' : i.attended,
-      i.total === 0 ? '' : `"${i.neededForTarget}"`,
-      i.total === 0 ? '' : `"${i.neededForTarget}"`,
-      i.total === 0 ? '' : i.pct.toFixed(1),
+      conducted === 0 ? 'Yet to be Conducted' : conducted,
+      conducted === 0 ? '' : attended,
+      `"${remark1}"`,
+      `"${remark2}"`,
+      conducted === 0 ? '' : i.pct.toFixed(1),
     ]);
   });
 
   displayClinicalItems.forEach(i => {
+    const conducted = i.total;
+    const attended = i.attended;
+    const plannedTotal = i.plannedTotal;
+    const target = options.targetPct;
+    let remark1 = '';
+    let remark2 = '';
+    if (conducted === 0) {
+      remark1 = 'Yet to be Conducted';
+      remark2 = 'Yet to be Conducted';
+    } else {
+      const pct = (attended / conducted) * 100;
+      if (pct >= target) remark1 = 'Target Achieved';
+      else {
+        const needed = Math.ceil((target * conducted) / 100) - attended;
+        remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
+      }
+      if (plannedTotal > 0) {
+        const totalNeeded = Math.ceil((target * plannedTotal) / 100);
+        if (attended >= totalNeeded) remark2 = 'Target Achieved';
+        else {
+          const remaining = plannedTotal - conducted;
+          const neededFromRemaining = totalNeeded - attended;
+          const canMiss = remaining - neededFromRemaining;
+          if (canMiss > 0) remark2 = `Can miss ${canMiss}`;
+          else if (canMiss === 0) {
+            const classText = remaining === 1 ? 'Class' : 'Classes';
+            remark2 = `Must Attend remaining ${remaining} ${classText}`;
+          } else remark2 = 'Better Luck Next Life';
+        }
+      } else remark2 = 'No Planned Classes';
+      if (remark1 === remark2) remark2 = '';
+    }
+
     rows.push([
       'Clinical',
       `"${i.name.replace(/"/g, '""')}"`,
-      i.total === 0 ? 'Yet to be Conducted' : i.total,
-      i.total === 0 ? '' : i.attended,
-      i.total === 0 ? '' : `"${i.neededForTarget}"`,
-      i.total === 0 ? '' : `"${i.neededForTarget}"`,
-      i.total === 0 ? '' : i.pct.toFixed(1),
+      conducted === 0 ? 'Yet to be Conducted' : conducted,
+      conducted === 0 ? '' : attended,
+      `"${remark1}"`,
+      `"${remark2}"`,
+      conducted === 0 ? '' : i.pct.toFixed(1),
     ]);
   });
 

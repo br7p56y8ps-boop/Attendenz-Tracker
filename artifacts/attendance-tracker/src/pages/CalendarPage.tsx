@@ -1,10 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
-import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { motion } from 'framer-motion';
-import { Grid, ChevronDown, TrendingUp, AlertTriangle } from 'lucide-react';
-import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, rangeStartMinutes, canonicalizeTimeRange } from '@/lib/utils';
+import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, canonicalizeTimeRange } from '@/lib/utils';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 
 const DAYS_ORDER = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -23,7 +22,7 @@ function shortenSubject(name: string) {
   return map[name] || name;
 }
 
-/* ── Minute-based grid columns + zero-padded two-line headers ── */
+/* ── Minute-based grid columns ── */
 interface GridColumn { id: string; start: number; end: number; base: boolean; }
 const BASE_PRESET_COLS = [
   { start: 420, end: 480 },
@@ -63,15 +62,14 @@ export default function CalendarPage() {
     customSubjects, customWards, userAddedSubjects,
     subjectMode, presetTimetable, presetWardSchedule,
     getCurrentPresetWard, getCurrentCustomWard,
-    getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned,
+    getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned, getSubjectIdByName,
   } = useCustomData();
   const today = new Date();
   const target = preferredPercentage || 75;
+  const [monthSel, setMonthSel] = useState<number | null>(null);
+  const [attnOpen, setAttnOpen] = useState(false);
 
-  /* ═══════════ SGT entries for the weekly grid ═══════════
-     SGTs render INSIDE the academic table (short name + SGT tag).
-     They persist on their assigned days until the placement period
-     is over (endDate < today) — then they disappear from the table. */
+  /* ── SGT entries for the weekly grid ── */
   const todayStr = useMemo(() => {
     const y = today.getFullYear();
     const m = String(today.getMonth() + 1).padStart(2, '0');
@@ -85,7 +83,7 @@ export default function CalendarPage() {
     store.forEach(s => {
       if (!(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')) return;
       const end = (s as any).endDate;
-      if (end && end < todayStr) return; // period over → remove from weekly table
+      if (end && end < todayStr) return;
       const scheds: Array<{ day: string; range: string }> = [];
       (s.schedules || []).forEach((sch: any) => {
         const range = sch.time ? canonicalizeTimeRange(sch.time) : `${sch.start}–${sch.end}`;
@@ -103,9 +101,9 @@ export default function CalendarPage() {
     return entries;
   }, [subjectMode, userAddedSubjects, customSubjects, todayStr]);
 
-  /* ═══════════ STATISTICS ═══════════ */
+  /* ── STATISTICS ── */
   const allEntities = useMemo(() => {
-    const list: Array<{ name: string; isWard: boolean; planned: number; isSGT?: boolean; sgtId?: string }> = [];
+    const list: Array<{ name: string; id?: string; isWard: boolean; planned: number; isSGT?: boolean; sgtId?: string }> = [];
     if (subjectMode === 'preloaded') {
       CATEGORIES.forEach(c => c.subjects.forEach(s => list.push({ name: s.name, isWard: false, planned: getSubjectPlannedTotal(s.name) })));
       INTEGRATED_SUBJECTS.forEach(s => list.push({ name: s.name, isWard: false, planned: getSubjectPlannedTotal(s.name) }));
@@ -113,9 +111,9 @@ export default function CalendarPage() {
       userAddedSubjects.forEach(u => {
         if (u.subjectType === 'allied-parent') return;
         if (u.parentName === 'Small Group Teaching') {
-          list.push({ name: u.name, isWard: false, planned: u.plannedClasses, isSGT: true, sgtId: u.id });
+          list.push({ name: u.name, id: u.id, isWard: false, planned: u.plannedClasses, isSGT: true, sgtId: u.id });
         } else {
-          list.push({ name: u.name, isWard: false, planned: u.plannedClasses });
+          list.push({ name: u.name, id: u.id, isWard: false, planned: u.plannedClasses });
         }
       });
       presetWardSchedule.forEach(e => {
@@ -127,9 +125,9 @@ export default function CalendarPage() {
       customSubjects.forEach(s => {
         if (s.subjectType === 'allied-parent') return;
         if (s.parentName === 'Small Group Teaching') {
-          list.push({ name: s.name, isWard: false, planned: s.plannedClasses, isSGT: true, sgtId: s.id });
+          list.push({ name: s.name, id: s.id, isWard: false, planned: s.plannedClasses, isSGT: true, sgtId: s.id });
         } else {
-          list.push({ name: s.name, isWard: false, planned: s.plannedClasses });
+          list.push({ name: s.name, id: s.id, isWard: false, planned: s.plannedClasses });
         }
       });
       customWards.forEach(w => list.push({ name: w.name, isWard: true, planned: getCustomWardTotalPlanned(w.startDate, w.endDate) }));
@@ -137,15 +135,18 @@ export default function CalendarPage() {
     return list;
   }, [subjectMode, customSubjects, customWards, userAddedSubjects, presetWardSchedule, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned]);
 
+  const getEntityAttendanceKey = (e: { name: string; id?: string; isWard: boolean; isSGT?: boolean; sgtId?: string }): string | null => {
+    if (e.isSGT && e.sgtId) return getSGTKey(e.sgtId);
+    const id = e.id || getSubjectIdByName(e.name, e.isWard ? 'clinical' : 'academic');
+    if (!id) return null;
+    return e.isWard ? getWardAttendanceKey(id) : getAcademicAttendanceKey(id);
+  };
+
   const overall = useMemo(() => {
     let att = 0, mis = 0, planned = 0, off = 0;
     allEntities.forEach(e => {
-      const key = e.isSGT && e.sgtId
-        ? getSGTKey(e.sgtId)
-        : e.isWard
-          ? `ward-${e.name}`
-          : e.name;
-      const d = (e.isWard ? wards : subjects)[key] || { attended: 0, missed: 0 };
+      const key = getEntityAttendanceKey(e);
+      const d = key ? (e.isWard ? wards : subjects)[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
       att += Number(d.attended) || 0; mis += Number(d.missed) || 0; planned += Number(e.planned) || 0;
     });
     for (const sel of Object.values(homeSelections)) if (sel === 'off') off += 1;
@@ -159,21 +160,41 @@ export default function CalendarPage() {
   const attention = useMemo(() => {
     const out: Array<{ name: string; pct: number; needed: number }> = [];
     allEntities.forEach(e => {
-      const key = e.isSGT && e.sgtId
-        ? getSGTKey(e.sgtId)
-        : e.isWard
-          ? `ward-${e.name}`
-          : e.name;
-      const d = (e.isWard ? wards : subjects)[key] || { attended: 0, missed: 0 };
+      const key = getEntityAttendanceKey(e);
+      const d = key ? (e.isWard ? wards : subjects)[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
       const conducted = d.attended + d.missed;
       if (conducted === 0) return;
-      const pct = (d.attended / conducted) * 100;
       const remaining = Math.max(0, e.planned - conducted);
+      if (remaining <= 0) return; // exclude completed subjects
+      const pct = (d.attended / conducted) * 100;
       const rawReq = Math.max(0, Math.ceil(e.planned * (target / 100)) - d.attended);
       if (pct < target || rawReq > remaining) out.push({ name: e.name, pct, needed: rawReq });
     });
     return out.sort((a, b) => a.pct - b.pct).slice(0, 6);
   }, [allEntities, subjects, wards, target]);
+
+  /* ── NEW: Prediction of Maximum Possible Attendance ── */
+  const predictionItems = useMemo(() => {
+    const result: Array<{ name: string; currentPct: number; remaining: number; maxPossiblePct: number; planned: number; attended: number }> = [];
+    allEntities.forEach(e => {
+      const key = getEntityAttendanceKey(e);
+      const d = key ? (e.isWard ? wards : subjects)[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
+      const conducted = d.attended + d.missed;
+      const remaining = Math.max(0, e.planned - conducted);
+      if (remaining <= 0) return;
+      const currentPct = conducted === 0 ? 0 : (d.attended / conducted) * 100;
+      const maxPossiblePct = (d.attended + remaining) / e.planned * 100;
+      result.push({
+        name: e.name,
+        currentPct,
+        remaining,
+        maxPossiblePct,
+        planned: e.planned,
+        attended: d.attended,
+      });
+    });
+    return result.sort((a, b) => a.maxPossiblePct - b.maxPossiblePct);
+  }, [allEntities, subjects, wards]);
 
   const months = useMemo(() => {
     const now = new Date();
@@ -193,44 +214,44 @@ export default function CalendarPage() {
     return buckets.map(b => ({ ...b, pct: b.att + b.mis === 0 ? null : (b.att / (b.att + b.mis)) * 100 }));
   }, [homeSelections]);
 
-  const rotation = useMemo(() => {
-    const cur = subjectMode === 'preloaded' ? getCurrentPresetWard(today) : getCurrentCustomWard();
-    if (!cur || cur.ward === 'Holiday') return null;
-    let startStr: string | undefined;
-    let endStr: string | undefined;
-    if (subjectMode === 'preloaded') {
-      const y = today.getFullYear();
-      const mo = String(today.getMonth() + 1).padStart(2, '0');
-      const da = String(today.getDate()).padStart(2, '0');
-      const todayStr2 = `${y}-${mo}-${da}`;
-      const entry = presetWardSchedule.find(s => todayStr2 >= s.start && todayStr2 <= s.end);
-      startStr = entry?.start;
-      endStr = entry?.end;
-    } else {
-      const w = cur as { startDate?: string; endDate?: string };
-      startStr = w.startDate;
-      endStr = w.endDate;
-    }
-    if (!startStr || !endStr) return null;
-    const start = new Date(startStr + 'T12:00:00');
-    const end = new Date(endStr + 'T12:00:00');
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
-    const total = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
-    const done = Math.min(total, Math.max(0, Math.round((today.getTime() - start.getTime()) / 86400000) + 1));
-    return { name: cur.ward, total, done, pct: (done / total) * 100 };
-  }, [subjectMode, getCurrentPresetWard, getCurrentCustomWard, presetWardSchedule, today]);
-
-  const [monthSel, setMonthSel] = useState<number | null>(null);
-  const [attnOpen, setAttnOpen] = useState(false);
-
-  /* ═══════════ ROTATION WHEEL — window-level drag (no pointer capture) ═══════════ */
+  /* ── ROTATION WHEEL ── */
   const allRotations = useMemo(() => {
     const list: { name: string; start: string; end: string }[] = [];
-    if (subjectMode === 'preloaded') presetWardSchedule.forEach(ws => list.push({ name: ws.ward, start: ws.start, end: ws.end }));
+    if (subjectMode === 'preloaded') {
+      presetWardSchedule.forEach(ws => list.push({ name: ws.ward, start: ws.start, end: ws.end }));
+    }
     customWards.forEach(w => list.push({ name: w.name, start: w.startDate, end: w.endDate }));
     list.sort((a, b) => a.start.localeCompare(b.start));
     return list;
   }, [subjectMode, customWards, presetWardSchedule]);
+
+  const currentRotationInfo = useMemo(() => {
+    if (subjectMode === 'preloaded') {
+      const cur = getCurrentPresetWard(today);
+      if (!cur || cur.ward === 'Holiday') return null;
+      const y = today.getFullYear();
+      const m = String(today.getMonth() + 1).padStart(2, '0');
+      const d = String(today.getDate()).padStart(2, '0');
+      const todayStr2 = `${y}-${m}-${d}`;
+      const entry = presetWardSchedule.find(e => todayStr2 >= e.start && todayStr2 <= e.end);
+      if (!entry) return null;
+      return { name: cur.ward, start: entry.start, end: entry.end };
+    } else {
+      const cur = getCurrentCustomWard();
+      if (!cur || cur.name === 'Holiday') return null;
+      return { name: cur.name, start: cur.startDate, end: cur.endDate };
+    }
+  }, [subjectMode, getCurrentPresetWard, getCurrentCustomWard, presetWardSchedule, today]);
+
+  const rotation = useMemo(() => {
+    if (!currentRotationInfo) return null;
+    const start = new Date(currentRotationInfo.start + 'T12:00:00');
+    const end = new Date(currentRotationInfo.end + 'T12:00:00');
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+    const total = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+    const done = Math.min(total, Math.max(0, Math.round((today.getTime() - start.getTime()) / 86400000) + 1));
+    return { name: currentRotationInfo.name, total, done, pct: (done / total) * 100 };
+  }, [currentRotationInfo, today]);
 
   const currentIndex = useMemo(() => {
     if (allRotations.length === 0) return 0;
@@ -324,33 +345,39 @@ export default function CalendarPage() {
         if (m) push(m);
       });
     });
-    // SGT time ranges also contribute columns
     sgtEntries.forEach(e => push({ start: e.start, end: e.end }));
     const base = BASE_PRESET_COLS.map((c, i) => ({ ...c, base: true, id: `b${i}` }));
     return [...base, ...extra].sort((a, b) => a.start - b.start);
   }, [presetTimetable, sgtEntries]);
 
-  /* ── Grid cells (academic slots + SGT merged into the same table) ── */
+  /* ── Grid cells ── */
   const timetableGrid = useMemo(() => {
     const rows = DAYS_ORDER.map(day => {
-      if (day === 'Fri') return { day, cells: [{ key: 'hol', colStart: 0, span: columns.length, subjects: [] as string[], sgt: [] as string[], isRest: false, isHoliday: true, rowspan: 1, hidden: false }] };
+      if (day === 'Fri') return { day, cells: [{ key: 'hol', colStart: 0, span: columns.length, subjects: [], sgt: [], isRest: false, isHoliday: true, rowspan: 1, hidden: false }] };
       const dayIdx = DAY_INDEX_MAP[day];
 
-      // Academic slots for this day
-      const slots: Array<{ time: string; subjects: string[]; sgt: string[] }> = (presetTimetable[dayIdx] || [])
+      // Group single-subject slots by canonical time
+      const timeMap = new Map<string, { time: string; subjects: string[]; sgt: string[] }>();
+      (presetTimetable[dayIdx] || [])
         .filter(s => s.type !== 'ward' && s.type !== 'ward_replacement' && s.subjects && s.subjects.length > 0)
-        .map(s => ({ time: s.time, subjects: s.subjects, sgt: [] as string[] }));
+        .forEach(s => {
+          const canon = canonicalizeTimeRange(s.time);
+          const entry = timeMap.get(canon) || { time: canon, subjects: [], sgt: [] };
+          entry.subjects.push(...s.subjects);
+          timeMap.set(canon, entry);
+        });
 
-      // Merge SGT entries into the same day: attach to a matching academic
-      // column when start times match, otherwise create their own slot.
+      // Merge SGT entries
       sgtEntries.filter(e => e.day === day).forEach(e => {
-        const host = slots.find(sl => {
-          const m = parseRangeToMinutes(sl.time);
+        const host = Array.from(timeMap.values()).find(v => {
+          const m = parseRangeToMinutes(v.time);
           return m && m.start === e.start;
         });
         if (host) host.sgt.push(e.name);
-        else slots.push({ time: e.range, subjects: [], sgt: [e.name] });
+        else timeMap.set(canonicalizeTimeRange(e.range), { time: canonicalizeTimeRange(e.range), subjects: [], sgt: [e.name] });
       });
+
+      const slots = Array.from(timeMap.values());
 
       const consumed = new Set<string>();
       const cells: Array<{ key: string; colStart: number; span: number; subjects: string[]; sgt: string[]; isRest: boolean; isHoliday?: boolean; rowspan: number; hidden: boolean }> = [];
@@ -409,7 +436,7 @@ export default function CalendarPage() {
           <h1 className="text-lg font-extrabold text-foreground leading-tight">Weekly Routine & Rotations</h1>
         </div>
 
-        {/* ═══════════ WEEKLY TIME TABLE (academic + SGT in one grid) ═══════════ */}
+        {/* ═══════════ WEEKLY TIME TABLE ═══════════ */}
         <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-3">
           <h3 className="text-sm font-extrabold uppercase tracking-wide text-primary text-center">Academic</h3>
           <div className="overflow-x-auto rounded-xl border border-border/40">
@@ -429,38 +456,42 @@ export default function CalendarPage() {
                 </tr>
               </thead>
               <tbody>
-                {timetableGrid.map(row => (
-                  <tr key={row.day}>
-                    <td className="border border-border/40 px-1.5 py-2 text-[10px] font-bold text-foreground text-center">
-                      {row.day}{row.day === todayAbbr && <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-primary align-middle" />}
-                    </td>
-                    {row.cells.filter(cell => !cell.hidden).map(cell => cell.isHoliday ? (
-                      <td key={cell.key} colSpan={cell.span} className="border border-border/40 text-center text-[10px] font-bold text-muted-foreground tracking-[0.3em] py-4">HOLIDAY</td>
-                    ) : (
-                      <td key={cell.key} colSpan={cell.span} rowSpan={cell.rowspan > 1 ? cell.rowspan : undefined} className={cn('border border-border/40 p-1 text-center align-middle', cell.isRest && 'bg-muted/20')}>
-                        {cell.subjects.length === 0 && cell.sgt.length === 0 ? (
-                          <span className="text-muted-foreground/40 text-[9px]">—</span>
-                        ) : cell.isRest ? (
-                          <span className="text-[9px] font-bold text-muted-foreground">Rest</span>
-                        ) : (
-                          <span className="text-[9px] font-semibold leading-tight flex flex-wrap items-center justify-center gap-x-1 gap-y-0.5">
-                            {cell.subjects.length > 0 && (
-                              <span style={{ color: getSubjectColor(cell.subjects[0]) }}>
-                                {cell.subjects.map(shortenSubject).join(' / ')}
-                              </span>
-                            )}
-                            {cell.sgt.map(n => (
-                              <span key={n} className="inline-flex items-center gap-0.5" style={{ color: getSubjectColor(n) }}>
-                                {shortenSubject(n)}
-                                <span className="text-[6px] font-extrabold uppercase tracking-wider px-1 py-px rounded-full bg-purple-500/10 text-purple-500 border border-purple-500/30">SGT</span>
-                              </span>
-                            ))}
-                          </span>
-                        )}
+                {timetableGrid.map(row => {
+                  const isToday = row.day === todayAbbr;
+                  return (
+                    <tr key={row.day} className={cn(isToday && 'bg-primary/5')}>
+                      <td className="border border-border/40 px-1.5 py-2 text-[10px] font-bold text-foreground text-center">
+                        {row.day}
+                        {isToday && <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-primary align-middle" />}
                       </td>
-                    ))}
-                  </tr>
-                ))}
+                      {row.cells.filter(cell => !cell.hidden).map(cell => cell.isHoliday ? (
+                        <td key={cell.key} colSpan={cell.span} className="border border-border/40 text-center text-[10px] font-bold text-muted-foreground tracking-[0.3em] py-4">HOLIDAY</td>
+                      ) : (
+                        <td key={cell.key} colSpan={cell.span} rowSpan={cell.rowspan > 1 ? cell.rowspan : undefined} className={cn('border border-border/40 p-1 text-center align-middle', cell.isRest && 'bg-muted/20')}>
+                          {cell.subjects.length === 0 && cell.sgt.length === 0 ? (
+                            <span className="text-muted-foreground/40 text-[9px]">—</span>
+                          ) : cell.isRest ? (
+                            <span className="text-[9px] font-bold text-muted-foreground">Rest</span>
+                          ) : (
+                            <span className="text-[9px] font-semibold leading-tight flex flex-wrap items-center justify-center gap-x-1 gap-y-0.5">
+                              {cell.subjects.length > 0 && (
+                                <span style={{ color: getSubjectColor(cell.subjects[0]) }}>
+                                  {cell.subjects.map(shortenSubject).join(' / ')}
+                                </span>
+                              )}
+                              {cell.sgt.map(n => (
+                                <span key={n} className="inline-flex items-center gap-0.5" style={{ color: getSubjectColor(n) }}>
+                                  {shortenSubject(n)}
+                                  <span className="text-[6px] font-extrabold uppercase tracking-wider px-1 py-px rounded-full bg-purple-500/10 text-purple-500 border border-purple-500/30">SGT</span>
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -559,7 +590,7 @@ export default function CalendarPage() {
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Needs Attention</p>
               {attention.length === 0 ? (
-                <p className="text-[10px] text-emerald-500 font-semibold">All subjects on track.</p>
+                <p className="text-[10px] text-emerald-500 font-semibold">All remaining subjects on track.</p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {attention.map(a => (
@@ -576,6 +607,30 @@ export default function CalendarPage() {
                       <strong className="text-foreground">{a.name}</strong> — attend next <strong className="text-rose-500">{a.needed}</strong> to recover.
                     </p>
                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── NEW: Prediction Section ── */}
+            <div className="border-t border-border/40 pt-3">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Maximum Possible Attendance</p>
+              {predictionItems.length === 0 ? (
+                <p className="text-[10px] text-muted-foreground font-semibold">No remaining classes for prediction.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {predictionItems.map(item => {
+                    const maxColor = item.maxPossiblePct >= target ? 'text-emerald-500' : item.maxPossiblePct >= target - 10 ? 'text-amber-500' : 'text-rose-500';
+                    return (
+                      <div key={item.name} className="flex items-center justify-between bg-muted/20 rounded-lg px-3 py-1.5">
+                        <span className="text-xs font-bold text-foreground truncate" style={{ color: getSubjectColor(item.name) }}>{item.name}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] text-muted-foreground">Now {item.currentPct.toFixed(0)}%</span>
+                          <span className="text-[10px] text-muted-foreground">Left {item.remaining}</span>
+                          <span className={cn('text-xs font-extrabold', maxColor)}>Max {item.maxPossiblePct.toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

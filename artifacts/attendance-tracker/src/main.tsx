@@ -34,8 +34,29 @@ if ('serviceWorker' in navigator) {
   localStorage.removeItem('att_pwa_update_ready');
   try {
     const cache = await caches.open('attendenz-shell-v1');
-    const fresh = await fetch(`${base}index.html`, { cache: 'no-store' });
-    if (fresh.ok) await cache.put(`${base}index.html`, fresh);
+    const indexUrl = `${base}index.html`;
+    const fresh = await fetch(`${indexUrl}?update=${Date.now()}`, { cache: 'no-store' });
+    if (!fresh.ok) return;
+
+    const html = await fresh.clone().text();
+    await cache.put(indexUrl, fresh.clone());
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const assetUrls = new Set<string>();
+    doc.querySelectorAll('[src], [href]').forEach((element) => {
+      const value = element.getAttribute('src') || element.getAttribute('href');
+      if (!value || value.startsWith('#')) return;
+      try {
+        const url = new URL(value, window.location.href);
+        if (url.origin === window.location.origin) assetUrls.add(url.href);
+      } catch {}
+    });
+
+    await Promise.all(Array.from(assetUrls).map(async (assetUrl) => {
+      try {
+        const response = await fetch(assetUrl, { cache: 'no-store' });
+        if (response.ok) await cache.put(assetUrl, response.clone());
+      } catch {}
+    }));
   } catch { /* fallback: reload may still show old version */ }
 };
 

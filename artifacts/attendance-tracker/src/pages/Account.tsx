@@ -1,14 +1,14 @@
-import { Camera, Trash2, Check, Pencil, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, Download, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, HardDrive, FileSpreadsheet, Info, GraduationCap, X, Upload } from 'lucide-react';
+import { Camera, Trash2, Check, Pencil, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, Download, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
-import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
-import { storageClear, storageSetItem } from '@/lib/idb';
+import { storageClear, storageSetItem, storageRemoveItem } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn, formatISODateDDMMYY } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport } from '@/lib/exportUtils';
@@ -17,6 +17,7 @@ import femaleStudentProfile from '@/assets/images/female_student_profile_1784286
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
 
 const SNAPSHOTS_KEY = 'attendenz_snapshots_v1';
+const ORPHANED_RECORDS_KEY = 'attendance_tracker_orphaned_records';
 // Returns 1 if a>b, -1 if a<b, 0 if equal
 function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -30,7 +31,6 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-
 export default function Account() {
   const { username, updateUsername, profileImage, updateProfileImage, isPersistentStorage, requestPersistentStorage } = useAuth();
   const [, setLocation] = useLocation();
@@ -39,40 +39,54 @@ export default function Account() {
   useEffect(() => { setNameInput(username); }, [username]);
   const handleSaveName = () => { if (nameInput.trim()) updateUsername(nameInput.trim()); setIsEditingName(false); };
   const { subjects, wards, homeSelections, preferredPercentage, setPreferredPercentage } = useAttendance();
-  const { customSubjects, customWards, userAddedSubjects, presetWardSchedule, subjectMode, changeSubjectMode, setWhatsNewOpen, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
+  const quarantineUnresolvedAttendance = (type: 'subject' | 'ward', name: string, data: unknown) => {
+    if (!data || typeof data !== 'object') return;
+    try {
+      const existing = JSON.parse(localStorage.getItem(ORPHANED_RECORDS_KEY) || '[]');
+      const originalKey = type === 'ward' ? `ward-${name}` : name;
+      if (existing.some((entry: any) => entry.type === type && entry.originalKey === originalKey)) return;
+      const next = JSON.stringify([...existing, { originalKey, type, data }]);
+      localStorage.setItem(ORPHANED_RECORDS_KEY, next);
+      storageSetItem(ORPHANED_RECORDS_KEY, next);
+    } catch {}
+  };
+  const { customSubjects, customWards, userAddedSubjects, presetWardSchedule, subjectMode, changeSubjectMode, setWhatsNewOpen, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned, getSubjectIdByName } = useCustomData();
+  const canonicalAttendanceKey = (type: 'subject' | 'ward', id: string | undefined, name: string, legacyData: unknown) => {
+    if (id) return type === 'ward' ? getWardAttendanceKey(id) : getAcademicAttendanceKey(id);
+    quarantineUnresolvedAttendance(type, name, legacyData);
+    return '';
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupFileInputRef = useRef<HTMLInputElement>(null);
   const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
   const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
-  const [installedVersion, setInstalledVersion] = useState<string>(() => {
-  const stored = localStorage.getItem('att_app_version') || APP_VERSION;
-  if (compareVersions(APP_VERSION, stored) > 0) {
-    localStorage.setItem('att_app_version', APP_VERSION);
-    return APP_VERSION;
-  }
-  return stored;
+  const [installedVersion] = useState<string>(() => {
+    const stored = localStorage.getItem('att_app_version') || APP_VERSION;
+    if (compareVersions(APP_VERSION, stored) > 0) {
+      localStorage.setItem('att_app_version', APP_VERSION);
+      return APP_VERSION;
+    }
+    return stored;
   });
 
   const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
-    useEffect(() => {
+  useEffect(() => {
     const on = () => setPwaReady(true);
     window.addEventListener('attendenz:update-ready', on);
     return () => window.removeEventListener('attendenz:update-ready', on);
   }, []);
-   const isUpdateAvailable =
-  compareVersions(serverVersion, installedVersion) > 0 ||
-  (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
-   const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
-   const [dots, setDots] = useState(1);
-   useEffect(() => {
-  if (updatePhase === 'none') return;
-  const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450);
-  return () => window.clearInterval(t);
+  const isUpdateAvailable =
+    compareVersions(serverVersion, installedVersion) > 0 ||
+    (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
+  const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
+  const [dots, setDots] = useState(1);
+  useEffect(() => {
+    if (updatePhase === 'none') return;
+    const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450);
+    return () => window.clearInterval(t);
   }, [updatePhase]);
 
-
-  /* Round-5: progress + confirm-before states */
   const [busy, setBusy] = useState<string | null>(null);
   const [pendingPct, setPendingPct] = useState<number | null>(null);
   const [confirmMarkComplete, setConfirmMarkComplete] = useState(false);
@@ -82,6 +96,7 @@ export default function Account() {
   const [showSnapshotsList, setShowSnapshotsList] = useState(false);
   const [snapshotToDelete, setSnapshotToDelete] = useState<Snapshot | null>(null);
   const [curriculumStatus, setCurriculumStatus] = useState<'Active' | 'Completed'>(() => (localStorage.getItem('att_curriculum_status') as 'Active' | 'Completed') || 'Active');
+  const [restoreConfirmType, setRestoreConfirmType] = useState<'file' | 'transfer' | null>(null);
 
   const handleToggleCurriculumStatus = () => {
     const next = curriculumStatus === 'Active' ? 'Completed' : 'Active';
@@ -98,45 +113,43 @@ export default function Account() {
     setSnapshots(getSnapshots());
     import('sonner').then(({ toast }) => toast.success('Curriculum marked as Completed! Auto-snapshot saved.'));
   };
-  
+
   const handleApplyUpdate = async (withBackup: boolean) => {
-  setShowUpdatePrompt(false);
-  localStorage.removeItem('att_pwa_update_ready');
-  localStorage.setItem('att_just_updated', 'true');
-  localStorage.removeItem('att_has_seen_welcome_v1');
-  localStorage.removeItem('att_app_version'); // Let the new app sync its own version on boot
-
-  if (withBackup) {
-    setUpdatePhase('backing');
-    // 1. Create internal snapshot silently (no download/share popup)
-    createSnapshot('Pre-Update Backup');
-    // 2. Save the ID of this snapshot to restore it later
-    const snaps = getSnapshots();
-    if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
-      localStorage.setItem('att_pending_update_restore', snaps[0].id);
+    if (!navigator.onLine) {
+      import('sonner').then(({ toast }) => toast.error("You're offline — connect to the internet once to update."));
+      return;
     }
-    
-    // 3. Show "Backing Up" phase for 5.5 seconds
-    await new Promise(r => setTimeout(r, 5500));
-  }
+    localStorage.removeItem('att_pwa_update_ready');
+    localStorage.setItem('att_just_updated', 'true');
+    localStorage.removeItem('att_has_seen_welcome_v1');
+    localStorage.removeItem('att_app_version');
 
-  // Switch to the "Updating" phase
-  setUpdatePhase('updating');
-  
-  const MIN_UPDATE_DELAY = 6500;
-  const start = Date.now();
+    if (withBackup) {
+      setUpdatePhase('backing');
+      createSnapshot('Pre-Update Backup');
+      const snaps = getSnapshots();
+      if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
+        localStorage.setItem('att_pending_update_restore', snaps[0].id);
+      }
+      await new Promise(r => setTimeout(r, 5500));
+    }
 
-  try {
-    const applyPwa = (window as any).attendenzApplyPwaUpdate;
-    if (applyPwa) await applyPwa(); // wait for ATT_SW_UPDATED
-  } catch {}
+    setUpdatePhase('updating');
 
-  const elapsed = Date.now() - start;
-  if (elapsed < MIN_UPDATE_DELAY) {
-    await new Promise(r => setTimeout(r, MIN_UPDATE_DELAY - elapsed));
-  }
+    const MIN_UPDATE_DELAY = 6500;
+    const start = Date.now();
 
-  window.location.href = import.meta.env.BASE_URL || '/';
+    try {
+      const applyPwa = (window as any).attendenzApplyPwaUpdate;
+      if (applyPwa) await applyPwa();
+    } catch {}
+
+    const elapsed = Date.now() - start;
+    if (elapsed < MIN_UPDATE_DELAY) {
+      await new Promise(r => setTimeout(r, MIN_UPDATE_DELAY - elapsed));
+    }
+
+    window.location.href = import.meta.env.BASE_URL || '/';
   };
 
   const [exportFormat, setExportFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
@@ -146,7 +159,7 @@ export default function Account() {
   const [exportEndDate, setExportEndDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [exportSemester, setExportSemester] = useState<string>('Current Month');
   const [exportMsg, setExportMsg] = useState('');
-  const [runtimeStorageInfo, setRuntimeStorageInfo] = useState({ isIndexedDB: true, isPersistent: false, techTitle: 'IndexedDB (Local Device Storage)', usedMB: '0.00 MB', quotaMB: '0.00 GB' });
+  const [runtimeStorageInfo, setRuntimeStorageInfo] = useState({ isIndexedDB: true, isPersistent: false, techTitle: 'Local Device Storage (IndexedDB + Cache)', usedMB: '0.00 MB', quotaMB: '0.00 GB' });
   useEffect(() => {
     async function detectStorage() {
       const hasIDB = typeof window !== 'undefined' && Boolean(window.indexedDB);
@@ -159,9 +172,9 @@ export default function Account() {
           if (est.quota !== undefined) quotaStr = (est.quota / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
         } catch (e) {}
       }
-      let techTitle = 'Standard Local Storage';
+      let techTitle = 'Local Device Storage (IndexedDB + Cache)';
       if (hasIDB && isPersisted) techTitle = 'IndexedDB + Persistent Storage Granted';
-      else if (hasIDB) techTitle = 'IndexedDB (Local Device Storage)';
+      else if (hasIDB) techTitle = 'Local Device Storage (IndexedDB + Cache)';
       setRuntimeStorageInfo({ isIndexedDB: hasIDB, isPersistent: isPersisted, techTitle, usedMB: usedStr, quotaMB: quotaStr });
     }
     detectStorage();
@@ -196,10 +209,19 @@ export default function Account() {
   const aggregateRangeItems = (startStr: string, endStr: string) => {
     const start = startStr || '0000-01-01';
     const end = endStr || '9999-12-31';
-    const entities: Array<{ name: string; category: string; isWard: boolean; plannedTotal: number; isSGT?: boolean; sgtId?: string }> = [];
-    const pushEntity = (name: string, category: string, isWard: boolean, planned: number, isSGT = false, sgtId?: string) => {
+    const entities: Array<{ name: string; category: string; isWard: boolean; plannedTotal: number; attendanceKey: string; isSGT?: boolean; sgtId?: string }> = [];
+    const pushEntity = (name: string, category: string, isWard: boolean, planned: number, isSGT = false, sgtId?: string, entityId?: string) => {
       if (!entities.some(e => e.isWard === isWard && e.name.toLowerCase() === name.toLowerCase() && e.isSGT === isSGT)) {
-        entities.push({ name, category, isWard, plannedTotal: planned, isSGT, sgtId });
+        const id = entityId || getSubjectIdByName(name, isWard ? 'clinical' : 'academic');
+        if (!id && !isSGT) {
+          quarantineUnresolvedAttendance(isWard ? 'ward' : 'subject', name, isWard ? wards[`ward-${name}`] : subjects[name]);
+        }
+        const attendanceKey = isSGT && sgtId
+          ? getSGTKey(sgtId)
+          : id
+            ? (isWard ? getWardAttendanceKey(id) : getAcademicAttendanceKey(id))
+            : '';
+        entities.push({ name, category, isWard, plannedTotal: planned, attendanceKey, isSGT, sgtId });
       }
     };
     if (subjectMode === 'preloaded') {
@@ -207,9 +229,9 @@ export default function Account() {
       for (const s of INTEGRATED_SUBJECTS) pushEntity(s.name, 'Academic', false, getSubjectPlannedTotal(s.name));
       for (const ua of userAddedSubjects) {
         if (ua.subjectType === 'allied' && ua.parentName === 'Small Group Teaching') {
-          pushEntity(ua.name, 'Clinical Wards', false, ua.plannedClasses || 0, true, ua.id);
+          pushEntity(ua.name, 'Clinical Wards', false, ua.plannedClasses || 0, true, ua.id, ua.id);
         } else {
-          pushEntity(ua.name, 'Added by you', false, ua.plannedClasses || getSubjectPlannedTotal(ua.name));
+          pushEntity(ua.name, 'Added by you', false, ua.plannedClasses || getSubjectPlannedTotal(ua.name), false, undefined, ua.id);
         }
       }
       for (const w of WARD_SUBJECTS) pushEntity(w.name, 'Clinical Wards', true, getPresetWardTotalPlanned(w.name));
@@ -221,12 +243,12 @@ export default function Account() {
     } else {
       for (const cs of customSubjects) {
         if (cs.subjectType === 'allied' && cs.parentName === 'Small Group Teaching') {
-          pushEntity(cs.name, 'Clinical Wards', false, cs.plannedClasses || 0, true, cs.id);
+          pushEntity(cs.name, 'Clinical Wards', false, cs.plannedClasses || 0, true, cs.id, cs.id);
         } else {
-          pushEntity(cs.name, cs.category || 'Custom Subject', false, cs.plannedClasses);
+          pushEntity(cs.name, cs.category || 'Custom Subject', false, cs.plannedClasses, false, undefined, cs.id);
         }
       }
-      for (const cw of customWards) pushEntity(cw.name, 'Custom Wards', true, getCustomWardTotalPlanned(cw.startDate, cw.endDate));
+      for (const cw of customWards) pushEntity(cw.name, 'Custom Wards', true, getCustomWardTotalPlanned(cw.startDate, cw.endDate), false, undefined, cw.id);
     }
 
     const agg = new Map<string, { name: string; category: string; attended: number; missed: number; plannedTotal: number; isSGT?: boolean }>();
@@ -238,16 +260,10 @@ export default function Account() {
       const rest = key.slice(11);
       for (const e of entities) {
         const norm = (s: string) => s.toLowerCase().replace(/[-\s]+/g, '_');
-        let prefixes: string[];
-        if (e.isSGT && e.sgtId) {
-          prefixes = [`sgt:${norm(e.sgtId)}`];
-        } else if (e.isWard) {
-          prefixes = [`ward-${norm(e.name)}`, `ward_${norm(e.name)}`];
-        } else {
-          prefixes = [norm(e.name)];
-        }
         const normRest = norm(rest);
-        const matched = prefixes.some(p => normRest === p || normRest.startsWith(p + '-') || normRest.startsWith(p + '_'));
+        if (!e.attendanceKey) continue;
+        const canonical = norm(e.attendanceKey);
+        const matched = normRest === canonical || normRest.startsWith(canonical + '-') || normRest.startsWith(canonical + '_');
         if (matched) {
           const id = `${e.isWard ? 'w' : 's'}_${e.name.toLowerCase()}${e.isSGT ? '_sgt' : ''}`;
           const cur = agg.get(id) || { name: e.name, category: e.category, attended: 0, missed: 0, plannedTotal: e.plannedTotal, isSGT: e.isSGT };
@@ -259,42 +275,51 @@ export default function Account() {
     }
     return Array.from(agg.values()).map(a => ({
       ...a,
+      total: a.attended + a.missed,
       name: a.isSGT ? `${a.name} (SGT)` : a.name,
     }));
   };
 
   const handleExecuteExport = async () => {
     setExportMsg('');
-    const rawItems: Array<{ name: string; category?: string; attended: number; total: number; plannedTotal: number }> = [];
+    const rawItems: Array<{ name: string; category?: string; attended: number; total: number; plannedTotal: number; sgtId?: string; isWard?: boolean }> = [];
     if (subjectMode === 'preloaded') {
       for (const cat of CATEGORIES) for (const sub of cat.subjects) {
-        const data = subjects[sub.name] || { attended: 0, missed: 0 };
+        const id = getSubjectIdByName(sub.name, 'academic');
+        const legacyData = !id ? subjects[sub.name] : undefined;
+        if (!id) quarantineUnresolvedAttendance('subject', sub.name, legacyData);
+        const data = id ? subjects[getAcademicAttendanceKey(id)] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
         rawItems.push({ name: sub.name, category: cat.name, attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(sub.name) || 0 });
       }
       for (const s of INTEGRATED_SUBJECTS) {
-        const data = subjects[s.name] || { attended: 0, missed: 0 };
+        const id = getSubjectIdByName(s.name, 'academic');
+        if (!id) quarantineUnresolvedAttendance('subject', s.name, subjects[s.name]);
+        const data = id ? subjects[getAcademicAttendanceKey(id)] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
         rawItems.push({ name: s.name, category: 'Academic', attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(s.name) || 0 });
       }
       for (const ua of userAddedSubjects) {
         if (ua.subjectType === 'allied' && ua.parentName === 'Small Group Teaching') {
           const sgtKey = getSGTKey(ua.id);
           const data = subjects[sgtKey] || { attended: 0, missed: 0 };
-          rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || 0 });
+          rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || 0, sgtId: ua.id });
         } else {
-          const data = subjects[ua.name] || { attended: 0, missed: 0 };
+          const key = canonicalAttendanceKey('subject', ua.id || getSubjectIdByName(ua.name, 'academic'), ua.name, subjects[ua.name]);
+          const data = key ? subjects[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
           rawItems.push({ name: ua.name, category: 'Added by you', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || getSubjectPlannedTotal(ua.name) || 0 });
         }
       }
       const addedWards = new Set<string>();
       for (const w of WARD_SUBJECTS) {
-        const data = wards[`ward-${w.name}`] || { attended: 0, missed: 0 };
-        rawItems.push({ name: `${w.name} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(w.name) || 0 });
+        const key = canonicalAttendanceKey('ward', getSubjectIdByName(w.name, 'clinical'), w.name, wards[`ward-${w.name}`]);
+        const data = key ? wards[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
+        rawItems.push({ name: `${w.name} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(w.name) || 0, isWard: true });
         addedWards.add(w.name.toLowerCase());
       }
       for (const e of presetWardSchedule) {
         if (!addedWards.has(e.ward.toLowerCase())) {
-          const data = wards[`ward-${e.ward}`] || { attended: 0, missed: 0 };
-          rawItems.push({ name: `${e.ward} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(e.ward) || 0 });
+          const key = canonicalAttendanceKey('ward', getSubjectIdByName(e.ward, 'clinical'), e.ward, wards[`ward-${e.ward}`]);
+          const data = key ? wards[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
+          rawItems.push({ name: `${e.ward} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(e.ward) || 0, isWard: true });
           addedWards.add(e.ward.toLowerCase());
         }
       }
@@ -303,15 +328,17 @@ export default function Account() {
         if (cs.subjectType === 'allied' && cs.parentName === 'Small Group Teaching') {
           const sgtKey = getSGTKey(cs.id);
           const data = subjects[sgtKey] || { attended: 0, missed: 0 };
-          rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || 0 });
+          rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || 0, sgtId: cs.id });
         } else {
-          const data = subjects[cs.name] || { attended: 0, missed: 0 };
+          const key = canonicalAttendanceKey('subject', cs.id || getSubjectIdByName(cs.name, 'academic'), cs.name, subjects[cs.name]);
+          const data = key ? subjects[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
           rawItems.push({ name: cs.name, category: cs.category || 'Custom Subject', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || getSubjectPlannedTotal(cs.name) || 0 });
         }
       }
       for (const cw of customWards) {
-        const data = wards[`ward-${cw.name}`] || { attended: 0, missed: 0 };
-        rawItems.push({ name: `${cw.name} (Ward)`, category: 'Custom Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getCustomWardTotalPlanned(cw.startDate, cw.endDate) || 0 });
+        const key = canonicalAttendanceKey('ward', cw.id || getSubjectIdByName(cw.name, 'clinical'), cw.name, wards[`ward-${cw.name}`]);
+        const data = key ? wards[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
+        rawItems.push({ name: `${cw.name} (Ward)`, category: 'Custom Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getCustomWardTotalPlanned(cw.startDate, cw.endDate) || 0, isWard: true });
       }
     }
 
@@ -327,9 +354,8 @@ export default function Account() {
         filteredItems = rawItems.filter(i => i.name === value && !i.name.endsWith('(SGT)') && !i.name.endsWith('(Ward)'));
         filterTitle = value;
       } else if (type === 'sgt') {
-        const name = rawItems.find(i => i.name === `${value} (SGT)`)?.name || value;
-        filteredItems = rawItems.filter(i => i.name === name);
-        filterTitle = name;
+        filteredItems = rawItems.filter(i => i.sgtId === value);
+        filterTitle = filteredItems.length > 0 ? filteredItems[0].name : value;
       } else if (type === 'ward') {
         filteredItems = rawItems.filter(i => i.name === `${value} (Ward)`);
         filterTitle = `${value} (Ward)`;
@@ -398,6 +424,7 @@ export default function Account() {
   const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'snapshot' | 'export' | 'dataProtection' | null>(null);
   const [transferImportData, setTransferImportData] = useState<any>(null);
   const transferFileInputRef = useRef<HTMLInputElement>(null);
+
   const handleShareData = async () => {
     const success = await shareDataAsJSON();
     if (success) import('sonner').then(({ toast }) => toast.success('Transfer file ready!'));
@@ -420,6 +447,21 @@ export default function Account() {
   };
   const executeTransferImport = () => {
     if (!transferImportData) return;
+
+    // Clear mode-specific attendance keys BEFORE writing backup data
+    const MODE_SPECIFIC_ATTENDANCE_KEYS = [
+      'attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'attendance_tracker_finished_map',
+      'attendance_tracker_subjects_preset', 'attendance_tracker_ward_preset', 'attendance_tracker_home_selections_preset', 'attendance_tracker_finished_map_preset',
+      'attendance_tracker_subjects_custom', 'attendance_tracker_ward_custom', 'attendance_tracker_home_selections_custom', 'attendance_tracker_finished_map_custom',
+      'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom',
+      'att_mode_separation_done_v1',
+    ];
+    MODE_SPECIFIC_ATTENDANCE_KEYS.forEach(k => {
+      localStorage.removeItem(k);
+      storageRemoveItem(k);
+    });
+
+    // Now write backup data
     for (const [key, value] of Object.entries(transferImportData)) {
       if (value !== null && value !== undefined) {
         const stringVal = typeof value === 'string' ? value : JSON.stringify(value);
@@ -427,6 +469,17 @@ export default function Account() {
         storageSetItem(key, stringVal);
       }
     }
+
+    // Remove migration flags so migration can run on next load
+    for (const flag of [
+      'att_mode_separation_done_v1',
+      'att_attendance_id_migration_v2_done_preloaded',
+      'att_attendance_id_migration_v2_done_custom',
+    ]) {
+      localStorage.removeItem(flag);
+      storageRemoveItem(flag);
+    }
+
     import('sonner').then(({ toast }) => toast.success('Data transferred successfully! Reloading...'));
     setLocation('/');
     setTimeout(() => window.location.reload(), 1500);
@@ -467,8 +520,11 @@ export default function Account() {
   const handleDeleteAllData = async () => {
     await storageClear();
     try { localStorage.clear(); } catch {}
+    localStorage.setItem('att_idb_migrated_v1', 'true');
+    storageSetItem('att_idb_migrated_v1', 'true');
     window.location.reload();
   };
+
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
   const [switchStep, setSwitchStep] = useState<'warning' | 'final' | 'backup_found'>('warning');
   const [pendingMode, setPendingMode] = useState<SubjectMode | null>(null);
@@ -487,41 +543,31 @@ export default function Account() {
     if (nextDark) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); }
     else { document.documentElement.classList.remove('dark'); localStorage.setItem('theme', 'light'); }
   };
-  const getSnapshotKey = (mode: SubjectMode) => `att_snapshot_${mode}`;
+  const getSnapshotIdKey = (mode: SubjectMode) => `att_curriculum_snapshot_id_${mode}`;
   const initiateSwitch = (newMode: SubjectMode) => {
     setPendingMode(newMode);
-    const snapshot = localStorage.getItem(getSnapshotKey(newMode));
-    if (snapshot) setSwitchStep('backup_found'); else setSwitchStep('warning');
+    const snapshotId = localStorage.getItem(getSnapshotIdKey(newMode));
+    if (snapshotId && getSnapshots().some(s => s.id === snapshotId)) setSwitchStep('backup_found'); else setSwitchStep('warning');
     setShowSwitchDialog(true);
-  };
-  const saveInternalSnapshot = () => {
-    const data: Record<string, any> = {};
-    const keysToSave = ['attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'att_preset_timetable', 'att_preset_ward_schedule', 'att_preset_subject_totals', 'att_custom_subjects', 'att_custom_wards', 'att_user_added_subjects'];
-    keysToSave.forEach(k => { const val = localStorage.getItem(k); if (val) data[k] = val; });
-    localStorage.setItem(getSnapshotKey(subjectMode), JSON.stringify(data));
   };
   const handleRestoreFromSnapshot = () => {
     if (!pendingMode) return;
-    const snapshotRaw = localStorage.getItem(getSnapshotKey(pendingMode));
-    if (snapshotRaw) {
-      const data = JSON.parse(snapshotRaw);
-      Object.entries(data).forEach(([k, v]) => {
-        localStorage.setItem(k, v as string);
-        storageSetItem(k, v as string);
-      });
+    const snapshotId = localStorage.getItem(getSnapshotIdKey(pendingMode));
+    if (snapshotId && restoreSnapshot(snapshotId)) {
+      changeSubjectMode(pendingMode);
+      setShowSwitchDialog(false);
+      setPendingMode(null);
+      import('sonner').then(({ toast }) => toast.success(`Restored ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine backup.`));
+      window.location.reload();
     }
-    changeSubjectMode(pendingMode);
-    setShowSwitchDialog(false);
-    setPendingMode(null);
-    import('sonner').then(({ toast }) => toast.success(`Restored ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine backup.`));
-    setLocation('/');
-    setTimeout(() => window.location.reload(), 500);
   };
   const executeSwitch = () => {
     if (!pendingMode) return;
     const oldCurriculumName = subjectMode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine';
     createSnapshot(`Archived Curriculum (${oldCurriculumName})`);
-    saveInternalSnapshot();
+    createSnapshot(`Archived Curriculum (${oldCurriculumName})`);
+    const latest = getSnapshots()[0];
+    if (latest) { localStorage.setItem(getSnapshotIdKey(subjectMode), latest.id); storageSetItem(getSnapshotIdKey(subjectMode), latest.id); }
     localStorage.setItem('att_curriculum_status', 'Active');
     setCurriculumStatus('Active');
     changeSubjectMode(pendingMode);
@@ -529,7 +575,7 @@ export default function Account() {
     setPendingMode(null);
     setSnapshots(getSnapshots());
     import('sonner').then(({ toast }) => toast.success(`Switched to ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine. Previous records archived in Snapshots.`));
-    setLocation('/');
+    window.location.reload();
   };
   const detectGender = (name: string): 'male' | 'female' | 'neutral' => {
     if (!name || name.length < 2) return 'neutral';
@@ -775,13 +821,13 @@ export default function Account() {
                     </p>
                     <div className="space-y-2">
                       <button
-                        onClick={() => transferFileInputRef.current?.click()}
+                        onClick={() => setRestoreConfirmType('transfer')}
                         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold transition-colors border border-border cursor-pointer"
                       >
                         <Download className="w-4 h-4" /> Receive from Another Device
                       </button>
                       <button
-                        onClick={() => backupFileInputRef.current?.click()}
+                        onClick={() => setRestoreConfirmType('file')}
                         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold transition-colors border border-border cursor-pointer"
                       >
                         <RefreshCw className="w-4 h-4" /> Restore from File
@@ -815,6 +861,39 @@ export default function Account() {
                         }}
                       />
                     </div>
+
+                    {restoreConfirmType && (
+                      <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-2">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                          <p className="text-xs text-amber-500 font-semibold">
+                            Restoring will replace all current data with the backup data. Any attendance marked after the backup was created will be lost.
+                            A safety snapshot of your current data will be created automatically.
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setRestoreConfirmType(null)}
+                            className="flex-1 py-2 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (restoreConfirmType === 'file') {
+                                backupFileInputRef.current?.click();
+                              } else if (restoreConfirmType === 'transfer') {
+                                transferFileInputRef.current?.click();
+                              }
+                              setRestoreConfirmType(null);
+                            }}
+                            className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors cursor-pointer"
+                          >
+                            Continue Restore
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {transferImportData && (
@@ -1160,7 +1239,7 @@ export default function Account() {
         </div>
       </motion.div>
 
-      {/* snapshot delete warning */}
+      {/* All dialogs remain as before */}
       <AnimatePresence>
         {snapshotToDelete && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setSnapshotToDelete(null); }}>
@@ -1182,7 +1261,6 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Update Dialog */}
       <AnimatePresence>
         {showUpdatePrompt && isUpdateAvailable && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowUpdatePrompt(false); }}>
@@ -1207,7 +1285,6 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-    {/* Updating / Backing Up overlay */}
       <AnimatePresence>
         {updatePhase !== 'none' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-center justify-center p-4">
@@ -1230,8 +1307,6 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-
-      {/* Delete-All dialog */}
       <AnimatePresence>
         {showDeleteDataDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
@@ -1265,7 +1340,6 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Switch Routine Dialog */}
       <AnimatePresence>
         {showSwitchDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowSwitchDialog(false); }}>
@@ -1313,7 +1387,6 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* Round-5 confirm before preferred-% change */}
       <AnimatePresence>
         {pendingPct !== null && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
@@ -1329,7 +1402,6 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* confirm before mark-complete */}
       <AnimatePresence>
         {confirmMarkComplete && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
@@ -1345,7 +1417,6 @@ export default function Account() {
         )}
       </AnimatePresence>
 
-      {/* confirm before snapshot restore */}
       <AnimatePresence>
         {snapshotToRestore && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">

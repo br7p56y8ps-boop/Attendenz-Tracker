@@ -46,7 +46,6 @@ interface HomeCardSpec {
   tag?: string;
   tagColor?: string;
   sessionId: string;
-  pastSelection?: string;
   isSGT?: boolean;
   sgtId?: string;
 }
@@ -68,13 +67,13 @@ export default function Home() {
 
   /* ── Update notice ── */
   const [installedVersion] = useState<string>(() => {
-  const stored = localStorage.getItem('att_app_version') || APP_VERSION;
-  if (compareVersions(APP_VERSION, stored) > 0) {
-    localStorage.setItem('att_app_version', APP_VERSION);
-    return APP_VERSION;
-  }
-  return stored;
-});
+    const stored = localStorage.getItem('att_app_version') || APP_VERSION;
+    if (compareVersions(APP_VERSION, stored) > 0) {
+      localStorage.setItem('att_app_version', APP_VERSION);
+      return APP_VERSION;
+    }
+    return stored;
+  });
 
   const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
@@ -85,11 +84,19 @@ export default function Home() {
     return () => window.removeEventListener('attendenz:update-ready', on);
   }, []);
   const isUpdateAvailable =
-  compareVersions(serverVersion, installedVersion) > 0 ||
-  (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
+    compareVersions(serverVersion, installedVersion) > 0 ||
+    (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
   const [updateNoticeDismissed, setUpdateNoticeDismissed] = useState<boolean>(() => sessionStorage.getItem('att_update_notice_dismissed') === 'true');
   const [updateInfoOpen, setUpdateInfoOpen] = useState(false);
   const showUpdatePill = isUpdateAvailable && !updateNoticeDismissed;
+  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
 
   // Earliest recorded date
   const earliestDateStr = useMemo(() => {
@@ -262,9 +269,7 @@ export default function Home() {
 
   const dayEntries = useMemo<DayEntry[]>(() => {
     const entries: DayEntry[] = [];
-    const mode: 'today' | 'past' | 'future' = isTodaySelected ? 'today' : isPast ? 'past' : 'future';
     if (subjectMode === 'preloaded') {
-     
       schedule.forEach((slot, idx) => {
         if (slot.type === 'ward' || slot.type === 'ward_replacement') {
           const effectiveTime =
@@ -287,15 +292,12 @@ export default function Home() {
                 time: effectiveTime,
                 isWard: true,
                 sessionId: String(idx),
-                pastSelection: isPast
-                  ? homeSelections[`${selectedDateStr}-ward-${currentWard}-${idx}`]
-                  : undefined,
               },
             });
           }
           return;
         }
-        slot.subjects.forEach((subject, subIdx) => { 
+        slot.subjects.forEach((subject, subIdx) => {
           entries.push({
             id: `${idx}-${subIdx}`,
             time: slot.time,
@@ -304,9 +306,6 @@ export default function Home() {
               subject,
               time: slot.time,
               sessionId: `${idx}-${subIdx}`,
-              pastSelection: isPast
-                ? homeSelections[`${selectedDateStr}-${subject}-${idx}-${subIdx}`]
-                : undefined,
             },
           });
         });
@@ -322,6 +321,7 @@ export default function Home() {
         const sch = (u.schedules || []).find((s: any) => s.day === selectedTodayAbbr);
         if (!sch) return;
         const time = `${sch.start}–${sch.end}`;
+        const sessionId = `${u.id}:${sch.day}:${sch.start}:${sch.end}`;
         entries.push({
           id: `sgt-${u.id}`,
           time,
@@ -333,10 +333,7 @@ export default function Home() {
             tagColor: 'primary',
             isSGT: true,
             sgtId: u.id,
-            sessionId: undefined,
-            pastSelection: isPast
-              ? homeSelections[`${selectedDateStr}-sgt:${u.id}`]
-              : undefined,
+            sessionId,
           },
         });
       });
@@ -356,9 +353,6 @@ export default function Home() {
             time: customWard?.morningTime || 'Morning Ward',
             isWard: true,
             sessionId: 'custom-ward-am',
-            pastSelection: isPast
-              ? homeSelections[`${selectedDateStr}-ward-${currentWard}-custom-ward-am`]
-              : undefined,
           },
         });
         entries.push({
@@ -374,13 +368,13 @@ export default function Home() {
             time: customWard?.eveningTime || 'Evening Ward',
             isWard: true,
             sessionId: 'custom-ward-pm',
-            pastSelection: isPast
-              ? homeSelections[`${selectedDateStr}-ward-${currentWard}-custom-ward-pm`]
-              : undefined,
           },
         });
       }
       todayCustomSubjects.forEach(s => {
+        const sessionId = s.isSGT
+          ? `${s.sgtId}:${selectedTodayAbbr}:${s.time}`
+          : `custom-${s.id}`;
         entries.push({
           id: s.id,
           time: s.time || 'Time not set',
@@ -390,12 +384,7 @@ export default function Home() {
             time: s.time || 'Time not set',
             isSGT: s.isSGT,
             sgtId: s.sgtId,
-            sessionId: s.isSGT ? undefined : `custom-${s.id}`,
-            pastSelection: isPast
-              ? s.isSGT
-                ? homeSelections[`${selectedDateStr}-sgt:${s.sgtId}`]
-                : homeSelections[`${selectedDateStr}-${s.name}-custom-${s.id}`]
-              : undefined,
+            sessionId,
           },
         });
       });
@@ -413,7 +402,6 @@ export default function Home() {
     isPast,
     isTodaySelected,
     selectedDateStr,
-    homeSelections,
     customWard,
     todayCustomSubjects,
     userAddedSubjects,
@@ -519,7 +507,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── Content ─ */}
+        {/* ── Content ── */}
         {!hasAnything ? (
           <div className="flex items-center justify-center min-h-[calc(100vh-280px)]">
             <div className="flex flex-col items-center justify-center text-center space-y-6 px-4">
@@ -584,7 +572,9 @@ export default function Home() {
                   <p className="text-muted-foreground text-sm max-w-xs leading-relaxed px-4">
                     {isTodaySelected
                       ? 'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
-                      : `No lectures or clinical ward postings were scheduled for ${fullDateDisplay}.`}
+                      : isFuture
+                        ? `No lectures or clinical ward postings are scheduled for ${fullDateDisplay}.`
+                        : `No lectures or clinical ward postings were scheduled for ${fullDateDisplay}.`}
                   </p>
                 )}
               </motion.div>
@@ -617,7 +607,6 @@ export default function Home() {
                   sessionId={c.sessionId}
                   dateStr={selectedDateStr}
                   mode={cardMode}
-                  pastSelection={c.pastSelection}
                   isSGT={c.isSGT}
                   sgtId={c.sgtId}
                 />
@@ -655,6 +644,11 @@ export default function Home() {
                   <button type="button" onClick={() => setUpdateInfoOpen(false)} className="w-7 h-7 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-3.5 h-3.5" /></button>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p>
+                {!online && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5">
+                    <p className="text-[10px] font-bold text-amber-500">You're offline — connect to the Internet once to Install the Update.</p>
+                  </div>
+                )}
                 <div className="bg-muted/30 border border-border/50 rounded-xl p-3 space-y-1">
                   <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-1">How to Update</p>
                   <p className="text-[10px] text-muted-foreground">1. Go to <strong className="text-foreground">Settings Tab</strong></p>
@@ -673,4 +667,3 @@ export default function Home() {
     </Layout>
   );
 }
-

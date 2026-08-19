@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useAttendance, getSGTKey } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, pctColor, getSubjectColor } from '@/lib/utils';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
@@ -13,7 +13,7 @@ interface SubjectCardProps {
   isWard?: boolean;
   /** When true, removes the outer card wrapper so this can live inside a parent card */
   isNested?: boolean;
-  /** A6 · True when this ward/rotation is the currently active posting → "Ongoing" badge */
+  /** True when this ward/rotation is the currently active posting → "Ongoing" badge */
   isActiveWard?: boolean;
   /** SGT-specific props */
   isSGT?: boolean;
@@ -30,29 +30,22 @@ export const SubjectCard = ({
   sgtId,
 }: SubjectCardProps) => {
   const { subjects, wards, finishedMap, updateSubject, updateWard, toggleFinished, preferredPercentage } = useAttendance();
-  const {
-    subjectMode,
-    customSubjects,
-    customWards,
-    userAddedSubjects,
-    getSubjectPlannedTotal,
-    getPresetWardTotalPlanned,
-    getCustomWardTotalPlanned,
-  } = useCustomData();
+  const { getPresetSubjectDisplayName, getSubjectIdByName } = useCustomData();
 
-  // Build canonical attendance key
-  const attendanceKey = isSGT && sgtId
+  const displayName = getPresetSubjectDisplayName(subject);
+
+  const resolvedId = getSubjectIdByName(subject, isWard ? 'clinical' : 'academic');
+  const attendanceKey: string | null = isSGT && sgtId
     ? getSGTKey(sgtId)
-    : isWard
-      ? `ward-${subject}`
-      : subject;
+    : resolvedId
+      ? (isWard ? getWardAttendanceKey(resolvedId) : getAcademicAttendanceKey(resolvedId))
+      : null;
 
   const dataStore = isWard ? wards : subjects;
   const updateFn = isWard ? updateWard : updateSubject;
-  const data = dataStore[attendanceKey] || { attended: 0, missed: 0 };
-  const isMarkedFinished = finishedMap?.[attendanceKey] || false;
+  const data = attendanceKey ? dataStore[attendanceKey] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
+  const isMarkedFinished = attendanceKey ? finishedMap?.[attendanceKey] || false : false;
 
-  // Keep ref of latest data for continuous stepping
   const currentDataRef = useRef({ attended: data.attended, missed: data.missed });
   useEffect(() => {
     currentDataRef.current = { attended: data.attended, missed: data.missed };
@@ -62,7 +55,6 @@ export const SubjectCard = ({
   const [activeStatInfo, setActiveStatInfo] = useState<'remaining' | 'missable' | 'canMiss' | 'required' | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Close on Escape + lock background scroll while the details modal is open
   useEffect(() => {
     if (!isModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -94,6 +86,7 @@ export const SubjectCard = ({
   };
 
   const handleStep = (field: 'attended' | 'missed', change: number) => {
+    if (!attendanceKey) return false;
     const current = currentDataRef.current;
     let newAttended = current.attended;
     let newMissed = current.missed;
@@ -132,41 +125,11 @@ export const SubjectCard = ({
   const percentageColor = pctColor(percentage, preferredPercentage);
   const isMaxReached = totalConducted >= totalPlanned;
 
-  // ── Planned classes (honours user-added items in both modes) ─────────────
-  let originalPlannedClasses: number | undefined;
-  if (isWard) {
-    if (subjectMode === 'preloaded') {
-      const presetWardCount = getPresetWardTotalPlanned(subject);
-      originalPlannedClasses = presetWardCount > 0 ? presetWardCount : getSubjectPlannedTotal(subject);
-    } else {
-      const cWard = customWards?.find(w => w.name.toLowerCase() === subject.toLowerCase());
-      originalPlannedClasses = cWard
-        ? getCustomWardTotalPlanned(cWard.startDate, cWard.endDate)
-        : getPresetWardTotalPlanned(subject);
-    }
-  } else {
-    if (isSGT && sgtId) {
-      const sgtSub =
-        subjectMode === 'preloaded'
-          ? userAddedSubjects?.find(s => s.id === sgtId)
-          : customSubjects?.find(s => s.id === sgtId);
-      originalPlannedClasses = sgtSub ? sgtSub.plannedClasses : getSubjectPlannedTotal(subject);
-    } else if (subjectMode === 'preloaded') {
-     const uaSub = userAddedSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase() && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'));
-      originalPlannedClasses = uaSub ? uaSub.plannedClasses : getSubjectPlannedTotal(subject);
-    } else {
-     const customSub = customSubjects?.find(s => s.name.toLowerCase() === subject.toLowerCase() && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching'));
-      originalPlannedClasses = customSub ? customSub.plannedClasses : getSubjectPlannedTotal(subject);
-    }
-  }
-
-  // Card background and border color-matched to Current Percentage color
   const cardStyle = {
     backgroundColor: `${percentageColor}14`,
     borderColor: `${percentageColor}38`,
   };
 
-  // B6 · deterministic shared subject color for titles
   const subjectColor = getSubjectColor(subject);
 
   const ongoingBadge = isActiveWard ? (
@@ -179,8 +142,8 @@ export const SubjectCard = ({
     <div className="flex justify-between items-center gap-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <h4 className="font-semibold text-sm sm:text-base leading-tight truncate" style={{ color: subjectColor }}>
-            {subject}
+           <h4 className="font-semibold text-sm sm:text-base leading-tight truncate" style={{ color: subjectColor }}>
+            {displayName}
           </h4>
           {ongoingBadge}
         </div>
@@ -288,7 +251,7 @@ export const SubjectCard = ({
           <span className={cn("font-bold text-center leading-tight", rawRequired > remaining ? "text-[10px] text-destructive" : "text-sm text-primary")}>{requiredToAttend}</span>
         </div>
       </div>
-      {/* Inline Stat Explanation Card inside the same modal below the 4 containers */}
+      {/* Inline Stat Explanation Card */}
       <AnimatePresence>
         {activeStatInfo && (
           <motion.div
@@ -340,14 +303,14 @@ export const SubjectCard = ({
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Mark Completed Button (ONLY for Ward/Clinical Rotation subjects) */}
+      {/* Mark Completed Button */}
       {isWard && (
         <div className="pt-2">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              toggleFinished(attendanceKey);
+              if (attendanceKey) toggleFinished(attendanceKey);
             }}
             className={cn(
               "w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95",
@@ -379,7 +342,6 @@ export const SubjectCard = ({
         {headerContent}
       </div>
 
-      {/* Modal / Popup Overlay for Subject Details - Portaled to Body. */}
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {isModalOpen && (
@@ -397,15 +359,14 @@ export const SubjectCard = ({
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 role="dialog"
                 aria-modal="true"
-                aria-label={`${subject} details`}
+                aria-label={`${displayName} details`}
                 className="bg-card border border-border rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-left relative"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Modal Header */}
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-xl font-bold leading-tight" style={{ color: subjectColor }}>{subject}</h3>
+                     <h3 className="text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displayName}</h3>
                       {ongoingBadge}
                     </div>
                     <p className="text-muted-foreground text-xs mt-1">
@@ -429,7 +390,6 @@ export const SubjectCard = ({
                     </button>
                   </div>
                 </div>
-                {/* Modal Body */}
                 {modalDetailsContent}
               </motion.div>
             </motion.div>
@@ -440,4 +400,3 @@ export const SubjectCard = ({
     </>
   );
 };
-

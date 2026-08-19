@@ -162,6 +162,36 @@ export function snapshotBeforeEdit(actionName: string): void {
 }
 
 /**
+ * Prepare environment before restoring data:
+ * - Creates a safety snapshot of current state
+ * - Clears mode-specific attendance keys to avoid stale conflicts
+ * - Removes mode-separation flag so migration can run again on next load
+ */
+function prepareRestoreEnvironment(): void {
+  try {
+    createSnapshot('Pre-Restore Safety');
+
+    const MODE_SPECIFIC_ATTENDANCE_KEYS = [
+      'attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'attendance_tracker_finished_map',
+      'attendance_tracker_subjects_preset', 'attendance_tracker_ward_preset', 'attendance_tracker_home_selections_preset', 'attendance_tracker_finished_map_preset',
+      'attendance_tracker_subjects_custom', 'attendance_tracker_ward_custom', 'attendance_tracker_home_selections_custom', 'attendance_tracker_finished_map_custom',
+      'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom',
+      'att_mode_separation_done_v1',
+    ];
+
+    MODE_SPECIFIC_ATTENDANCE_KEYS.forEach(key => {
+      localStorage.removeItem(key);
+      storageRemoveItem(key);
+    });
+
+    localStorage.removeItem('att_mode_separation_done_v1');
+    storageRemoveItem('att_mode_separation_done_v1');
+  } catch (err) {
+     // console.error('Failed to prepare restore environment:', err);
+  }
+}
+
+/**
  * Restore a specific snapshot directly to localStorage and IndexedDB
  */
 export function restoreSnapshot(snapshotId: string): boolean {
@@ -170,10 +200,19 @@ export function restoreSnapshot(snapshotId: string): boolean {
     const target = snapshots.find(s => s.id === snapshotId);
     if (!target) return false;
 
+    // Clear mode-specific keys and remove migration flag first
+    prepareRestoreEnvironment();
+
     Object.entries(target.data).forEach(([k, v]) => {
       localStorage.setItem(k, v);
       storageSetItem(k, v);
     });
+
+    // Force startup migration after any snapshot restore, including newer snapshots.
+    for (const flag of ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom']) {
+      localStorage.removeItem(flag);
+      storageRemoveItem(flag);
+    }
 
     return true;
   } catch (err) {
@@ -303,7 +342,8 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
         throw new Error('Invalid backup file format.');
       }
 
-      snapshotBeforeEdit('Before File Import');
+      // Prepare environment: safety snapshot, clear mode-specific keys, remove migration flag
+      prepareRestoreEnvironment();
 
       for (const [key, value] of Object.entries(parsedData)) {
         if (value !== null && value !== undefined) {
@@ -311,6 +351,12 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
           localStorage.setItem(key, stringVal);
           storageSetItem(key, stringVal);
         }
+      }
+
+      // Force startup migration after any uploaded backup restore.
+      for (const flag of ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom']) {
+        localStorage.removeItem(flag);
+        storageRemoveItem(flag);
       }
 
       callback(true);
