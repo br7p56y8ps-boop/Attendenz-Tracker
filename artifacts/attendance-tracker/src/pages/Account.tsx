@@ -1,4 +1,4 @@
-import { Camera, Trash2, Check, Pencil, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Plus, Archive } from 'lucide-react';
+import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
@@ -136,12 +136,14 @@ export default function Account() {
       import('sonner').then(({ toast }) => toast.error("You're offline — connect to the internet once to update."));
       return;
     }
-    localStorage.removeItem('att_pwa_update_ready');
-    localStorage.removeItem('att_pwa_latest_version');
-    localStorage.removeItem('att_pwa_update_summary');
-    localStorage.setItem('att_just_updated', 'true');
-    localStorage.removeItem('att_has_seen_welcome_v1');
-    localStorage.removeItem('att_app_version');
+    await Promise.all([
+      storageRemoveItem('att_pwa_update_ready'),
+      storageRemoveItem('att_pwa_latest_version'),
+      storageRemoveItem('att_pwa_update_summary'),
+      storageSetItem('att_just_updated', 'true'),
+      storageRemoveItem('att_has_seen_welcome_v1'),
+      storageRemoveItem('att_app_version'),
+    ]);
 
     if (withBackup) {
       setUpdatePhase('backing');
@@ -581,6 +583,7 @@ export default function Account() {
       activateCurriculum(id);
       setShowSwitchDialog(false);
       import('sonner').then(({ toast }) => toast.success('Curriculum switched.'));
+      setLocation('/');
       window.location.reload();
     } catch {
       import('sonner').then(({ toast }) => toast.error('Could not switch curriculum.'));
@@ -649,8 +652,14 @@ export default function Account() {
   }, [showDeleteDataDialog, showUpdatePrompt, pendingPct, confirmMarkComplete, snapshotToRestore, snapshotToDelete, activeSettingModal, showSwitchDialog, backupTransferOpen, restoreConfirmType]);
 
   return (
-    <Layout>
-      <div className="max-w-xl mx-auto space-y-3 pb-6">
+    <Layout
+      headerRight={
+        <button type="button" onClick={toggleTheme} className="action-button action-button--update theme-toggle-button shrink-0" title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}>
+          <span className="text-[10px] font-extrabold uppercase tracking-wide">{isDark ? 'Light' : 'Dark'}</span>
+        </button>
+      }
+    >
+      <div className="max-w-xl mx-auto space-y-3 pb-6 scroll-reachability">
         {/* 1. Active Account */}
         <div className="space-y-2">
           <StickySectionLabel label="Active Account" zClass="z-30" />
@@ -673,22 +682,16 @@ export default function Account() {
               {isEditingName ? (
                 <div className="flex items-center gap-1.5">
                   <input type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); }} className="bg-muted px-2.5 py-1 rounded-xl text-sm font-bold text-foreground outline-none border border-primary/50 focus:ring-2 focus:ring-primary/20 w-full max-w-[180px]" autoFocus />
-                  <button onClick={handleSaveName} className="w-7 h-7 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all cursor-pointer" title="Save Name">
-                    <Check className="w-4 h-4" />
-                  </button>
+                  <button type="button" onClick={handleSaveName} className="action-button action-button--save shrink-0" title="Save Name">Save</button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 min-w-0">
                   <button type="button" onClick={() => setIsEditingName(true)} className="min-w-0 truncate text-left font-extrabold text-xl sm:text-2xl text-foreground cursor-pointer">{username}</button>
-                  <button type="button" onClick={() => setIsEditingName(true)} className="shrink-0 text-[10px] font-semibold text-primary hover:underline cursor-pointer" title="Edit Name">Edit</button>
+                  <button type="button" onClick={() => setIsEditingName(true)} className="action-button action-button--edit action-button--compact shrink-0" title="Edit Name">Edit</button>
                 </div>
               )}
               <p className="text-[10px] text-muted-foreground truncate">{getActiveCurriculumName()}</p>
-              <p className="text-[10px] italic leading-snug text-muted-foreground/80">The differential is long; your attendance record is watching.</p>
             </div>
-            <button onClick={toggleTheme} className="w-10 h-10 rounded-2xl bg-muted/60 hover:bg-muted flex items-center justify-center text-foreground transition-all active:scale-95 shadow-sm border border-border/50 shrink-0 cursor-pointer" title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}>
-              <span className="text-[10px] font-extrabold uppercase tracking-wide">{isDark ? 'Light' : 'Dark'}</span>
-            </button>
           </div>
         </div>
 
@@ -705,7 +708,6 @@ export default function Account() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider border bg-primary/10 text-primary border-primary/20">{preferredPercentage}%</span>
                 <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
               </div>
             </button>
@@ -718,7 +720,6 @@ export default function Account() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className={cn("text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider border", curriculumStatus === 'Completed' ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-primary/10 text-primary border-primary/20")}>{curriculumStatus}</span>
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
               </div>
             </button>
@@ -755,7 +756,6 @@ export default function Account() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={(e) => { e.stopPropagation(); handleTakeSnapshot(); }} className="px-2.5 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold rounded-xl transition-all active:scale-[0.97] shrink-0 border border-primary/20 cursor-pointer">+ Snapshot</button>
                 <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
               </div>
             </div>
@@ -788,15 +788,15 @@ export default function Account() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 overflow-y-auto"
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-y-auto"
                 onClick={() => setBackupTransferOpen(false)}
               >
                 <motion.div
-                  initial={{ scale: 0.92, opacity: 0, y: 10 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  exit={{ scale: 0.92, opacity: 0, y: 10 }}
+                  initial={{ y: 48, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: 48, opacity: 0 }}
                   transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                  className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-lg max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
+                  className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-lg max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center justify-between border-b border-border/50 pb-3">
@@ -807,7 +807,7 @@ export default function Account() {
                     <button
                       type="button"
                       onClick={() => setBackupTransferOpen(false)}
-                      className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+                      className="action-button action-button--neutral action-button--icon shrink-0"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -936,8 +936,8 @@ export default function Account() {
                         <div className="flex justify-between text-xs"><span className="text-muted-foreground">Total Snapshots</span><span className="font-bold text-foreground">{transferImportData.attendenz_snapshots_v1 ? JSON.parse(transferImportData.attendenz_snapshots_v1).length : 0}</span></div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 pt-2">
-                        <button onClick={() => setTransferImportData(null)} className="w-full py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
-                        <button onClick={executeTransferImport} className="w-full py-2.5 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:opacity-90 transition-colors shadow-sm cursor-pointer">Replace & Import</button>
+                        <button onClick={() => setTransferImportData(null)} className="action-button action-button--neutral w-full">Cancel</button>
+                        <button onClick={executeTransferImport} className="action-button action-button--danger w-full">Replace & Import</button>
                       </div>
                     </div>
                   )}
@@ -958,8 +958,8 @@ export default function Account() {
 
           <AnimatePresence>
             {activeSettingModal && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 overflow-y-auto" onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
-                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-lg max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative" onClick={(e) => e.stopPropagation()}>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={cn("fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4", activeSettingModal === 'preferredPc' ? "overflow-visible" : "overflow-y-auto")} onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
+                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className={cn("modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative", activeSettingModal === 'preferredPc' ? "max-h-none overflow-visible" : "max-h-[min(70dvh,48rem)] overflow-y-auto")} onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-between border-b border-border/50 pb-3">
                     <div className="flex items-center gap-3">
                       {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
@@ -984,7 +984,7 @@ export default function Account() {
                         </p>
                       </div>
                     </div>
-                    <button type="button" onClick={() => { setActiveSettingModal(null); setPendingPct(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0" title="Close">
+                    <button type="button" onClick={() => { setActiveSettingModal(null); setPendingPct(null); }} className="action-button action-button--neutral action-button--icon shrink-0" title="Close">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -1002,7 +1002,7 @@ export default function Account() {
                           <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block mb-2">Select Target Percentage</label>
                           <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                             {[50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].map((pct) => (
-                              <button key={pct} type="button" onClick={() => setPendingPct(pct)} className={cn("py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer", preferredPercentage === pct ? "bg-primary text-primary-foreground border-primary shadow-md scale-[1.03]" : "bg-muted/30 hover:bg-muted/60 text-foreground border-border/60")}>
+                              <button key={pct} type="button" onClick={() => setPendingPct(pct)} className={cn("action-button action-button--compact w-full", (pendingPct ?? preferredPercentage) === pct ? "action-button--update" : "action-button--neutral")}>
                                 {pct}%
                               </button>
                             ))}
@@ -1012,10 +1012,10 @@ export default function Account() {
                           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-left space-y-2">
                             <p className="text-xs font-bold text-foreground">Apply {pendingPct}% target?</p>
                             <p className="text-[11px] text-muted-foreground">All subjects and wards in this curriculum will use this threshold.</p>
-                            <div className="flex gap-2"><button type="button" onClick={() => setPendingPct(null)} className="flex-1 py-2 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={() => { setPreferredPercentage(pendingPct); setPendingPct(null); }} className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold cursor-pointer">Apply</button></div>
+                            <div className="flex gap-2"><button type="button" onClick={() => setPendingPct(null)} className="action-button action-button--neutral flex-1">Cancel</button><button type="button" onClick={() => { setPreferredPercentage(pendingPct); setPendingPct(null); }} className="action-button action-button--save flex-1">Apply</button></div>
                           </div>
                         )}
-                        {pendingPct === null && <div className="pt-2 flex justify-end"><button type="button" onClick={() => setActiveSettingModal(null)} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all cursor-pointer">Save & Close</button></div>}
+                        {pendingPct === null && <div className="pt-2 flex justify-end"><button type="button" onClick={() => setActiveSettingModal(null)} className="action-button action-button--save">Save & Close</button></div>}
                       </div>
                     )}
                     {activeSettingModal === 'curriculum' && (
@@ -1035,12 +1035,10 @@ export default function Account() {
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                          <button type="button" onClick={handleToggleCurriculumStatus} className={cn("py-3 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer border", curriculumStatus === 'Completed' ? "bg-muted text-foreground border-border hover:bg-muted/80" : "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500/30")}>
-                            <CheckCircle2 className="w-4 h-4" />
+                          <button type="button" onClick={handleToggleCurriculumStatus} className={cn("action-button flex-1", curriculumStatus === 'Completed' ? "action-button--neutral" : "action-button--save")}>
                             <span>{curriculumStatus === 'Completed' ? 'Mark as Active' : 'Mark Curriculum as Completed'}</span>
                           </button>
-                          <button type="button" onClick={() => { setActiveSettingModal(null); openCurriculumManager(); }} className="py-3 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer">
-                            <ArrowRightLeft className="w-4 h-4" />
+                          <button type="button" onClick={() => { setActiveSettingModal(null); openCurriculumManager(); }} className="action-button action-button--edit flex-1">
                             <span>Change Curriculum</span>
                           </button>
                         </div>
@@ -1052,19 +1050,19 @@ export default function Account() {
                           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left space-y-3">
                             <h4 className="text-sm font-bold text-foreground">Restore this snapshot?</h4>
                             <p className="text-xs text-muted-foreground leading-relaxed">{snapshotToRestore.label} · {snapshotToRestore.timestamp}. Current data will be replaced by this backup point.</p>
-                            <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToRestore(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={() => { const id = snapshotToRestore.id; setSnapshotToRestore(null); handleRestoreSnapshot(id); }} className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold cursor-pointer">Restore</button></div>
+                            <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToRestore(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={() => { const id = snapshotToRestore.id; setSnapshotToRestore(null); handleRestoreSnapshot(id); }} className="action-button action-button--transfer flex-1">Restore</button></div>
                           </div>
                         ) : snapshotToDelete ? (
                           <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-left space-y-3">
                             <h4 className="text-sm font-bold text-foreground">Delete this snapshot?</h4>
                             <p className="text-xs text-muted-foreground leading-relaxed">This removes only the selected snapshot. Your active curriculum data is not changed.</p>
-                            <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToDelete(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={handleDeleteSnapshot} className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold cursor-pointer">Delete</button></div>
+                            <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToDelete(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={handleDeleteSnapshot} className="action-button action-button--danger flex-1">Delete</button></div>
                           </div>
                         ) : (
                         <>
                         <div className="flex items-center justify-between bg-muted/30 p-2.5 rounded-xl border border-border/50">
                           <span className="text-xs font-medium text-foreground">Create instant state snapshot</span>
-                          <button type="button" onClick={handleTakeSnapshot} className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold rounded-xl transition-all active:scale-[0.97] cursor-pointer">+ Take Snapshot</button>
+                          <button type="button" onClick={handleTakeSnapshot} className="action-button action-button--transfer">Take Snapshot</button>
                         </div>
                         <div className="grid grid-cols-2 gap-2 pt-1">
                           <button onClick={() => setShowSnapshotsList(!showSnapshotsList)} className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-muted hover:bg-muted/80 text-foreground text-xs font-medium rounded-xl transition-all cursor-pointer">
@@ -1179,7 +1177,7 @@ export default function Account() {
                             </select>
                           </div>
                         )}
-                         <button type="button" onClick={handleExecuteExport} className="w-full py-3 px-4 bg-primary text-primary-foreground font-bold rounded-2xl shadow-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2 text-xs cursor-pointer mt-2">
+                         <button type="button" onClick={handleExecuteExport} className="action-button action-button--transfer w-full mt-2">
                           <Download className="w-4 h-4" />
                           <span>Export {exportFormat.toUpperCase()} Report</span>
                         </button>
@@ -1194,7 +1192,7 @@ export default function Account() {
                           <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 space-y-3">
                             <h4 className="text-sm font-bold text-foreground">Delete All App Data?</h4>
                             <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases attendance, routines, snapshots, profile data, target settings, and setup state. Export a backup first if you are unsure.</p>
-                            <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={handleDeleteAllData} className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold cursor-pointer">Yes, Delete Everything</button></div>
+                            <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--neutral flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
                           </div>
                         ) : (
                         <>
@@ -1299,8 +1297,8 @@ export default function Account() {
       {/* All dialogs remain as before */}
       <AnimatePresence>
         {showUpdatePrompt && isUpdateAvailable && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowUpdatePrompt(false); }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 0, opacity: 1 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowUpdatePrompt(false); }}>
+            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20"><Download className="w-5 h-5 text-amber-500" /></div>
                 <div className="text-left">
@@ -1310,11 +1308,11 @@ export default function Account() {
               </div>
               <p className="text-muted-foreground text-xs leading-relaxed text-left">We recommend creating a <strong className="text-foreground">Full App Backup</strong> before updating to ensure all your attendance records and preferences remain 100% safe.</p>
               <div className="flex flex-col gap-2 pt-1">
-                <button type="button" onClick={() => handleApplyUpdate(true)} className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer">
+                <button type="button" onClick={() => handleApplyUpdate(true)} className="action-button action-button--transfer w-full">
                   <Download className="w-4 h-4" /><span>Backup & Continue</span>
                 </button>
-                <button type="button" onClick={() => handleApplyUpdate(false)} className="w-full py-3 rounded-2xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Skip Backup</button>
-                <button type="button" onClick={() => setShowUpdatePrompt(false)} className="w-full py-2.5 text-muted-foreground text-xs font-medium hover:text-foreground transition-colors cursor-pointer">Cancel</button>
+                <button type="button" onClick={() => handleApplyUpdate(false)} className="action-button action-button--neutral w-full">Skip Backup</button>
+                <button type="button" onClick={() => setShowUpdatePrompt(false)} className="action-button action-button--neutral w-full">Cancel</button>
               </div>
             </motion.div>
           </motion.div>
@@ -1323,8 +1321,8 @@ export default function Account() {
 
       <AnimatePresence>
         {updatePhase !== 'none' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-end sm:items-center justify-center p-4">
-            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-end justify-center p-4">
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
               {updatePhase === 'backing' ? (
                 <>
                   <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin" />
@@ -1345,11 +1343,11 @@ export default function Account() {
 
       <AnimatePresence>
         {showDeleteDataDialog && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/65 backdrop-blur-md z-[150] flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
-            <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} transition={{ type: 'spring', damping: 26, stiffness: 300 }} className="bg-card/90 backdrop-blur-2xl border border-destructive/30 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/65 backdrop-blur-md z-[150] flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
+            <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} transition={{ type: 'spring', damping: 26, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-destructive/30 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
               <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-destructive/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div><div><h3 className="text-base font-bold text-foreground">Delete All App Data?</h3><p className="text-[11px] text-destructive font-semibold">Irreversible action</p></div></div>
               <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases attendance records, routines, snapshots, profile data, target settings, and setup state. Export a backup first if you are unsure.</p>
-              <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={handleDeleteAllData} className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold cursor-pointer">Yes, Delete Everything</button></div>
+              <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--neutral flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
             </motion.div>
           </motion.div>
         )}
@@ -1357,22 +1355,22 @@ export default function Account() {
 
       <AnimatePresence>
         {showSwitchDialog && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
+            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="w-5 h-5 text-primary" /></div>
                   <div className="text-left"><h3 className="text-base font-bold text-foreground">Curriculum Management</h3><p className="text-[11px] text-muted-foreground">Choose where your routine and attendance belong</p></div>
                 </div>
-                <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); }} className="w-8 h-8 rounded-full hover:bg-muted/40 flex items-center justify-center cursor-pointer"><X className="w-4 h-4" /></button>
+                <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); }} className="action-button action-button--neutral shrink-0">Close</button>
               </div>
               {confirmMarkComplete ? (
                 <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left space-y-3">
                   <h4 className="text-sm font-bold text-foreground">Mark curriculum as Completed?</h4>
                   <p className="text-xs text-muted-foreground leading-relaxed">An auto-snapshot of the current records will be saved first, so nothing is lost.</p>
                   <div className="flex gap-2 pt-1">
-                    <button type="button" onClick={() => setConfirmMarkComplete(false)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
-                    <button type="button" onClick={applyMarkComplete} className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer">Mark Completed</button>
+                    <button type="button" onClick={() => setConfirmMarkComplete(false)} className="action-button action-button--neutral flex-1">Cancel</button>
+                    <button type="button" onClick={applyMarkComplete} className="action-button action-button--save flex-1">Mark Completed</button>
                   </div>
                 </div>
               ) : (
@@ -1387,21 +1385,21 @@ export default function Account() {
                         <p className="text-[10px] text-muted-foreground">{c.id === activeCurriculumId ? 'Currently selected' : 'Select this curriculum to return to it'}</p>
                       </button>
                       <div className="flex items-center gap-1 shrink-0">
-                        <button type="button" onClick={() => { setEditingCurriculumId(c.id); setEditingCurriculumName(c.name); }} className="w-8 h-8 rounded-xl hover:bg-muted/40 flex items-center justify-center cursor-pointer" aria-label={`Rename ${c.name}`}><Pencil className="w-3.5 h-3.5 text-muted-foreground" /></button>
-                        {editingCurriculumId === c.id && <button type="button" onClick={() => handleRenameCurriculum(c.id)} className="text-[10px] font-bold text-primary cursor-pointer">Save</button>}
+                        <button type="button" onClick={() => { setEditingCurriculumId(c.id); setEditingCurriculumName(c.name); }} className="action-button action-button--edit shrink-0" aria-label={`Rename ${c.name}`}>Rename</button>
+                        {editingCurriculumId === c.id && <button type="button" onClick={() => handleRenameCurriculum(c.id)} className="action-button action-button--save">Save</button>}
                       </div>
                     </div>
                     {editingCurriculumId === c.id && <input autoFocus value={editingCurriculumName} onChange={e => setEditingCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRenameCurriculum(c.id); }} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary" />}
                   </div>
                 ))}
               </div>
-              {curricula.some(c => c.status === 'archived') && <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Archived curricula</p>{curricula.filter(c => c.status === 'archived').map(c => <div key={c.id} className="rounded-2xl border border-border/60 p-3 flex items-center gap-2"><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="flex-1 min-w-0 text-left cursor-pointer"><p className="text-sm font-bold text-foreground truncate">{c.name}</p><p className="text-[10px] text-muted-foreground">Reopen this curriculum with all its saved data</p></button><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="text-[10px] font-bold text-primary cursor-pointer">Reopen</button></div>)}</div>}
+              {curricula.some(c => c.status === 'archived') && <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Archived curricula</p>{curricula.filter(c => c.status === 'archived').map(c => <div key={c.id} className="rounded-2xl border border-border/60 p-3 flex items-center gap-2"><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="flex-1 min-w-0 text-left cursor-pointer"><p className="text-sm font-bold text-foreground truncate">{c.name}</p><p className="text-[10px] text-muted-foreground">Reopen this curriculum with all its saved data</p></button><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="action-button action-button--edit shrink-0">Reopen</button></div>)}</div>}
               <div className="border-t border-border/50 pt-4 space-y-2">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Create empty curriculum</p>
                 <p className="text-[10px] text-muted-foreground text-left leading-relaxed">It starts empty. If you want another routine structure, create it first and use Import in AddNew.</p>
-                <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. Phase 1 / 3rd Year" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="rounded-xl bg-primary px-3 py-2.5 text-primary-foreground text-xs font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-3.5 h-3.5" />Create</button></div>
+                <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. Phase 1 / 3rd Year" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit shrink-0">Create</button></div>
               </div>
-              <div className="flex flex-wrap gap-2 pt-1">{curricula.filter(c => c.status === 'active' && c.id !== activeCurriculumId).map(c => <button key={`archive-${c.id}`} type="button" onClick={() => handleArchiveCurriculum(c.id)} className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-[10px] font-semibold text-muted-foreground hover:text-foreground cursor-pointer"><Archive className="w-3.5 h-3.5" />Archive {c.name}</button>)}</div>
+              <div className="flex flex-wrap gap-2 pt-1">{curricula.filter(c => c.status === 'active' && c.id !== activeCurriculumId).map(c => <button key={`archive-${c.id}`} type="button" onClick={() => handleArchiveCurriculum(c.id)} className="action-button action-button--warning">Archive {c.name}</button>)}</div>
               </>
               )}
             </motion.div>

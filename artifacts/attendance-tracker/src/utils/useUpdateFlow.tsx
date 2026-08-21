@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createSnapshot, getSnapshots } from '@/utils/snapshotUtils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
+import { storageRemoveItem, storageSetItem } from '@/lib/idb';
 
 function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -50,12 +51,14 @@ export function useUpdateFlow() {
   useEffect(() => { if (updatePhase === 'none') return; const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450); return () => window.clearInterval(t); }, [updatePhase]);
 
   const applyUpdate = async (withBackup: boolean) => {
-    localStorage.removeItem('att_pwa_update_ready');
-    localStorage.removeItem('att_pwa_latest_version');
-    localStorage.removeItem('att_pwa_update_summary');
-    localStorage.setItem('att_just_updated', 'true');
-    localStorage.removeItem('att_has_seen_welcome_v1');
-    localStorage.removeItem('att_app_version');
+    await Promise.all([
+      storageRemoveItem('att_pwa_update_ready'),
+      storageRemoveItem('att_pwa_latest_version'),
+      storageRemoveItem('att_pwa_update_summary'),
+      storageSetItem('att_just_updated', 'true'),
+      storageRemoveItem('att_has_seen_welcome_v1'),
+      storageRemoveItem('att_app_version'),
+    ]);
     if (withBackup) {
       setUpdatePhase('backing');
       createSnapshot('Pre-Update Backup');
@@ -77,8 +80,8 @@ export function useUpdateFlow() {
 export const UpdateOverlay = ({ phase, dots }: { phase: 'none' | 'backing' | 'updating'; dots: number }) => (
   <AnimatePresence>
     {phase !== 'none' && (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-end sm:items-center justify-center p-4">
-        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-end justify-center p-4">
+        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
           {phase === 'backing' ? (<>
             <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin" />
             <p className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
@@ -99,8 +102,8 @@ export const UpdateModal = ({ open, serverVersion, summary, onRemind, onUpdate }
 }) => (
   <AnimatePresence>
     {open && (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-end sm:items-center justify-center p-4">
-        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-end justify-center p-4">
+        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20"><span className="text-amber-500 font-extrabold">↑</span></div>
             <div className="text-left">
@@ -110,8 +113,8 @@ export const UpdateModal = ({ open, serverVersion, summary, onRemind, onUpdate }
           </div>
           <p className="text-muted-foreground text-xs leading-relaxed text-left">{summary || 'Bug fixes and refinements are ready to install.'}</p>
           <div className="flex flex-col gap-2 pt-1">
-            <button type="button" onClick={() => onUpdate(true)} className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer">Backup & Update</button>
-            <button type="button" onClick={onRemind} className="w-full py-2.5 rounded-2xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Remind Later</button>
+            <button type="button" onClick={() => onUpdate(true)} className="action-button action-button--transfer w-full">Backup & Update</button>
+            <button type="button" onClick={onRemind} className="action-button action-button--neutral w-full">Remind Later</button>
           </div>
         </motion.div>
       </motion.div>

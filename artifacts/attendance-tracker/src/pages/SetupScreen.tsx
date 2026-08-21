@@ -143,16 +143,16 @@ export default function SetupScreen() {
                   We found your existing attendance records and subject configurations saved safely on this device.
                 </p>
                 <div className="space-y-2.5 pt-2">
-                  <button type="button" onClick={handleRestorePreviousData} className="w-full py-3.5 px-4 bg-primary text-primary-foreground font-bold rounded-2xl shadow-md hover:bg-primary/90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-xs cursor-pointer">
+                  <button type="button" onClick={handleRestorePreviousData} className="action-button action-button--transfer w-full">
                     <RefreshCw className="w-4 h-4" />
                     <span>Restore Previous Data (Recommended)</span>
                   </button>
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full py-3 px-4 bg-card hover:bg-muted/50 border border-border text-foreground font-semibold rounded-2xl transition-all flex items-center justify-center gap-2 text-xs cursor-pointer">
+                  <button type="button" onClick={() => fileInputRef.current?.click()} className="action-button action-button--neutral w-full">
                     <Upload className="w-3.5 h-3.5 text-muted-foreground" />
                     <span>Restore Backup File (.json)</span>
                   </button>
                   <input type="file" ref={fileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRestoreBackupFile(f); }} accept=".json" className="hidden" />
-                  <button type="button" onClick={() => setShowConfirmStartFresh(true)} className="w-full py-2.5 text-muted-foreground hover:text-foreground text-[11px] font-medium text-center transition-colors cursor-pointer">
+                  <button type="button" onClick={() => setShowConfirmStartFresh(true)} className="action-button action-button--warning w-full">
                     Start Fresh with Clean Slate
                   </button>
                 </div>
@@ -264,8 +264,8 @@ export default function SetupScreen() {
       {/* Confirm Start Fresh Dialog */}
       <AnimatePresence>
         {showConfirmStartFresh && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3 text-left">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4">
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3 text-left">
               <div className="flex items-center gap-3 text-amber-500">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0">
                   <AlertTriangle className="w-5 h-5 text-amber-500" />
@@ -279,8 +279,8 @@ export default function SetupScreen() {
                 Starting fresh will configure a new schedule. Your previous data can still be restored later from a backup file if needed.
               </p>
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowConfirmStartFresh(false)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/50 transition-colors cursor-pointer">Cancel</button>
-                <button type="button" onClick={handleConfirmStartFresh} className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-all shadow-sm cursor-pointer">Start Fresh</button>
+                <button type="button" onClick={() => setShowConfirmStartFresh(false)} className="action-button action-button--neutral flex-1">Cancel</button>
+                <button type="button" onClick={handleConfirmStartFresh} className="action-button action-button--warning flex-1">Start Fresh</button>
               </div>
             </motion.div>
           </motion.div>

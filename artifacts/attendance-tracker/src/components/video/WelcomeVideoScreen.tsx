@@ -4,19 +4,21 @@ import { Background } from './video_scenes/Background';
 import { Scene4 } from './video_scenes/Scene4';
 
 interface WelcomeVideoScreenProps {
+  onBeginExit?: () => void;
   onComplete: () => void;
 }
 
-export default function WelcomeVideoScreen({ onComplete }: WelcomeVideoScreenProps) {
+export default function WelcomeVideoScreen({ onBeginExit, onComplete }: WelcomeVideoScreenProps) {
   const [isExiting, setIsExiting] = useState(false);
 
   const handleTap = useCallback(() => {
     if (isExiting) return;
+    onBeginExit?.();
     setIsExiting(true);
     setTimeout(() => {
       onComplete();
     }, 300);
-  }, [isExiting, onComplete]);
+  }, [isExiting, onBeginExit, onComplete]);
 
   return (
     <motion.div

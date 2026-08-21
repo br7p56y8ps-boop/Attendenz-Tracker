@@ -51,14 +51,13 @@ export const Layout = ({ children, headerRight }: { children: React.ReactNode; h
         </div>
       </main>
 
-      <div className="fixed bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none z-30" />
       <motion.div
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 260, damping: 26 }}
         style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
         className={cn(
           'fixed bottom-6 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:right-auto md:w-full md:max-w-md',
-          'bg-card/75 backdrop-blur-2xl border border-border/80 rounded-[28px] py-2 px-3 shadow-[0_16px_40px_rgba(0,0,0,0.35)] z-40',
+          'bg-card/75 backdrop-blur-2xl border border-border/80 rounded-[28px] py-2 px-3 shadow-[0_16px_40px_rgba(0,0,0,0.35)] z-40 before:pointer-events-none before:absolute before:inset-x-0 before:-top-5 before:h-5 before:rounded-t-[28px] before:bg-gradient-to-t before:from-card/20 before:to-transparent',
           'transition-all duration-300'
         )}
       >

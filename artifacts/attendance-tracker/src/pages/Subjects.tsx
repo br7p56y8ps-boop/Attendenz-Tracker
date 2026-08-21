@@ -359,7 +359,7 @@ export default function Subjects() {
 
   return (
     <Layout>
-      <div className="space-y-4 pb-8">
+      <div className="space-y-4 pb-8 scroll-reachability">
         {/* Empty state for custom mode with no subjects */}
         {subjectMode === 'custom' && !customHasAnySubjects && (
           <div className="bg-card rounded-2xl p-8 border border-border text-center shadow-sm mt-2">
@@ -370,7 +370,7 @@ export default function Subjects() {
             </p>
             <button
               onClick={() => setLocation('/add-new')}
-              className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-all"
+              className="action-button action-button--edit"
             >
               Go to Add New
             </button>

@@ -156,6 +156,111 @@
   box-shadow: 0 4px 15px rgba(10, 132, 255, 0.3);
 }
 
+/* Shared action controls: readable labels, colored outlines, light highlights. */
+.action-button {
+  display: inline-flex;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 160ms ease, box-shadow 180ms ease;
+}
+.action-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.action-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 45%, transparent);
+  outline-offset: 2px;
+}
+.action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.action-button--neutral {
+  border-color: color-mix(in srgb, var(--foreground) 18%, transparent);
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+  color: var(--foreground);
+}
+.action-button--neutral:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--muted) 100%, transparent);
+}
+.action-button--edit,
+.action-button--transfer,
+.action-button--update {
+  border-color: color-mix(in srgb, var(--primary) 52%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+.action-button--edit:hover:not(:disabled),
+.action-button--transfer:hover:not(:disabled),
+.action-button--update:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 17%, transparent);
+}
+.action-button--save {
+  border-color: color-mix(in srgb, var(--success) 52%, transparent);
+  background: color-mix(in srgb, var(--success) 11%, transparent);
+  color: color-mix(in srgb, var(--success) 85%, var(--foreground));
+}
+.action-button--save:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+}
+.action-button--danger {
+  border-color: color-mix(in srgb, var(--destructive) 55%, transparent);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+.action-button--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--destructive) 17%, transparent);
+}
+.action-button--warning {
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 11%, transparent);
+  color: color-mix(in srgb, var(--warning) 85%, var(--foreground));
+}
+.action-button--warning:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+}
+.action-button--compact {
+  min-height: 1.8rem;
+  border-radius: 0.6rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.65rem;
+}
+.theme-toggle-button {
+  min-width: 4.5rem;
+  height: 2.5rem;
+  padding-inline: 0.8rem;
+  border-radius: 0.65rem;
+}
+.action-button--icon {
+  width: 2.25rem;
+  padding: 0;
+}
+.action-button--icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Shared motion for modal/bottom-sheet content. */
+.modal-sheet-content {
+  transform-origin: center bottom;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-button,
+  .modal-sheet-content {
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -229,25 +334,57 @@ input[type="time"] {
 /* Soft entry boundary for content passing beneath sticky surfaces. */
 .soft-entry-boundary {
   --entry-surface: var(--background);
+  --entry-fade-size: 0.9rem;
   isolation: isolate;
 }
 
-.soft-entry-boundary::after {
+.scroll-fade-viewport {
+  position: relative;
+}
+
+.scroll-reachability::after {
+  content: '';
+  display: block;
+  height: calc(var(--app-bottom-nav-height) + var(--app-bottom-nav-offset) + 1rem);
+  pointer-events: none;
+  background: transparent;
+}
+
+.soft-entry-boundary::after,
+.soft-entry-boundary::before {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -0.55rem;
-  height: 0.7rem;
+  height: var(--entry-fade-size);
   pointer-events: none;
   z-index: 2;
+  opacity: 0.96;
+}
+
+.soft-entry-boundary::after {
+  bottom: -0.35rem;
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--entry-surface) 72%, transparent),
-    var(--entry-surface) 78%,
-    var(--entry-surface)
+    var(--entry-surface) 0%,
+    color-mix(in srgb, var(--entry-surface) 72%, transparent) 42%,
+    color-mix(in srgb, var(--entry-surface) 0%, transparent) 100%
   );
-  filter: blur(3px);
+}
+
+.soft-entry-boundary::before {
+  display: none;
+  top: -0.35rem;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--entry-surface) 0%, transparent),
+    color-mix(in srgb, var(--entry-surface) 42%, transparent) 45%,
+    var(--entry-surface) 100%
+  );
+}
+
+.soft-entry-boundary--top::before {
+  display: block;
 }
 
 .soft-entry-boundary > * {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { X, CheckCircle2, Wrench, Zap, ChevronDown } from 'lucide-react';
+import { X, Wrench, Zap, ChevronDown } from 'lucide-react';
 import { APP_VERSION, WHATS_NEW_UPGRADES, WHATS_NEW_FIXES } from '@/lib/appVersion';
 import type { WhatsNewItem } from '@/lib/appVersion';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
@@ -93,19 +93,19 @@ export function WhatsNewPopup() {
     <AnimatePresence>
       {whatsNewOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 p-3 backdrop-blur-md sm:items-center sm:p-4"
+          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 p-3 backdrop-blur-md sm:p-4"
           onClick={handleClose}
         >
           <motion.div
-            initial={{ opacity: 0, y: 40, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 40, scale: 0.98 }}
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
             transition={{ duration: 0.24, ease: 'easeOut' }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="whats-new-title"
-            className="flex h-[min(78dvh,42rem)] max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/60 bg-card/70 shadow-[0_24px_80px_rgba(0,0,0,0.36)] backdrop-blur-3xl"
+            className="modal-sheet-content flex h-[min(78dvh,42rem)] max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/60 bg-card/70 shadow-[0_24px_80px_rgba(0,0,0,0.36)] backdrop-blur-3xl"
           >
             {/* Fixed header */}
             <div className="flex shrink-0 items-center justify-between px-4 pb-3 pt-4">
@@ -128,7 +128,7 @@ export function WhatsNewPopup() {
                 type="button"
                 onClick={handleClose}
                 aria-label="Close What's New"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-background/40 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground cursor-pointer"
+                className="action-button action-button--neutral action-button--icon shrink-0"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -164,9 +164,8 @@ export function WhatsNewPopup() {
                 type="button"
                 onClick={handleClose}
                 onPointerDown={(event) => event.stopPropagation()}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-5 py-2.5 text-xs font-bold text-primary shadow-sm transition-all hover:bg-primary/15 active:scale-[0.98] cursor-pointer"
+                className="action-button action-button--save w-full"
               >
-                <CheckCircle2 className="h-3.5 w-3.5" />
                 Got It
               </button>
             </div>

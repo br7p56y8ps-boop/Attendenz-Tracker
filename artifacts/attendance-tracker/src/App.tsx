@@ -3,7 +3,7 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext';
-import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites } from '@/lib/idb';
+import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageSetItem } from '@/lib/idb';
 import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
 import { restoreSnapshot } from '@/utils/snapshotUtils';
@@ -75,18 +75,35 @@ function MainAppFlow() {
     return (
       <Suspense fallback={<PageFallback />}>
       <WelcomeVideoScreen
+        onBeginExit={() => {
+          // Do not clear the update gate before a pending backup restore completes.
+          const pendingRestore = localStorage.getItem('att_pending_update_restore');
+          const justUpdated = localStorage.getItem('att_just_updated') === 'true';
+          if (!pendingRestore) {
+            storageSetItem(HAS_SEEN_WELCOME_KEY, 'true');
+            if (justUpdated) {
+              storageRemoveItem('att_pwa_update_ready');
+              storageRemoveItem('att_pwa_latest_version');
+              storageRemoveItem('att_pwa_update_summary');
+            }
+            storageRemoveItem('att_just_updated');
+          }
+        }}
         onComplete={async () => {
           const pendingRestoreId = localStorage.getItem('att_pending_update_restore');
           if (pendingRestoreId) {
             try { await restoreSnapshot(pendingRestoreId); } catch (e) {}
-            localStorage.removeItem('att_pending_update_restore');
-            localStorage.setItem(HAS_SEEN_WELCOME_KEY, 'true');
-            localStorage.removeItem('att_just_updated');
+            await storageRemoveItem('att_pending_update_restore');
+            await storageSetItem(HAS_SEEN_WELCOME_KEY, 'true');
+            await storageRemoveItem('att_just_updated');
+            await storageRemoveItem('att_pwa_update_ready');
+            await storageRemoveItem('att_pwa_latest_version');
+            await storageRemoveItem('att_pwa_update_summary');
             window.location.reload();
             return;
           }
-          localStorage.setItem(HAS_SEEN_WELCOME_KEY, 'true');
-          localStorage.removeItem('att_just_updated');
+          await storageSetItem(HAS_SEEN_WELCOME_KEY, 'true');
+          await storageRemoveItem('att_just_updated');
           setShowWelcome(false);
         }}
       />

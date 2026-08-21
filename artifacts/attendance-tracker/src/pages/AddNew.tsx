@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import {
@@ -23,7 +24,7 @@ import { storageSetItem, storageRemoveItem } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import {
-  Plus, Trash2, Pencil, X, AlertTriangle,
+  Plus, Trash2, X, AlertTriangle,
   GraduationCap, Stethoscope, Download, Upload, Copy, Share2,
   Check, ChevronDown, ChevronRight, SendToBack,
 } from 'lucide-react';
@@ -32,11 +33,13 @@ import {
 const inputCls =
   'w-full h-10 bg-background border border-border rounded-xl px-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40';
 const btnPrimary =
-  'px-4 py-2 rounded-xl bg-primary text-primary-foreground font-bold text-xs hover:opacity-90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+  'action-button action-button--edit disabled:cursor-not-allowed';
 const btnGhost =
-  'px-4 py-2 rounded-xl bg-muted/40 text-foreground font-bold text-xs border border-border hover:bg-muted transition-all cursor-pointer';
+  'action-button action-button--neutral';
 const btnDanger =
-  'px-4 py-2 rounded-xl bg-destructive text-destructive-foreground font-bold text-xs hover:opacity-90 transition-all cursor-pointer';
+  'action-button action-button--danger';
+const btnSave =
+  'action-button action-button--save';
 const labelCls = 'block text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wide';
 const descCls = 'block text-[10px] text-muted-foreground/70 mb-1.5';
 const inlineErrCls =
@@ -68,14 +71,15 @@ function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, foot
   if (!open) return null;
   if (typeof document === 'undefined') return null;
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4">
+    <div className="fixed inset-0 z-[120] flex items-end justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 48 }}
         animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 48 }}
         layout
         transition={{ type: 'spring', damping: 26, stiffness: 320, layout: { type: 'spring', damping: 28, stiffness: 300 } }}
-        className={cn('relative bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.42)] w-full max-h-[min(70dvh,48rem)] min-h-0 flex flex-col overflow-hidden', maxW, heightClass)}
+        className={cn('modal-sheet-content relative bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.42)] w-full max-h-[min(70dvh,48rem)] min-h-0 flex flex-col overflow-hidden', maxW, heightClass)}
         onClick={e => e.stopPropagation()}
       >
         {header && <div className={cn('shrink-0 border-b border-border/40', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
@@ -244,9 +248,9 @@ function ClinicalGroupCard({
                 </p>
               </div>
               <div className="flex gap-1">
-                <button type="button" onClick={onEditRotation} className="shrink-0 px-3 py-2 rounded-xl border border-primary/40 text-primary font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-primary/10 transition-all cursor-pointer"><Pencil className="w-3.5 h-3.5" /> Edit</button>
+                <button type="button" onClick={onEditRotation} className="action-button action-button--edit shrink-0">Edit</button>
                 {canDeleteRotation && (
-                  <button type="button" onClick={onDeleteRotation} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={onDeleteRotation} className="action-button action-button--danger shrink-0">Delete</button>
                 )}
               </div>
             </div>
@@ -264,8 +268,8 @@ function ClinicalGroupCard({
                 </p>
               </div>
               <div className="flex gap-1">
-                <button type="button" onClick={onEditSGT} className="shrink-0 px-3 py-2 rounded-xl border border-primary/40 text-primary font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-primary/10 transition-all cursor-pointer"><Pencil className="w-3.5 h-3.5" /> Edit</button>
-                <button type="button" onClick={onDeleteSGT} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={onEditSGT} className="action-button action-button--edit shrink-0">Edit</button>
+                <button type="button" onClick={onDeleteSGT} className="action-button action-button--danger shrink-0">Delete</button>
               </div>
             </div>
           ) : (
@@ -378,6 +382,7 @@ export default function AddNew() {
     getPresetWardDisplayName,
   } = useCustomData();
   const { removeSubjectData, removeWardData, removeAttendanceByKey, removeAttendanceEntitiesForMode } = useAttendance();
+  const [, setLocation] = useLocation();
 
   const [note, setNote] = useState<{ msg: string; kind: 'ok' | 'err' | 'info' } | null>(null);
   const noteTimer = useRef<number | null>(null);
@@ -1770,6 +1775,7 @@ export default function AddNew() {
     storageSetItem('att_subject_mode', b.subjectMode || 'preloaded');
     setPreview(null);
     showToast('Routine replaced — reloading…');
+    setLocation('/');
     setTimeout(() => window.location.reload(), 900);
   };
 
@@ -1832,7 +1838,7 @@ export default function AddNew() {
         </button>
       }
     >
-      <div className="space-y-2 pb-24">
+      <div className="space-y-2 pb-24 scroll-reachability">
         <div className="grid grid-cols-2 gap-2">
           <button type="button" onClick={() => setExportOpen(true)} className="h-10 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-emerald-500/20 transition-all cursor-pointer">
             <Upload className="w-3.5 h-3.5" /> Export
@@ -1907,8 +1913,8 @@ export default function AddNew() {
                                 <p className="font-extrabold text-foreground text-sm leading-tight truncate" style={{ color: getSubjectColor(s.name) }}>{s.name}</p>
                                 <p className="text-[11px] text-muted-foreground mt-0.5">{s.name}: {s.plannedClasses} planned{getEffectiveParentName(s) ? ` · under ${getEffectiveParentName(s)}` : ''}</p>
                               </div>
-                              <button type="button" onClick={() => openEditSubject('custom', s.id)} className="shrink-0 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"><Pencil className="w-4 h-4" /></button>
-                              <button type="button" onClick={() => requestDeleteSubject('custom', s.id)} className="shrink-0 p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"><Trash2 className="w-4 h-4" /></button>
+                              <button type="button" onClick={() => openEditSubject('custom', s.id)} className="action-button action-button--edit shrink-0">Edit</button>
+                              <button type="button" onClick={() => requestDeleteSubject('custom', s.id)} className="action-button action-button--danger shrink-0">Delete</button>
                             </div>
                           ));
                         }
@@ -1928,9 +1934,9 @@ export default function AddNew() {
                             <button
                               type="button"
                               onClick={() => openEditSlot(selDay, idx)}
-                              className="shrink-0 px-3 py-2 rounded-xl border border-primary/40 text-primary font-bold text-xs flex items-center gap-1.5 hover:bg-primary/10 transition-all cursor-pointer"
+                              className="action-button action-button--edit shrink-0"
                             >
-                              <Pencil className="w-3.5 h-3.5" /> Edit
+                              Edit
                             </button>
                           </div>
                         );
@@ -1993,7 +1999,7 @@ export default function AddNew() {
             <div>
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-foreground">{section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}</h3>
-                <button type="button" onClick={() => { setMoreOpen(false); setFormError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+                <button type="button" onClick={() => { setMoreOpen(false); setFormError(null); }} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
               </div>
 
               {/* Static type selector */}
@@ -2041,14 +2047,14 @@ export default function AddNew() {
                 ))}
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                  <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
+                  <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="action-button action-button--warning flex-1">Add anyway</button>
                 </div>
               </div>
             ) : section === 'academic' ? (
               isAllied ? (
                 <div className="flex gap-2">
                   <button type="button" onClick={addStagedChild} className={cn(btnGhost, 'flex-1 flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add child</button>
-                  <button type="button" onClick={saveSubject} className={cn(btnPrimary, 'flex-1')}>Save</button>
+                  <button type="button" onClick={saveSubject} className={cn(btnSave, 'flex-1')}>Save</button>
                 </div>
               ) : (
                 <button type="button" onClick={saveSubject} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add Subject</button>
@@ -2126,7 +2132,7 @@ export default function AddNew() {
                             {c.rows.map(r => `${r.day} ${canonicalTimeRange(r.startTime, r.endTime)}`).join(' · ')} · {c.plannedClasses} planned
                           </p>
                         </div>
-                        <button type="button" onClick={() => setStagedChildren(prev => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive cursor-pointer p-1"><X className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => setStagedChildren(prev => prev.filter((_, j) => j !== i))} className="action-button action-button--danger action-button--icon" aria-label="Delete item"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     ))}
                   </div>
@@ -2222,7 +2228,7 @@ export default function AddNew() {
                     {section === 'clinical' ? 'Planned for clinical items are auto-calculated and cannot be edited.' : 'Edit planned classes or delete user-added items.'}
                   </p>
                 </div>
-                <button type="button" onClick={() => { setEditDataOpen(false); setExpandedEditItemId(null); setDraftPlanned(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+                <button type="button" onClick={() => { setEditDataOpen(false); setExpandedEditItemId(null); setDraftPlanned(null); }} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
               </div>
 
               {/* Fixed tabs */}
@@ -2297,12 +2303,12 @@ export default function AddNew() {
                               <button
                                 type="button"
                                 onClick={() => { if (draftPlanned !== null) handleEditDataPlannedChange(item, draftPlanned); }}
-                                className="flex-1 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 cursor-pointer"
+                                className={cn(btnSave, 'flex-1')}
                               >Save</button>
                               <button
                                 type="button"
                                 onClick={() => { setExpandedEditItemId(null); setDraftPlanned(null); }}
-                                className="flex-1 px-3 py-2 rounded-lg bg-muted/40 text-foreground text-xs font-bold border border-border hover:bg-muted cursor-pointer"
+                                className={cn(btnGhost, 'flex-1')}
                               >Discard</button>
                             </div>
                             {note && <Note note={note} />}
@@ -2371,12 +2377,12 @@ export default function AddNew() {
                               <button
                                 type="button"
                                 onClick={() => { if (draftPlanned !== null) handleEditDataPlannedChange(item, draftPlanned); }}
-                                className="flex-1 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 cursor-pointer"
+                                className={cn(btnSave, 'flex-1')}
                               >Save</button>
                               <button
                                 type="button"
                                 onClick={() => { setExpandedEditItemId(null); setDraftPlanned(null); }}
-                                className="flex-1 px-3 py-2 rounded-lg bg-muted/40 text-foreground text-xs font-bold border border-border hover:bg-muted cursor-pointer"
+                                className={cn(btnGhost, 'flex-1')}
                               >Discard</button>
                             </div>
                             {note && <Note note={note} />}
@@ -2399,7 +2405,7 @@ export default function AddNew() {
           header={
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
-              <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
             </div>
           }
           footer={
@@ -2441,7 +2447,7 @@ export default function AddNew() {
           <div className="p-4 sm:p-5 space-y-3.5 max-h-[70vh] flex flex-col">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">Recent Activity</h3>
-              <button type="button" onClick={() => setHistoryOpen(false)} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setHistoryOpen(false)} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
             </div>
             <div className="overflow-y-auto flex-1 min-h-0 space-y-2">
               {historyEntries.length === 0 ? (
@@ -2475,7 +2481,7 @@ export default function AddNew() {
             <>
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-foreground">Edit Subject</h3>
-                <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+                <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">Change schedule or parent. Rename is disabled.</p>
             </>
@@ -2555,7 +2561,7 @@ export default function AddNew() {
             <>
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
-                <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+                <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">Change dates, session times, or vacations. Rename is disabled.</p>
             </>
@@ -2600,7 +2606,7 @@ export default function AddNew() {
                   {editSlot.multiSelectMode ? 'Select subject cards you want to reallocate/re-slot.' : 'Change time or day.'}
                 </p>
               </div>
-              <button type="button" onClick={closeEditSlot} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={closeEditSlot} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
             </div>
           ) : undefined}
           footer={
@@ -2740,7 +2746,7 @@ export default function AddNew() {
               </div>
               <div className="flex gap-2">
                 <button type="button" onClick={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-                <button type="button" onClick={confirmSlotRemove} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Remove</button>
+                <button type="button" onClick={confirmSlotRemove} className="action-button action-button--warning flex-1">Remove</button>
               </div>
             </div>
           )}
@@ -2758,7 +2764,7 @@ export default function AddNew() {
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => setSlotRemoveAllConfirm(false)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-              <button type="button" onClick={confirmWholeSlotRemove} className="flex-1 px-4 py-2 rounded-xl bg-rose-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Remove Slot</button>
+              <button type="button" onClick={confirmWholeSlotRemove} className="action-button action-button--danger flex-1">Remove Slot</button>
             </div>
           </div>
         </OverlayModal>
@@ -2779,7 +2785,7 @@ export default function AddNew() {
               </ul>
               <div className="flex gap-2">
                 <button type="button" onClick={() => setDeleteSheet(null)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-                <button type="button" onClick={() => deleteSheet.onConfirm()} className="flex-1 px-4 py-2 rounded-xl bg-rose-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Delete</button>
+                <button type="button" onClick={() => deleteSheet.onConfirm()} className="action-button action-button--danger flex-1">Delete</button>
               </div>
             </div>
           )}
@@ -2801,7 +2807,7 @@ export default function AddNew() {
               </ul>
               <div className="flex gap-2">
                 <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="flex-1 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Add anyway</button>
+                <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="action-button action-button--warning flex-1">Add anyway</button>
               </div>
             </div>
           )}
@@ -2874,7 +2880,7 @@ export default function AddNew() {
               )}
               <div className="flex gap-2">
                 <button type="button" onClick={applyMerge} className={cn(btnPrimary, 'flex-1')}>Merge</button>
-                <button type="button" onClick={() => setReplaceConfirm(true)} className="flex-1 px-4 py-2 rounded-xl bg-rose-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Replace</button>
+                <button type="button" onClick={() => setReplaceConfirm(true)} className="action-button action-button--danger flex-1">Replace</button>
               </div>
             </div>
           )}
@@ -2892,7 +2898,7 @@ export default function AddNew() {
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => setReplaceConfirm(false)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
-              <button type="button" onClick={() => { setReplaceConfirm(false); applyReplace(); }} className="flex-1 px-4 py-2 rounded-xl bg-rose-500 text-white font-bold text-xs hover:opacity-90 transition-all cursor-pointer">Yes, Replace</button>
+              <button type="button" onClick={() => { setReplaceConfirm(false); applyReplace(); }} className="action-button action-button--danger flex-1">Yes, Replace</button>
             </div>
           </div>
         </OverlayModal>

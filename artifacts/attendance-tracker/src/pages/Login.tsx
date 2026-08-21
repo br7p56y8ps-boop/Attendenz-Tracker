@@ -98,7 +98,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => { setMode('signin'); setError(''); }}
-                className={`text-xs font-bold pb-1 border-b-2 transition-all ${
+                className={`action-button action-button--neutral text-xs ${
                   mode === 'signin' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -107,7 +107,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => { setMode('signup'); setError(''); }}
-                className={`text-xs font-bold pb-1 border-b-2 transition-all ${
+                className={`action-button action-button--neutral text-xs ${
                   mode === 'signup' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -153,7 +153,7 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="action-button action-button--neutral action-button--icon absolute right-2 top-1/2 -translate-y-1/2"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -188,7 +188,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+              className="action-button action-button--save w-full mt-2"
             >
               <span>{mode === 'signup' ? 'Create Local Account' : 'Sign In'}</span>
               <ArrowRight className="w-4 h-4" />

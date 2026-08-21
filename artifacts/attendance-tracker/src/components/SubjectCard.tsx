@@ -4,7 +4,7 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, pctColor, getSubjectColor } from '@/lib/utils';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
-import { ChevronRight, Info, Plus, Minus, X, CheckCircle2 } from 'lucide-react';
+import { ChevronRight, Info, Plus, Minus, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SubjectCardProps {
@@ -272,7 +272,7 @@ export const SubjectCard = ({
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setActiveStatInfo(null); }}
-                  className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
+                  className="action-button action-button--neutral action-button--icon"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -313,13 +313,12 @@ export const SubjectCard = ({
               if (attendanceKey) toggleFinished(attendanceKey);
             }}
             className={cn(
-              "w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95",
+              "action-button w-full",
               isMarkedFinished
-                ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 hover:bg-amber-500/30"
-                : "bg-primary text-primary-foreground hover:opacity-90"
+                ? "action-button--warning"
+                : "action-button--edit"
             )}
           >
-            <CheckCircle2 className="w-4 h-4" />
             <span>{isMarkedFinished ? 'Finished Early (Click to Re-open)' : 'Mark as Finished'}</span>
           </button>
         </div>
@@ -349,7 +348,7 @@ export const SubjectCard = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-4 overflow-y-auto"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end justify-center p-4 overflow-y-auto"
               onClick={closeModal}
             >
               <motion.div
@@ -360,7 +359,7 @@ export const SubjectCard = ({
                 role="dialog"
                 aria-modal="true"
                 aria-label={`${displayName} details`}
-                className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
+                className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">
@@ -383,7 +382,7 @@ export const SubjectCard = ({
                     <button
                       type="button"
                       onClick={closeModal}
-                      className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                      className="action-button action-button--neutral action-button--icon"
                       title="Close"
                     >
                       <X className="w-4 h-4" />

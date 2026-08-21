@@ -178,12 +178,13 @@ export default function CalendarPage() {
       if (conducted === 0) return;
       const remaining = Math.max(0, e.planned - conducted);
       if (remaining <= 0) return; // exclude completed subjects
+      if ((e.isWard || e.category === 'SGT') && e.periodEnd && e.periodEnd < todayStr) return; // exclude finished clinical placements
       const pct = (d.attended / conducted) * 100;
       const rawReq = Math.max(0, Math.ceil(e.planned * (target / 100)) - d.attended);
       if (pct < target || rawReq > remaining) out.push({ name: e.name, category: e.category, pct, needed: rawReq });
     });
     return out.sort((a, b) => a.pct - b.pct).slice(0, 6);
-  }, [allEntities, subjects, wards, target]);
+  }, [allEntities, subjects, wards, target, todayStr]);
 
   /* ── NEW: Prediction of Maximum Possible Attendance ── */
   const predictionItems = useMemo(() => {
@@ -481,7 +482,7 @@ export default function CalendarPage() {
 
   return (
     <Layout>
-      <div className="space-y-4 pb-8">
+      <div className="space-y-4 pb-8 scroll-reachability">
         {/* ═══════════ WEEKLY TIME TABLE ═══════════ */}
         <StickySectionLabel label="Academic" zClass="z-40" />
         <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-3">
@@ -647,7 +648,7 @@ export default function CalendarPage() {
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {attention.map(a => (
-                    <button key={a.name} type="button" onClick={() => setAttnOpen(o => !o)} className="text-[9px] font-bold px-2 py-1 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20 cursor-pointer">
+                    <button key={a.name} type="button" onClick={() => setAttnOpen(o => !o)} className="action-button action-button--danger px-2 py-1 text-[9px]">
                       <span className="mr-1">{shortenSubject(a.name)}</span>
                       <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider', categoryBadgeClass(a.category))}>{a.category}</span>
                       <span className="ml-1">{a.pct.toFixed(0)}%</span>

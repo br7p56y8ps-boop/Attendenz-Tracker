@@ -443,7 +443,7 @@ export default function Home() {
     >
       <div className="-mt-6 flex h-[calc(100dvh-var(--app-header-height)-0.5rem)] min-h-0 flex-col">
         {/* ── Date Wheel ── */}
-        <div className="sticky top-[calc(var(--app-header-height)+0.5rem)] z-40 bg-background pb-2 soft-entry-boundary">
+        <div className="sticky top-[var(--app-header-height)] z-40 bg-background pt-2 pb-2 soft-entry-boundary">
           <div
             ref={wheelContainerRef}
             className="bg-background border border-border rounded-3xl shadow-md select-none overflow-hidden"
@@ -514,7 +514,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain pb-0">
+        <div className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain pb-0 scroll-fade-viewport scroll-reachability">
         {/* ── Content ── */}
         {!hasAnything ? (
           <div className="flex items-center justify-center min-h-[calc(100vh-280px)]">
@@ -646,11 +646,11 @@ export default function Home() {
         {/* ── Update notice modal ── */}
         <AnimatePresence>
           {updateInfoOpen && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] flex items-end sm:items-center justify-center p-4" onClick={() => setUpdateInfoOpen(false)}>
-              <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] flex items-end justify-center p-4" onClick={() => setUpdateInfoOpen(false)}>
+              <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold text-foreground">New Version Available <span className="text-emerald-400">(v{serverVersion})</span></h3>
-                  <button type="button" onClick={() => setUpdateInfoOpen(false)} className="w-7 h-7 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => setUpdateInfoOpen(false)} className="action-button action-button--neutral action-button--icon"><X className="w-3.5 h-3.5" /></button>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p>
                 {!online && (
@@ -665,8 +665,8 @@ export default function Home() {
                   <p className="text-[10px] text-muted-foreground">3. Click <strong className="text-foreground">Update App</strong></p>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setUpdateInfoOpen(false)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Remind Later</button>
-                  <button type="button" onClick={() => { setUpdateInfoOpen(false); setLocation('/account'); }} className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all cursor-pointer">Go to Account</button>
+                  <button type="button" onClick={() => setUpdateInfoOpen(false)} className="action-button action-button--neutral flex-1">Remind Later</button>
+                  <button type="button" onClick={() => { setUpdateInfoOpen(false); setLocation('/account'); }} className="action-button action-button--update flex-1">Go to Account</button>
                 </div>
               </motion.div>
             </motion.div>
