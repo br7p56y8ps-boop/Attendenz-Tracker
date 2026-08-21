@@ -115,7 +115,7 @@ export const SubjectCard = ({
   const attendedNum = data.attended;
   const missedNum = data.missed;
   const totalConducted = attendedNum + missedNum;
-  const percentage = totalConducted === 0 ? 100 : (attendedNum / totalConducted) * 100;
+  const percentage = totalConducted === 0 ? 0 : (attendedNum / totalConducted) * 100;
   const targetPct = preferredPercentage || 75;
   const remaining = Math.max(0, totalPlanned - totalConducted);
   const maxMissable = Math.floor(totalPlanned * (1 - targetPct / 100));
@@ -159,7 +159,7 @@ export const SubjectCard = ({
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <div className="text-base sm:text-lg font-extrabold tracking-tight" style={{ color: percentageColor }}>
-          {totalConducted === 0 ? '--' : `${percentage.toFixed(0)}%`}
+          {`${percentage.toFixed(0)}%`}
         </div>
         <div className="text-muted-foreground hover:text-foreground p-0.5">
           <ChevronRight className="w-4 h-4" />
@@ -349,18 +349,18 @@ export const SubjectCard = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-4 overflow-y-auto"
               onClick={closeModal}
             >
               <motion.div
-                initial={{ scale: 0.92, opacity: 0, y: 10 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.92, opacity: 0, y: 10 }}
+                initial={{ y: 48, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 48, opacity: 0 }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 role="dialog"
                 aria-modal="true"
                 aria-label={`${displayName} details`}
-                className="bg-card border border-border rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-left relative"
+                className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">
@@ -378,7 +378,7 @@ export const SubjectCard = ({
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <div className="text-xl font-bold" style={{ color: percentageColor }}>
-                      {totalConducted === 0 ? '--' : `${percentage.toFixed(0)}%`}
+                      {`${percentage.toFixed(0)}%`}
                     </div>
                     <button
                       type="button"

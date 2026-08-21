@@ -225,3 +225,36 @@ input[type="time"] {
   justify-content: center;
   align-items: center;
 }
+
+/* Soft entry boundary for content passing beneath sticky surfaces. */
+.soft-entry-boundary {
+  --entry-surface: var(--background);
+  isolation: isolate;
+}
+
+.soft-entry-boundary::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.55rem;
+  height: 0.7rem;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--entry-surface) 72%, transparent),
+    var(--entry-surface) 78%,
+    var(--entry-surface)
+  );
+  filter: blur(3px);
+}
+
+.soft-entry-boundary > * {
+  position: relative;
+  z-index: 1;
+}
+
+.soft-entry-boundary--inner {
+  --entry-surface: var(--card);
+}

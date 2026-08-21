@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf';
-import * as XLSX from 'xlsx';
 
 export interface AttendanceReportItem {
   name: string;
@@ -128,6 +126,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
     logoBase64 = '';
   }
 
+  const { default: jsPDF } = await import('jspdf');
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   let y = 18;
@@ -678,7 +677,8 @@ export async function generatePDFReport(options: ExportReportOptions) {
   doc.save(`Attendance_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
-export function generateExcelReport(options: ExportReportOptions) {
+export async function generateExcelReport(options: ExportReportOptions) {
+  const XLSX = await import('xlsx');
   const {
     studentName,
     routineMode,

@@ -1,21 +1,24 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext';
-import { initStorageAndMigrate } from '@/lib/idb';
+import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites } from '@/lib/idb';
+import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
-import WelcomeVideoScreen from '@/components/video/WelcomeVideoScreen';
 import { restoreSnapshot } from '@/utils/snapshotUtils';
 import { useUpdateFlow, UpdateModal, UpdateOverlay } from '@/utils/useUpdateFlow';
-import Home from '@/pages/Home';
-import Subjects from '@/pages/Subjects';
-import AddNew from '@/pages/AddNew';
-import CalendarPage from '@/pages/CalendarPage';
-import Account from '@/pages/Account';
-import Login from '@/pages/Login';
-import SetupScreen from '@/pages/SetupScreen';
-import NotFound from '@/pages/not-found';
+const WelcomeVideoScreen = lazy(() => import('@/components/video/WelcomeVideoScreen'));
+const Home = lazy(() => import('@/pages/Home'));
+const Subjects = lazy(() => import('@/pages/Subjects'));
+const AddNew = lazy(() => import('@/pages/AddNew'));
+const CalendarPage = lazy(() => import('@/pages/CalendarPage'));
+const Account = lazy(() => import('@/pages/Account'));
+const Login = lazy(() => import('@/pages/Login'));
+const SetupScreen = lazy(() => import('@/pages/SetupScreen'));
+const NotFound = lazy(() => import('@/pages/not-found'));
+
+const PageFallback = () => <div className="min-h-[40vh] flex items-center justify-center text-sm text-muted-foreground">Loading…</div>;
 
 const HAS_SEEN_WELCOME_KEY = 'att_has_seen_welcome_v1';
 
@@ -25,8 +28,8 @@ function AuthGate() {
   const { isUpdateAvailable, online, serverVersion, serverSummary, updatePhase, dots, applyUpdate } = useUpdateFlow();
   const [gateDismissed, setGateDismissed] = useState<boolean>(() => sessionStorage.getItem('att_update_gate_dismissed') === 'true');
 
-  if (!isLoggedIn) return <Login />;
-  if (!setupDone) return <SetupScreen />;
+  if (!isLoggedIn) return <Suspense fallback={<PageFallback />}><Login /></Suspense>;
+  if (!setupDone) return <Suspense fallback={<PageFallback />}><SetupScreen /></Suspense>;
 
   // Pre-Home gate: block BEFORE Home renders (not an overlay on Home)
   const showGate = isUpdateAvailable && online && !gateDismissed;
@@ -46,14 +49,16 @@ function AuthGate() {
           <UpdateOverlay phase={updatePhase} dots={dots} />
         </>
       ) : (
-        <Switch>
-          <Route path="/" component={Home} />
-          <Route path="/subjects" component={Subjects} />
-          <Route path="/add-new" component={AddNew} />
-          <Route path="/calendar" component={CalendarPage} />
-          <Route path="/account" component={Account} />
-          <Route component={NotFound} />
-        </Switch>
+        <Suspense fallback={<PageFallback />}>
+          <Switch>
+            <Route path="/" component={Home} />
+            <Route path="/subjects" component={Subjects} />
+            <Route path="/add-new" component={AddNew} />
+            <Route path="/calendar" component={CalendarPage} />
+            <Route path="/account" component={Account} />
+            <Route component={NotFound} />
+          </Switch>
+        </Suspense>
       )}
     </>
   );
@@ -68,11 +73,12 @@ function MainAppFlow() {
 
   if (showWelcome) {
     return (
+      <Suspense fallback={<PageFallback />}>
       <WelcomeVideoScreen
-        onComplete={() => {
+        onComplete={async () => {
           const pendingRestoreId = localStorage.getItem('att_pending_update_restore');
           if (pendingRestoreId) {
-            try { restoreSnapshot(pendingRestoreId); } catch (e) {}
+            try { await restoreSnapshot(pendingRestoreId); } catch (e) {}
             localStorage.removeItem('att_pending_update_restore');
             localStorage.setItem(HAS_SEEN_WELCOME_KEY, 'true');
             localStorage.removeItem('att_just_updated');
@@ -84,6 +90,7 @@ function MainAppFlow() {
           setShowWelcome(false);
         }}
       />
+      </Suspense>
     );
   }
 
@@ -92,9 +99,22 @@ function MainAppFlow() {
 
 export default function App() {
   const [storageReady, setStorageReady] = useState(false);
+  const [storageError, setStorageError] = useState(false);
+  useEffect(() => {
+    const onStorageError = () => setStorageError(true);
+    const flushOnHide = () => { if (document.visibilityState === 'hidden') void flushStorageWrites(); };
+    window.addEventListener(STORAGE_ERROR_EVENT, onStorageError);
+    window.addEventListener('pagehide', flushOnHide);
+    document.addEventListener('visibilitychange', flushOnHide);
+    return () => {
+      window.removeEventListener(STORAGE_ERROR_EVENT, onStorageError);
+      window.removeEventListener('pagehide', flushOnHide);
+      document.removeEventListener('visibilitychange', flushOnHide);
+    };
+  }, []);
   useEffect(() => {
     let alive = true;
-    initStorageAndMigrate().finally(() => { if (alive) setStorageReady(true); });
+    initStorageAndMigrate().then(() => ensureCurriculumMigration()).finally(() => { if (alive) setStorageReady(true); });
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light') {
       document.documentElement.classList.remove('dark');
@@ -109,7 +129,16 @@ export default function App() {
   if (!storageReady) return null;
 
   return (
-    <AuthProvider>
+    <>
+      {storageError && (
+        <div className="fixed inset-x-3 top-[5.25rem] z-[180] rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 py-3 text-xs text-amber-100 shadow-xl backdrop-blur-xl">
+          <div className="flex items-start justify-between gap-3">
+            <p><strong>Storage warning:</strong> Your latest changes may not be fully durable. Export a backup from Settings before closing the app.</p>
+            <button type="button" onClick={() => setStorageError(false)} className="shrink-0 font-bold text-amber-200" aria-label="Dismiss storage warning">Dismiss</button>
+          </div>
+        </div>
+      )}
+      <AuthProvider>
       <CustomDataProvider>
         <AttendanceProvider>
           <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
@@ -117,6 +146,7 @@ export default function App() {
           </WouterRouter>
         </AttendanceProvider>
       </CustomDataProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </>
   );
 }

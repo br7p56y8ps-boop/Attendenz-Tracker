@@ -93,7 +93,7 @@ const TypedLine = ({ selection, conducted, planned, animate, onStatusTap }: {
   });
   return (
     <p className="text-[11px] font-extrabold leading-tight mt-1">
-      <button type="button" onClick={onStatusTap} className={cn('cursor-pointer', wordC)}>{wordShown}</button>
+      <button type="button" onClick={onStatusTap} className={cn('cursor-pointer text-xs', wordC)}>{wordShown}</button>
       {tailOut}
     </p>
   );
@@ -393,13 +393,13 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
         )}
 
         {/* ── BOTTOM (future) ── */}
-        {effectiveMode === 'future' && (
+        {effectiveMode === 'future' && (isFinished || !withinWeek) && (
           <div className="mt-3">
             {isFinished ? (
               <p className="text-[11px] font-semibold text-muted-foreground text-center">There will be No More Planned Classes!!</p>
-            ) : !withinWeek ? (
+            ) : (
               <p className="text-[11px] font-semibold text-muted-foreground text-center">Yet to be Conducted</p>
-            ) : null}
+            )}
           </div>
         )}
       </div>

@@ -4,6 +4,15 @@ const DB_VERSION = 1;
 
 let dbInstance: IDBDatabase | null = null;
 let dbPromise: Promise<IDBDatabase> | null = null;
+let pendingStorageWrites: Promise<void> = Promise.resolve();
+export const STORAGE_ERROR_EVENT = 'att-storage-error';
+
+function notifyStorageError(error: unknown, operation: string, key?: string): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(STORAGE_ERROR_EVENT, {
+    detail: { error, operation, key },
+  }));
+}
 
 function resetDB(): void {
   dbInstance = null;
@@ -121,7 +130,7 @@ export async function idbGet(key: string): Promise<string | null> {
     const res = await withStore<{ key: string; value: string }>('readonly', store => store.get(key));
     return res ? res.value : null;
   } catch (err) {
-      // console.error(`idbGet error for key ${key}:`, err);
+    notifyStorageError(err, 'get', key);
     return null;
   }
 }
@@ -130,7 +139,8 @@ export async function idbSet(key: string, value: string): Promise<void> {
   try {
     await withStore('readwrite', store => store.put({ key, value }));
   } catch (err) {
-      // console.error(`idbSet error for key ${key}:`, err);
+    notifyStorageError(err, 'set', key);
+    throw err;
   }
 }
 
@@ -138,7 +148,8 @@ export async function idbRemove(key: string): Promise<void> {
   try {
     await withStore('readwrite', store => store.delete(key));
   } catch (err) {
-      // console.error(`idbRemove error for key ${key}:`, err);
+    notifyStorageError(err, 'remove', key);
+    throw err;
   }
 }
 
@@ -155,7 +166,7 @@ export async function idbGetAll(): Promise<Record<string, string>> {
     }
     return result;
   } catch (err) {
-      // console.error('idbGetAll error:', err);
+    notifyStorageError(err, 'get-all');
     return {};
   }
 }
@@ -164,7 +175,8 @@ export async function idbClear(): Promise<void> {
   try {
     await withStore('readwrite', store => store.clear());
   } catch (err) {
-      // console.error('idbClear error:', err);
+    notifyStorageError(err, 'clear');
+    throw err;
   }
 }
 
@@ -203,7 +215,7 @@ export async function initStorageAndMigrate(): Promise<void> {
       await navigator.storage.persist();
     }
   } catch (err) {
-      // console.error('Failed initStorageAndMigrate:', err);
+    notifyStorageError(err, 'initialization');
   }
 }
 
@@ -211,29 +223,39 @@ export async function initStorageAndMigrate(): Promise<void> {
  * Storage helpers that perform dual updates to IndexedDB (source of truth)
  * and localStorage (instant read cache).
  */
-export function storageSetItem(key: string, value: string): void {
+function queueStorageWrite(operation: () => Promise<void>): Promise<void> {
+  const next = pendingStorageWrites.then(operation);
+  pendingStorageWrites = next.catch(() => undefined);
+  return next;
+}
+
+export function storageSetItem(key: string, value: string): Promise<void> {
   try {
     localStorage.setItem(key, value);
-  } catch (e) {
-      // console.error('localStorage.setItem failed:', e);
+  } catch (err) {
+    notifyStorageError(err, 'local-cache-set', key);
   }
-  idbSet(key, value).catch(() => {});
+  return queueStorageWrite(() => idbSet(key, value)).catch(() => undefined);
 }
 
-export function storageRemoveItem(key: string): void {
+export function storageRemoveItem(key: string): Promise<void> {
   try {
     localStorage.removeItem(key);
-  } catch (e) {
-      // console.error('localStorage.removeItem failed:', e);
+  } catch (err) {
+    notifyStorageError(err, 'local-cache-remove', key);
   }
-  idbRemove(key).catch(() => {});
+  return queueStorageWrite(() => idbRemove(key)).catch(() => undefined);
 }
 
-export function storageClear(): void {
+export function storageClear(): Promise<void> {
   try {
     localStorage.clear();
-  } catch (e) {
-      // console.error('localStorage.clear failed:', e);
+  } catch (err) {
+    notifyStorageError(err, 'local-cache-clear');
   }
-  idbClear().catch(() => {});
+  return queueStorageWrite(() => idbClear()).catch(() => undefined);
+}
+
+export function flushStorageWrites(): Promise<void> {
+  return pendingStorageWrites;
 }

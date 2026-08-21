@@ -1,9 +1,78 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { X, CheckCircle2, Wrench, Zap } from 'lucide-react';
+import { X, CheckCircle2, Wrench, Zap, ChevronDown } from 'lucide-react';
 import { APP_VERSION, WHATS_NEW_UPGRADES, WHATS_NEW_FIXES } from '@/lib/appVersion';
+import type { WhatsNewItem } from '@/lib/appVersion';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
+
+interface ReleaseItemProps {
+  item: WhatsNewItem;
+  titleClass: string;
+  accentClass: string;
+}
+
+function ReleaseItem({ item, titleClass, accentClass }: ReleaseItemProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="rounded-2xl bg-background/35 transition-colors">
+      <button
+        type="button"
+        onClick={() => setExpanded(value => !value)}
+        aria-expanded={expanded}
+        className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left cursor-pointer rounded-2xl hover:bg-muted/20 transition-colors"
+      >
+        <span className="min-w-0 flex-1">
+          <span className={`block text-[11px] font-extrabold leading-snug ${titleClass}`}>{item.title}</span>
+          <span className="block mt-0.5 text-[10px] leading-snug text-muted-foreground">{item.summary}</span>
+        </span>
+        <ChevronDown className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="overflow-hidden"
+          >
+            <p className={`px-3 pb-2.5 text-[10px] leading-relaxed ${accentClass}`}>
+              {item.details}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+interface ReleaseSectionProps {
+  title: string;
+  icon: React.ReactNode;
+  items: WhatsNewItem[];
+  titleClass: string;
+  accentClass: string;
+}
+
+function ReleaseSection({ title, icon, items, titleClass, accentClass }: ReleaseSectionProps) {
+  if (items.length === 0) return null;
+
+  return (
+    <section className="space-y-1.5">
+      <div className={`flex items-center gap-1.5 px-1 ${titleClass}`}>
+        {icon}
+        <span className="text-[10px] font-extrabold uppercase tracking-wider">{title}</span>
+      </div>
+      <div className="space-y-1">
+        {items.map(item => (
+          <ReleaseItem key={item.title} item={item} titleClass={titleClass} accentClass={accentClass} />
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export function WhatsNewPopup() {
   const { whatsNewOpen, setWhatsNewOpen } = useCustomData();
@@ -24,97 +93,81 @@ export function WhatsNewPopup() {
     <AnimatePresence>
       {whatsNewOpen && (
         <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 p-3 backdrop-blur-md sm:items-center sm:p-4"
           onClick={handleClose}
         >
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
+            initial={{ opacity: 0, y: 40, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 40, scale: 0.98 }}
+            transition={{ duration: 0.24, ease: 'easeOut' }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            className="w-[calc(100vw-2rem)] max-w-md max-h-[80vh] overflow-hidden bg-card border border-border rounded-3xl shadow-2xl flex flex-col"
+            aria-labelledby="whats-new-title"
+            className="flex h-[min(78dvh,42rem)] max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/60 bg-card/70 shadow-[0_24px_80px_rgba(0,0,0,0.36)] backdrop-blur-3xl"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b border-border shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-border">
+            {/* Fixed header */}
+            <div className="flex shrink-0 items-center justify-between px-4 pb-3 pt-4">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-2xl border border-border/60 bg-background/40">
                   <img
                     src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`}
                     alt="Attendenz Logo"
-                    className="w-full h-full object-cover"
+                    className="h-full w-full object-cover"
                   />
                 </div>
                 <div className="text-left">
-                  <h2 className="text-base font-extrabold text-foreground leading-tight">What's New</h2>
-                  <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider inline-block mt-1">
+                  <h2 id="whats-new-title" className="text-sm font-extrabold leading-tight text-foreground">What's New</h2>
+                  <span className="mt-1 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-500">
                     v{APP_VERSION} (Stable)
                   </span>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={handleClose}
-                className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                aria-label="Close What's New"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-background/40 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
 
-            {/* Scrollable content */}
-            <div className="p-5 overflow-y-auto flex-1 min-h-0 space-y-4 text-left">
-              {WHATS_NEW_UPGRADES.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-500">
-                    <Zap className="w-4 h-4 shrink-0" />
-                    <span className="text-xs font-extrabold uppercase tracking-wider">Upgrades / New Features</span>
-                  </div>
-                  <div className="space-y-2">
-                    {WHATS_NEW_UPGRADES.map(item => (
-                      <div key={item.title} className="pl-1">
-                        <h3 className="text-sm font-bold text-emerald-500 leading-snug">
-                          {item.title}
-                        </h3>
-                        <p className="text-xs text-emerald-500/70 leading-relaxed mt-1">
-                          {item.desc}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+            {/* Soft top and bottom boundaries surround the only scrolling region. */}
+            <div className="relative min-h-0 flex-1 basis-0">
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-card/90 via-card/45 to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-card/90 via-card/45 to-transparent" />
+              <div className="h-full min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-4 py-2.5 pb-5 text-left [scrollbar-width:thin]" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <div className="space-y-4">
+                  <ReleaseSection
+                    title="Upgrades / New Features"
+                    icon={<Zap className="h-3.5 w-3.5 shrink-0" />}
+                    items={WHATS_NEW_UPGRADES}
+                    titleClass="text-emerald-500"
+                    accentClass="text-muted-foreground"
+                  />
+                  <ReleaseSection
+                    title="Fixes & Refinements"
+                    icon={<Wrench className="h-3.5 w-3.5 shrink-0" />}
+                    items={WHATS_NEW_FIXES}
+                    titleClass="text-amber-500"
+                    accentClass="text-muted-foreground"
+                  />
                 </div>
-              )}
-
-              {WHATS_NEW_FIXES.length > 0 && (
-                <div className="space-y-2 pt-1">
-                  <div className="flex items-center gap-2 text-amber-500">
-                    <Wrench className="w-4 h-4 shrink-0" />
-                    <span className="text-xs font-extrabold uppercase tracking-wider">Fixes & Refinements</span>
-                  </div>
-                  <div className="space-y-2">
-                    {WHATS_NEW_FIXES.map(item => (
-                      <div key={item.title} className="pl-1">
-                        <h3 className="text-sm font-bold text-amber-500 leading-snug">
-                          {item.title}
-                        </h3>
-                        <p className="text-xs text-amber-500/70 leading-relaxed mt-1">
-                          {item.desc}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
 
-            {/* Footer button */}
-            <div className="p-5 border-t border-border shrink-0">
+            {/* Fixed compact footer action */}
+            <div className="relative z-20 flex shrink-0 justify-center px-4 pb-4 pt-4">
               <button
+                type="button"
                 onClick={handleClose}
-                className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-xl shadow-md hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm"
+                onPointerDown={(event) => event.stopPropagation()}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-5 py-2.5 text-xs font-bold text-primary shadow-sm transition-all hover:bg-primary/15 active:scale-[0.98] cursor-pointer"
               >
-                <CheckCircle2 className="w-5 h-5" />
-                Got It • Continue Using App
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Got It
               </button>
             </div>
           </motion.div>

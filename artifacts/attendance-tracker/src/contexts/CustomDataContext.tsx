@@ -1510,6 +1510,16 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const changeSubjectMode = (mode: SubjectMode) => {
+    if (mode === 'custom' && subjectMode === 'preloaded' && userAddedSubjects.length > 0) {
+      const existingIds = new Set(customSubjects.map(s => s.id));
+      const migrated = userAddedSubjects.filter(s => !existingIds.has(s.id)).map(s => ({ ...s }));
+      if (migrated.length > 0) {
+        const nextCustomSubjects = [...customSubjects, ...migrated];
+        localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(nextCustomSubjects));
+        storageSetItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(nextCustomSubjects));
+        setCustomSubjects(nextCustomSubjects as CustomSubject[]);
+      }
+    }
     localStorage.setItem(SUBJECT_MODE_KEY, mode);
     storageSetItem(SUBJECT_MODE_KEY, mode);
     setSubjectMode(mode);

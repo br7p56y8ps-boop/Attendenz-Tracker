@@ -51,9 +51,9 @@ const splitRange = (range: string): { start: string; end: string } => {
   if (m) return { start: m[1], end: m[2] };
   return { start: '09:00 AM', end: '10:00 AM' };
 };
-function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, footer, heightClass = 'max-h-[85vh]' }: {
+function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, footer, heightClass = 'max-h-[85vh]', bodyClassName = 'overflow-y-auto', dense = false }: {
   open: boolean; onClose: () => void; children: React.ReactNode; maxW?: string;
-  header?: React.ReactNode; footer?: React.ReactNode; heightClass?: string;
+  header?: React.ReactNode; footer?: React.ReactNode; heightClass?: string; bodyClassName?: string; dense?: boolean;
 }) {
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
@@ -68,18 +68,19 @@ function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, foot
   if (!open) return null;
   if (typeof document === 'undefined') return null;
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-        className={cn('relative bg-card border border-border rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden', maxW, heightClass)}
+        initial={{ opacity: 0, y: 48 }}
+        animate={{ opacity: 1, y: 0 }}
+        layout
+        transition={{ type: 'spring', damping: 26, stiffness: 320, layout: { type: 'spring', damping: 28, stiffness: 300 } }}
+        className={cn('relative bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.42)] w-full max-h-[min(70dvh,48rem)] min-h-0 flex flex-col overflow-hidden', maxW, heightClass)}
         onClick={e => e.stopPropagation()}
       >
-        {header && <div className="shrink-0 px-4 sm:px-5 pt-4 sm:pt-5 border-b border-border/40 pb-3">{header}</div>}
-        <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
-        {footer && <div className="shrink-0 px-4 sm:px-5 pb-4 sm:pb-5 pt-3 border-t border-border/40">{footer}</div>}
+        {header && <div className={cn('shrink-0 border-b border-border/40', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
+        <div className={cn('flex-1 min-h-0', bodyClassName)}>{children}</div>
+        {footer && <div className={cn('shrink-0 border-t border-border/40', dense ? 'px-3 sm:px-4 pb-2.5 sm:pb-3 pt-1.5' : 'px-4 sm:px-5 pb-4 sm:pb-5 pt-3')}>{footer}</div>}
       </motion.div>
     </div>,
     document.body
@@ -124,7 +125,7 @@ function TimeField({ value, onChange, ariaLabel }: { value: string; onChange: (v
       aria-label={ariaLabel || 'time'}
       value={to24val(value)}
       onChange={e => onChange(to12val(e.target.value))}
-      className="h-9 w-full min-w-0 flex-1 bg-background border border-border rounded-lg px-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+      className="h-9 w-full min-w-0 flex-1 bg-background border border-border rounded-lg px-1.5 text-xs text-center text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
     />
   );
 }
@@ -243,7 +244,7 @@ function ClinicalGroupCard({
                 </p>
               </div>
               <div className="flex gap-1">
-                <button type="button" onClick={onEditRotation} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"><Pencil className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={onEditRotation} className="shrink-0 px-3 py-2 rounded-xl border border-primary/40 text-primary font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-primary/10 transition-all cursor-pointer"><Pencil className="w-3.5 h-3.5" /> Edit</button>
                 {canDeleteRotation && (
                   <button type="button" onClick={onDeleteRotation} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
                 )}
@@ -263,7 +264,7 @@ function ClinicalGroupCard({
                 </p>
               </div>
               <div className="flex gap-1">
-                <button type="button" onClick={onEditSGT} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"><Pencil className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={onEditSGT} className="shrink-0 px-3 py-2 rounded-xl border border-primary/40 text-primary font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-primary/10 transition-all cursor-pointer"><Pencil className="w-3.5 h-3.5" /> Edit</button>
                 <button type="button" onClick={onDeleteSGT} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             </div>
@@ -296,9 +297,9 @@ function VacationEditor({ vacations, onChange }: {
           )}
           {vacations.map(v => (
             <div key={v.id} className="flex items-center gap-1.5">
-              <input type="date" value={v.start} onChange={e => onChange(vacations.map(x => x.id === v.id ? { ...x, start: e.target.value } : x))} className={cn(inputCls, 'h-8 text-xs')} />
-              <input type="date" value={v.end} onChange={e => onChange(vacations.map(x => x.id === v.id ? { ...x, end: e.target.value } : x))} className={cn(inputCls, 'h-8 text-xs')} />
-              <button type="button" onClick={() => onChange(vacations.filter(x => x.id !== v.id))} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"><X className="w-3.5 h-3.5" /></button>
+              <input type="date" value={v.start} onChange={e => onChange(vacations.map(x => x.id === v.id ? { ...x, start: e.target.value } : x))} className={cn(inputCls, 'h-8 text-center text-xs')} />
+              <input type="date" value={v.end} onChange={e => onChange(vacations.map(x => x.id === v.id ? { ...x, end: e.target.value } : x))} className={cn(inputCls, 'h-8 text-center text-xs')} />
+              <button type="button" onClick={() => onChange(vacations.filter(x => x.id !== v.id))} className="shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer">Remove</button>
             </div>
           ))}
           <button type="button" onClick={() => onChange([...vacations, { id: genId('vac'), start: '', end: '' }])} className={cn(btnGhost, 'w-full flex items-center justify-center gap-1.5')}>
@@ -310,16 +311,16 @@ function VacationEditor({ vacations, onChange }: {
   );
 }
 
-const AI_PROMPT = `You are helping me create a routine bundle for the Attendenz Tracker app. The bundle is a JSON object. Use the exact schema below.
+const AI_PROMPT = `You are helping me create a routine bundle for the Attendenz Tracker app. Return exactly one plain JSON object in UTF-8 text. Do not return an image, Markdown, a code fence, commentary, headings, or explanatory prose. Use the exact schema below; omit any section that is not present in the source rather than inventing empty or preset data.
 
 {
   "version": 2,
-  "subjectMode": "preloaded", // or "custom"
+  "subjectMode": "preloaded",
   "addedSubjects": [
     {
       "name": "Cardiology",
-      "type": "single", // "single" | "allied" | "allied-parent"
-      "parentCategory": null, // if type is "allied", set to parent name
+      "type": "single",
+      "parentCategory": null,
       "planned": 40,
       "schedules": [
         { "day": "Mon", "start": "09:00 AM", "end": "10:00 AM" }
@@ -340,18 +341,18 @@ const AI_PROMPT = `You are helping me create a routine bundle for the Attendenz 
       "vacationPeriods": [ { "start": "2026-02-05", "end": "2026-02-07" } ]
     }
   ],
-  "presetTimetable": {}, // optional; only if subjectMode is "preloaded"
-  "presetWardSchedule": [], // optional
-  "presetSubjectTotals": {} // optional
+  "presetTimetable": {},
+  "presetWardSchedule": [],
+  "presetSubjectTotals": {}
 }
 
 Rules:
 - All times use 12-hour format with AM/PM. Use en-dash (–) between start and end, e.g. "09:00 AM–10:00 AM".
 - Dates are yyyy-mm-dd.
-- For subjectMode "preloaded", do not include preset subjects in addedSubjects; only user-added subjects.
-- For subjectMode "custom", include all academic subjects in addedSubjects.
-- A subject of type "allied" must have parentCategory set to the parent name or "Small Group Teaching" for SGT.
-- SGT subjects must also have clinicalSubject set to the ward name they belong to.
+- For subjectMode "preloaded", do not include preset subjects in addedSubjects; include only user-added subjects and include preset sections only when they are present in the source.
+- For subjectMode "custom", include the custom academic, clinical, allied, and SGT subjects actually present in the source; omit absent sections.
+- A subject of type "allied" must have parentCategory set to its parent name. An SGT subject must use parentCategory "Small Group Teaching", type "allied", and clinicalSubject equal to the ward name it belongs to.
+- Never classify an academic subject as SGT unless it belongs to Small Group Teaching. Preserve source names, days, times, dates, and planned totals exactly.
 - Vacation periods exclude those dates from planned class counts.
 Return only the JSON object, no markdown.`;
 
@@ -390,7 +391,33 @@ export default function AddNew() {
   const [formError, setFormError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [controlsExpanded, setControlsExpanded] = useState(true);
+  const controlsCollapseTimer = useRef<number | null>(null);
+  const [addModalScrolled, setAddModalScrolled] = useState(false);
+  const academicScrollRef = useRef<HTMLDivElement>(null);
   const [section, setSection] = useState<'academic' | 'clinical'>('academic');
+  useEffect(() => { if (!moreOpen) setAddModalScrolled(false); }, [moreOpen]);
+  useEffect(() => {
+    setControlsExpanded(true);
+    if (controlsCollapseTimer.current) window.clearTimeout(controlsCollapseTimer.current);
+    controlsCollapseTimer.current = window.setTimeout(() => setControlsExpanded(false), 3000);
+    const onPageScroll = () => {
+      if (window.scrollY > 4) setControlsExpanded(false);
+    };
+    window.addEventListener('scroll', onPageScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onPageScroll);
+      if (controlsCollapseTimer.current) window.clearTimeout(controlsCollapseTimer.current);
+    };
+  }, [section]);
+  const toggleControls = () => {
+    setControlsExpanded(prev => {
+      const next = !prev;
+      if (controlsCollapseTimer.current) window.clearTimeout(controlsCollapseTimer.current);
+      if (next) controlsCollapseTimer.current = window.setTimeout(() => setControlsExpanded(false), 3000);
+      return next;
+    });
+  };
   const [selDay, setSelDay] = useState<number>(new Date().getDay());
   const [subjectType, setSubjectType] = useState<'single' | 'allied'>('single');
   const [subjectName, setSubjectName] = useState('');
@@ -1519,7 +1546,19 @@ export default function AddNew() {
 
   const beginImport = (raw: string, source: 'file' | 'paste') => {
     let parsed: any;
-    try { parsed = JSON.parse(raw); } catch {
+    try {
+      const normalized = raw.trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '');
+      try {
+        parsed = JSON.parse(normalized);
+      } catch {
+        const start = normalized.indexOf('{');
+        const end = normalized.lastIndexOf('}');
+        if (start < 0 || end <= start) throw new Error('no-json');
+        parsed = JSON.parse(normalized.slice(start, end + 1));
+      }
+    } catch {
       const msg = 'Invalid JSON — check the file or pasted text.';
       if (source === 'paste') setPasteError(msg); else setImportError(msg);
       return;
@@ -1741,11 +1780,11 @@ export default function AddNew() {
   ) => (
     <div className="space-y-2">
       {rows.map(r => (
-        <div key={r.id} className="flex items-center gap-1.5">
+        <div key={r.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-1.5">
           <select
             value={r.day}
             onChange={e => onUpdate(r.id, { day: e.target.value })}
-            className={cn(inputCls, 'w-16 shrink-0 h-9 text-xs px-1.5')}
+            className={cn(inputCls, 'h-9 w-full min-w-0 text-center text-xs px-1.5')}
           >
             {DAY_ABBRS.map(d => (
               <option key={d} value={d} disabled={d !== r.day && rows.some(o => o.id !== r.id && o.day === d)}>
@@ -1755,9 +1794,7 @@ export default function AddNew() {
           </select>
           <TimeField value={r.startTime} onChange={v => onUpdate(r.id, { startTime: v })} ariaLabel="start" />
           <TimeField value={r.endTime} onChange={v => onUpdate(r.id, { endTime: v })} ariaLabel="end" />
-          <button type="button" onClick={() => onRemove(r.id)} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer shrink-0">
-            <X className="w-4 h-4" />
-          </button>
+          <button type="button" onClick={() => onRemove(r.id)} className="shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer">Remove</button>
         </div>
       ))}
     </div>
@@ -1788,21 +1825,14 @@ export default function AddNew() {
   }, [academicSlotsForDay]);
 
   return (
-    <Layout>
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pb-24">
-        {/* Header and top buttons */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-extrabold text-foreground leading-tight">Manage Subjects & Rotations</h1>
-          <button
-            type="button"
-            onClick={() => setHistoryOpen(true)}
-            className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm"
-            title="Recent Activity"
-          >
-            <SendToBack className="w-4 h-4" />
-          </button>
-        </div>
-
+    <Layout
+      headerRight={
+        <button type="button" onClick={() => setHistoryOpen(true)} className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="Recent Activity">
+          <SendToBack className="w-4 h-4" />
+        </button>
+      }
+    >
+      <div className="space-y-2 pb-24">
         <div className="grid grid-cols-2 gap-2">
           <button type="button" onClick={() => setExportOpen(true)} className="h-10 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-emerald-500/20 transition-all cursor-pointer">
             <Upload className="w-3.5 h-3.5" /> Export
@@ -1810,22 +1840,23 @@ export default function AddNew() {
           <button type="button" onClick={() => { setImportError(null); setImportOpen(true); }} className="h-10 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-primary/20 transition-all cursor-pointer">
             <Download className="w-3.5 h-3.5" /> Import
           </button>
-          <button type="button" onClick={() => setSection('academic')}
-            className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',
-              section === 'academic' ? 'bg-primary/15 text-primary border-primary/30' : 'bg-muted/20 text-muted-foreground border-border hover:bg-muted/40')}>
-            <GraduationCap className="w-3.5 h-3.5" /> Academic Section
-          </button>
-          <button type="button" onClick={() => setSection('clinical')}
-            className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',
-              section === 'clinical' ? 'bg-primary/15 text-primary border-primary/30' : 'bg-muted/20 text-muted-foreground border-border hover:bg-muted/40')}>
-            <Stethoscope className="w-3.5 h-3.5" /> Clinical Section
-          </button>
         </div>
 
-        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center">{section === 'academic' ? 'Academic' : 'Clinical'}</p>
-
-        <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-3.5">
+        <div className="sticky top-[var(--app-header-height)] z-30">
+          <div className="-mx-4 bg-background px-4 py-1.5 shadow-sm border-y border-border/40 soft-entry-boundary">
           <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => section === 'academic' ? toggleControls() : setSection('academic')}
+              className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',
+                section === 'academic' ? 'bg-primary/15 text-primary border-primary/30' : 'bg-muted/20 text-muted-foreground border-border hover:bg-muted/40')}>
+              <GraduationCap className="w-3.5 h-3.5" /> Academic Section
+            </button>
+            <button type="button" onClick={() => section === 'clinical' ? toggleControls() : setSection('clinical')}
+              className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',
+                section === 'clinical' ? 'bg-primary/15 text-primary border-primary/30' : 'bg-muted/20 text-muted-foreground border-border hover:bg-muted/40')}>
+              <Stethoscope className="w-3.5 h-3.5" /> Clinical Section
+            </button>
+          </div>
+          <div className={cn('grid grid-cols-2 gap-2 overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-out', controlsExpanded ? 'mt-1 max-h-12 opacity-100' : 'mt-0 max-h-0 opacity-0 pointer-events-none')}>
             <button type="button" onClick={() => { setFormError(null); setMoreOpen(true); }} className="h-10 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-amber-500/20 transition-all cursor-pointer px-2 text-center leading-tight">
               {section === 'academic' ? 'Add New (Academic)' : 'Add New (Clinical)'}
             </button>
@@ -1833,10 +1864,14 @@ export default function AddNew() {
               {section === 'academic' ? 'Edit Academic Data' : 'Edit Clinical Data'}
             </button>
           </div>
+        </div>
 
+        <section
+          style={{ '--manage-top-stack-height': controlsExpanded ? '7.125rem' : '4.25rem' } as React.CSSProperties}
+          className="-mx-1 mt-1 max-h-[calc(100dvh-var(--app-header-height)-var(--manage-top-stack-height)-var(--app-bottom-nav-height)-var(--app-bottom-nav-offset))] bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 flex min-h-0 flex-col overflow-hidden soft-entry-boundary">
           {section === 'academic' && (
-            <div className="space-y-3 min-h-[240px]">
-              <div className="bg-background/60 border border-border/50 rounded-xl p-1 flex justify-between gap-1">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="shrink-0 bg-background/60 border border-border/50 rounded-xl p-1 flex justify-between gap-1">
                 {DAY_ABBRS.map((d, i) => (
                   <button key={d} type="button" onClick={() => setSelDay(i)}
                     className={cn('flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer border',
@@ -1845,19 +1880,20 @@ export default function AddNew() {
                   </button>
                 ))}
               </div>
-              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+              <div className="shrink-0 flex items-center justify-between border-b border-border/40 pb-2">
                 <h3 className="text-sm font-extrabold uppercase tracking-wide text-primary">{DAY_ABBRS[selDay]}'s Academic Schedule</h3>
                 <span className="text-xs text-muted-foreground font-semibold">{academicSlotsForDay.length} Slots</span>
               </div>
 
+              <div ref={section === 'academic' ? academicScrollRef : undefined} onScroll={section === 'academic' ? (e) => setAddModalScrolled(e.currentTarget.scrollTop > 8) : undefined} className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-1.5 pr-1 pb-1" style={{ overscrollBehaviorY: 'contain' }}>
               {groupedAcademicSlots.length === 0 ? (
                 <div className="flex items-center justify-center min-h-[160px] bg-background/40 border border-dashed border-border rounded-xl">
                   <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
                 </div>
               ) : (
                 groupedAcademicSlots.map((group) => (
-                  <div key={group.time} className="relative border-t border-border mt-6 pt-4">
-                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-card px-2 text-xs font-bold text-primary whitespace-nowrap">
+                  <div key={group.time} className="relative pt-1.5">
+                    <span className="sticky top-0 z-10 -mx-1 block w-[calc(100%+0.5rem)] border-y border-border/40 bg-card px-2 py-1 text-center text-xs font-bold text-primary whitespace-nowrap shadow-sm soft-entry-boundary soft-entry-boundary--inner">
                       {group.time}
                     </span>
                     <div className="space-y-2">
@@ -1903,7 +1939,6 @@ export default function AddNew() {
                   </div>
                 ))
               )}
-
               <button
                 type="button"
                 onClick={openAddSlot}
@@ -1911,12 +1946,13 @@ export default function AddNew() {
               >
                 <Plus className="w-3.5 h-3.5" /> Add Slot
               </button>
+              </div>
             </div>
           )}
 
           {section === 'clinical' && (
-            <div className="space-y-3">
-              <div className="space-y-2">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 pr-1 pb-2" style={{ overscrollBehaviorY: 'contain' }}>
                 {allClinicalSubjects.map(name => {
                   const group = { rotation: getRotationForSubject(name), sgt: getSGTForSubject(name) };
                   return (
@@ -1944,26 +1980,26 @@ export default function AddNew() {
             </div>
           )}
         </section>
-
+        </div>
         {/* Add New Modal */}
         <OverlayModal
           open={moreOpen}
           onClose={() => { setMoreOpen(false); setFormError(null); setAddSuccess(false); }}
           maxW="max-w-lg"
-          heightClass="h-[85vh]"
+          heightClass="!max-h-[80dvh]"
+          dense
+          bodyClassName={section === 'academic' ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}
           header={
             <div>
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-foreground">{section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}</h3>
                 <button type="button" onClick={() => { setMoreOpen(false); setFormError(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-4 h-4" /></button>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">{section === 'academic' ? 'Create a standalone subject or nest children under a parent group.' : 'Add a clinical rotation or a Small Group Teaching entry.'}</p>
 
               {/* Static type selector */}
               {section === 'academic' ? (
                 <div className="mt-3">
                   <label className={labelCls}>Subject kind</label>
-                  <p className={descCls}>Choose standalone or grouped under a parent.</p>
                   <div className="flex rounded-xl border border-border overflow-hidden">
                     {(['single', 'allied'] as const).map(t => (
                       <button key={t} type="button" onClick={() => setSubjectType(t)}
@@ -1977,7 +2013,6 @@ export default function AddNew() {
               ) : (
                 <div className="mt-3">
                   <label className={labelCls}>Type</label>
-                  <p className={descCls}>Choose rotation ward or Small Group Teaching.</p>
                   <div className="flex rounded-xl border border-border overflow-hidden">
                     <button type="button" onClick={() => setClinicalParentChoice('rotation')}
                       className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
@@ -2025,16 +2060,17 @@ export default function AddNew() {
             )
           }
         >
-          <div className="p-4 sm:p-5 space-y-3.5">
-            <Note note={note} />
-            {formError && <p className={inlineErrCls}>{formError}</p>}
-
+                    <div className="p-2.5 sm:p-3 space-y-1.5 flex flex-1 flex-col min-h-0">
+            <div className="shrink-0">
+              <Note note={note} />
+              {formError && <p className={inlineErrCls}>{formError}</p>}
+            </div>
             {section === 'academic' ? (
               <>
                 {isAllied && (
                   <div>
                     <label className={labelCls}>Parent</label>
-                    <p className={descCls}>Select an existing parent or create a new one.</p>
+                    <p className={cn(descCls, 'transition-all duration-200 ease-out', addModalScrolled ? 'max-h-0 opacity-0 overflow-hidden mb-0' : 'max-h-8 opacity-100')}>Select an existing parent or create a new one.</p>
                     <select value={parentChoice} onChange={e => setParentChoice(e.target.value)} className={inputCls}>
                       <option value="">Select parent…</option>
                       <optgroup label="Parents">{academicParentOptions.map(p => <option key={p} value={p}>{p}</option>)}</optgroup>
@@ -2054,29 +2090,28 @@ export default function AddNew() {
 
                 <div>
                   <label className={labelCls}>{isAllied ? 'Child subject name' : 'Subject name'}</label>
-                  <p className={descCls}>Enter a clear subject name.</p>
+                  <p className={cn(descCls, 'transition-all duration-200 ease-out', addModalScrolled ? 'max-h-0 opacity-0 overflow-hidden mb-0' : 'max-h-8 opacity-100')}>Enter a clear subject name.</p>
                   <input value={subjectName} onChange={e => setSubjectName(e.target.value)} placeholder="e.g. Cardiology" inputMode="text" className={inputCls} />
                 </div>
 
-                <div>
-                  <label className={labelCls}>Day & Time</label>
-                  <p className={descCls}>Add up to 7 class days and times.</p>
-                  {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow)}
-                  <button type="button" onClick={addSubjectRow} disabled={subjectRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                    <Plus className="w-3.5 h-3.5" /> Add another day & time
-                  </button>
-                </div>
-
-                <div>
-                  <label className={labelCls}>Planned classes</label>
-                  <p className={descCls}>Total classes planned for this subject.</p>
-                  <input type="number" inputMode="numeric" min={0} value={planned} onChange={e => setPlanned(e.target.value)} placeholder="e.g. 40" className={inputCls} />
-                </div>
+                                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-3 pr-1" style={{ overscrollBehaviorY: 'contain' }}>
+                  <div>
+                    <label className={labelCls}>Day & Time</label>
+                    {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow)}
+                    <button type="button" onClick={addSubjectRow} disabled={subjectRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
+                      <Plus className="w-3.5 h-3.5" /> Add another day & time
+                    </button>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Planned classes</label>
+                    <p className={descCls}>Total classes planned for this subject.</p>
+                    <input type="number" inputMode="numeric" min={0} value={planned} onChange={e => setPlanned(e.target.value)} placeholder="e.g. 40" className={inputCls} />
+                  </div>
 
                 {isAllied && parentIsSGT && (
                   <div className="grid grid-cols-2 gap-2.5">
-                    <div><label className={labelCls}>Placement start</label><p className={descCls}>Placement period start date.</p><input type="date" value={childStart} onChange={e => setChildStart(e.target.value)} className={inputCls} /></div>
-                    <div><label className={labelCls}>Placement end</label><p className={descCls}>Placement period end date.</p><input type="date" value={childEnd} onChange={e => setChildEnd(e.target.value)} className={inputCls} /></div>
+                    <div><label className={labelCls}>Placement start</label><p className={descCls}>Placement period start date.</p><input type="date" value={childStart} onChange={e => setChildStart(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
+                    <div><label className={labelCls}>Placement end</label><p className={descCls}>Placement period end date.</p><input type="date" value={childEnd} onChange={e => setChildEnd(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
                   </div>
                 )}
 
@@ -2096,6 +2131,7 @@ export default function AddNew() {
                     ))}
                   </div>
                 )}
+                </div>
               </>
             ) : (
               <>
@@ -2107,8 +2143,8 @@ export default function AddNew() {
                       <input value={wardName} onChange={e => setWardName(e.target.value)} placeholder="e.g. Internal Medicine" inputMode="text" className={inputCls} />
                     </div>
                     <div className="grid grid-cols-2 gap-2.5">
-                      <div><label className={labelCls}>Start date</label><p className={descCls}>Rotation start date.</p><input type="date" value={wardStart} onChange={e => setWardStart(e.target.value)} className={inputCls} /></div>
-                      <div><label className={labelCls}>End date</label><p className={descCls}>Rotation end date.</p><input type="date" value={wardEnd} onChange={e => setWardEnd(e.target.value)} className={inputCls} /></div>
+                      <div><label className={labelCls}>Start date</label><p className={descCls}>Rotation start date.</p><input type="date" value={wardStart} onChange={e => setWardStart(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
+                      <div><label className={labelCls}>End date</label><p className={descCls}>Rotation end date.</p><input type="date" value={wardEnd} onChange={e => setWardEnd(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
                     </div>
                     <div className="grid grid-cols-2 gap-2.5">
                       <div className="space-y-1.5"><label className={labelCls}>Morning</label><p className={descCls}>Morning ward session time.</p><TimeField value={mornStart} onChange={setMornStart} ariaLabel="morning start" /><TimeField value={mornEnd} onChange={setMornEnd} ariaLabel="morning end" /></div>
@@ -2146,8 +2182,8 @@ export default function AddNew() {
                       <input value={sgtName} onChange={e => setSgtName(e.target.value)} placeholder="e.g. Surgery" inputMode="text" className={inputCls} />
                     </div>
                     <div className="grid grid-cols-2 gap-2.5">
-                      <div><label className={labelCls}>Placement start</label><p className={descCls}>SGT placement start date.</p><input type="date" value={sgtStartDate} onChange={e => setSgtStartDate(e.target.value)} className={inputCls} /></div>
-                      <div><label className={labelCls}>Placement end</label><p className={descCls}>SGT placement end date.</p><input type="date" value={sgtEndDate} onChange={e => setSgtEndDate(e.target.value)} className={inputCls} /></div>
+                      <div><label className={labelCls}>Placement start</label><p className={descCls}>SGT placement start date.</p><input type="date" value={sgtStartDate} onChange={e => setSgtStartDate(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
+                      <div><label className={labelCls}>Placement end</label><p className={descCls}>SGT placement end date.</p><input type="date" value={sgtEndDate} onChange={e => setSgtEndDate(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
                     </div>
                     <div>
                       <label className={labelCls}>Schedules (Day + Time)</label>
@@ -2176,7 +2212,7 @@ export default function AddNew() {
           open={editDataOpen}
           onClose={() => { setEditDataOpen(false); setExpandedEditItemId(null); setDraftPlanned(null); }}
           maxW="max-w-2xl"
-          heightClass="h-[85vh]"
+          heightClass=""
           header={
             <div>
               <div className="flex items-center justify-between">
@@ -2360,7 +2396,6 @@ export default function AddNew() {
           open={addSlotOpen}
           onClose={() => { setAddSlotOpen(false); setFormError(null); setAddSuccess(false); }}
           maxW="max-w-sm"
-          heightClass="h-[70vh]"
           header={
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
@@ -2478,8 +2513,8 @@ export default function AddNew() {
               ) : null}
               {editSubject.subjectType === 'allied' && PRESET_PARENTS.includes(editSubject.parentName) && (
                 <div className="grid grid-cols-2 gap-2.5">
-                  <div><label className={labelCls}>Placement start</label><input type="date" value={editSubject.startDate || ''} onChange={e => setEditSubject({ ...editSubject, startDate: e.target.value })} className={inputCls} /></div>
-                  <div><label className={labelCls}>Placement end</label><input type="date" value={editSubject.endDate || ''} onChange={e => setEditSubject({ ...editSubject, endDate: e.target.value })} className={inputCls} /></div>
+                  <div><label className={labelCls}>Placement start</label><input type="date" value={editSubject.startDate || ''} onChange={e => setEditSubject({ ...editSubject, startDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
+                  <div><label className={labelCls}>Placement end</label><input type="date" value={editSubject.endDate || ''} onChange={e => setEditSubject({ ...editSubject, endDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
                 </div>
               )}
               {editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' && (
@@ -2540,8 +2575,8 @@ export default function AddNew() {
                 <p className="text-xs font-bold text-foreground">{editWard.name}</p>
               </div>
               <div className="grid grid-cols-2 gap-2.5">
-                <div><label className={labelCls}>Start date</label><input type="date" value={editWard.startDate} onChange={e => setEditWard({ ...editWard, startDate: e.target.value })} className={inputCls} /></div>
-                <div><label className={labelCls}>End date</label><input type="date" value={editWard.endDate} onChange={e => setEditWard({ ...editWard, endDate: e.target.value })} className={inputCls} /></div>
+                <div><label className={labelCls}>Start date</label><input type="date" value={editWard.startDate} onChange={e => setEditWard({ ...editWard, startDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
+                <div><label className={labelCls}>End date</label><input type="date" value={editWard.endDate} onChange={e => setEditWard({ ...editWard, endDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
               </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="space-y-1.5"><label className={labelCls}>Morning</label><TimeField value={editWard.mornStart} onChange={v => setEditWard({ ...editWard, mornStart: v })} ariaLabel="morning start" /><TimeField value={editWard.mornEnd} onChange={v => setEditWard({ ...editWard, mornEnd: v })} ariaLabel="morning end" /></div>
@@ -2646,7 +2681,7 @@ export default function AddNew() {
                       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Move selected subjects</p>
                       <div>
                         <label className={labelCls}>Target Day</label>
-                        <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
+                        <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={cn(inputCls, 'text-center')}>
                           {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
                         </select>
                       </div>
@@ -2861,7 +2896,7 @@ export default function AddNew() {
             </div>
           </div>
         </OverlayModal>
-      </motion.div>
+      </div>
     </Layout>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { SubjectCard } from '@/components/SubjectCard';
+import { StickySectionLabel } from '@/components/StickySectionLabel';
 import { Layout } from '@/components/Layout';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData, getEffectiveParentName } from '@/contexts/CustomDataContext';
@@ -40,13 +41,8 @@ const CircularProgress = ({
   );
 };
 
-/* ── Section heading with divider (always visible) ── */
-const SectionHeading = ({ icon, label }: { icon?: React.ReactNode; label: string }) => (
-  <div className="flex items-center gap-2.5 pt-2">
-    {icon}
-    <h2 className="text-sm font-extrabold uppercase tracking-wide text-primary shrink-0">{label}</h2>
-    <div className="h-px flex-1 bg-border/70" />
-  </div>
+const SectionHeading = ({ icon, label, offsetClass = 'top-[var(--app-header-height)]' }: { icon?: React.ReactNode; label: string; offsetClass?: string }) => (
+  <StickySectionLabel icon={icon} label={label} offsetClass={offsetClass} zClass="z-10" />
 );
 
 interface ChildDetail {
@@ -180,17 +176,18 @@ export default function Subjects() {
     setOpenCategories(prev => ({ ...prev, [catName]: !prev[catName] }));
   };
   const norm = (s?: string) => (s || '').trim().toLowerCase();
+  const INTEGRATED_PARENT = 'integrated teaching';
 
+  /* FIX: SGT detection FIRST (used by plannedFor to avoid name collisions) */
   const isSGTSubject = (s: { subjectType: string; parentName?: string }) =>
     s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
 
-  const plannedFor = (name: string, id?: string): number => {
-    if (id) {
-      const cSub = customSubjects.find(s => s.id === id);
-      if (cSub) return cSub.plannedClasses;
-      const uaSub = userAddedSubjects.find(s => s.id === id);
-      if (uaSub) return uaSub.plannedClasses;
-    }
+  /**
+   * FIX: planned lookup for ACADEMIC subjects must NEVER resolve to an SGT record.
+   * Skips SGT records so a same-named SGT can't leak its planned count into
+   * an academic subject's total.
+   */
+  const plannedFor = (name: string): number => {
     const cSub = customSubjects.find(s => norm(s.name) === norm(name) && !isSGTSubject(s));
     if (cSub) return cSub.plannedClasses;
     const uaSub = userAddedSubjects.find(s => norm(s.name) === norm(name) && !isSGTSubject(s));
@@ -199,7 +196,7 @@ export default function Subjects() {
   };
 
   const calcSummary = (
-    subjectList: Array<{ name: string; total?: number; isSGT?: boolean; sgtId?: string; id?: string }>,
+    subjectList: Array<{ name: string; total?: number; id?: string; isSGT?: boolean; sgtId?: string }>,
     isWardGroup = false
   ): CategorySummary => {
     let att = 0, mis = 0, planned = 0;
@@ -207,11 +204,15 @@ export default function Subjects() {
     const targetPct = preferredPercentage || 75;
     subjectList.forEach(sub => {
       const resolvedId = sub.id || getSubjectIdByName(sub.name, isWardGroup ? 'clinical' : 'academic');
-      const key: string | null = isWardGroup
-        ? (resolvedId ? getWardAttendanceKey(resolvedId) : null)
+      const key = isWardGroup
+        ? resolvedId
+          ? getWardAttendanceKey(resolvedId)
+          : null
         : sub.isSGT && sub.sgtId
           ? getSGTKey(sub.sgtId)
-          : (resolvedId ? getAcademicAttendanceKey(resolvedId) : null);
+          : resolvedId
+            ? getAcademicAttendanceKey(resolvedId)
+            : null;
       const d = key ? (isWardGroup ? wards : subjects)[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
       let p = 0;
       if (isWardGroup) {
@@ -222,7 +223,8 @@ export default function Subjects() {
           p = cWard ? getCustomWardTotalPlanned(cWard.startDate, cWard.endDate) : (sub.total || 40);
         }
       } else {
-        p = plannedFor(sub.name, sub.id);
+        p = plannedFor(sub.name);
+        // For SGT, resolve planned by ID (never by name) to avoid collisions
         if (sub.isSGT && sub.sgtId) {
           const sgt =
             subjectMode === 'preloaded'
@@ -256,13 +258,15 @@ export default function Subjects() {
     const conducted = att + mis;
     const pct = conducted === 0 ? 0 : (att / conducted) * 100;
     const remainingTotal = Math.max(0, planned - conducted);
-    const maxPossiblePct = planned > 0 ? ((att + remainingTotal) / planned) * 100 : 0;
+    const maxPossiblePct = planned > 0 ? ((att + remainingTotal) / planned) * 100 : 100;
     const urgentList = childDetails.filter(c => c.isImpossible);
     const attentionList = childDetails.filter(c => c.needsAttention);
     return { att, mis, planned, pct, conducted, remainingTotal, maxPossiblePct, childDetails, urgentList, attentionList };
   };
 
-  /* ── Preloaded mode SGT extraction ── */
+  /* ──────────────────────────────────────────────────────────────────────────
+     PRELOADED MODE — SGT records are pulled OUT of academic groups entirely.
+     ────────────────────────────────────────────────────────────────────────── */
   const uaSGTs = userAddedSubjects.filter(s => isSGTSubject(s));
   const uaAllied = userAddedSubjects.filter(s => s.subjectType === 'allied' && !isSGTSubject(s));
   const uaParents = userAddedSubjects.filter(s => s.subjectType === 'allied-parent');
@@ -271,7 +275,7 @@ export default function Subjects() {
   const isBuiltInParentName = (name?: string): boolean => {
     const p = norm(name);
     if (!p) return false;
-    if (p === 'integrated teaching') return true;
+    if (p === INTEGRATED_PARENT) return true;
     return CATEGORIES.some(
       cat => norm(cat.name) === p || cat.subjects.some(sub => norm(sub.name) === p)
     );
@@ -288,7 +292,7 @@ export default function Subjects() {
   const uaChildrenForCategory = (cat: { name: string; subjects: { name: string }[] }): UserAddedSubject[] =>
     uaAllied.filter(s => parentMatchesCategory(getEffectiveParentName(s), cat));
   const uaChildrenForIntegrated = uaAllied.filter(
-    s => norm(getEffectiveParentName(s)) === 'integrated teaching'
+    s => norm(getEffectiveParentName(s)) === INTEGRATED_PARENT
   );
   const standaloneUaParents = uaParents.filter(p => !isBuiltInParentName(p.name));
   const uaOrphanMap: Record<string, { title: string; children: UserAddedSubject[] }> = {};
@@ -311,7 +315,7 @@ export default function Subjects() {
     return out;
   })();
 
-  /* ── Custom mode SGT extraction ── */
+  /* ── CUSTOM MODE — SGT pulled out of academic groups too ── */
   const customSGTs = customSubjects.filter(s => isSGTSubject(s));
   const alliedChildren = customSubjects.filter(s => s.subjectType === 'allied' && !isSGTSubject(s));
   const parentContainers = customSubjects.filter(s => s.subjectType === 'allied-parent');
@@ -347,17 +351,17 @@ export default function Subjects() {
     customParentCards.push({ key: `og_${k}`, title: g.title, children: g.children });
   }
 
+  /* ── SGT list for the Clinical section ── */
   const sgtList = subjectMode === 'preloaded' ? uaSGTs : customSGTs;
+  const customAcademicCount = customSubjects.filter(s => s.subjectType !== 'allied-parent' && !(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')).length;
+  const customClinicalCount = customWards.length + customSGTs.length;
+  const customHasAnySubjects = customAcademicCount + customClinicalCount > 0;
 
   return (
     <Layout>
       <div className="space-y-4 pb-8">
-        <div>
-          <h1 className="text-lg font-extrabold text-foreground leading-tight">Attendance Progress & Targets</h1>
-        </div>
-
         {/* Empty state for custom mode with no subjects */}
-        {subjectMode === 'custom' && customSubjects.length === 0 && customWards.length === 0 && (
+        {subjectMode === 'custom' && !customHasAnySubjects && (
           <div className="bg-card rounded-2xl p-8 border border-border text-center shadow-sm mt-2">
             <ClipboardList className="w-10 h-10 mx-auto mb-3 text-primary" />
             <h3 className="text-lg font-semibold mb-2">No subjects yet</h3>
@@ -374,14 +378,15 @@ export default function Subjects() {
         )}
 
         {/* ══════════════════ ACADEMIC SECTION ══════════════════ */}
-        <SectionHeading icon={<GraduationCap className="w-4 h-4 text-primary" />} label="Academic" />
+        {(subjectMode === 'preloaded' || customHasAnySubjects) && <SectionHeading icon={<GraduationCap className="w-4 h-4 text-primary" />} label="Academic" />}
+        {subjectMode === 'custom' && customHasAnySubjects && customAcademicCount === 0 && <p className="text-xs text-muted-foreground px-3 py-2">No subjects in this section.</p>}
 
-        {/* Built-in Academic Categories (preloaded mode) */}
+        {/* ── Built-in Academic Categories (preloaded mode only) ── */}
         {subjectMode === 'preloaded' && CATEGORIES.map((cat) => {
           const merged = uaChildrenForCategory(cat);
           const subjectList = [
-            ...cat.subjects.map(sub => ({ id: (sub as any).id || sub.name, name: sub.name, total: sub.total })),
-            ...merged.map(s => ({ id: s.id, name: s.name, total: s.plannedClasses })),
+            ...cat.subjects.map(sub => ({ name: sub.name, total: sub.total })),
+            ...merged.map(s => ({ name: s.name, id: s.id, total: s.plannedClasses })),
           ];
           const summary = calcSummary(subjectList);
           return (
@@ -396,18 +401,13 @@ export default function Subjects() {
               renderChildren={() => (
                 <>
                   {cat.subjects.map((sub) => (
-                    <SubjectCard
-                      key={sub.name}
-                      subject={sub.name}
-                      totalPlanned={getSubjectPlannedTotal(sub.name)}
-                      isNested
-                    />
+                    <SubjectCard key={sub.name} subject={sub.name} totalPlanned={getSubjectPlannedTotal(sub.name)} isNested />
                   ))}
                   {merged.map((s) => (
                     <SubjectCard
                       key={s.id}
                       subject={s.name}
-                      totalPlanned={plannedFor(s.name, s.id)}
+                      totalPlanned={plannedFor(s.name)}
                       isNested
                     />
                   ))}
@@ -417,12 +417,12 @@ export default function Subjects() {
           );
         })}
 
-        {/* Preloaded created parent cards */}
+        {/* ── Preloaded: created parent cards ── */}
         {subjectMode === 'preloaded' && standaloneUaParents.map(p => {
           const kids = uaAllied.filter(c => norm(getEffectiveParentName(c)) === norm(p.name));
           const summary = calcSummary(kids.map(k => ({
-            id: k.id,
             name: k.name,
+            id: k.id,
             total: k.plannedClasses,
           })));
           const sectionKey = `uap_${p.id}`;
@@ -444,7 +444,7 @@ export default function Subjects() {
                     <SubjectCard
                       key={k.id}
                       subject={k.name}
-                      totalPlanned={plannedFor(k.name, k.id)}
+                      totalPlanned={plannedFor(k.name)}
                       isNested
                     />
                   ))}
@@ -454,11 +454,11 @@ export default function Subjects() {
           );
         })}
 
-        {/* Preloaded orphaned allied groups */}
+        {/* ── Preloaded: orphaned allied groups (academic only) ── */}
         {subjectMode === 'preloaded' && Object.entries(uaOrphanMap).map(([groupKey, group]) => {
           const summary = calcSummary(group.children.map(k => ({
-            id: k.id,
             name: k.name,
+            id: k.id,
             total: k.plannedClasses,
           })));
           const sectionKey = `uag_${groupKey}`;
@@ -477,7 +477,7 @@ export default function Subjects() {
                     <SubjectCard
                       key={k.id}
                       subject={k.name}
-                      totalPlanned={plannedFor(k.name, k.id)}
+                      totalPlanned={plannedFor(k.name)}
                       isNested
                     />
                   ))}
@@ -487,13 +487,13 @@ export default function Subjects() {
           );
         })}
 
-        {/* Custom parent cards */}
+        {/* ── Custom mode: parent cards ── */}
         {subjectMode === 'custom' && customParentCards.map(card => {
           const subjectList = [
-            ...(card.host ? [{ id: card.host.id, name: card.host.name, total: card.host.plannedClasses }] : []),
+            ...(card.host ? [{ name: card.host.name, id: card.host.id, total: card.host.plannedClasses }] : []),
             ...card.children.map(c => ({
-              id: c.id,
               name: c.name,
+              id: c.id,
               total: c.plannedClasses,
             })),
           ];
@@ -534,9 +534,9 @@ export default function Subjects() {
           );
         })}
 
-        {/* Custom single subjects */}
+        {/* ── Custom SINGLE subjects ── */}
         {subjectMode === 'custom' && standaloneSingles.map(s => {
-          const summary = calcSummary([{ id: s.id, name: s.name, total: s.plannedClasses }]);
+          const summary = calcSummary([{ name: s.name, id: s.id, total: s.plannedClasses }]);
           const sectionKey = `single_${s.id}`;
           return (
             <CategoryCard
@@ -554,9 +554,9 @@ export default function Subjects() {
           );
         })}
 
-        {/* Preloaded single subjects */}
+        {/* ── Preloaded single subjects (user-added) ── */}
         {subjectMode === 'preloaded' && uaSingles.map(s => {
-          const summary = calcSummary([{ id: s.id, name: s.name, total: s.plannedClasses }]);
+          const summary = calcSummary([{ name: s.name, id: s.id, total: s.plannedClasses }]);
           const sectionKey = `uas_${s.id}`;
           return (
             <CategoryCard
@@ -568,18 +568,18 @@ export default function Subjects() {
               summary={summary}
               preferredPercentage={preferredPercentage}
               renderChildren={() => (
-                <SubjectCard subject={s.name} totalPlanned={plannedFor(s.name, s.id)} isNested />
+                <SubjectCard subject={s.name} totalPlanned={plannedFor(s.name)} isNested />
               )}
             />
           );
         })}
 
-        {/* Integrated Teaching */}
+        {/* ── Integrated Teaching (academic) ── */}
         {subjectMode === 'preloaded' && (() => {
           const merged = uaChildrenForIntegrated;
           const subjectList = [
-            ...INTEGRATED_SUBJECTS.map(sub => ({ id: (sub as any).id || sub.name, name: sub.name, total: sub.total })),
-            ...merged.map(s => ({ id: s.id, name: s.name, total: s.plannedClasses })),
+            ...INTEGRATED_SUBJECTS.map(sub => ({ name: sub.name, total: sub.total })),
+            ...merged.map(s => ({ name: s.name, id: s.id, total: s.plannedClasses })),
           ];
           const integratedSummary = calcSummary(subjectList);
           return (
@@ -599,7 +599,7 @@ export default function Subjects() {
                     <SubjectCard
                       key={s.id}
                       subject={s.name}
-                      totalPlanned={plannedFor(s.name, s.id)}
+                      totalPlanned={plannedFor(s.name)}
                       isNested
                     />
                   ))}
@@ -610,16 +610,17 @@ export default function Subjects() {
         })()}
 
         {/* ══════════════════ CLINICAL SECTION ══════════════════ */}
-        <SectionHeading icon={<Stethoscope className="w-4 h-4 text-primary" />} label="Clinical" />
+        {(subjectMode === 'preloaded' || customHasAnySubjects) && <SectionHeading icon={<Stethoscope className="w-4 h-4 text-primary" />} label="Clinical" offsetClass="top-[calc(var(--app-header-height)+2rem)]" />}
+        {subjectMode === 'custom' && customHasAnySubjects && customClinicalCount === 0 && <p className="text-xs text-muted-foreground px-3 py-2">No subjects in this section.</p>}
 
-        {/* Ward Rotations */}
+        {/* ── Ward Rotations (Grouped in ONE Card) ── */}
         {(subjectMode === 'preloaded' || customWards.length > 0) && (() => {
           const wardList = subjectMode === 'preloaded'
             ? [
-                ...WARD_SUBJECTS.map(w => ({ name: w.name })),
-                ...extraWardNames.map(n => ({ name: n })),
+                ...WARD_SUBJECTS.map(w => ({ name: w.name, id: getSubjectIdByName(w.name, 'clinical') })),
+                ...extraWardNames.map(n => ({ name: n, id: getSubjectIdByName(n, 'clinical') })),
               ]
-            : customWards.map(w => ({ name: w.name, total: getCustomWardTotalPlanned(w.startDate, w.endDate) }));
+            : customWards.map(w => ({ name: w.name, id: w.id, total: getCustomWardTotalPlanned(w.startDate, w.endDate) }));
           const wardSummary = calcSummary(wardList, true);
           return (
             <CategoryCard
@@ -668,10 +669,9 @@ export default function Subjects() {
           );
         })()}
 
-        {/* Small Group Teaching */}
+        {/* ── Small Group Teaching (moved to Clinical) ── */}
         {sgtList.length > 0 && (() => {
           const summary = calcSummary(sgtList.map(s => ({
-            id: s.id,
             name: s.name,
             total: s.plannedClasses,
             isSGT: true,

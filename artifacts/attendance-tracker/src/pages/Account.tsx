@@ -1,14 +1,17 @@
-import { Camera, Trash2, Check, Pencil, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Sun, Moon, Download, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload } from 'lucide-react';
+import { Camera, Trash2, Check, Pencil, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, CheckCircle2, ArrowRightLeft, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Plus, Archive } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
+import { StickySectionLabel } from '@/components/StickySectionLabel';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
-import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
+import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
+import { activateCurriculum, createCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculum, setCurriculumStatus as persistCurriculumStatus, CurriculumRecord } from '@/lib/curriculumStore';
 import { storageClear, storageSetItem, storageRemoveItem } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport } from '@/lib/exportUtils';
@@ -40,20 +43,19 @@ export default function Account() {
   const handleSaveName = () => { if (nameInput.trim()) updateUsername(nameInput.trim()); setIsEditingName(false); };
   const { subjects, wards, homeSelections, preferredPercentage, setPreferredPercentage } = useAttendance();
   const quarantineUnresolvedAttendance = (type: 'subject' | 'ward', name: string, data: unknown) => {
-    if (!data || typeof data !== 'object') return;
     try {
       const existing = JSON.parse(localStorage.getItem(ORPHANED_RECORDS_KEY) || '[]');
       const originalKey = type === 'ward' ? `ward-${name}` : name;
       if (existing.some((entry: any) => entry.type === type && entry.originalKey === originalKey)) return;
-      const next = JSON.stringify([...existing, { originalKey, type, data }]);
+      const next = JSON.stringify([...existing, { originalKey, type, data: data ?? null }]);
       localStorage.setItem(ORPHANED_RECORDS_KEY, next);
       storageSetItem(ORPHANED_RECORDS_KEY, next);
     } catch {}
   };
-  const { customSubjects, customWards, userAddedSubjects, presetWardSchedule, subjectMode, changeSubjectMode, setWhatsNewOpen, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned, getSubjectIdByName } = useCustomData();
-  const canonicalAttendanceKey = (type: 'subject' | 'ward', id: string | undefined, name: string, legacyData: unknown) => {
+  const { customSubjects, customWards, userAddedSubjects, presetWardSchedule, subjectMode, setWhatsNewOpen, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned, getSubjectIdByName } = useCustomData();
+  const canonicalAttendanceKey = (type: 'subject' | 'ward', id: string | undefined, name: string) => {
     if (id) return type === 'ward' ? getWardAttendanceKey(id) : getAcademicAttendanceKey(id);
-    quarantineUnresolvedAttendance(type, name, legacyData);
+    quarantineUnresolvedAttendance(type, name, null);
     return '';
   };
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -97,19 +99,26 @@ export default function Account() {
   const [snapshotToDelete, setSnapshotToDelete] = useState<Snapshot | null>(null);
   const [curriculumStatus, setCurriculumStatus] = useState<'Active' | 'Completed'>(() => (localStorage.getItem('att_curriculum_status') as 'Active' | 'Completed') || 'Active');
   const [restoreConfirmType, setRestoreConfirmType] = useState<'file' | 'transfer' | null>(null);
+  const [curricula, setCurricula] = useState<CurriculumRecord[]>(() => getCurricula());
+  const [activeCurriculumId, setActiveCurriculumIdState] = useState<string>(() => getActiveCurriculumId() || '');
+  const [newCurriculumName, setNewCurriculumName] = useState('');
+  const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
+  const [editingCurriculumName, setEditingCurriculumName] = useState('');
 
   const handleToggleCurriculumStatus = () => {
     const next = curriculumStatus === 'Active' ? 'Completed' : 'Active';
-    if (next === 'Completed') { setConfirmMarkComplete(true); return; }
+    if (next === 'Completed') { setConfirmMarkComplete(true); setShowSwitchDialog(true); return; }
     setCurriculumStatus('Active');
     localStorage.setItem('att_curriculum_status', 'Active');
+    if (activeCurriculumId) setCurricula(persistCurriculumStatus(activeCurriculumId, 'active'));
     import('sonner').then(({ toast }) => toast.info('Curriculum marked as Active.'));
   };
   const applyMarkComplete = () => {
     setConfirmMarkComplete(false);
     setCurriculumStatus('Completed');
     localStorage.setItem('att_curriculum_status', 'Completed');
-    createSnapshot(`Curriculum Completed (${subjectMode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine'})`);
+    if (activeCurriculumId) setCurricula(persistCurriculumStatus(activeCurriculumId, 'archived'));
+    createSnapshot('Curriculum Completed');
     setSnapshots(getSnapshots());
     import('sonner').then(({ toast }) => toast.success('Curriculum marked as Completed! Auto-snapshot saved.'));
   };
@@ -214,7 +223,7 @@ export default function Account() {
       if (!entities.some(e => e.isWard === isWard && e.name.toLowerCase() === name.toLowerCase() && e.isSGT === isSGT)) {
         const id = entityId || getSubjectIdByName(name, isWard ? 'clinical' : 'academic');
         if (!id && !isSGT) {
-          quarantineUnresolvedAttendance(isWard ? 'ward' : 'subject', name, isWard ? wards[`ward-${name}`] : subjects[name]);
+          quarantineUnresolvedAttendance(isWard ? 'ward' : 'subject', name, null);
         }
         const attendanceKey = isSGT && sgtId
           ? getSGTKey(sgtId)
@@ -286,14 +295,13 @@ export default function Account() {
     if (subjectMode === 'preloaded') {
       for (const cat of CATEGORIES) for (const sub of cat.subjects) {
         const id = getSubjectIdByName(sub.name, 'academic');
-        const legacyData = !id ? subjects[sub.name] : undefined;
-        if (!id) quarantineUnresolvedAttendance('subject', sub.name, legacyData);
+        if (!id) quarantineUnresolvedAttendance('subject', sub.name, null);
         const data = id ? subjects[getAcademicAttendanceKey(id)] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
         rawItems.push({ name: sub.name, category: cat.name, attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(sub.name) || 0 });
       }
       for (const s of INTEGRATED_SUBJECTS) {
         const id = getSubjectIdByName(s.name, 'academic');
-        if (!id) quarantineUnresolvedAttendance('subject', s.name, subjects[s.name]);
+        if (!id) quarantineUnresolvedAttendance('subject', s.name, null);
         const data = id ? subjects[getAcademicAttendanceKey(id)] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
         rawItems.push({ name: s.name, category: 'Academic', attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(s.name) || 0 });
       }
@@ -303,21 +311,21 @@ export default function Account() {
           const data = subjects[sgtKey] || { attended: 0, missed: 0 };
           rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || 0, sgtId: ua.id });
         } else {
-          const key = canonicalAttendanceKey('subject', ua.id || getSubjectIdByName(ua.name, 'academic'), ua.name, subjects[ua.name]);
+          const key = canonicalAttendanceKey('subject', ua.id || getSubjectIdByName(ua.name, 'academic'), ua.name);
           const data = key ? subjects[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
           rawItems.push({ name: ua.name, category: 'Added by you', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || getSubjectPlannedTotal(ua.name) || 0 });
         }
       }
       const addedWards = new Set<string>();
       for (const w of WARD_SUBJECTS) {
-        const key = canonicalAttendanceKey('ward', getSubjectIdByName(w.name, 'clinical'), w.name, wards[`ward-${w.name}`]);
+        const key = canonicalAttendanceKey('ward', getSubjectIdByName(w.name, 'clinical'), w.name);
         const data = key ? wards[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
         rawItems.push({ name: `${w.name} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(w.name) || 0, isWard: true });
         addedWards.add(w.name.toLowerCase());
       }
       for (const e of presetWardSchedule) {
         if (!addedWards.has(e.ward.toLowerCase())) {
-          const key = canonicalAttendanceKey('ward', getSubjectIdByName(e.ward, 'clinical'), e.ward, wards[`ward-${e.ward}`]);
+          const key = canonicalAttendanceKey('ward', getSubjectIdByName(e.ward, 'clinical'), e.ward);
           const data = key ? wards[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
           rawItems.push({ name: `${e.ward} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(e.ward) || 0, isWard: true });
           addedWards.add(e.ward.toLowerCase());
@@ -330,13 +338,13 @@ export default function Account() {
           const data = subjects[sgtKey] || { attended: 0, missed: 0 };
           rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || 0, sgtId: cs.id });
         } else {
-          const key = canonicalAttendanceKey('subject', cs.id || getSubjectIdByName(cs.name, 'academic'), cs.name, subjects[cs.name]);
+          const key = canonicalAttendanceKey('subject', cs.id || getSubjectIdByName(cs.name, 'academic'), cs.name);
           const data = key ? subjects[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
           rawItems.push({ name: cs.name, category: cs.category || 'Custom Subject', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || getSubjectPlannedTotal(cs.name) || 0 });
         }
       }
       for (const cw of customWards) {
-        const key = canonicalAttendanceKey('ward', cw.id || getSubjectIdByName(cw.name, 'clinical'), cw.name, wards[`ward-${cw.name}`]);
+        const key = canonicalAttendanceKey('ward', cw.id || getSubjectIdByName(cw.name, 'clinical'), cw.name);
         const data = key ? wards[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
         rawItems.push({ name: `${cw.name} (Ward)`, category: 'Custom Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getCustomWardTotalPlanned(cw.startDate, cw.endDate) || 0, isWard: true });
       }
@@ -415,7 +423,7 @@ export default function Account() {
     setBusy('Exporting…');
     try {
       if (exportFormat === 'pdf') await generatePDFReport(reportOptions);
-      else if (exportFormat === 'excel') generateExcelReport(reportOptions);
+      else if (exportFormat === 'excel') await generateExcelReport(reportOptions);
       else if (exportFormat === 'csv') generateCSVReport(reportOptions);
       import('sonner').then(({ toast }) => toast.success('Report exported.'));
     } finally { setBusy(null); }
@@ -491,8 +499,8 @@ export default function Account() {
     setSnapshotMsg('✓ Snapshot created successfully!');
     setTimeout(() => setSnapshotMsg(''), 3000);
   };
-  const handleRestoreSnapshot = (id: string) => {
-    if (restoreSnapshot(id)) {
+  const handleRestoreSnapshot = async (id: string) => {
+    if (await restoreSnapshot(id)) {
       setSnapshotMsg('✓ Snapshot restored! Refreshing page...');
       setLocation('/');
       setTimeout(() => window.location.reload(), 1500);
@@ -526,8 +534,6 @@ export default function Account() {
   };
 
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
-  const [switchStep, setSwitchStep] = useState<'warning' | 'final' | 'backup_found'>('warning');
-  const [pendingMode, setPendingMode] = useState<SubjectMode | null>(null);
   const [isDark, setIsDark] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const savedTheme = localStorage.getItem('theme');
@@ -543,39 +549,48 @@ export default function Account() {
     if (nextDark) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); }
     else { document.documentElement.classList.remove('dark'); localStorage.setItem('theme', 'light'); }
   };
-  const getSnapshotIdKey = (mode: SubjectMode) => `att_curriculum_snapshot_id_${mode}`;
-  const initiateSwitch = (newMode: SubjectMode) => {
-    setPendingMode(newMode);
-    const snapshotId = localStorage.getItem(getSnapshotIdKey(newMode));
-    if (snapshotId && getSnapshots().some(s => s.id === snapshotId)) setSwitchStep('backup_found'); else setSwitchStep('warning');
+  const openCurriculumManager = () => {
+    setConfirmMarkComplete(false);
+    setCurricula(getCurricula());
+    setActiveCurriculumIdState(getActiveCurriculumId() || '');
     setShowSwitchDialog(true);
   };
-  const handleRestoreFromSnapshot = () => {
-    if (!pendingMode) return;
-    const snapshotId = localStorage.getItem(getSnapshotIdKey(pendingMode));
-    if (snapshotId && restoreSnapshot(snapshotId)) {
-      changeSubjectMode(pendingMode);
-      setShowSwitchDialog(false);
-      setPendingMode(null);
-      import('sonner').then(({ toast }) => toast.success(`Restored ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine backup.`));
-      window.location.reload();
+  const handleCreateCurriculum = () => {
+    try {
+      const created = createCurriculum(newCurriculumName);
+      setNewCurriculumName('');
+      setCurricula(getCurricula());
+      import('sonner').then(({ toast }) => toast.success(`${created.name} created empty. Use AddNew Import if you want to bring in a routine structure.`));
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not create curriculum.'));
     }
   };
-  const executeSwitch = () => {
-    if (!pendingMode) return;
-    const oldCurriculumName = subjectMode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine';
-    createSnapshot(`Archived Curriculum (${oldCurriculumName})`);
-    createSnapshot(`Archived Curriculum (${oldCurriculumName})`);
-    const latest = getSnapshots()[0];
-    if (latest) { localStorage.setItem(getSnapshotIdKey(subjectMode), latest.id); storageSetItem(getSnapshotIdKey(subjectMode), latest.id); }
-    localStorage.setItem('att_curriculum_status', 'Active');
-    setCurriculumStatus('Active');
-    changeSubjectMode(pendingMode);
-    setShowSwitchDialog(false);
-    setPendingMode(null);
-    setSnapshots(getSnapshots());
-    import('sonner').then(({ toast }) => toast.success(`Switched to ${pendingMode === 'preloaded' ? 'Preset' : 'Custom'} routine. Previous records archived in Snapshots.`));
-    window.location.reload();
+  const handleActivateCurriculum = (id: string) => {
+    if (id === activeCurriculumId) return;
+    try {
+      activateCurriculum(id);
+      setShowSwitchDialog(false);
+      import('sonner').then(({ toast }) => toast.success('Curriculum switched.'));
+      window.location.reload();
+    } catch {
+      import('sonner').then(({ toast }) => toast.error('Could not switch curriculum.'));
+    }
+  };
+  const handleRenameCurriculum = (id: string) => {
+    try {
+      setCurricula(renameCurriculum(id, editingCurriculumName));
+      setEditingCurriculumId(null);
+      setEditingCurriculumName('');
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not rename curriculum.'));
+    }
+  };
+  const handleArchiveCurriculum = (id: string) => {
+    if (id === activeCurriculumId) {
+      import('sonner').then(({ toast }) => toast.info('Switch to another curriculum before archiving this one.'));
+      return;
+    }
+    setCurricula(persistCurriculumStatus(id, 'archived'));
   };
   const detectGender = (name: string): 'male' | 'female' | 'neutral' => {
     if (!name || name.length < 2) return 'neutral';
@@ -616,17 +631,20 @@ export default function Account() {
   };
 
   const [backupTransferOpen, setBackupTransferOpen] = useState(false);
+  useEffect(() => {
+    const modalOpen = Boolean(showDeleteDataDialog || showUpdatePrompt || pendingPct !== null || confirmMarkComplete || snapshotToRestore || snapshotToDelete || activeSettingModal || showSwitchDialog || backupTransferOpen || restoreConfirmType);
+    if (!modalOpen) return;
+    lockScroll();
+    return () => unlockScroll();
+  }, [showDeleteDataDialog, showUpdatePrompt, pendingPct, confirmMarkComplete, snapshotToRestore, snapshotToDelete, activeSettingModal, showSwitchDialog, backupTransferOpen, restoreConfirmType]);
 
   return (
     <Layout>
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl mx-auto space-y-6 pb-6">
-        <div>
-          <h1 className="text-lg font-extrabold text-foreground leading-tight">Profile, Preferences & Data Management</h1>
-        </div>
-
-        {/* 1. Identity Card */}
-        <div className="relative flex items-center justify-between bg-card border border-border rounded-3xl p-5 shadow-sm">
-          <div className="flex items-center gap-4">
+      <div className="max-w-xl mx-auto space-y-3 pb-6">
+        {/* 1. Active Account */}
+        <div className="space-y-2">
+          <StickySectionLabel label="Active Account" zClass="z-30" />
+          <div className="relative flex items-center gap-4 bg-card border border-border rounded-3xl p-5 shadow-sm">
             <div className="relative w-16 h-16 rounded-2xl group cursor-pointer active:scale-95 transition-transform shrink-0" onClick={handleImageClick}>
               <div className="w-full h-full rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden border border-primary/20 relative">
                 <AnimatePresence mode="wait">
@@ -641,33 +659,32 @@ export default function Account() {
               </div>
               <input type="file" ref={fileInputRef} onChange={handleImageChange} className="hidden" accept="image/png, image/jpeg, image/jpg, image/webp, image/*" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Active Account</p>
+            <div className="flex-1 min-w-0 space-y-0.5">
               {isEditingName ? (
-                <div className="flex items-center gap-1.5 mt-1">
+                <div className="flex items-center gap-1.5">
                   <input type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); }} className="bg-muted px-2.5 py-1 rounded-xl text-sm font-bold text-foreground outline-none border border-primary/50 focus:ring-2 focus:ring-primary/20 w-full max-w-[180px]" autoFocus />
                   <button onClick={handleSaveName} className="w-7 h-7 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold shrink-0 hover:opacity-90 active:scale-95 transition-all cursor-pointer" title="Save Name">
                     <Check className="w-4 h-4" />
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 mt-0.5 group cursor-pointer" onClick={() => setIsEditingName(true)}>
-                  <p className="font-extrabold text-xl sm:text-2xl text-foreground truncate">{username}</p>
-                  <button type="button" className="w-6 h-6 rounded-lg bg-muted/60 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-all shrink-0 cursor-pointer" title="Edit Name">
-                    <Pencil className="w-3 h-3" />
-                  </button>
+                <div className="flex items-center gap-2 min-w-0">
+                  <button type="button" onClick={() => setIsEditingName(true)} className="min-w-0 truncate text-left font-extrabold text-xl sm:text-2xl text-foreground cursor-pointer">{username}</button>
+                  <button type="button" onClick={() => setIsEditingName(true)} className="shrink-0 text-[10px] font-semibold text-primary hover:underline cursor-pointer" title="Edit Name">Edit</button>
                 </div>
               )}
+              <p className="text-[10px] text-muted-foreground truncate">{getActiveCurriculumName()}</p>
+              <p className="text-[10px] italic leading-snug text-muted-foreground/80">The differential is long; your attendance record is watching.</p>
             </div>
+            <button onClick={toggleTheme} className="w-10 h-10 rounded-2xl bg-muted/60 hover:bg-muted flex items-center justify-center text-foreground transition-all active:scale-95 shadow-sm border border-border/50 shrink-0 cursor-pointer" title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}>
+              <span className="text-[10px] font-extrabold uppercase tracking-wide">{isDark ? 'Light' : 'Dark'}</span>
+            </button>
           </div>
-          <button onClick={toggleTheme} className="w-10 h-10 rounded-2xl bg-muted/60 hover:bg-muted flex items-center justify-center text-foreground transition-all active:scale-95 shadow-sm border border-border/50 shrink-0 cursor-pointer" title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}>
-            {isDark ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-700" />}
-          </button>
         </div>
 
         {/* 2. Preference & Statistic */}
         <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Preference & Statistic</p>
+          <StickySectionLabel label="Preference & Statistic" zClass="z-30" />
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
             <button type="button" onClick={() => setActiveSettingModal('preferredPc')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
               <div className="flex items-center gap-3">
@@ -682,7 +699,7 @@ export default function Account() {
                 <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
               </div>
             </button>
-            <button type="button" onClick={() => setActiveSettingModal('curriculum')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
+            <button type="button" onClick={() => openCurriculumManager() } className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
               <div className="flex items-center gap-3">
                 <div className="w-8.5 h-8.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><GraduationCap className="w-4.5 h-4.5" /></div>
                 <div>
@@ -699,8 +716,8 @@ export default function Account() {
         </div>
 
         {/* 3. Other Settings */}
-        <div className="space-y-2 pt-2">
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Other Setting</p>
+        <div className="space-y-2">
+          <StickySectionLabel label="Other Setting" offsetClass="top-[calc(var(--app-header-height)+2rem)]" zClass="z-20" />
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
             <button
               type="button"
@@ -761,7 +778,7 @@ export default function Account() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 overflow-y-auto"
                 onClick={() => setBackupTransferOpen(false)}
               >
                 <motion.div
@@ -769,7 +786,7 @@ export default function Account() {
                   animate={{ scale: 1, opacity: 1, y: 0 }}
                   exit={{ scale: 0.92, opacity: 0, y: 10 }}
                   transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                  className="bg-card border border-border rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 text-left relative"
+                  className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-lg max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center justify-between border-b border-border/50 pb-3">
@@ -931,8 +948,8 @@ export default function Account() {
 
           <AnimatePresence>
             {activeSettingModal && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto" onClick={() => setActiveSettingModal(null)}>
-                <motion.div initial={{ scale: 0.92, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.92, opacity: 0, y: 10 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="bg-card border border-border rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 text-left relative" onClick={(e) => e.stopPropagation()}>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 overflow-y-auto" onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
+                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-lg max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-between border-b border-border/50 pb-3">
                     <div className="flex items-center gap-3">
                       {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
@@ -957,7 +974,7 @@ export default function Account() {
                         </p>
                       </div>
                     </div>
-                    <button type="button" onClick={() => setActiveSettingModal(null)} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0" title="Close">
+                    <button type="button" onClick={() => { setActiveSettingModal(null); setPendingPct(null); }} className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0" title="Close">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -981,9 +998,14 @@ export default function Account() {
                             ))}
                           </div>
                         </div>
-                        <div className="pt-2 flex justify-end">
-                          <button type="button" onClick={() => setActiveSettingModal(null)} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all cursor-pointer">Save & Close</button>
-                        </div>
+                        {pendingPct !== null && (
+                          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-left space-y-2">
+                            <p className="text-xs font-bold text-foreground">Apply {pendingPct}% target?</p>
+                            <p className="text-[11px] text-muted-foreground">All subjects and wards in this curriculum will use this threshold.</p>
+                            <div className="flex gap-2"><button type="button" onClick={() => setPendingPct(null)} className="flex-1 py-2 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={() => { setPreferredPercentage(pendingPct); setPendingPct(null); }} className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold cursor-pointer">Apply</button></div>
+                          </div>
+                        )}
+                        {pendingPct === null && <div className="pt-2 flex justify-end"><button type="button" onClick={() => setActiveSettingModal(null)} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all cursor-pointer">Save & Close</button></div>}
                       </div>
                     )}
                     {activeSettingModal === 'curriculum' && (
@@ -991,11 +1013,11 @@ export default function Account() {
                         <div className="grid grid-cols-1 gap-2 bg-muted/30 p-3.5 rounded-2xl border border-border/50">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-medium text-muted-foreground">Current Curriculum:</span>
-                            <span className="text-xs font-bold text-foreground">{subjectMode === 'preloaded' ? 'MBBS 5th Year Curriculum' : 'Custom Academic Routine'}</span>
+                            <span className="text-xs font-bold text-foreground">{getActiveCurriculumName()}</span>
                           </div>
                           <div className="flex items-center justify-between pt-1 border-t border-border/30">
                             <span className="text-xs font-medium text-muted-foreground">Current Routine Mode:</span>
-                            <span className="text-xs font-bold text-primary">{subjectMode === 'preloaded' ? 'Preset Routine' : 'Custom Routine'}</span>
+                            <span className="text-xs font-bold text-primary">{subjectMode === 'preloaded' ? '5th Year / Final Phase structure' : 'User-created structure'}</span>
                           </div>
                           <div className="flex items-center justify-between pt-1 border-t border-border/30">
                             <span className="text-xs font-medium text-muted-foreground">Curriculum Status:</span>
@@ -1007,7 +1029,7 @@ export default function Account() {
                             <CheckCircle2 className="w-4 h-4" />
                             <span>{curriculumStatus === 'Completed' ? 'Mark as Active' : 'Mark Curriculum as Completed'}</span>
                           </button>
-                          <button type="button" onClick={() => { setActiveSettingModal(null); initiateSwitch(subjectMode === 'preloaded' ? 'custom' : 'preloaded'); }} className="py-3 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer">
+                          <button type="button" onClick={() => { setActiveSettingModal(null); openCurriculumManager(); }} className="py-3 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer">
                             <ArrowRightLeft className="w-4 h-4" />
                             <span>Change Curriculum</span>
                           </button>
@@ -1016,6 +1038,20 @@ export default function Account() {
                     )}
                     {activeSettingModal === 'snapshot' && (
                       <div className="space-y-3">
+                        {snapshotToRestore ? (
+                          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left space-y-3">
+                            <h4 className="text-sm font-bold text-foreground">Restore this snapshot?</h4>
+                            <p className="text-xs text-muted-foreground leading-relaxed">{snapshotToRestore.label} · {snapshotToRestore.timestamp}. Current data will be replaced by this backup point.</p>
+                            <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToRestore(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={() => { const id = snapshotToRestore.id; setSnapshotToRestore(null); handleRestoreSnapshot(id); }} className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold cursor-pointer">Restore</button></div>
+                          </div>
+                        ) : snapshotToDelete ? (
+                          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-left space-y-3">
+                            <h4 className="text-sm font-bold text-foreground">Delete this snapshot?</h4>
+                            <p className="text-xs text-muted-foreground leading-relaxed">This removes only the selected snapshot. Your active curriculum data is not changed.</p>
+                            <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToDelete(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={handleDeleteSnapshot} className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold cursor-pointer">Delete</button></div>
+                          </div>
+                        ) : (
+                        <>
                         <div className="flex items-center justify-between bg-muted/30 p-2.5 rounded-xl border border-border/50">
                           <span className="text-xs font-medium text-foreground">Create instant state snapshot</span>
                           <button type="button" onClick={handleTakeSnapshot} className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold rounded-xl transition-all active:scale-[0.97] cursor-pointer">+ Take Snapshot</button>
@@ -1056,6 +1092,8 @@ export default function Account() {
                           </div>
                         )}
                         {snapshotMsg && (<p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{snapshotMsg}</p>)}
+                        </>
+                        )}
                       </div>
                     )}
                     {activeSettingModal === 'export' && (
@@ -1113,11 +1151,11 @@ export default function Account() {
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="text-[10px] font-bold text-muted-foreground block mb-1">Start Date</label>
-                              <input type="date" value={exportStartDate} onChange={(e) => setExportStartDate(e.target.value)} className="w-full bg-muted/50 border border-border/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-foreground" />
+                              <input type="date" value={exportStartDate} onChange={(e) => setExportStartDate(e.target.value)} className="w-full bg-muted/50 border border-border/80 rounded-xl px-2.5 py-1.5 text-center text-xs font-semibold text-foreground" />
                             </div>
                             <div>
                               <label className="text-[10px] font-bold text-muted-foreground block mb-1">End Date</label>
-                              <input type="date" value={exportEndDate} onChange={(e) => setExportEndDate(e.target.value)} className="w-full bg-muted/50 border border-border/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-foreground" />
+                              <input type="date" value={exportEndDate} onChange={(e) => setExportEndDate(e.target.value)} className="w-full bg-muted/50 border border-border/80 rounded-xl px-2.5 py-1.5 text-center text-xs font-semibold text-foreground" />
                             </div>
                           </div>
                         )}
@@ -1142,6 +1180,14 @@ export default function Account() {
                     )}
                     {activeSettingModal === 'dataProtection' && (
                       <div className="space-y-3 text-left">
+                        {showDeleteDataDialog ? (
+                          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 space-y-3">
+                            <h4 className="text-sm font-bold text-foreground">Delete All App Data?</h4>
+                            <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases attendance, routines, snapshots, profile data, target settings, and setup state. Export a backup first if you are unsure.</p>
+                            <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={handleDeleteAllData} className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold cursor-pointer">Yes, Delete Everything</button></div>
+                          </div>
+                        ) : (
+                        <>
                         <p className="text-xs text-muted-foreground leading-relaxed">
                           {runtimeStorageInfo.isPersistent
                             ? "Persistent local storage is active. Your records are protected against browser cache eviction."
@@ -1182,6 +1228,8 @@ export default function Account() {
                             <strong className="text-foreground font-bold">Privacy & Storage Note:</strong> Your attendance logs and schedules are stored 100% locally on this device. Browsers may clear un-persisted cache if device storage becomes low. Regular backups are recommended.
                           </div>
                         </div>
+                        </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1236,35 +1284,13 @@ export default function Account() {
             </div>
             <ChevronRight className="w-4 h-4 text-destructive/70 group-hover:translate-x-0.5 transition-transform" />
           </div>
-        </div>
-      </motion.div>
-
-      {/* All dialogs remain as before */}
-      <AnimatePresence>
-        {snapshotToDelete && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setSnapshotToDelete(null); }}>
-            <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }} className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-rose-500/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-rose-500" /></div>
-                <div>
-                  <h3 className="text-base font-bold text-foreground leading-tight">Delete this snapshot?</h3>
-                  <p className="text-[11px] text-muted-foreground font-medium">{snapshotToDelete.label} · {snapshotToDelete.timestamp}</p>
                 </div>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">This backup point will be permanently removed. Restoring to it will no longer be possible.</p>
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setSnapshotToDelete(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
-                <button type="button" onClick={handleDeleteSnapshot} className="flex-1 py-2.5 rounded-xl bg-rose-500 text-white text-xs font-extrabold hover:opacity-90 transition-all cursor-pointer">Delete Snapshot</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      </div>
+      {/* All dialogs remain as before */}
       <AnimatePresence>
         {showUpdatePrompt && isUpdateAvailable && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowUpdatePrompt(false); }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 0, opacity: 1 }} className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 0, opacity: 1 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20"><Download className="w-5 h-5 text-amber-500" /></div>
                 <div className="text-left">
@@ -1287,8 +1313,8 @@ export default function Account() {
 
       <AnimatePresence>
         {updatePhase !== 'none' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-card border border-border rounded-3xl p-8 w-full max-w-xs shadow-2xl flex flex-col items-center gap-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-end sm:items-center justify-center p-4">
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
               {updatePhase === 'backing' ? (
                 <>
                   <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin" />
@@ -1309,32 +1335,11 @@ export default function Account() {
 
       <AnimatePresence>
         {showDeleteDataDialog && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-destructive/20 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div>
-                <div>
-                  <h3 className="text-lg font-bold text-foreground leading-tight">Delete All App Data?</h3>
-                  <p className="text-[11px] text-destructive font-semibold">Irreversible Action</p>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <p className="text-xs text-muted-foreground font-bold uppercase tracking-wide">This permanently erases — no undo:</p>
-                <p className="text-[10px] text-amber-500 font-semibold">Export a backup first if you are unsure.</p>
-                {[
-                  'Every attended / missed / off mark you ever recorded',
-                  'All subjects, wards & rotations you added or edited',
-                  'All snapshots & backup points saved on this device',
-                  'Your profile name, photo, target % and theme',
-                  'The setup state — the app reopens at the welcome screen',
-                ].map((l, i) => (
-                  <p key={i} className="text-[11px] text-foreground bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-1.5">{l}</p>
-                ))}
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowDeleteDataDialog(false)} className="flex-1 py-3 rounded-2xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
-                <button onClick={handleDeleteAllData} className="flex-1 py-3 rounded-2xl bg-destructive text-destructive-foreground text-xs font-extrabold hover:bg-destructive/90 transition-all shadow-md cursor-pointer">Yes, Delete Everything</button>
-              </div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/65 backdrop-blur-md z-[150] flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
+            <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} transition={{ type: 'spring', damping: 26, stiffness: 300 }} className="bg-card/90 backdrop-blur-2xl border border-destructive/30 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
+              <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-destructive/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div><div><h3 className="text-base font-bold text-foreground">Delete All App Data?</h3><p className="text-[11px] text-destructive font-semibold">Irreversible action</p></div></div>
+              <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases attendance records, routines, snapshots, profile data, target settings, and setup state. Export a backup first if you are unsure.</p>
+              <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={handleDeleteAllData} className="flex-1 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold cursor-pointer">Yes, Delete Everything</button></div>
             </motion.div>
           </motion.div>
         )}
@@ -1342,95 +1347,58 @@ export default function Account() {
 
       <AnimatePresence>
         {showSwitchDialog && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowSwitchDialog(false); }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="bg-card border border-border rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4">
-              {switchStep === 'backup_found' ? (
-                <>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><RefreshCw className="w-5 h-5 text-primary" /></div>
-                    <div className="text-left">
-                      <h3 className="text-base font-bold text-foreground">Backup Found</h3>
-                      <p className="text-[11px] text-muted-foreground font-medium">Saved Routine State</p>
-                    </div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
+            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="w-5 h-5 text-primary" /></div>
+                  <div className="text-left"><h3 className="text-base font-bold text-foreground">Curriculum Management</h3><p className="text-[11px] text-muted-foreground">Choose where your routine and attendance belong</p></div>
+                </div>
+                <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); }} className="w-8 h-8 rounded-full hover:bg-muted/40 flex items-center justify-center cursor-pointer"><X className="w-4 h-4" /></button>
+              </div>
+              {confirmMarkComplete ? (
+                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left space-y-3">
+                  <h4 className="text-sm font-bold text-foreground">Mark curriculum as Completed?</h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">An auto-snapshot of the current records will be saved first, so nothing is lost.</p>
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={() => setConfirmMarkComplete(false)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
+                    <button type="button" onClick={applyMarkComplete} className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer">Mark Completed</button>
                   </div>
-                  <p className="text-muted-foreground text-xs text-left leading-relaxed">A backup for your <strong className="text-foreground">{pendingMode === 'preloaded' ? 'Preset' : 'Custom'} Routine</strong> was found. Would you like to restore it?</p>
-                  <div className="flex flex-col gap-2 pt-1">
-                    <button onClick={handleRestoreFromSnapshot} className="w-full py-3 rounded-2xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-all cursor-pointer shadow-sm">Restore Backup</button>
-                    <button onClick={() => setSwitchStep('warning')} className="w-full py-2.5 rounded-2xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Start Fresh</button>
-                    <button onClick={() => setShowSwitchDialog(false)} className="w-full py-2 text-muted-foreground text-xs font-medium hover:text-foreground transition-colors cursor-pointer">Cancel</button>
-                  </div>
-                </>
+                </div>
               ) : (
-                <>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20"><ArrowRightLeft className="w-5 h-5 text-primary" /></div>
-                    <div className="text-left">
-                      <h3 className="text-base font-bold text-foreground leading-tight">Switch Routine Mode?</h3>
-                      <p className="text-[11px] text-muted-foreground font-medium">Start New Curriculum</p>
+              <>
+              <div className="space-y-2">
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Active curricula</p>
+                {curricula.filter(c => c.status === 'active').map(c => (
+                  <div key={c.id} className={cn('rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60')}>
+                    <div className="flex items-center justify-between gap-2">
+                      <button type="button" onClick={() => handleActivateCurriculum(c.id)} className="min-w-0 flex-1 text-left cursor-pointer">
+                        <p className="text-sm font-bold text-foreground truncate">{c.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{c.id === activeCurriculumId ? 'Currently selected' : 'Select this curriculum to return to it'}</p>
+                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button type="button" onClick={() => { setEditingCurriculumId(c.id); setEditingCurriculumName(c.name); }} className="w-8 h-8 rounded-xl hover:bg-muted/40 flex items-center justify-center cursor-pointer" aria-label={`Rename ${c.name}`}><Pencil className="w-3.5 h-3.5 text-muted-foreground" /></button>
+                        {editingCurriculumId === c.id && <button type="button" onClick={() => handleRenameCurriculum(c.id)} className="text-[10px] font-bold text-primary cursor-pointer">Save</button>}
+                      </div>
                     </div>
+                    {editingCurriculumId === c.id && <input autoFocus value={editingCurriculumName} onChange={e => setEditingCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRenameCurriculum(c.id); }} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary" />}
                   </div>
-                  <div className="bg-muted/30 p-3.5 rounded-2xl border border-border/50 text-left space-y-2">
-                    <p className="text-xs text-foreground font-medium leading-relaxed">Changing Routine Mode will start a new curriculum.</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">Your previous attendance records will be <strong className="text-emerald-500 font-bold">archived</strong> and remain available through Backup/Snapshots.</p>
-                  </div>
-                  <p className="text-xs font-semibold text-foreground text-left">Do you want to continue?</p>
-                  <div className="flex flex-col gap-2 pt-1">
-                    <button type="button" onClick={executeSwitch} className="w-full py-3 rounded-2xl bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer">
-                      <CheckCircle2 className="w-4 h-4" /><span>Continue & Switch Curriculum</span>
-                    </button>
-                    <button type="button" onClick={() => setShowSwitchDialog(false)} className="w-full py-2.5 rounded-2xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
-                  </div>
-                </>
+                ))}
+              </div>
+              {curricula.some(c => c.status === 'archived') && <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Archived curricula</p>{curricula.filter(c => c.status === 'archived').map(c => <div key={c.id} className="rounded-2xl border border-border/60 p-3 flex items-center gap-2"><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="flex-1 min-w-0 text-left cursor-pointer"><p className="text-sm font-bold text-foreground truncate">{c.name}</p><p className="text-[10px] text-muted-foreground">Reopen this curriculum with all its saved data</p></button><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="text-[10px] font-bold text-primary cursor-pointer">Reopen</button></div>)}</div>}
+              <div className="border-t border-border/50 pt-4 space-y-2">
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Create empty curriculum</p>
+                <p className="text-[10px] text-muted-foreground text-left leading-relaxed">It starts empty. If you want another routine structure, create it first and use Import in AddNew.</p>
+                <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. Phase 1 / 3rd Year" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="rounded-xl bg-primary px-3 py-2.5 text-primary-foreground text-xs font-bold flex items-center gap-1.5 cursor-pointer"><Plus className="w-3.5 h-3.5" />Create</button></div>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">{curricula.filter(c => c.status === 'active' && c.id !== activeCurriculumId).map(c => <button key={`archive-${c.id}`} type="button" onClick={() => handleArchiveCurriculum(c.id)} className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-[10px] font-semibold text-muted-foreground hover:text-foreground cursor-pointer"><Archive className="w-3.5 h-3.5" />Archive {c.name}</button>)}</div>
+              </>
               )}
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {pendingPct !== null && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }} className="bg-card border border-border rounded-3xl p-6 w-full max-w-xs shadow-2xl space-y-3">
-              <h3 className="text-sm font-bold text-foreground">Apply {pendingPct}% target?</h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">All subjects & wards will use {pendingPct}% as the attendance threshold.</p>
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setPendingPct(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
-                <button type="button" onClick={() => { setPreferredPercentage(pendingPct); setPendingPct(null); }} className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all cursor-pointer">Apply</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {confirmMarkComplete && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }} className="bg-card border border-border rounded-3xl p-6 w-full max-w-xs shadow-2xl space-y-3">
-              <h3 className="text-sm font-bold text-foreground">Mark curriculum as Completed?</h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">An auto-snapshot of your current records will be saved first, so nothing is lost.</p>
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setConfirmMarkComplete(false)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
-                <button type="button" onClick={applyMarkComplete} className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-all cursor-pointer">Mark Completed</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {snapshotToRestore && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }} className="bg-card border border-border rounded-3xl p-6 w-full max-w-xs shadow-2xl space-y-3">
-              <h3 className="text-sm font-bold text-foreground">Restore this snapshot?</h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">{snapshotToRestore.label} · {snapshotToRestore.timestamp}. Current data will be replaced by this backup point.</p>
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setSnapshotToRestore(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer">Cancel</button>
-                <button type="button" onClick={() => { const id = snapshotToRestore.id; setSnapshotToRestore(null); handleRestoreSnapshot(id); }} className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all cursor-pointer">Restore</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </Layout>
   );
 }

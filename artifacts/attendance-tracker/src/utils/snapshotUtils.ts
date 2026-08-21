@@ -1,4 +1,6 @@
-import { storageSetItem, storageRemoveItem } from '@/lib/idb';
+import { idbRemove, idbSet, storageSetItem, storageRemoveItem } from '@/lib/idb';
+
+import { CURRICULUM_KEYS, getActiveCurriculumName } from '@/lib/curriculumStore';
 
 export interface Snapshot {
   id: string;
@@ -78,7 +80,7 @@ export function createSnapshot(label: string = 'Auto Snapshot'): void {
     const newSnapshot: Snapshot = {
       id: Date.now().toString(),
       timestamp: `${formatDateDDMMYY()} ${timeStr}`,
-      label,
+      label: `${getActiveCurriculumName()} — ${label}`,
       data
     };
 
@@ -99,7 +101,7 @@ export function createSnapshot(label: string = 'Auto Snapshot'): void {
 export function snapshotDayComplete(isComplete: boolean): void {
   try {
     const todayStr = formatDateDDMMYY();
-    const label = `Day Complete (${todayStr})`;
+      const label = `${getActiveCurriculumName()} — Day Complete (${todayStr})`;
     const LAST_DAY_COMPLETE_KEY = 'attendenz_last_day_complete_date';
 
     if (isComplete) {
@@ -167,7 +169,7 @@ export function snapshotBeforeEdit(actionName: string): void {
  * - Clears mode-specific attendance keys to avoid stale conflicts
  * - Removes mode-separation flag so migration can run again on next load
  */
-function prepareRestoreEnvironment(): void {
+async function prepareRestoreEnvironment(): Promise<void> {
   try {
     createSnapshot('Pre-Restore Safety');
 
@@ -175,17 +177,20 @@ function prepareRestoreEnvironment(): void {
       'attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'attendance_tracker_finished_map',
       'attendance_tracker_subjects_preset', 'attendance_tracker_ward_preset', 'attendance_tracker_home_selections_preset', 'attendance_tracker_finished_map_preset',
       'attendance_tracker_subjects_custom', 'attendance_tracker_ward_custom', 'attendance_tracker_home_selections_custom', 'attendance_tracker_finished_map_custom',
-      'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom',
+      'att_attendance_id_migration_v2_done_preloaded',       'att_attendance_id_migration_v2_done_custom',
       'att_mode_separation_done_v1',
+      CURRICULUM_KEYS.CURRICULA_KEY,
+      CURRICULUM_KEYS.ACTIVE_CURRICULUM_KEY,
+      CURRICULUM_KEYS.CURRICULUM_MIGRATION_KEY,
     ];
 
-    MODE_SPECIFIC_ATTENDANCE_KEYS.forEach(key => {
+    await Promise.all(MODE_SPECIFIC_ATTENDANCE_KEYS.map(async key => {
       localStorage.removeItem(key);
-      storageRemoveItem(key);
-    });
+      await idbRemove(key);
+    }));
 
     localStorage.removeItem('att_mode_separation_done_v1');
-    storageRemoveItem('att_mode_separation_done_v1');
+    await idbRemove('att_mode_separation_done_v1');
   } catch (err) {
      // console.error('Failed to prepare restore environment:', err);
   }
@@ -194,24 +199,24 @@ function prepareRestoreEnvironment(): void {
 /**
  * Restore a specific snapshot directly to localStorage and IndexedDB
  */
-export function restoreSnapshot(snapshotId: string): boolean {
+export async function restoreSnapshot(snapshotId: string): Promise<boolean> {
   try {
     const snapshots = getSnapshots();
     const target = snapshots.find(s => s.id === snapshotId);
     if (!target) return false;
 
     // Clear mode-specific keys and remove migration flag first
-    prepareRestoreEnvironment();
+    await prepareRestoreEnvironment();
 
-    Object.entries(target.data).forEach(([k, v]) => {
+    await Promise.all(Object.entries(target.data).map(async ([k, v]) => {
       localStorage.setItem(k, v);
-      storageSetItem(k, v);
-    });
+      await idbSet(k, v);
+    }));
 
     // Force startup migration after any snapshot restore, including newer snapshots.
     for (const flag of ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom']) {
       localStorage.removeItem(flag);
-      storageRemoveItem(flag);
+      await idbRemove(flag);
     }
 
     return true;
@@ -333,7 +338,7 @@ export async function shareDataAsJSON(): Promise<boolean> {
  */
 export function importDataFromJSON(file: File, callback: (success: boolean) => void): void {
   const reader = new FileReader();
-  reader.onload = (event) => {
+  reader.onload = async (event) => {
     try {
       const content = event.target?.result as string;
       const parsedData = JSON.parse(content);
@@ -343,20 +348,20 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
       }
 
       // Prepare environment: safety snapshot, clear mode-specific keys, remove migration flag
-      prepareRestoreEnvironment();
+      await prepareRestoreEnvironment();
 
-      for (const [key, value] of Object.entries(parsedData)) {
+      await Promise.all(Object.entries(parsedData).map(async ([key, value]) => {
         if (value !== null && value !== undefined) {
           const stringVal = typeof value === 'string' ? value : JSON.stringify(value);
           localStorage.setItem(key, stringVal);
-          storageSetItem(key, stringVal);
+          await idbSet(key, stringVal);
         }
-      }
+      }));
 
       // Force startup migration after any uploaded backup restore.
       for (const flag of ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom']) {
         localStorage.removeItem(flag);
-        storageRemoveItem(flag);
+        await idbRemove(flag);
       }
 
       callback(true);

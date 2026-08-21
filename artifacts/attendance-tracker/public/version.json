@@ -1,4 +1,4 @@
 {
-  "version": "4.3.2",
-  "summary": "Stable release with data migration, mode separation, calendar fixes, restore protection, and UI polish."
+  "version": "4.3.3",
+  "summary": "Preview release with responsive UI refinements, Custom-mode continuity, safer routine import, and smoother offline-first interactions."
 }

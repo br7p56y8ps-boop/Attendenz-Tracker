@@ -432,24 +432,21 @@ export default function Home() {
         </div>
       ) : undefined}
     >
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="space-y-4 pb-20"
-      >
+      <div className="-mt-6 flex h-[calc(100dvh-var(--app-header-height)-0.5rem)] min-h-0 flex-col">
         {/* ── Date Wheel ── */}
-        <div
-          ref={wheelContainerRef}
-          className="bg-card border border-border rounded-3xl shadow-sm select-none overflow-hidden"
-          style={{ height: '4rem' }}
-        >
+        <div className="sticky top-[calc(var(--app-header-height)+0.5rem)] z-40 bg-background pb-2 soft-entry-boundary">
+          <div
+            ref={wheelContainerRef}
+            className="bg-background border border-border rounded-3xl shadow-md select-none overflow-hidden"
+            style={{ height: '4rem' }}
+          >
           <div
             className="relative w-full h-full"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
-            style={{ touchAction: 'none' }}
+            style={{ touchAction: 'pan-y' }}
           >
             <div
               className="absolute top-0 bottom-0 flex items-center"
@@ -505,8 +502,10 @@ export default function Home() {
               })}
             </div>
           </div>
+          </div>
         </div>
 
+        <div className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain pb-0">
         {/* ── Content ── */}
         {!hasAnything ? (
           <div className="flex items-center justify-center min-h-[calc(100vh-280px)]">
@@ -581,7 +580,7 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <div className="space-y-4 pt-4">
+          <div className="space-y-4 pt-1">
             {dayEntries.map(entry => {
               if (entry.kind === 'holiday') {
                 return (
@@ -614,6 +613,7 @@ export default function Home() {
             })}
           </div>
         )}
+        </div>
 
         {/* ── Back to Today ── */}
         <AnimatePresence>
@@ -637,8 +637,8 @@ export default function Home() {
         {/* ── Update notice modal ── */}
         <AnimatePresence>
           {updateInfoOpen && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] flex items-center justify-center p-4" onClick={() => setUpdateInfoOpen(false)}>
-              <motion.div initial={{ scale: 0.92, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.92, opacity: 0, y: 10 }} className="bg-card border border-border rounded-3xl p-5 w-full max-w-sm shadow-2xl space-y-3" onClick={e => e.stopPropagation()}>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] flex items-end sm:items-center justify-center p-4" onClick={() => setUpdateInfoOpen(false)}>
+              <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold text-foreground">New Version Available <span className="text-emerald-400">(v{serverVersion})</span></h3>
                   <button type="button" onClick={() => setUpdateInfoOpen(false)} className="w-7 h-7 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-3.5 h-3.5" /></button>
@@ -663,7 +663,7 @@ export default function Home() {
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.div>
+      </div>
     </Layout>
   );
 }
