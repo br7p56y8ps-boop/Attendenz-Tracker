@@ -5,6 +5,24 @@ import { APP_VERSION } from '@/lib/appVersion';
 
 const base = import.meta.env.BASE_URL || '/';
 
+function isVersionNewer(candidate: string, current: string): boolean {
+  const a = String(candidate).split('.').map(n => parseInt(n, 10) || 0);
+  const b = String(current).split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] || 0) > (b[i] || 0)) return true;
+    if ((a[i] || 0) < (b[i] || 0)) return false;
+  }
+  return false;
+}
+
+function clearUpdateState(): void {
+  localStorage.removeItem('att_pwa_update_ready');
+  localStorage.removeItem('att_pwa_latest_version');
+  localStorage.removeItem('att_pwa_update_summary');
+  localStorage.setItem('att_app_version', APP_VERSION);
+  window.dispatchEvent(new CustomEvent('attendenz:update-cleared'));
+}
+
 /* ── Manual updates: permanent guard worker + version.json gate ── */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -16,11 +34,15 @@ if ('serviceWorker' in navigator) {
       const res = await fetch(`${base}version.json?ts=${Date.now()}`, { cache: 'no-store' });
       if (!res.ok) return;
       const j = await res.json();
-      if (j && typeof j.version === 'string' && j.version !== APP_VERSION) {
-        localStorage.setItem('att_pwa_update_ready', 'true');
-        localStorage.setItem('att_pwa_latest_version', j.version);
-        if (typeof j.summary === 'string') localStorage.setItem('att_pwa_update_summary', j.summary);
-        window.dispatchEvent(new CustomEvent('attendenz:update-ready'));
+      if (j && typeof j.version === 'string') {
+        if (isVersionNewer(j.version, APP_VERSION)) {
+          localStorage.setItem('att_pwa_update_ready', 'true');
+          localStorage.setItem('att_pwa_latest_version', j.version);
+          if (typeof j.summary === 'string') localStorage.setItem('att_pwa_update_summary', j.summary);
+          window.dispatchEvent(new CustomEvent('attendenz:update-ready'));
+        } else {
+          clearUpdateState();
+        }
       }
     } catch { /* offline — ignore */ }
   };
@@ -32,6 +54,8 @@ if ('serviceWorker' in navigator) {
 /* Account's Update button calls this: updates the cached shell directly, no SW activation */
 (window as any).attendenzApplyPwaUpdate = async () => {
   localStorage.removeItem('att_pwa_update_ready');
+  localStorage.removeItem('att_pwa_latest_version');
+  localStorage.removeItem('att_pwa_update_summary');
   try {
     const cache = await caches.open('attendenz-shell-v1');
     const indexUrl = `${base}index.html`;

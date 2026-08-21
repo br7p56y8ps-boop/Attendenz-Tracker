@@ -20,9 +20,22 @@ export function useUpdateFlow() {
     return stored;
   });
   const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
-  const [serverVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
-  const [serverSummary] = useState<string>(() => localStorage.getItem('att_pwa_update_summary') || '');
-  useEffect(() => { const on = () => setPwaReady(true); window.addEventListener('attendenz:update-ready', on); return () => window.removeEventListener('attendenz:update-ready', on); }, []);
+  const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
+  const [serverSummary, setServerSummary] = useState<string>(() => localStorage.getItem('att_pwa_update_summary') || '');
+  useEffect(() => {
+    const onReady = () => setPwaReady(true);
+    const onCleared = () => {
+      setPwaReady(false);
+      setServerVersion(APP_VERSION);
+      setServerSummary('');
+    };
+    window.addEventListener('attendenz:update-ready', onReady);
+    window.addEventListener('attendenz:update-cleared', onCleared);
+    return () => {
+      window.removeEventListener('attendenz:update-ready', onReady);
+      window.removeEventListener('attendenz:update-cleared', onCleared);
+    };
+  }, []);
   const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0 || (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
 
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -38,6 +51,8 @@ export function useUpdateFlow() {
 
   const applyUpdate = async (withBackup: boolean) => {
     localStorage.removeItem('att_pwa_update_ready');
+    localStorage.removeItem('att_pwa_latest_version');
+    localStorage.removeItem('att_pwa_update_summary');
     localStorage.setItem('att_just_updated', 'true');
     localStorage.removeItem('att_has_seen_welcome_v1');
     localStorage.removeItem('att_app_version');
