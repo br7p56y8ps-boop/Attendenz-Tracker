@@ -1,4 +1,4 @@
-export const APP_VERSION = '4.3.3';
+export const APP_VERSION = '4.3.3.1';
 export const LATEST_VERSION = APP_VERSION;
 
 export interface WhatsNewItem {
