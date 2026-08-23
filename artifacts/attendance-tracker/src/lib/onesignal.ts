@@ -1,5 +1,6 @@
 const ONESIGNAL_APP_ID = "f39e4256-309b-47cd-8f0f-f087b030fdaf";
-const PRODUCTION_ORIGIN = "https://benz-attendance-tracker.pages.dev";
+export const ONE_SIGNAL_PRODUCTION_ORIGIN =
+  "https://benz-attendance-tracker.pages.dev";
 const ONE_SIGNAL_SDK_URL =
   "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
 const ONE_SIGNAL_WORKER_PATH = "push/onesignal/OneSignalSDKWorker.js";
@@ -41,7 +42,7 @@ let clientPromise: Promise<OneSignalClientState | null> | null = null;
 export function isOneSignalConfiguredForCurrentOrigin(): boolean {
   return (
     typeof window !== "undefined" &&
-    window.location.origin === PRODUCTION_ORIGIN
+    window.location.origin === ONE_SIGNAL_PRODUCTION_ORIGIN
   );
 }
 
