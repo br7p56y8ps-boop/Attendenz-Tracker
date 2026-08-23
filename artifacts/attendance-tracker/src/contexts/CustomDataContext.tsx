@@ -10,6 +10,7 @@ import { storageSetItem, storageRemoveItem } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import { APP_VERSION } from '@/lib/appVersion';
+import { activateCurriculum, ensureCurriculumMigration, getCurriculumForKind, renameCurriculum } from '@/lib/curriculumStore';
 
 export interface CustomSubject {
   id: string;
@@ -280,99 +281,101 @@ const canonTime = (t?: string): { value?: string; changed: boolean } => {
   return { value: c, changed: c !== t };
 };
 
-function migrateStoredRoutines(): void {
+function migrateStoredRoutines(mode: 'preloaded' | 'custom'): void {
   try {
     const writes: Array<{ key: string; value: string }> = [];
 
-    const ptRaw = localStorage.getItem(PRESET_TIMETABLE_KEY);
-    if (ptRaw) {
-      const tt = JSON.parse(ptRaw);
-      let changed = false;
-      for (const key of Object.keys(tt || {})) {
-        const slots = (tt as Record<string, MutableSlot[]>)[key];
-        if (!Array.isArray(slots)) continue;
-        for (const slot of slots) {
-          const r = canonTime(slot?.time);
-          if (r.changed && r.value !== undefined) { slot.time = r.value; changed = true; }
+    if (mode === 'preloaded') {
+      const ptRaw = localStorage.getItem(PRESET_TIMETABLE_KEY);
+      if (ptRaw) {
+        const tt = JSON.parse(ptRaw);
+        let changed = false;
+        for (const key of Object.keys(tt || {})) {
+          const slots = (tt as Record<string, MutableSlot[]>)[key];
+          if (!Array.isArray(slots)) continue;
+          for (const slot of slots) {
+            const r = canonTime(slot?.time);
+            if (r.changed && r.value !== undefined) { slot.time = r.value; changed = true; }
+          }
         }
+        if (changed) writes.push({ key: PRESET_TIMETABLE_KEY, value: JSON.stringify(tt) });
       }
-      if (changed) writes.push({ key: PRESET_TIMETABLE_KEY, value: JSON.stringify(tt) });
-    }
 
-    const pwsRaw = localStorage.getItem(PRESET_WARD_SCHEDULE_KEY);
-    if (pwsRaw) {
-      const list = JSON.parse(pwsRaw);
-      let changed = false;
-      if (Array.isArray(list)) {
-        for (const e of list) {
-          const m = canonTime(e?.morningTime);
-          if (m.changed) { e.morningTime = m.value; changed = true; }
-          const ev = canonTime(e?.eveningTime);
-          if (ev.changed) { e.eveningTime = ev.value; changed = true; }
+      const pwsRaw = localStorage.getItem(PRESET_WARD_SCHEDULE_KEY);
+      if (pwsRaw) {
+        const list = JSON.parse(pwsRaw);
+        let changed = false;
+        if (Array.isArray(list)) {
+          for (const e of list) {
+            const m = canonTime(e?.morningTime);
+            if (m.changed) { e.morningTime = m.value; changed = true; }
+            const ev = canonTime(e?.eveningTime);
+            if (ev.changed) { e.eveningTime = ev.value; changed = true; }
+          }
         }
+        if (changed) writes.push({ key: PRESET_WARD_SCHEDULE_KEY, value: JSON.stringify(list) });
       }
-      if (changed) writes.push({ key: PRESET_WARD_SCHEDULE_KEY, value: JSON.stringify(list) });
-    }
 
-    const csRaw = localStorage.getItem(CUSTOM_SUBJECTS_KEY);
-    if (csRaw) {
-      const list = JSON.parse(csRaw);
-      let changed = false;
-      if (Array.isArray(list)) {
-        for (const s of list) {
-          const t = canonTime(s?.time);
-          if (t.changed) { s.time = t.value; changed = true; }
-          if (Array.isArray(s?.schedules)) {
-            for (const sch of s.schedules) {
-              const r = canonTime(sch?.time);
-              if (r.changed) { sch.time = r.value; changed = true; }
+      const uaRaw = localStorage.getItem(USER_ADDED_SUBJECTS_KEY);
+      if (uaRaw) {
+        const list = JSON.parse(uaRaw);
+        let changed = false;
+        if (Array.isArray(list)) {
+          for (const s of list) {
+            const t = canonTime(s?.time);
+            if (t.changed) { s.time = t.value; changed = true; }
+            if (Array.isArray(s?.schedules)) {
+              for (const sch of s.schedules) {
+                const r1 = canonTime(sch?.start);
+                if (r1.changed) { sch.start = r1.value; changed = true; }
+                const r2 = canonTime(sch?.end);
+                if (r2.changed) { sch.end = r2.value; changed = true; }
+                const r3 = canonTime(sch?.time);
+                if (r3.changed) { sch.time = r3.value; changed = true; }
+              }
             }
           }
         }
+        if (changed) writes.push({ key: USER_ADDED_SUBJECTS_KEY, value: JSON.stringify(list) });
       }
-      if (changed) writes.push({ key: CUSTOM_SUBJECTS_KEY, value: JSON.stringify(list) });
-    }
-
-    const cwRaw = localStorage.getItem(CUSTOM_WARDS_KEY);
-    if (cwRaw) {
-      const list = JSON.parse(cwRaw);
-      let changed = false;
-      if (Array.isArray(list)) {
-        for (const w of list) {
-          const m = canonTime(w?.morningTime);
-          if (m.changed) { w.morningTime = m.value; changed = true; }
-          const ev = canonTime(w?.eveningTime);
-          if (ev.changed) { w.eveningTime = ev.value; changed = true; }
-        }
-      }
-      if (changed) writes.push({ key: CUSTOM_WARDS_KEY, value: JSON.stringify(list) });
-    }
-
-    const uaRaw = localStorage.getItem(USER_ADDED_SUBJECTS_KEY);
-    if (uaRaw) {
-      const list = JSON.parse(uaRaw);
-      let changed = false;
-      if (Array.isArray(list)) {
-        for (const s of list) {
-          const t = canonTime(s?.time);
-          if (t.changed) { s.time = t.value; changed = true; }
-          if (Array.isArray(s?.schedules)) {
-            for (const sch of s.schedules) {
-              const r1 = canonTime(sch?.start);
-              if (r1.changed) { sch.start = r1.value; changed = true; }
-              const r2 = canonTime(sch?.end);
-              if (r2.changed) { sch.end = r2.value; changed = true; }
-              const r3 = canonTime(sch?.time);
-              if (r3.changed) { sch.time = r3.value; changed = true; }
+    } else {
+      const csRaw = localStorage.getItem(CUSTOM_SUBJECTS_KEY);
+      if (csRaw) {
+        const list = JSON.parse(csRaw);
+        let changed = false;
+        if (Array.isArray(list)) {
+          for (const s of list) {
+            const t = canonTime(s?.time);
+            if (t.changed) { s.time = t.value; changed = true; }
+            if (Array.isArray(s?.schedules)) {
+              for (const sch of s.schedules) {
+                const r = canonTime(sch?.time);
+                if (r.changed) { sch.time = r.value; changed = true; }
+              }
             }
           }
         }
+        if (changed) writes.push({ key: CUSTOM_SUBJECTS_KEY, value: JSON.stringify(list) });
       }
-      if (changed) writes.push({ key: USER_ADDED_SUBJECTS_KEY, value: JSON.stringify(list) });
+
+      const cwRaw = localStorage.getItem(CUSTOM_WARDS_KEY);
+      if (cwRaw) {
+        const list = JSON.parse(cwRaw);
+        let changed = false;
+        if (Array.isArray(list)) {
+          for (const w of list) {
+            const m = canonTime(w?.morningTime);
+            if (m.changed) { w.morningTime = m.value; changed = true; }
+            const ev = canonTime(w?.eveningTime);
+            if (ev.changed) { w.eveningTime = ev.value; changed = true; }
+          }
+        }
+        if (changed) writes.push({ key: CUSTOM_WARDS_KEY, value: JSON.stringify(list) });
+      }
     }
 
     if (writes.length > 0) {
-      snapshotBeforeEdit('Time Format Migration');
+      snapshotBeforeEdit(`Time Format Migration (${mode})`);
       for (const w of writes) {
         localStorage.setItem(w.key, w.value);
         storageSetItem(w.key, w.value);
@@ -604,7 +607,7 @@ interface CustomDataContextType {
   setupDone: boolean;
   whatsNewOpen: boolean;
   setWhatsNewOpen: (b: boolean) => void;
-  completeSetup: (mode: SubjectMode) => void;
+  completeSetup: (mode: SubjectMode, customRoutineName?: string) => void;
   startFresh: () => void;
   changeSubjectMode: (mode: SubjectMode) => void;
   clearRoutineData: (mode: SubjectMode) => void;
@@ -634,7 +637,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [renamedPresetWards, setRenamedPresetWards] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    migrateStoredRoutines();
+    const storedMode = localStorage.getItem(SUBJECT_MODE_KEY);
+    const initialMode: 'preloaded' | 'custom' = storedMode === 'custom' ? 'custom' : 'preloaded';
+    migrateStoredRoutines(initialMode);
     try {
       let uaParsed: UserAddedSubject[] = [];
       let csParsed: CustomSubject[] = [];
@@ -711,29 +716,31 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
       }
 
-      const cleanup = removeSGTFromTimetable(loadedTimetable, uaParsed, csParsed);
-      loadedTimetable = cleanup.tt;
-      if (cleanup.changed) {
-        snapshotBeforeEdit('SGT Timetable Cleanup');
-        localStorage.setItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
-        storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
-      }
-
-      try {
-        const repairDone = localStorage.getItem(SGT_REPAIR_DONE_KEY);
-        if (repairDone !== 'true') {
-          const repair = repairSGTDamage(loadedTimetable, uaParsed, csParsed);
-          if (repair.changed) {
-            snapshotBeforeEdit('SGT Damage Repair');
-            loadedTimetable = repair.tt;
-            localStorage.setItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
-            storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
-          }
-          localStorage.setItem(SGT_REPAIR_DONE_KEY, 'true');
-          storageSetItem(SGT_REPAIR_DONE_KEY, 'true');
+      if (initialMode === 'preloaded') {
+        const cleanup = removeSGTFromTimetable(loadedTimetable, uaParsed, []);
+        loadedTimetable = cleanup.tt;
+        if (cleanup.changed) {
+          snapshotBeforeEdit('SGT Timetable Cleanup');
+          localStorage.setItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
+          storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
         }
-      } catch {
-        /* ignore */
+
+        try {
+          const repairDone = localStorage.getItem(SGT_REPAIR_DONE_KEY);
+          if (repairDone !== 'true') {
+            const repair = repairSGTDamage(loadedTimetable, uaParsed, []);
+            if (repair.changed) {
+              snapshotBeforeEdit('SGT Damage Repair');
+              loadedTimetable = repair.tt;
+              localStorage.setItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
+              storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(loadedTimetable));
+            }
+            localStorage.setItem(SGT_REPAIR_DONE_KEY, 'true');
+            storageSetItem(SGT_REPAIR_DONE_KEY, 'true');
+          }
+        } catch {
+          /* ignore */
+        }
       }
 
       setPresetTimetable(loadedTimetable);
@@ -778,61 +785,74 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const subjectRegistry = useMemo<SubjectRef[]>(() => {
     const refs: SubjectRef[] = [];
 
-    for (const cat of CATEGORIES) {
-      for (const s of cat.subjects) {
+    if (subjectMode === 'preloaded') {
+      for (const cat of CATEGORIES) {
+        for (const s of cat.subjects) {
+          refs.push({
+            id: (s as any).id || `acad:${s.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+            name: renamedPresetSubjects[s.name] ?? s.name,
+            domain: 'academic',
+            kind: 'preset-academic',
+            parentName: cat.name,
+            planned: presetSubjectTotals[s.name] ?? s.total,
+          });
+        }
+      }
+
+      for (const s of INTEGRATED_SUBJECTS) {
         refs.push({
-          id: (s as any).id || `acad:${s.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+          id: (s as any).id || `int:${s.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
           name: renamedPresetSubjects[s.name] ?? s.name,
           domain: 'academic',
-          kind: 'preset-academic',
-          parentName: cat.name,
+          kind: 'integrated',
+          parentName: 'Integrated Teaching',
           planned: presetSubjectTotals[s.name] ?? s.total,
         });
       }
-    }
 
-    for (const s of INTEGRATED_SUBJECTS) {
-      refs.push({
-        id: (s as any).id || `int:${s.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
-        name: renamedPresetSubjects[s.name] ?? s.name,
-        domain: 'academic',
-        kind: 'integrated',
-        parentName: 'Integrated Teaching',
-        planned: presetSubjectTotals[s.name] ?? s.total,
-      });
-    }
+      for (const w of WARD_SUBJECTS) {
+        refs.push({
+          id: (w as any).id || `ward:${w.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+          name: renamedPresetWards[w.name] ?? w.name,
+          domain: 'clinical',
+          kind: 'preset-ward',
+          planned: getPresetWardTotalPlannedLocal(w.name),
+        });
+      }
 
-    for (const w of WARD_SUBJECTS) {
-      refs.push({
-        id: (w as any).id || `ward:${w.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
-        name: renamedPresetWards[w.name] ?? w.name,
-        domain: 'clinical',
-        kind: 'preset-ward',
-        planned: getPresetWardTotalPlannedLocal(w.name),
-      });
-    }
+      for (const s of userAddedSubjects) {
+        const isSGT = isSGTSubjectRecord(s);
+        refs.push({
+          id: s.id,
+          name: s.name,
+          domain: isSGT ? 'clinical' : 'academic',
+          kind: isSGT ? 'sgt' : 'user-added',
+          parentName: isSGT ? (s as any).clinicalSubject : getEffectiveParentName(s),
+          planned: s.plannedClasses,
+        });
+      }
+    } else {
+      for (const s of customSubjects) {
+        const isSGT = isSGTSubjectRecord(s);
+        refs.push({
+          id: s.id,
+          name: s.name,
+          domain: isSGT ? 'clinical' : 'academic',
+          kind: isSGT ? 'sgt' : 'custom',
+          parentName: isSGT ? (s as any).clinicalSubject : getEffectiveParentName(s),
+          planned: s.plannedClasses,
+        });
+      }
 
-    const store = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-    for (const s of store) {
-      const isSGT = isSGTSubjectRecord(s);
-      refs.push({
-        id: s.id,
-        name: s.name,
-        domain: isSGT ? 'clinical' : 'academic',
-        kind: isSGT ? 'sgt' : subjectMode === 'preloaded' ? 'user-added' : 'custom',
-        parentName: isSGT ? (s as any).clinicalSubject : getEffectiveParentName(s),
-        planned: s.plannedClasses,
-      });
-    }
-
-    for (const w of customWards) {
-      refs.push({
-        id: w.id,
-        name: w.name,
-        domain: 'clinical',
-        kind: 'ward-rotation',
-        planned: getCustomWardTotalPlannedLocal(w.startDate, w.endDate, w.vacationPeriods),
-      });
+      for (const w of customWards) {
+        refs.push({
+          id: w.id,
+          name: w.name,
+          domain: 'clinical',
+          kind: 'ward-rotation',
+          planned: getCustomWardTotalPlannedLocal(w.startDate, w.endDate, w.vacationPeriods),
+        });
+      }
     }
 
     return refs;
@@ -857,7 +877,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   const isExcludedClinicalDay = (
     d: Date,
-    vacationPeriods?: Array<{ start: string; end: string }>
+    vacationPeriods?: Array<{ start: string; end: string }>,
+    includePresetHolidays = subjectMode === 'preloaded',
   ): boolean => {
     if (d.getDay() === 5) return true;
 
@@ -866,12 +887,14 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     const dd = String(d.getDate()).padStart(2, '0');
     const ds = `${y}-${m}-${dd}`;
 
-    for (const h of WARD_SCHEDULE) {
-      if ((h as any).ward === 'Holiday' && ds >= h.start && ds <= h.end) return true;
-    }
+    if (includePresetHolidays) {
+      for (const h of WARD_SCHEDULE) {
+        if ((h as any).ward === 'Holiday' && ds >= h.start && ds <= h.end) return true;
+      }
 
-    for (const h of presetWardSchedule) {
-      if (h.ward === 'Holiday' && ds >= h.start && ds <= h.end) return true;
+      for (const h of presetWardSchedule) {
+        if (h.ward === 'Holiday' && ds >= h.start && ds <= h.end) return true;
+      }
     }
 
     for (const v of vacationPeriods || []) {
@@ -890,7 +913,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         const end = new Date(slot.end + 'T12:00:00');
         const cur = new Date(start);
         while (cur <= end) {
-          if (!isExcludedClinicalDay(cur, slot.vacationPeriods)) {
+          if (!isExcludedClinicalDay(cur, slot.vacationPeriods, true)) {
             const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
             daysSet.add(key);
           }
@@ -914,7 +937,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       const end = new Date(endDateStr + 'T12:00:00');
       const cur = new Date(start);
       while (cur <= end) {
-        if (!isExcludedClinicalDay(cur, vacationPeriods)) count++;
+        if (!isExcludedClinicalDay(cur, vacationPeriods, false)) count++;
         cur.setDate(cur.getDate() + 1);
       }
     } catch {
@@ -936,7 +959,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       const cur = new Date(start);
       const set = new Set(weekdays);
       while (cur <= end) {
-        if (set.has(DAY_ABBRS[cur.getDay()]) && !isExcludedClinicalDay(cur, vacationPeriods)) {
+        if (set.has(DAY_ABBRS[cur.getDay()]) && !isExcludedClinicalDay(cur, vacationPeriods, subjectMode === 'preloaded')) {
           count++;
         }
         cur.setDate(cur.getDate() + 1);
@@ -1005,6 +1028,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addCustomSubjects = (items: Array<Omit<CustomSubject, 'id'>>): CustomSubject[] => {
+    if (subjectMode !== 'custom') return [];
     const created: CustomSubject[] = items.map(it => {
       const base: CustomSubject = {
         ...it,
@@ -1030,6 +1054,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     addCustomSubjects([s])[0];
 
   const updateCustomSubject = (id: string, patch: Partial<Omit<CustomSubject, 'id'>>) => {
+    if (subjectMode !== 'custom') return;
     const existing = customSubjects.find(s => s.id === id);
     if (!existing) return;
 
@@ -1065,6 +1090,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const removeCustomSubject = (id: string) => {
+    if (subjectMode !== 'custom') return;
     const target = customSubjects.find(s => s.id === id);
     if (!target) return;
 
@@ -1082,6 +1108,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addCustomWards = (items: Array<Omit<CustomWard, 'id'>>): CustomWard[] => {
+    if (subjectMode !== 'custom') return [];
     const created = items.map(it => ({
       ...it,
       morningTime: canonicalizeTimeRange(it.morningTime ?? DEFAULT_MORNING_TIME),
@@ -1095,6 +1122,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const addCustomWard = (w: Omit<CustomWard, 'id'>): CustomWard => addCustomWards([w])[0];
 
   const updateCustomWard = (id: string, patch: Partial<Omit<CustomWard, 'id'>>) => {
+    if (subjectMode !== 'custom') return;
     const existing = customWards.find(w => w.id === id);
     if (!existing) return;
 
@@ -1110,10 +1138,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const removeCustomWard = (id: string) => {
+    if (subjectMode !== 'custom') return;
     saveWards(customWards.filter(w => w.id !== id));
   };
 
   const getCurrentCustomWard = (): CustomWard | null => {
+    if (subjectMode !== 'custom') return null;
     const today = getCurrentDateStr();
     return customWards.find(w => today >= w.startDate && today <= w.endDate) ?? null;
   };
@@ -1121,6 +1151,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const addUserAddedSubjects = (
     items: Array<Omit<UserAddedSubject, 'id'> & { schedules?: ScheduleRowInput[] }>
   ): UserAddedSubject[] => {
+    if (subjectMode !== 'preloaded') return [];
     let nextUserAdded = [...userAddedSubjects];
     let nextTimetable = presetTimetableRef.current;
     const nextTotals = { ...presetSubjectTotals };
@@ -1191,6 +1222,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     id: string,
     patch: Partial<Omit<UserAddedSubject, 'id'> & { schedules?: ScheduleRowInput[] }>
   ) => {
+    if (subjectMode !== 'preloaded') return;
     const existing = userAddedSubjects.find(e => e.id === id);
     if (!existing) return;
 
@@ -1285,6 +1317,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const removeUserAddedSubject = (id: string) => {
+    if (subjectMode !== 'preloaded') return;
     const target = userAddedSubjects.find(e => e.id === id);
     if (!target) return;
 
@@ -1323,6 +1356,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const addPresetWardEntry = (
     entry: Omit<PresetWardEntry, 'addedByUser'> & { addedByUser?: boolean }
   ) => {
+    if (subjectMode !== 'preloaded') return;
     const withDefaults: PresetWardEntry = {
       ...entry,
       morningTime: canonicalizeTimeRange(entry.morningTime ?? DEFAULT_MORNING_TIME),
@@ -1334,7 +1368,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePresetWardEntry = (index: number, patch: Partial<PresetWardEntry>) => {
-    if (!presetWardSchedule[index]) return;
+    if (subjectMode !== 'preloaded' || !presetWardSchedule[index]) return;
 
     const normalized: Partial<PresetWardEntry> = { ...patch };
     if (normalized.morningTime !== undefined) {
@@ -1352,11 +1386,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const removePresetWardEntry = (index: number) => {
-    if (!presetWardSchedule[index]) return;
+    if (subjectMode !== 'preloaded' || !presetWardSchedule[index]) return;
     saveWardSchedule(presetWardSchedule.filter((_, i) => i !== index));
   };
 
   const renamePresetWard = (oldName: string, newName: string) => {
+    if (subjectMode !== 'preloaded') return;
     const o = oldName.trim();
     const n = newName.trim();
     if (!o || !n || o === n) return;
@@ -1373,6 +1408,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     updatedSubjects: string[],
     targetDay: number
   ) => {
+    if (subjectMode !== 'preloaded') return;
     const src = asMutable(presetTimetableRef.current);
     const slot = src[currentDay]?.[slotIndex];
     if (!slot) return;
@@ -1404,6 +1440,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addSubjectToSlot = (day: number, time: string, name: string) => {
+    if (subjectMode !== 'preloaded') return;
     const canon = canonicalizeTimeRange(time);
     const tt = insertSubjectSlot(presetTimetableRef.current, name, DAY_ABBRS[day], canon);
     saveTimetable(tt);
@@ -1425,22 +1462,36 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePresetSubjectTotal = (subjectName: string, total: number) => {
+    if (subjectMode !== 'preloaded') return;
     saveTotals({ ...presetSubjectTotals, [subjectName]: total });
   };
 
   const getPresetSubjectDisplayName = (originalName: string): string =>
-    renamedPresetSubjects[originalName] ?? originalName;
+    subjectMode === 'preloaded' ? (renamedPresetSubjects[originalName] ?? originalName) : originalName;
 
   const setPresetSubjectRename = (oldName: string, newName: string) => {
+    if (subjectMode !== 'preloaded') return;
     const nextRenames = { ...renamedPresetSubjects };
     nextRenames[oldName] = newName;
     saveRenames(nextRenames);
   };
 
   const getPresetWardDisplayName = (originalName: string): string =>
-    renamedPresetWards[originalName] ?? originalName;
+    subjectMode === 'preloaded' ? (renamedPresetWards[originalName] ?? originalName) : originalName;
 
-  const completeSetup = (mode: SubjectMode) => {
+  const completeSetup = (mode: SubjectMode, customRoutineName?: string) => {
+    ensureCurriculumMigration();
+    const targetKind = mode === 'custom' ? 'custom' : 'preset';
+    const target = getCurriculumForKind(targetKind);
+    if (target) {
+      if (targetKind === 'custom' && customRoutineName?.trim() && target.name !== customRoutineName.trim()) {
+        renameCurriculum(target.id, customRoutineName.trim());
+      }
+      void activateCurriculum(target.id);
+    } else {
+      localStorage.setItem(SUBJECT_MODE_KEY, mode);
+      storageSetItem(SUBJECT_MODE_KEY, mode);
+    }
     localStorage.setItem(SUBJECT_MODE_KEY, mode);
     storageSetItem(SUBJECT_MODE_KEY, mode);
     localStorage.setItem(SETUP_DONE_KEY, 'true');
@@ -1510,16 +1561,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const changeSubjectMode = (mode: SubjectMode) => {
-    if (mode === 'custom' && subjectMode === 'preloaded' && userAddedSubjects.length > 0) {
-      const existingIds = new Set(customSubjects.map(s => s.id));
-      const migrated = userAddedSubjects.filter(s => !existingIds.has(s.id)).map(s => ({ ...s }));
-      if (migrated.length > 0) {
-        const nextCustomSubjects = [...customSubjects, ...migrated];
-        localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(nextCustomSubjects));
-        storageSetItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(nextCustomSubjects));
-        setCustomSubjects(nextCustomSubjects as CustomSubject[]);
-      }
-    }
+    ensureCurriculumMigration();
+    const target = getCurriculumForKind(mode === 'custom' ? 'custom' : 'preset');
+    if (target) void activateCurriculum(target.id);
     localStorage.setItem(SUBJECT_MODE_KEY, mode);
     storageSetItem(SUBJECT_MODE_KEY, mode);
     setSubjectMode(mode);
@@ -1557,6 +1601,13 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const getSubjectPlannedTotal = (subjectName: string): number => {
+    if (subjectMode === 'custom') {
+      const custom = customSubjects.find(
+        s => s.name.trim().toLowerCase() === subjectName.trim().toLowerCase()
+      );
+      return custom?.plannedClasses ?? 0;
+    }
+
     if (!subjectName) return 40;
     if (presetSubjectTotals[subjectName] !== undefined) return presetSubjectTotals[subjectName];
 
@@ -1584,6 +1635,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const getCurrentPresetWard = (
     date: Date = new Date()
   ): { ward: string; morningTime?: string; eveningTime?: string } | null => {
+    if (subjectMode !== 'preloaded') return null;
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
@@ -1602,13 +1654,15 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const getPresetWardTotalPlanned = (wardName: string): number =>
-    getPresetWardTotalPlannedLocal(wardName);
+    subjectMode === 'preloaded' ? getPresetWardTotalPlannedLocal(wardName) : 0;
 
   const getCustomWardTotalPlanned = (
     startDateStr: string,
     endDateStr: string,
     vacationPeriods?: Array<{ start: string; end: string }>
-  ): number => getCustomWardTotalPlannedLocal(startDateStr, endDateStr, vacationPeriods);
+  ): number => subjectMode === 'custom'
+    ? getCustomWardTotalPlannedLocal(startDateStr, endDateStr, vacationPeriods)
+    : 0;
 
   const countSGTPlannedDays = (
     startDateStr: string,
@@ -1649,7 +1703,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     } else {
-      push('Integrated Teaching');
       for (const s of customSubjects) {
         if (s.subjectType === 'allied-parent') push(s.name);
       }
@@ -1677,17 +1730,14 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     const p = parentName.trim().toLowerCase();
     if (!p) return 0;
 
-    let n = 0;
-    for (const s of customSubjects) {
-      if (s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p) n++;
-    }
-    for (const s of userAddedSubjects) {
-      if (s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p) n++;
-    }
-    return n;
+    const store = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+    return store.filter(
+      s => s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p
+    ).length;
   };
 
   const getCustomAlliedChildren = (parentName: string): CustomSubject[] => {
+    if (subjectMode !== 'custom') return [];
     const p = parentName.trim().toLowerCase();
     return customSubjects.filter(
       s => s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p
@@ -1695,6 +1745,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const getUserAddedAlliedChildren = (parentName: string): UserAddedSubject[] => {
+    if (subjectMode !== 'preloaded') return [];
     const p = parentName.trim().toLowerCase();
     return userAddedSubjects.filter(
       s => s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p
@@ -2040,11 +2091,18 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     return moves.length;
   };
 
+  const exposedCustomSubjects = subjectMode === 'custom' ? customSubjects : [];
+  const exposedCustomWards = subjectMode === 'custom' ? customWards : [];
+  const exposedUserAddedSubjects = subjectMode === 'preloaded' ? userAddedSubjects : [];
+  const exposedPresetTimetable = subjectMode === 'preloaded' ? presetTimetable : ({} as typeof TIMETABLE);
+  const exposedPresetWardSchedule = subjectMode === 'preloaded' ? presetWardSchedule : [];
+  const exposedPresetSubjectTotals = subjectMode === 'preloaded' ? presetSubjectTotals : {};
+
   return (
     <CustomDataContext.Provider
       value={{
-        customSubjects,
-        customWards,
+        customSubjects: exposedCustomSubjects,
+        customWards: exposedCustomWards,
         addCustomSubject,
         addCustomSubjects,
         updateCustomSubject,
@@ -2054,15 +2112,15 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         updateCustomWard,
         removeCustomWard,
         getCurrentCustomWard,
-        userAddedSubjects,
+        userAddedSubjects: exposedUserAddedSubjects,
         addUserAddedSubject,
         addUserAddedSubjects,
         updateUserAddedSubject,
         removeUserAddedSubject,
         isUserAddedName,
-        presetTimetable,
-        presetWardSchedule,
-        presetSubjectTotals,
+        presetTimetable: exposedPresetTimetable,
+        presetWardSchedule: exposedPresetWardSchedule,
+        presetSubjectTotals: exposedPresetSubjectTotals,
         addPresetWardEntry,
         updatePresetWardEntry,
         removePresetWardEntry,

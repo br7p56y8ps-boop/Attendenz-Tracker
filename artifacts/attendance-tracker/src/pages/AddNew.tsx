@@ -19,8 +19,9 @@ import {
   to12h,
   getSubjectColor,
 } from '@/lib/utils';
+import { triggerConfirmationFeedback } from '@/lib/feedback';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
-import { storageSetItem, storageRemoveItem } from '@/lib/idb';
+import { storageSetItem } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import {
@@ -36,6 +37,8 @@ const btnPrimary =
   'action-button action-button--edit disabled:cursor-not-allowed';
 const btnGhost =
   'action-button action-button--neutral';
+const btnCancel =
+  'action-button action-button--cancel';
 const btnDanger =
   'action-button action-button--danger';
 const btnSave =
@@ -46,6 +49,8 @@ const inlineErrCls =
   'text-[11px] font-semibold text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2';
 const CREATE_NEW = '__create_new__';
 const BUNDLE_VERSION = 2;
+const DAY_AFTER_HOLIDAY_INDEX = 6; // Saturday follows the app-wide Friday holiday boundary.
+
 const genId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 const splitRange = (range: string): { start: string; end: string } => {
@@ -79,7 +84,7 @@ function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, foot
         exit={{ opacity: 0, y: 48 }}
         layout
         transition={{ type: 'spring', damping: 26, stiffness: 320, layout: { type: 'spring', damping: 28, stiffness: 300 } }}
-        className={cn('modal-sheet-content relative bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.42)] w-full max-h-[min(70dvh,48rem)] min-h-0 flex flex-col overflow-hidden', maxW, heightClass)}
+        className={cn('modal-sheet-content relative bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.42)] w-full max-h-[min(70dvh,48rem)] min-h-[12rem] flex flex-col overflow-hidden', maxW, heightClass)}
         onClick={e => e.stopPropagation()}
       >
         {header && <div className={cn('shrink-0 border-b border-border/40', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
@@ -165,7 +170,7 @@ interface ImportBundle {
   version?: number; subjectMode?: 'preloaded' | 'custom';
   addedSubjects?: Array<{
     id?: string; name: string; type?: string; parentCategory?: string | null; planned?: number;
-    schedules?: Array<{ day: string; start: string; end: string }>;
+    schedules?: Array<{ day: string; start?: string; end?: string; time?: string }>;
     clinicalSubject?: string; startDate?: string; endDate?: string;
     vacationPeriods?: Array<{ start: string; end: string }>;
   }>;
@@ -178,6 +183,43 @@ const newRow = (usedDays: string[]): ScheduleRow => {
   const day = DAY_ABBRS.find(d => !usedDays.includes(d)) || 'Mon';
   return { id: genId('row'), day, startTime: '09:00 AM', endTime: '10:00 AM' };
 };
+
+function getInitialAcademicDay(
+  subjectMode: 'preloaded' | 'custom',
+  presetTimetable: Record<number, any[]> | undefined,
+  customSubjects: any[],
+  userAddedSubjects: any[],
+): number {
+  const isAcademicName = (name: string) => {
+    const preset = CATEGORIES.flatMap(category => category.subjects).some(subject => subject.name === name);
+    const integrated = INTEGRATED_SUBJECTS.some(subject => subject.name === name);
+    const userAdded = userAddedSubjects.some(subject => subject.name === name && (subject.subjectType !== 'allied' || subject.parentName !== 'Small Group Teaching'));
+    return preset || integrated || userAdded;
+  };
+  const hasAcademicClass = (dayIndex: number) => {
+    const day = DAY_ABBRS[dayIndex];
+    if (subjectMode === 'preloaded') {
+      return (presetTimetable?.[dayIndex] || []).some(slot =>
+        slot?.type !== 'ward' && slot?.type !== 'ward_replacement' && Array.isArray(slot?.subjects) && slot.subjects.some((name: string) => isAcademicName(name)),
+      );
+    }
+    return customSubjects.some(subject => {
+      if (subject?.subjectType === 'allied' && subject?.parentName === 'Small Group Teaching') return false;
+      const scheduledDays = Array.isArray(subject?.schedules) && subject.schedules.length > 0
+        ? subject.schedules.map((schedule: any) => schedule?.day)
+        : parseDayList(subject?.days || '');
+      return scheduledDays.includes(day);
+    });
+  };
+
+  if (subjectMode === 'preloaded') return DAY_AFTER_HOLIDAY_INDEX;
+
+  for (let offset = 0; offset < DAY_ABBRS.length; offset += 1) {
+    const dayIndex = (DAY_AFTER_HOLIDAY_INDEX + offset) % DAY_ABBRS.length;
+    if (hasAcademicClass(dayIndex)) return dayIndex;
+  }
+  return DAY_AFTER_HOLIDAY_INDEX;
+}
 
 const formatHistoryDetail = (entry: any): string => {
   const d = entry.data;
@@ -387,6 +429,7 @@ export default function AddNew() {
   const [note, setNote] = useState<{ msg: string; kind: 'ok' | 'err' | 'info' } | null>(null);
   const noteTimer = useRef<number | null>(null);
   const showToast = (msg: string, kind: 'ok' | 'err' | 'info' = 'ok') => {
+    if (kind === 'ok') triggerConfirmationFeedback('success');
     if (noteTimer.current) window.clearTimeout(noteTimer.current);
     setNote({ msg, kind });
     noteTimer.current = window.setTimeout(() => setNote(null), 2600);
@@ -399,19 +442,13 @@ export default function AddNew() {
   const [controlsExpanded, setControlsExpanded] = useState(true);
   const controlsCollapseTimer = useRef<number | null>(null);
   const [addModalScrolled, setAddModalScrolled] = useState(false);
-  const academicScrollRef = useRef<HTMLDivElement>(null);
   const [section, setSection] = useState<'academic' | 'clinical'>('academic');
   useEffect(() => { if (!moreOpen) setAddModalScrolled(false); }, [moreOpen]);
   useEffect(() => {
     setControlsExpanded(true);
     if (controlsCollapseTimer.current) window.clearTimeout(controlsCollapseTimer.current);
     controlsCollapseTimer.current = window.setTimeout(() => setControlsExpanded(false), 3000);
-    const onPageScroll = () => {
-      if (window.scrollY > 4) setControlsExpanded(false);
-    };
-    window.addEventListener('scroll', onPageScroll, { passive: true });
     return () => {
-      window.removeEventListener('scroll', onPageScroll);
       if (controlsCollapseTimer.current) window.clearTimeout(controlsCollapseTimer.current);
     };
   }, [section]);
@@ -423,7 +460,13 @@ export default function AddNew() {
       return next;
     });
   };
-  const [selDay, setSelDay] = useState<number>(new Date().getDay());
+  const [selDay, setSelDay] = useState<number>(() => getInitialAcademicDay(subjectMode, presetTimetable, customSubjects, userAddedSubjects));
+  const academicDayOrder = useMemo(() => {
+    const firstDay = subjectMode === 'preloaded'
+      ? DAY_AFTER_HOLIDAY_INDEX
+      : getInitialAcademicDay(subjectMode, presetTimetable, customSubjects, userAddedSubjects);
+    return DAY_ABBRS.map((_, offset) => (firstDay + offset) % DAY_ABBRS.length);
+  }, [subjectMode, presetTimetable, customSubjects, userAddedSubjects]);
   const [subjectType, setSubjectType] = useState<'single' | 'allied'>('single');
   const [subjectName, setSubjectName] = useState('');
   const [parentChoice, setParentChoice] = useState('');
@@ -477,6 +520,7 @@ export default function AddNew() {
   const [addSlotEnd, setAddSlotEnd] = useState('10:00 AM');
   const [addSlotPlanned, setAddSlotPlanned] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
   const [editDataOpen, setEditDataOpen] = useState(false);
   const [editDataTab, setEditDataTab] = useState<'preset' | 'added'>('preset');
@@ -520,34 +564,45 @@ export default function AddNew() {
   }, [subjectMode, userAddedSubjects, customSubjects]);
 
   const allClinicalSubjects = useMemo(() => {
-    const presetNames = WARD_SUBJECTS.map(w => w.name);
+    if (subjectMode === 'preloaded') {
+      const presetNames = WARD_SUBJECTS.map(w => w.name);
+      const presetSgtParents = userAddedSubjects
+        .filter(s => isSGTRecord(s))
+        .map(s => (s as any).clinicalSubject)
+        .filter((name): name is string => !!name);
+      return Array.from(new Set([...presetNames, ...presetSgtParents])).sort();
+    }
+
     const customNames = customWards.map(w => w.name);
-    const sgtParents = [
-      ...userAddedSubjects.filter(s => isSGTRecord(s)).map(s => (s as any).clinicalSubject),
-      ...customSubjects.filter(s => isSGTRecord(s)).map(s => (s as any).clinicalSubject),
-    ].filter((name): name is string => !!name && !presetNames.includes(name) && !customNames.includes(name));
-    return Array.from(new Set([...presetNames, ...customNames, ...sgtParents])).sort();
-  }, [customWards, userAddedSubjects, customSubjects]);
+    const customSgtParents = customSubjects
+      .filter(s => isSGTRecord(s))
+      .map(s => (s as any).clinicalSubject)
+      .filter((name): name is string => !!name);
+    return Array.from(new Set([...customNames, ...customSgtParents])).sort();
+  }, [subjectMode, customWards, userAddedSubjects, customSubjects]);
 
   const clinicalSubjectOptions = useMemo(() => {
-    const opts = allClinicalSubjects.map(name => ({ value: name, label: getPresetWardDisplayName(name) }));
+    const opts = allClinicalSubjects.map(name => ({
+      value: name,
+      label: subjectMode === 'preloaded' ? getPresetWardDisplayName(name) : name,
+    }));
     opts.push({ value: CREATE_NEW, label: '+ Create new clinical subject' });
     return opts;
-  }, [allClinicalSubjects]);
+  }, [allClinicalSubjects, subjectMode, getPresetWardDisplayName]);
 
   const getSGTForSubject = (clinicalName: string) => {
-    const find = (list: any[]) => list.find(s => isSGTRecord(s) && (s as any).clinicalSubject === clinicalName) || null;
-    return find(userAddedSubjects) || find(customSubjects) || null;
+    const store = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+    return store.find(s => isSGTRecord(s) && (s as any).clinicalSubject === clinicalName) || null;
   };
-  const getSGTStore = (sgt: any): 'userAdded' | 'custom' => {
-    if (userAddedSubjects.some(s => s.id === sgt.id)) return 'userAdded';
-    if (customSubjects.some(s => s.id === sgt.id)) return 'custom';
-    return subjectMode === 'preloaded' ? 'userAdded' : 'custom';
-  };
+  const getSGTStore = (sgt: any): 'userAdded' | 'custom' =>
+    subjectMode === 'preloaded' && userAddedSubjects.some(s => s.id === sgt.id) ? 'userAdded' : 'custom';
 
   const getRotationForSubject = (clinicalName: string) => {
-    const preset = presetWardSchedule.find(e => e.ward === clinicalName);
-    if (preset) return { store: 'preset' as const, entry: preset, index: presetWardSchedule.indexOf(preset) };
+    if (subjectMode === 'preloaded') {
+      const preset = presetWardSchedule.find(e => e.ward === clinicalName);
+      if (preset) return { store: 'preset' as const, entry: preset, index: presetWardSchedule.indexOf(preset) };
+      return null;
+    }
     const custom = customWards.find(w => w.name === clinicalName);
     if (custom) return { store: 'custom' as const, entry: custom, id: custom.id };
     return null;
@@ -1416,40 +1471,59 @@ export default function AddNew() {
 
   /* ── Import / Export ── */
   const is12h = (t: string) => /^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(t);
-  const is24h = (t: string) => /^\d{1,2}:\d{2}$/.test(t);
 
   const bundleJson = () => {
     const added = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-    const bundle = {
-      version: BUNDLE_VERSION,
-      subjectMode,
-      addedSubjects: added.map(s => ({
+    const addedSubjects = added.map(s => {
+      const sourceSchedules = (s.schedules && s.schedules.length)
+        ? s.schedules
+        : parseDayList(s.days).map((d: string) => ({ day: d, time: s.time || '' }));
+      const schedules = sourceSchedules.map((sch: any) => {
+        const canonical = sch.time
+          ? canonicalizeTimeRange(sch.time)
+          : canonicalTimeRange(sch.start || '', sch.end || '');
+        const { start, end } = splitRange(canonical);
+        return subjectMode === 'preloaded'
+          ? { day: sch.day, start, end }
+          : { day: sch.day, time: canonical };
+      });
+      return {
         id: s.id,
         name: s.name,
         type: s.subjectType,
         parentCategory: getEffectiveParentName(s) ?? null,
         planned: s.plannedClasses,
-        schedules: (s.schedules && s.schedules.length)
-          ? s.schedules
-          : parseDayList(s.days).map((d: string) => { const { start, end } = splitRange(s.time); return { day: d, start, end }; }),
+        schedules,
         clinicalSubject: (s as any).clinicalSubject || undefined,
         startDate: (s as any).startDate || undefined,
         endDate: (s as any).endDate || undefined,
         vacationPeriods: (s as any).vacationPeriods || undefined,
-      })),
-      customWards: customWards.map(w => ({
-        id: w.id,
-        name: w.name,
-        startDate: w.startDate,
-        endDate: w.endDate,
-        morningTime: w.morningTime,
-        eveningTime: w.eveningTime,
-        vacationPeriods: w.vacationPeriods || undefined,
-      })),
-      presetTimetable,
-      presetWardSchedule,
-      presetSubjectTotals,
-    };
+      };
+    });
+    const bundle = subjectMode === 'preloaded'
+      ? {
+          version: BUNDLE_VERSION,
+          subjectMode,
+          addedSubjects,
+          customWards: [],
+          presetTimetable,
+          presetWardSchedule,
+          presetSubjectTotals,
+        }
+      : {
+          version: BUNDLE_VERSION,
+          subjectMode,
+          addedSubjects,
+          customWards: customWards.map(w => ({
+            id: w.id,
+            name: w.name,
+            startDate: w.startDate,
+            endDate: w.endDate,
+            morningTime: w.morningTime,
+            eveningTime: w.eveningTime,
+            vacationPeriods: w.vacationPeriods || undefined,
+          })),
+        };
     return JSON.stringify(bundle, null, 2);
   };
 
@@ -1463,10 +1537,17 @@ export default function AddNew() {
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
       showToast('Routine bundle downloaded.');
+      setExportOpen(false);
+      setMoreMenuOpen(true);
     } catch { showToast('Download failed — please try again.', 'err'); }
   };
   const doCopy = async () => {
-    try { await navigator.clipboard.writeText(bundleJson()); showToast('Bundle copied to clipboard.'); }
+    try {
+      await navigator.clipboard.writeText(bundleJson());
+      showToast('Bundle copied to clipboard.');
+      setExportOpen(false);
+      setMoreMenuOpen(true);
+    }
     catch { showToast('Copy failed — use Download instead.', 'err'); }
   };
   const doShare = async () => {
@@ -1477,11 +1558,18 @@ export default function AddNew() {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: 'Attendenz Routine', text: 'Routine bundle (no attendance data).' });
         showToast('Share sheet opened.');
+        setExportOpen(false);
+        setMoreMenuOpen(true);
         return;
       }
       throw new Error('no-share');
     } catch {
-      try { await navigator.clipboard.writeText(json); showToast('Share unavailable — bundle copied instead.', 'info'); }
+      try {
+        await navigator.clipboard.writeText(json);
+        showToast('Share unavailable — bundle copied instead.', 'info');
+        setExportOpen(false);
+        setMoreMenuOpen(true);
+      }
       catch { showToast('Share failed — use Download.', 'err'); }
     }
   };
@@ -1495,17 +1583,45 @@ export default function AddNew() {
     }
   };
 
+  const normTimeTo12 = (t: string): string => {
+    if (is12h(t)) return t.trim().replace(/\s+/g, ' ').toUpperCase();
+    const minutes = parseRangeToMinutes(`${t}–${t}`)?.start;
+    if (minutes === undefined) return '';
+    const hours = Math.floor(minutes / 60);
+    const mins = String(minutes % 60).padStart(2, '0');
+    return to12h(`${hours}:${mins}`);
+  };
+
+  const normalizeImportedSchedule = (sch: any): { day: string; start: string; end: string; time: string } | null => {
+    if (!sch || typeof sch.day !== 'string' || !DAY_ABBRS.includes(sch.day as (typeof DAY_ABBRS)[number])) return null;
+    let start = '';
+    let end = '';
+    if (typeof sch.time === 'string' && sch.time.trim()) {
+      const range = canonicalizeTimeRange(sch.time.trim());
+      const split = splitRange(range);
+      start = normTimeTo12(split.start);
+      end = normTimeTo12(split.end);
+    } else {
+      start = typeof sch.start === 'string' ? normTimeTo12(sch.start) : '';
+      end = typeof sch.end === 'string' ? normTimeTo12(sch.end) : '';
+    }
+    if (!start || !end) return null;
+    const time = canonicalTimeRange(start, end);
+    return { day: sch.day, start, end, time };
+  };
+
   const validateBundle = (obj: any): { ok: boolean; error?: string; bundle?: ImportBundle } => {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, error: 'Not a JSON object.' };
     const b = obj as ImportBundle;
     if (b.subjectMode !== 'preloaded' && b.subjectMode !== 'custom') return { ok: false, error: 'Missing/invalid "subjectMode".' };
+    if (b.subjectMode !== subjectMode) return { ok: false, error: `This is a ${b.subjectMode === 'custom' ? 'Custom' : 'Preset'} routine. Switch routine mode before importing it.` };
     if (!Array.isArray(b.addedSubjects) && !Array.isArray(b.customWards) && !b.presetTimetable && !b.presetWardSchedule) return { ok: false, error: 'Bundle has no routine data.' };
     if (b.addedSubjects && !Array.isArray(b.addedSubjects)) return { ok: false, error: '"addedSubjects" must be an array.' };
     for (const s of b.addedSubjects || []) {
       if (!s || typeof s.name !== 'string' || !s.name.trim()) return { ok: false, error: 'Every added subject needs a "name".' };
       for (const sch of s.schedules || []) {
-        if (!(is24h(sch.start || '') || is12h(sch.start || '')) || !(is24h(sch.end || '') || is12h(sch.end || ''))) {
-          return { ok: false, error: `Subject "${s.name}": schedules need valid start/end times.` };
+        if (!normalizeImportedSchedule(sch)) {
+          return { ok: false, error: `Subject "${s.name}": schedules need a valid day and time.` };
         }
       }
     }
@@ -1513,23 +1629,12 @@ export default function AddNew() {
     return { ok: true, bundle: b };
   };
 
-  const normTimeTo12 = (t: string): string => {
-    if (is12h(t)) return t;
-    const minutes = parseRangeToMinutes(`${t}–${t}`)?.start || 0;
-    const hours = Math.floor(minutes / 60);
-    const mins = String(minutes % 60).padStart(2, '0');
-    return to12h(`${hours}:${mins}`);
-  };
-
   const buildReport = (b: ImportBundle): ImportReport => {
     const subjectsSkip: string[] = []; let subjectsAdd = 0;
     for (const s of b.addedSubjects || []) {
       const domain = s.parentCategory === 'Small Group Teaching' ? 'clinical' as const : 'academic' as const;
       if (isSubjectNameTaken(s.name, undefined, domain)) { subjectsSkip.push(`${s.name} (duplicate name)`); continue; }
-      const rows = (s.schedules || []).map(sch => ({
-        day: sch.day,
-        time: canonicalTimeRange(normTimeTo12(sch.start || '09:00'), normTimeTo12(sch.end || '10:00')),
-      }));
+      const rows = (s.schedules || []).map(normalizeImportedSchedule).filter((row): row is NonNullable<ReturnType<typeof normalizeImportedSchedule>> => row !== null);
       if (rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined, domain).some(c => !c.exact))) {
         subjectsSkip.push(`${s.name} (time overlap)`);
         continue;
@@ -1542,11 +1647,16 @@ export default function AddNew() {
       if (findWardDateConflicts(w.startDate, w.endDate, undefined).length) { wardsSkip.push(`${w.name} (date overlap)`); continue; }
       wardsAdd++;
     }
-    const slots: number = Object.values(b.presetTimetable || {}).reduce<number>((acc: number, day: any) => {
-      if (!Array.isArray(day)) return acc;
-      return acc + day.filter((slot: any) => slot.type !== 'ward' && slot.type !== 'ward_replacement').length;
-    }, 0);
-    return { subjectsAdd, subjectsSkip, wardsAdd, wardsSkip, slots, rotations: (b.presetWardSchedule || []).length };
+    const slots: number = b.subjectMode === 'preloaded'
+      ? Object.values(b.presetTimetable || {}).reduce<number>((acc: number, day: any) => {
+          if (!Array.isArray(day)) return acc;
+          return acc + day.filter((slot: any) => slot.type !== 'ward' && slot.type !== 'ward_replacement').length;
+        }, 0)
+      : 0;
+    const rotations = b.subjectMode === 'custom'
+      ? (b.customWards || []).length
+      : (b.presetWardSchedule || []).length;
+    return { subjectsAdd, subjectsSkip, wardsAdd, wardsSkip, slots, rotations };
   };
 
   const beginImport = (raw: string, source: 'file' | 'paste') => {
@@ -1579,20 +1689,23 @@ export default function AddNew() {
     showToast('Bundle valid — review the preview.', 'info');
   };
 
-  const applyMerge = () => {
+  const applyMerge = async () => {
     if (!preview) return;
     try {
-      snapshotBeforeEdit('Merge Routine Import');
+      if (!await snapshotBeforeEdit('Merge Routine Import')) {
+        showToast('Merge stopped — the safety snapshot could not be created.', 'err');
+        return;
+      }
       const b = preview.bundle;
+      if (b.subjectMode !== subjectMode) {
+        showToast('Merge stopped — switch to the matching routine mode first.', 'err');
+        return;
+      }
       const items: any[] = [];
       for (const s of b.addedSubjects || []) {
         const domain = s.parentCategory === 'Small Group Teaching' ? 'clinical' as const : 'academic' as const;
         if (isSubjectNameTaken(s.name, undefined, domain)) continue;
-        const rows = (s.schedules || []).map(sch => {
-          const st = normTimeTo12(sch.start || '09:00');
-          const en = normTimeTo12(sch.end || '10:00');
-          return { day: sch.day, time: canonicalTimeRange(st, en), start: st, end: en };
-        });
+        const rows = (s.schedules || []).map(normalizeImportedSchedule).filter((row): row is NonNullable<ReturnType<typeof normalizeImportedSchedule>> => row !== null);
         if (!rows.length) rows.push({ day: 'Mon', time: canonicalTimeRange('09:00 AM', '10:00 AM'), start: '09:00 AM', end: '10:00 AM' });
         if (rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined, domain).some(c => !c.exact))) continue;
         items.push({
@@ -1618,7 +1731,7 @@ export default function AddNew() {
         wardsAdded++;
       }
       let rotationsAdded = 0;
-      for (const e of b.presetWardSchedule || []) {
+      for (const e of subjectMode === 'preloaded' ? (b.presetWardSchedule || []) : []) {
         if (!e || e.addedByUser !== true) continue;
         if (presetWardSchedule.some(x => x.ward.toLowerCase() === String(e.ward).toLowerCase() && x.start === e.start && x.end === e.end)) continue;
         if (findWardDateConflicts(e.start, e.end, undefined).length) continue;
@@ -1628,7 +1741,7 @@ export default function AddNew() {
         else addCustomWards([{ name: e.ward, startDate: e.start, endDate: e.end, morningTime: mt, eveningTime: et, vacationPeriods: e.vacationPeriods }]);
         rotationsAdded++;
       }
-      if (b.presetTimetable) {
+      if (subjectMode === 'preloaded' && b.presetTimetable) {
         Object.entries(b.presetTimetable).forEach(([dayStr, slots]) => {
           const day = parseInt(dayStr, 10);
           if (isNaN(day) || !Array.isArray(slots)) return;
@@ -1649,19 +1762,27 @@ export default function AddNew() {
       if (items.length) commitSubjects(items);
       recordHistory('Imported (Merge)', { subjects: items.length, rotations: wardsAdded + rotationsAdded });
       setPreview(null);
+      setMoreMenuOpen(true);
       const total = items.length + wardsAdded + rotationsAdded;
       if (total === 0) showToast('Nothing new to merge (duplicates or preset-only data). Use Replace to adopt the bundle.', 'info');
       else showToast(`Merged ${items.length} subject(s), ${wardsAdded + rotationsAdded} rotation(s).`);
     } catch { showToast('Merge failed — please try again.', 'err'); }
   };
 
-  const applyReplace = () => {
+  const applyReplace = async () => {
     if (!preview) return;
     const b = preview.bundle;
+    if (b.subjectMode !== subjectMode) {
+      showToast('Replace stopped — switch to the matching routine mode first.', 'err');
+      return;
+    }
+    if (!await snapshotBeforeEdit('Replace Routine Import')) {
+      showToast('Replace stopped — the safety snapshot could not be created.', 'err');
+      return;
+    }
     recordHistory('Imported (Replace)', { mode: b.subjectMode });
-    snapshotBeforeEdit('Replace Routine Import');
 
-    const existingStore = b.subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+    const existingStore = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
     const existingByNameDomain = new Map<string, any>();
     const existingById = new Map<string, any>();
     for (const ex of existingStore) {
@@ -1686,7 +1807,7 @@ export default function AddNew() {
       const key = kind === 'sgt' ? getSGTKey(oldSubject.id) : getAcademicAttendanceKey(oldSubject.id || oldSubject.name);
       omittedEntities.push({ key, type: 'subject', legacyKey: oldSubject.name });
     }
-    for (const oldWard of b.subjectMode === 'preloaded' ? presetWardSchedule.filter((x: any) => x.addedByUser === true) : customWards) {
+    for (const oldWard of subjectMode === 'preloaded' ? presetWardSchedule.filter((x: any) => x.addedByUser === true) : customWards) {
       const name = String('ward' in oldWard ? oldWard.ward : oldWard.name).trim();
       if (!name || incomingWardNames.has(name.toLowerCase())) continue;
       const id = (oldWard as any).id;
@@ -1695,11 +1816,10 @@ export default function AddNew() {
     removeAttendanceEntitiesForMode(b.subjectMode || 'preloaded', omittedEntities);
 
     const toSubjectRecord = (s: any) => {
-      const schedules = (s.schedules || []).map((sch: any) => {
-        const st = normTimeTo12(sch.start || '09:00');
-        const en = normTimeTo12(sch.end || '10:00');
-        return { day: sch.day, start: st, end: en };
-      });
+      const normalizedSchedules: Array<NonNullable<ReturnType<typeof normalizeImportedSchedule>>> = (s.schedules || [])
+        .map((sch: any) => normalizeImportedSchedule(sch))
+        .filter((schedule: ReturnType<typeof normalizeImportedSchedule>): schedule is NonNullable<ReturnType<typeof normalizeImportedSchedule>> => schedule !== null);
+      const schedules = normalizedSchedules.map(({ day, start, end }) => ({ day, start, end }));
 
       const isSGT = s.parentCategory === 'Small Group Teaching';
       const domainKey = `${s.name.trim().toLowerCase()}|${isSGT ? 'sgt' : 'academic'}`;
@@ -1715,7 +1835,7 @@ export default function AddNew() {
         plannedClasses: s.planned ?? 0,
         days: schedules.map((x: any) => x.day).join(', '),
         time: schedules.length ? canonicalTimeRange(schedules[0].start, schedules[0].end) : '',
-        schedules: b.subjectMode === 'preloaded'
+        schedules: subjectMode === 'preloaded'
           ? schedules
           : schedules.map((x: any) => ({ day: x.day, time: canonicalTimeRange(x.start, x.end) })),
         clinicalSubject: s.clinicalSubject,
@@ -1727,11 +1847,11 @@ export default function AddNew() {
 
     const records = (b.addedSubjects || []).map(toSubjectRecord);
 
-    if (b.presetTimetable) {
+    if (subjectMode === 'preloaded' && b.presetTimetable) {
       localStorage.setItem('att_preset_timetable', JSON.stringify(b.presetTimetable));
       storageSetItem('att_preset_timetable', JSON.stringify(b.presetTimetable));
     }
-    if (b.presetWardSchedule) {
+    if (subjectMode === 'preloaded' && b.presetWardSchedule) {
       const ws = (b.presetWardSchedule || []).map((e: any) => ({
         ...e,
         morningTime: canonicalizeTimeRange(e.morningTime || '09:30 AM–11:30 AM'),
@@ -1740,14 +1860,12 @@ export default function AddNew() {
       localStorage.setItem('att_preset_ward_schedule', JSON.stringify(ws));
       storageSetItem('att_preset_ward_schedule', JSON.stringify(ws));
     }
-    if (b.presetSubjectTotals) {
+    if (subjectMode === 'preloaded' && b.presetSubjectTotals) {
       localStorage.setItem('att_preset_subject_totals', JSON.stringify(b.presetSubjectTotals));
       storageSetItem('att_preset_subject_totals', JSON.stringify(b.presetSubjectTotals));
     }
 
-    if (b.subjectMode === 'custom') {
-      localStorage.removeItem('att_user_added_subjects');
-      storageRemoveItem('att_user_added_subjects');
+    if (subjectMode === 'custom') {
       localStorage.setItem('att_custom_subjects', JSON.stringify(records));
       storageSetItem('att_custom_subjects', JSON.stringify(records));
 
@@ -1763,10 +1881,6 @@ export default function AddNew() {
       localStorage.setItem('att_custom_wards', JSON.stringify(cw));
       storageSetItem('att_custom_wards', JSON.stringify(cw));
     } else {
-      localStorage.removeItem('att_custom_subjects');
-      storageRemoveItem('att_custom_subjects');
-      localStorage.removeItem('att_custom_wards');
-      storageRemoveItem('att_custom_wards');
       localStorage.setItem('att_user_added_subjects', JSON.stringify(records));
       storageSetItem('att_user_added_subjects', JSON.stringify(records));
     }
@@ -1774,6 +1888,7 @@ export default function AddNew() {
     localStorage.setItem('att_subject_mode', b.subjectMode || 'preloaded');
     storageSetItem('att_subject_mode', b.subjectMode || 'preloaded');
     setPreview(null);
+    setMoreMenuOpen(true);
     showToast('Routine replaced — reloading…');
     setLocation('/');
     setTimeout(() => window.location.reload(), 900);
@@ -1833,23 +1948,14 @@ export default function AddNew() {
   return (
     <Layout
       headerRight={
-        <button type="button" onClick={() => setHistoryOpen(true)} className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="Recent Activity">
+        <button type="button" onClick={() => setMoreMenuOpen(true)} className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More">
           <SendToBack className="w-4 h-4" />
         </button>
       }
     >
       <div className="space-y-2 pb-24 scroll-reachability">
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => setExportOpen(true)} className="h-10 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-emerald-500/20 transition-all cursor-pointer">
-            <Upload className="w-3.5 h-3.5" /> Export
-          </button>
-          <button type="button" onClick={() => { setImportError(null); setImportOpen(true); }} className="h-10 rounded-xl bg-primary/10 text-primary border border-primary/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-primary/20 transition-all cursor-pointer">
-            <Download className="w-3.5 h-3.5" /> Import
-          </button>
-        </div>
-
-        <div className="sticky top-[var(--app-header-height)] z-30">
-          <div className="-mx-4 bg-background px-4 py-1.5 shadow-sm border-y border-border/40 soft-entry-boundary">
+        <div className="sticky top-[calc(var(--app-header-height)+0.5rem)] z-30">
+          <div className="manage-controls-surface relative z-[3] isolate -mx-4 bg-background px-4 py-1.5 shadow-sm border-y border-border/80 before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background">
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={() => section === 'academic' ? toggleControls() : setSection('academic')}
               className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',
@@ -1866,40 +1972,49 @@ export default function AddNew() {
             <button type="button" onClick={() => { setFormError(null); setMoreOpen(true); }} className="h-10 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-amber-500/20 transition-all cursor-pointer px-2 text-center leading-tight">
               {section === 'academic' ? 'Add New (Academic)' : 'Add New (Clinical)'}
             </button>
-            <button type="button" onClick={() => { setEditDataOpen(true); setEditDataTab('preset'); setExpandedEditItemId(null); }} className="h-10 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-violet-500/20 transition-all cursor-pointer px-2 text-center leading-tight">
+            <button type="button" onClick={() => { setEditDataOpen(true); setEditDataTab(subjectMode === 'preloaded' ? 'preset' : 'added'); setExpandedEditItemId(null); }} className="h-10 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-violet-500/20 transition-all cursor-pointer px-2 text-center leading-tight">
               {section === 'academic' ? 'Edit Academic Data' : 'Edit Clinical Data'}
             </button>
+          </div>
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-px bg-border/80" />
           </div>
         </div>
 
         <section
           style={{ '--manage-top-stack-height': controlsExpanded ? '7.125rem' : '4.25rem' } as React.CSSProperties}
-          className="-mx-1 mt-1 max-h-[calc(100dvh-var(--app-header-height)-var(--manage-top-stack-height)-var(--app-bottom-nav-height)-var(--app-bottom-nav-offset))] bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 flex min-h-0 flex-col overflow-hidden soft-entry-boundary">
+          className={cn(
+            'manage-window-surface z-[3] -mx-1 mt-1 bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 soft-entry-boundary relative flex flex-col overflow-clip',
+          )}>
           {section === 'academic' && (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="shrink-0 bg-background/60 border border-border/50 rounded-xl p-1 flex justify-between gap-1">
-                {DAY_ABBRS.map((d, i) => (
-                  <button key={d} type="button" onClick={() => setSelDay(i)}
-                    className={cn('flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer border',
-                      selDay === i ? 'text-primary border-primary/60 bg-primary/10' : 'text-muted-foreground border-transparent bg-background/40 hover:bg-muted/30')}>
-                    {d}
-                  </button>
-                ))}
-              </div>
-              <div className="shrink-0 flex items-center justify-between border-b border-border/40 pb-2">
-                <h3 className="text-sm font-extrabold uppercase tracking-wide text-primary">{DAY_ABBRS[selDay]}'s Academic Schedule</h3>
-                <span className="text-xs text-muted-foreground font-semibold">{academicSlotsForDay.length} Slots</span>
+            <div className="flex flex-col">
+              <div className="sticky top-[calc(var(--app-header-height)+var(--manage-top-stack-height)+0.5rem)] z-20 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-background border-b border-border/70 shadow-sm isolate before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background">
+                <div className="bg-background border border-border/50 rounded-xl p-1 flex justify-between gap-1">
+                {academicDayOrder.map(dayIndex => {
+                  const day = DAY_ABBRS[dayIndex];
+                  return (
+                    <button key={day} type="button" onClick={() => setSelDay(dayIndex)}
+                      className={cn('flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer border',
+                        selDay === dayIndex ? 'text-primary border-primary/60 bg-primary/10' : 'text-muted-foreground border-transparent bg-background/40 hover:bg-muted/30')}>
+                      {day}
+                    </button>
+                  );
+                })}
+                </div>
+                <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                  <h3 className="text-sm font-extrabold uppercase tracking-wide text-primary">{DAY_ABBRS[selDay]}'s Academic Schedule</h3>
+                  <span className="text-xs text-muted-foreground font-semibold">{academicSlotsForDay.length} Slots</span>
+                </div>
               </div>
 
-              <div ref={section === 'academic' ? academicScrollRef : undefined} onScroll={section === 'academic' ? (e) => setAddModalScrolled(e.currentTarget.scrollTop > 8) : undefined} className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-1.5 pr-1 pb-1" style={{ overscrollBehaviorY: 'contain' }}>
+              <div className="space-y-1.5 pr-1 pb-1">
               {groupedAcademicSlots.length === 0 ? (
                 <div className="flex items-center justify-center min-h-[160px] bg-background/40 border border-dashed border-border rounded-xl">
                   <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
                 </div>
               ) : (
                 groupedAcademicSlots.map((group) => (
-                  <div key={group.time} className="relative pt-1.5">
-                    <span className="sticky top-0 z-10 -mx-1 block w-[calc(100%+0.5rem)] border-y border-border/40 bg-card px-2 py-1 text-center text-xs font-bold text-primary whitespace-nowrap shadow-sm soft-entry-boundary soft-entry-boundary--inner">
+                  <React.Fragment key={group.time}>
+                    <span className="isolate mb-1.5 flex min-h-7 w-full items-center justify-center border-y border-border/60 bg-card px-2 py-1 text-center text-xs font-bold text-primary whitespace-nowrap shadow-sm">
                       {group.time}
                     </span>
                     <div className="space-y-2">
@@ -1942,7 +2057,7 @@ export default function AddNew() {
                         );
                       })}
                     </div>
-                  </div>
+                  </React.Fragment>
                 ))
               )}
               <button
@@ -1957,8 +2072,8 @@ export default function AddNew() {
           )}
 
           {section === 'clinical' && (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 pr-1 pb-2" style={{ overscrollBehaviorY: 'contain' }}>
+            <div className="flex flex-col">
+              <div className="space-y-2 pr-1 pb-2">
                 {allClinicalSubjects.map(name => {
                   const group = { rotation: getRotationForSubject(name), sgt: getSGTForSubject(name) };
                   return (
@@ -1985,8 +2100,8 @@ export default function AddNew() {
               </div>
             </div>
           )}
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-px bg-border/80" />
         </section>
-        </div>
         {/* Add New Modal */}
         <OverlayModal
           open={moreOpen}
@@ -1999,19 +2114,19 @@ export default function AddNew() {
             <div>
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-foreground">{section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}</h3>
-                <button type="button" onClick={() => { setMoreOpen(false); setFormError(null); }} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
+                <button type="button" onClick={() => { setMoreOpen(false); setFormError(null); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
               </div>
 
               {/* Static type selector */}
               {section === 'academic' ? (
                 <div className="mt-3">
                   <label className={labelCls}>Subject kind</label>
-                  <div className="flex rounded-xl border border-border overflow-hidden">
+                  <div className="flex gap-2">
                     {(['single', 'allied'] as const).map(t => (
                       <button key={t} type="button" onClick={() => setSubjectType(t)}
-                        className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
-                          subjectType === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
-                        {t}
+                        className={cn('action-button action-button--compact flex-1 rounded-lg',
+                          subjectType === t ? 'action-button--edit' : 'action-button--neutral')}>
+                        {t === 'single' ? 'Single' : 'Allied'}
                       </button>
                     ))}
                   </div>
@@ -2019,15 +2134,15 @@ export default function AddNew() {
               ) : (
                 <div className="mt-3">
                   <label className={labelCls}>Type</label>
-                  <div className="flex rounded-xl border border-border overflow-hidden">
+                  <div className="flex gap-2">
                     <button type="button" onClick={() => setClinicalParentChoice('rotation')}
-                      className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
-                        clinicalParentChoice === 'rotation' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
+                      className={cn('action-button action-button--compact flex-1 rounded-lg',
+                        clinicalParentChoice === 'rotation' ? 'action-button--edit' : 'action-button--neutral')}>
                       Clinical Rotation
                     </button>
                     <button type="button" onClick={() => setClinicalParentChoice('sgt')}
-                      className={cn('flex-1 px-3 py-2 text-xs font-bold capitalize transition-all cursor-pointer',
-                        clinicalParentChoice === 'sgt' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}>
+                      className={cn('action-button action-button--compact flex-1 rounded-lg',
+                        clinicalParentChoice === 'sgt' ? 'action-button--edit' : 'action-button--neutral')}>
                       Small Group Teaching
                     </button>
                   </div>
@@ -2225,29 +2340,33 @@ export default function AddNew() {
                 <div>
                   <h3 className="text-sm font-bold text-foreground">Edit {section === 'academic' ? 'Academic' : 'Clinical'} Data</h3>
                   <p className="text-[10px] text-muted-foreground">
-                    {section === 'clinical' ? 'Planned for clinical items are auto-calculated and cannot be edited.' : 'Edit planned classes or delete user-added items.'}
+                    {section === 'clinical'
+                      ? 'Planned for clinical items are auto-calculated and cannot be edited.'
+                      : subjectMode === 'custom' ? 'Edit planned classes or delete Custom routine items.' : 'Edit planned classes or delete user-added items.'}
                   </p>
                 </div>
-                <button type="button" onClick={() => { setEditDataOpen(false); setExpandedEditItemId(null); setDraftPlanned(null); }} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
+                <button type="button" onClick={() => { setEditDataOpen(false); setExpandedEditItemId(null); setDraftPlanned(null); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
               </div>
 
-              {/* Fixed tabs */}
-              <div className="mt-3 flex rounded-xl border border-border overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => { setEditDataTab('preset'); setExpandedEditItemId(null); }}
-                  className={cn('flex-1 px-3 py-2 text-xs font-bold transition-all cursor-pointer',
-                    editDataTab === 'preset' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}
-                >
-                  Preset
-                </button>
+              {/* Active-mode data selector */}
+              <div className="mt-3 flex gap-2">
+                {subjectMode === 'preloaded' && (
+                  <button
+                    type="button"
+                    onClick={() => { setEditDataTab('preset'); setExpandedEditItemId(null); }}
+                    className={cn('action-button action-button--compact flex-1 rounded-lg',
+                      editDataTab === 'preset' ? 'action-button--edit' : 'action-button--neutral')}
+                  >
+                    Preset
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => { setEditDataTab('added'); setExpandedEditItemId(null); }}
-                  className={cn('flex-1 px-3 py-2 text-xs font-bold transition-all cursor-pointer',
-                    editDataTab === 'added' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted')}
+                  className={cn('action-button action-button--compact flex-1 rounded-lg',
+                    editDataTab === 'added' ? 'action-button--edit' : 'action-button--neutral')}
                 >
-                  Added
+                  {subjectMode === 'custom' ? 'Custom' : 'Added'}
                 </button>
               </div>
             </div>
@@ -2324,7 +2443,7 @@ export default function AddNew() {
                 {editDataItems.addedItems.length === 0 ? (
                   <div className="flex items-center justify-center h-full min-h-[200px]">
                     <div className="text-center">
-                      <p className="text-xs text-muted-foreground font-medium">No Added Item</p>
+                      <p className="text-xs text-muted-foreground font-medium">{subjectMode === 'custom' ? 'No Custom Item' : 'No Added Item'}</p>
                       <p className="text-xs text-muted-foreground mt-1">Add New Item to Edit its Data</p>
                     </div>
                   </div>
@@ -2347,7 +2466,7 @@ export default function AddNew() {
                             <p className="text-[10px] text-muted-foreground">
                               {item.store === 'sgt' || item.store === 'custom-ward'
                                 ? `Auto-calculated · Planned: ${item.planned}`
-                                : `Added by you · Planned: ${item.planned}`}
+                                : `${subjectMode === 'custom' ? 'Custom item' : 'Added by you'} · Planned: ${item.planned}`}
                             </p>
                           </div>
                           {!isAuto && <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')} />}
@@ -2405,7 +2524,7 @@ export default function AddNew() {
           header={
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
-              <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
             </div>
           }
           footer={
@@ -2442,14 +2561,37 @@ export default function AddNew() {
           </div>
         </OverlayModal>
 
+        {/* More menu */}
+        <OverlayModal open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} maxW="max-w-md" header={
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-foreground">More</h3>
+            <button type="button" onClick={() => setMoreMenuOpen(false)} className="action-button action-button--close action-button--icon" aria-label="Close More menu"><X className="w-4 h-4" /></button>
+          </div>
+        }>
+          <div className="p-4 sm:p-5 space-y-2">
+            <button type="button" onClick={() => { setMoreMenuOpen(false); setHistoryOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
+              <SendToBack className="w-4 h-4 text-primary shrink-0" />
+              <span><span className="block text-xs font-bold text-foreground">History</span><span className="block text-[10px] text-muted-foreground">View recent Manage actions</span></span>
+            </button>
+            <button type="button" onClick={() => { setMoreMenuOpen(false); setImportError(null); setImportOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
+              <Download className="w-4 h-4 text-primary shrink-0" />
+              <span><span className="block text-xs font-bold text-foreground">Import</span><span className="block text-[10px] text-muted-foreground">Add or replace a routine</span></span>
+            </button>
+            <button type="button" onClick={() => { setMoreMenuOpen(false); setExportOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
+              <Upload className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span><span className="block text-xs font-bold text-foreground">Export</span><span className="block text-[10px] text-muted-foreground">Save a copy of your routine</span></span>
+            </button>
+          </div>
+        </OverlayModal>
+
         {/* History Modal */}
-        <OverlayModal open={historyOpen} onClose={() => setHistoryOpen(false)} maxW="max-w-md">
-          <div className="p-4 sm:p-5 space-y-3.5 max-h-[70vh] flex flex-col">
+        <OverlayModal open={historyOpen} onClose={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} maxW="max-w-md">
+          <div className="p-4 sm:p-5 space-y-3.5">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">Recent Activity</h3>
-              <button type="button" onClick={() => setHistoryOpen(false)} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
             </div>
-            <div className="overflow-y-auto flex-1 min-h-0 space-y-2">
+            <div className="space-y-2">
               {historyEntries.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-5">No manage actions yet.</p>
               ) : (
@@ -2479,16 +2621,13 @@ export default function AddNew() {
           maxW="max-w-lg"
           header={
             <>
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-foreground">Edit Subject</h3>
-                <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
-              </div>
+              <div><h3 className="text-sm font-bold text-foreground">Edit Subject</h3></div>
               <p className="text-[10px] text-muted-foreground mt-1">Change schedule or parent. Rename is disabled.</p>
             </>
           }
           footer={
             <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={btnGhost}>Cancel</button>
+              <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={btnCancel}>Cancel</button>
               <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save changes</button>
             </div>
           }
@@ -2559,16 +2698,13 @@ export default function AddNew() {
           maxW="max-w-lg"
           header={
             <>
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
-                <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
-              </div>
+              <div><h3 className="text-sm font-bold text-foreground">Edit Rotation</h3></div>
               <p className="text-[10px] text-muted-foreground mt-1">Change dates, session times, or vacations. Rename is disabled.</p>
             </>
           }
           footer={
             <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className={btnGhost}>Cancel</button>
+              <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className={btnCancel}>Cancel</button>
               <button type="button" onClick={saveEditWard} className={btnPrimary}>Save changes</button>
             </div>
           }
@@ -2599,26 +2735,23 @@ export default function AddNew() {
           onClose={closeEditSlot}
           maxW="max-w-lg"
           header={editSlot ? (
-            <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-foreground">Edit Slot</h3>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   {editSlot.multiSelectMode ? 'Select subject cards you want to reallocate/re-slot.' : 'Change time or day.'}
                 </p>
               </div>
-              <button type="button" onClick={closeEditSlot} className="action-button action-button--neutral action-button--icon"><X className="w-4 h-4" /></button>
-            </div>
           ) : undefined}
           footer={
             !editSlot ? undefined :
             moveCompleted ? (
               <div className="flex gap-2">
-                <button type="button" onClick={closeEditSlot} className={cn(btnPrimary, 'flex-1')}>Close</button>
+                <button type="button" onClick={closeEditSlot} className={cn('action-button action-button--close', 'flex-1')}>Close</button>
               </div>
             ) : slotConflict ? (
               <div className="grid grid-cols-3 gap-2">
                 <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full')}>Remove Slot</button>
-                <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnGhost, 'w-full')}>Cancel</button>
+                <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnCancel, 'w-full')}>Cancel</button>
                 <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className={cn(btnPrimary, 'w-full')}>Merge anyway</button>
               </div>
             ) : (
@@ -2626,7 +2759,7 @@ export default function AddNew() {
                 <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full flex items-center justify-center gap-1.5')}>
                   <Trash2 className="w-3.5 h-3.5" /> Remove Slot
                 </button>
-                <button type="button" onClick={closeEditSlot} className={cn(btnGhost, 'w-full')}>Cancel</button>
+                <button type="button" onClick={closeEditSlot} className={cn(btnCancel, 'w-full')}>Cancel</button>
                 {editSlot.multiSelectMode ? (
                   <button type="button" onClick={() => doMoveSubjects()} disabled={!showMoveForm} className={cn(btnPrimary, 'w-full', !showMoveForm && 'opacity-50 cursor-not-allowed')}>Move Selected</button>
                 ) : (
@@ -2745,7 +2878,7 @@ export default function AddNew() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button type="button" onClick={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
+                <button type="button" onClick={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }} className={cn(btnCancel, 'flex-1')}>Cancel</button>
                 <button type="button" onClick={confirmSlotRemove} className="action-button action-button--warning flex-1">Remove</button>
               </div>
             </div>
@@ -2763,7 +2896,7 @@ export default function AddNew() {
               </div>
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setSlotRemoveAllConfirm(false)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
+              <button type="button" onClick={() => setSlotRemoveAllConfirm(false)} className={cn(btnCancel, 'flex-1')}>Cancel</button>
               <button type="button" onClick={confirmWholeSlotRemove} className="action-button action-button--danger flex-1">Remove Slot</button>
             </div>
           </div>
@@ -2784,7 +2917,7 @@ export default function AddNew() {
                 {deleteSheet.lines.map((l, i) => <li key={i} className="text-xs text-foreground bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">{l}</li>)}
               </ul>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setDeleteSheet(null)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
+                <button type="button" onClick={() => setDeleteSheet(null)} className={cn(btnCancel, 'flex-1')}>Cancel</button>
                 <button type="button" onClick={() => deleteSheet.onConfirm()} className="action-button action-button--danger flex-1">Delete</button>
               </div>
             </div>
@@ -2814,9 +2947,10 @@ export default function AddNew() {
         </OverlayModal>
 
         {/* Export Modal */}
-        <OverlayModal open={exportOpen} onClose={() => setExportOpen(false)}>
+        <OverlayModal open={exportOpen} onClose={() => { setExportOpen(false); setMoreMenuOpen(true); }} header={
+          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-foreground">Export Routine</h3><button type="button" onClick={() => { setExportOpen(false); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon" aria-label="Close Export Routine"><X className="w-4 h-4" /></button></div>
+        }>
           <div className="p-4 sm:p-5 space-y-2.5">
-            <h3 className="text-sm font-bold text-foreground">Export Routine</h3>
             <p className="text-[10px] text-muted-foreground mt-0.5">Bundle contains routine data only — never attendance.</p>
             <Note note={note} />
             <button type="button" onClick={doShare} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-2')}><Share2 className="w-4 h-4" /> Share…</button>
@@ -2826,9 +2960,10 @@ export default function AddNew() {
         </OverlayModal>
 
         {/* Import Modal */}
-        <OverlayModal open={importOpen} onClose={() => { setImportOpen(false); setImportError(null); }}>
+        <OverlayModal open={importOpen} onClose={() => { setImportOpen(false); setImportError(null); setMoreMenuOpen(true); }} header={
+          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-foreground">Import Routine</h3><button type="button" onClick={() => { setImportOpen(false); setImportError(null); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon" aria-label="Close Import Routine"><X className="w-4 h-4" /></button></div>
+        }>
           <div className="p-4 sm:p-5 space-y-2.5">
-            <h3 className="text-sm font-bold text-foreground">Import Routine</h3>
             <p className="text-[10px] text-muted-foreground mt-0.5">Load a routine bundle from a file or pasted JSON. Attendance is never imported.</p>
             <Note note={note} />
             {importError && <p className={inlineErrCls}>{importError}</p>}
@@ -2848,24 +2983,26 @@ export default function AddNew() {
         </OverlayModal>
 
         {/* Paste JSON Modal */}
-        <OverlayModal open={pasteOpen} onClose={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} maxW="max-w-lg">
+        <OverlayModal open={pasteOpen} onClose={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} maxW="max-w-lg" header={
+          <div><h3 className="text-sm font-bold text-foreground">Paste Bundle JSON</h3></div>
+        }>
           <div className="p-4 sm:p-5 space-y-2.5">
-            <h3 className="text-sm font-bold text-foreground">Paste Bundle JSON</h3>
             <p className="text-[10px] text-muted-foreground mt-0.5">Paste the bundle text from another device, then validate.</p>
             {pasteError && <p className={inlineErrCls}>{pasteError}</p>}
             <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={8} className={cn(inputCls, 'h-auto font-mono text-[10px] py-2')} placeholder='{"version":2,"subjectMode":…}' />
             <div className="flex gap-2">
-              <button type="button" onClick={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} className={cn(btnGhost, 'flex-1')}>Cancel</button>
+              <button type="button" onClick={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} className={cn(btnCancel, 'flex-1')}>Cancel</button>
               <button type="button" onClick={() => beginImport(pasteText, 'paste')} className={cn(btnPrimary, 'flex-1')}>Validate & Preview</button>
             </div>
           </div>
         </OverlayModal>
 
         {/* Import Preview Modal */}
-        <OverlayModal open={!!preview} onClose={() => setPreview(null)} maxW="max-w-lg">
+        <OverlayModal open={!!preview} onClose={() => { setPreview(null); setMoreMenuOpen(true); }} maxW="max-w-lg" header={
+          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-foreground">Import Preview</h3><button type="button" onClick={() => { setPreview(null); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon" aria-label="Close Import Preview"><X className="w-4 h-4" /></button></div>
+        }>
           {preview && (
             <div className="p-4 sm:p-5 space-y-3">
-              <h3 className="text-sm font-bold text-foreground">Import Preview</h3>
               <p className="text-[10px] text-muted-foreground mt-0.5">Review exactly what will be added or skipped before anything changes.</p>
               <Note note={note} />
               <div className="bg-muted/30 border border-border/50 rounded-xl p-3 text-xs text-foreground space-y-1">
@@ -2897,7 +3034,7 @@ export default function AddNew() {
               </div>
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setReplaceConfirm(false)} className={cn(btnGhost, 'flex-1')}>Cancel</button>
+              <button type="button" onClick={() => setReplaceConfirm(false)} className={cn(btnCancel, 'flex-1')}>Cancel</button>
               <button type="button" onClick={() => { setReplaceConfirm(false); applyReplace(); }} className="action-button action-button--danger flex-1">Yes, Replace</button>
             </div>
           </div>

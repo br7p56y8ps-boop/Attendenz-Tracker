@@ -1,5 +1,6 @@
-import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload } from 'lucide-react';
+import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
+import { assertBackupSize, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
@@ -8,9 +9,13 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
 import { activateCurriculum, createCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculum, setCurriculumStatus as persistCurriculumStatus, CurriculumRecord } from '@/lib/curriculumStore';
-import { storageClear, storageSetItem, storageRemoveItem } from '@/lib/idb';
+import { idbRemoveMany, idbSetMany, storageClear, storageSetItem, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
+import { getSoundEnabled, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type VibrationStyle } from '@/lib/feedback';
+import { getNotificationPermission, getNotificationPreferences, getSystemNotificationsEnabled, setNotificationPreferences, setSystemNotificationsEnabled, testSystemNotification, type NotificationLeadMinutes, type NotificationPermissionState, type NotificationPreferences } from '@/lib/notifications';
+import { disableOneSignalPush, enableOneSignalPush, isOneSignalProductionConfigured, prepareOneSignal } from '@/lib/onesignal';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
@@ -21,6 +26,31 @@ import neutralStudentProfile from '@/assets/images/neutral_student_profile_17842
 
 const SNAPSHOTS_KEY = 'attendenz_snapshots_v1';
 const ORPHANED_RECORDS_KEY = 'attendance_tracker_orphaned_records';
+
+function SettingToggle({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (checked: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}
+      className={cn('relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40', checked ? 'border-primary/70 bg-primary/80' : 'border-border bg-muted/60', disabled && 'cursor-not-allowed opacity-40')}>
+      <span className={cn('h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200', checked ? 'translate-x-5' : 'translate-x-1')} />
+    </button>
+  );
+}
+
+function SettingRow({ icon, title, description, onClick, tone = 'primary' }: { icon: React.ReactNode; title: string; description?: string; onClick: () => void; tone?: 'primary' | 'blue' | 'violet' | 'amber' | 'emerald' | 'danger' }) {
+  const toneClass = tone === 'danger' ? 'bg-destructive/10 text-destructive border-destructive/20' : tone === 'blue' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' : tone === 'violet' ? 'bg-violet-500/10 text-violet-500 border-violet-500/20' : tone === 'amber' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : tone === 'emerald' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-primary/10 text-primary border-primary/20';
+  return (
+    <button type="button" onClick={onClick} className="w-full flex items-center justify-between gap-3 text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
+      <span className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border', toneClass)}>{icon}</span>
+      <span className="min-w-0 flex-1"><span className="block font-semibold text-xs text-foreground">{title}</span>{description && <span className="block text-[10px] text-muted-foreground mt-0.5">{description}</span>}</span>
+      <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+    </button>
+  );
+}
+
+function notifySuccess(message: string): void {
+  triggerConfirmationFeedback('success');
+  import('sonner').then(({ toast }) => toast.success(message));
+}
 // Returns 1 if a>b, -1 if a<b, 0 if equal
 function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -112,6 +142,7 @@ export default function Account() {
   const [newCurriculumName, setNewCurriculumName] = useState('');
   const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
   const [editingCurriculumName, setEditingCurriculumName] = useState('');
+  const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
 
   const handleToggleCurriculumStatus = () => {
     const next = curriculumStatus === 'Active' ? 'Completed' : 'Active';
@@ -121,14 +152,15 @@ export default function Account() {
     if (activeCurriculumId) setCurricula(persistCurriculumStatus(activeCurriculumId, 'active'));
     import('sonner').then(({ toast }) => toast.info('Curriculum marked as Active.'));
   };
-  const applyMarkComplete = () => {
+  const applyMarkComplete = async () => {
     setConfirmMarkComplete(false);
     setCurriculumStatus('Completed');
     localStorage.setItem('att_curriculum_status', 'Completed');
     if (activeCurriculumId) setCurricula(persistCurriculumStatus(activeCurriculumId, 'archived'));
-    createSnapshot('Curriculum Completed');
+    const snapshotSaved = await createSnapshot('Curriculum Completed');
     setSnapshots(getSnapshots());
-    import('sonner').then(({ toast }) => toast.success('Curriculum marked as Completed! Auto-snapshot saved.'));
+    if (snapshotSaved) notifySuccess('Curriculum marked as Completed! Auto-snapshot saved.');
+    else import('sonner').then(({ toast }) => toast.error('Curriculum marked as Completed, but the safety snapshot could not be saved.'));
   };
 
   const handleApplyUpdate = async (withBackup: boolean) => {
@@ -136,6 +168,21 @@ export default function Account() {
       import('sonner').then(({ toast }) => toast.error("You're offline — connect to the internet once to update."));
       return;
     }
+
+    if (withBackup) {
+      setUpdatePhase('backing');
+      const snapshotSaved = await createSnapshot('Pre-Update Backup');
+      if (!snapshotSaved) {
+        setUpdatePhase('none');
+        import('sonner').then(({ toast }) => toast.error('Update stopped — the safety snapshot could not be created.'));
+        return;
+      }
+      const snaps = getSnapshots();
+      if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
+        await storageSetItem('att_pending_update_restore', snaps[0].id);
+      }
+    }
+
     await Promise.all([
       storageRemoveItem('att_pwa_update_ready'),
       storageRemoveItem('att_pwa_latest_version'),
@@ -146,12 +193,6 @@ export default function Account() {
     ]);
 
     if (withBackup) {
-      setUpdatePhase('backing');
-      createSnapshot('Pre-Update Backup');
-      const snaps = getSnapshots();
-      if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
-        localStorage.setItem('att_pending_update_restore', snaps[0].id);
-      }
       await new Promise(r => setTimeout(r, 5500));
     }
 
@@ -321,11 +362,11 @@ export default function Account() {
         if (ua.subjectType === 'allied' && ua.parentName === 'Small Group Teaching') {
           const sgtKey = getSGTKey(ua.id);
           const data = subjects[sgtKey] || { attended: 0, missed: 0 };
-          rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || 0, sgtId: ua.id });
+          rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses ?? 0, sgtId: ua.id });
         } else {
           const key = canonicalAttendanceKey('subject', ua.id || getSubjectIdByName(ua.name, 'academic'), ua.name);
           const data = key ? subjects[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-          rawItems.push({ name: ua.name, category: 'Added by you', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses || getSubjectPlannedTotal(ua.name) || 0 });
+          rawItems.push({ name: ua.name, category: 'Added by you', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses ?? getSubjectPlannedTotal(ua.name) ?? 0 });
         }
       }
       const addedWards = new Set<string>();
@@ -348,17 +389,17 @@ export default function Account() {
         if (cs.subjectType === 'allied' && cs.parentName === 'Small Group Teaching') {
           const sgtKey = getSGTKey(cs.id);
           const data = subjects[sgtKey] || { attended: 0, missed: 0 };
-          rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || 0, sgtId: cs.id });
+          rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses ?? 0, sgtId: cs.id });
         } else {
           const key = canonicalAttendanceKey('subject', cs.id || getSubjectIdByName(cs.name, 'academic'), cs.name);
           const data = key ? subjects[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-          rawItems.push({ name: cs.name, category: cs.category || 'Custom Subject', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses || getSubjectPlannedTotal(cs.name) || 0 });
+          rawItems.push({ name: cs.name, category: cs.category || 'Custom Subject', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses ?? 0 });
         }
       }
       for (const cw of customWards) {
         const key = canonicalAttendanceKey('ward', cw.id || getSubjectIdByName(cw.name, 'clinical'), cw.name);
         const data = key ? wards[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-        rawItems.push({ name: `${cw.name} (Ward)`, category: 'Custom Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getCustomWardTotalPlanned(cw.startDate, cw.endDate) || 0, isWard: true });
+        rawItems.push({ name: `${cw.name} (Ward)`, category: 'Custom Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getCustomWardTotalPlanned(cw.startDate, cw.endDate, cw.vacationPeriods) ?? 0, isWard: true });
       }
     }
 
@@ -437,36 +478,42 @@ export default function Account() {
       if (exportFormat === 'pdf') await generatePDFReport(reportOptions);
       else if (exportFormat === 'excel') await generateExcelReport(reportOptions);
       else if (exportFormat === 'csv') generateCSVReport(reportOptions);
-      import('sonner').then(({ toast }) => toast.success('Report exported.'));
+      notifySuccess('Report exported.');
     } finally { setBusy(null); }
   };
 
-  const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'snapshot' | 'export' | 'dataProtection' | null>(null);
+  const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'snapshot' | 'export' | 'dataProtection' | 'identity' | 'feedback' | 'notifications' | 'theme' | null>(null);
   const [transferImportData, setTransferImportData] = useState<any>(null);
   const transferFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleShareData = async () => {
     const success = await shareDataAsJSON();
-    if (success) import('sonner').then(({ toast }) => toast.success('Transfer file ready!'));
+    if (success) notifySuccess('Transfer file ready!');
     else import('sonner').then(({ toast }) => toast.error('Failed to prepare transfer file.'));
   };
   const handleTransferFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const content = event.target?.result as string;
-          const parsedData = JSON.parse(content);
-          if (!parsedData || typeof parsedData !== 'object' || Array.isArray(parsedData)) throw new Error('Invalid backup file format.');
-          setTransferImportData(parsedData);
-        } catch (err) { import('sonner').then(({ toast }) => toast.error('Invalid transfer file format.')); }
-      };
-      reader.readAsText(file);
+    if (!file) return;
+    if (file.size > MAX_BACKUP_BYTES) {
+      import('sonner').then(({ toast }) => toast.error('Transfer file is too large. Please choose a file under 5 MB.'));
+      return;
     }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        assertBackupSize(content);
+        setTransferImportData(validateBackupPayload(JSON.parse(content)));
+      } catch (err) { import('sonner').then(({ toast }) => toast.error(err instanceof Error ? err.message : 'Invalid transfer file format.')); }
+    };
+    reader.readAsText(file);
   };
-  const executeTransferImport = () => {
+  const executeTransferImport = async () => {
     if (!transferImportData) return;
+    if (!await createSnapshot('Pre-Transfer Restore')) {
+      import('sonner').then(({ toast }) => toast.error('Transfer stopped — the safety snapshot could not be created.'));
+      return;
+    }
 
     // Clear mode-specific attendance keys BEFORE writing backup data
     const MODE_SPECIFIC_ATTENDANCE_KEYS = [
@@ -476,43 +523,46 @@ export default function Account() {
       'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom',
       'att_mode_separation_done_v1',
     ];
-    MODE_SPECIFIC_ATTENDANCE_KEYS.forEach(k => {
-      localStorage.removeItem(k);
-      storageRemoveItem(k);
-    });
+    await idbRemoveMany(MODE_SPECIFIC_ATTENDANCE_KEYS);
+    MODE_SPECIFIC_ATTENDANCE_KEYS.forEach(k => localStorage.removeItem(k));
 
-    // Now write backup data
-    for (const [key, value] of Object.entries(transferImportData)) {
-      if (value !== null && value !== undefined) {
-        const stringVal = typeof value === 'string' ? value : JSON.stringify(value);
-        localStorage.setItem(key, stringVal);
-        storageSetItem(key, stringVal);
-      }
-    }
+    // Commit the validated backup atomically in IndexedDB, then mirror the cache.
+    const entries = Object.entries(transferImportData).map(([key, value]) => [
+      key,
+      typeof value === 'string' ? value : JSON.stringify(value),
+    ] as [string, string]);
+    await idbSetMany(entries);
+    entries.forEach(([key, stringVal]) => localStorage.setItem(key, stringVal));
 
     // Remove migration flags so migration can run on next load
-    for (const flag of [
+    const migrationFlags = [
       'att_mode_separation_done_v1',
       'att_attendance_id_migration_v2_done_preloaded',
       'att_attendance_id_migration_v2_done_custom',
-    ]) {
-      localStorage.removeItem(flag);
-      storageRemoveItem(flag);
-    }
+    ];
+    await idbRemoveMany(migrationFlags);
+    migrationFlags.forEach(flag => localStorage.removeItem(flag));
 
-    import('sonner').then(({ toast }) => toast.success('Data transferred successfully! Reloading...'));
+    notifySuccess('Data transferred successfully! Reloading...');
     setLocation('/');
     setTimeout(() => window.location.reload(), 1500);
   };
   useEffect(() => { autoSnapshotOnLoad(); setSnapshots(getSnapshots()); }, []);
-  const handleTakeSnapshot = () => {
-    createSnapshot('Manual Checkpoint');
+  const handleTakeSnapshot = async () => {
+    const success = await createSnapshot('Manual Checkpoint');
+    if (!success) {
+      setSnapshotMsg('✗ Snapshot could not be saved.');
+      setTimeout(() => setSnapshotMsg(''), 3000);
+      return;
+    }
+    triggerConfirmationFeedback('success');
     setSnapshots(getSnapshots());
     setSnapshotMsg('✓ Snapshot created successfully!');
     setTimeout(() => setSnapshotMsg(''), 3000);
   };
   const handleRestoreSnapshot = async (id: string) => {
     if (await restoreSnapshot(id)) {
+      triggerConfirmationFeedback('success');
       setSnapshotMsg('✓ Snapshot restored! Refreshing page...');
       setLocation('/');
       setTimeout(() => window.location.reload(), 1500);
@@ -528,12 +578,14 @@ export default function Account() {
     localStorage.setItem(SNAPSHOTS_KEY, json);
     storageSetItem(SNAPSHOTS_KEY, json);
     setSnapshots(remaining);
+    triggerConfirmationFeedback('danger');
     setSnapshotToDelete(null);
     setSnapshotMsg('✓ Snapshot deleted.');
     setTimeout(() => setSnapshotMsg(''), 3000);
   };
   const handleClearCache = () => {
     const cleared = clearLocalCache();
+    triggerConfirmationFeedback('success');
     setSnapshotMsg(`✓ Cleared ${cleared} temporary cached items safely! Attendance records & subjects remain 100% intact.`);
     setTimeout(() => setSnapshotMsg(''), 4000);
   };
@@ -546,21 +598,67 @@ export default function Account() {
   };
 
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme) return savedTheme === 'dark';
-      return document.documentElement.classList.contains('dark');
-    }
-    return true;
-  });
-  useEffect(() => { setIsDark(document.documentElement.classList.contains('dark')); }, []);
-  const toggleTheme = () => {
-    const nextDark = !isDark;
-    setIsDark(nextDark);
-    if (nextDark) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); }
-    else { document.documentElement.classList.remove('dark'); localStorage.setItem('theme', 'light'); }
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference());
+  const [vibrationEnabled, setVibrationEnabledState] = useState(() => getVibrationEnabled());
+  const [vibrationStyle, setVibrationStyleState] = useState<VibrationStyle>(() => getVibrationStyle());
+  const [soundEnabled, setSoundEnabledState] = useState(() => getSoundEnabled());
+  const [soundVolume, setSoundVolumeState] = useState(() => getSoundVolume());
+  const vibrationSupported = isVibrationSupported();
+  const oneSignalConfigured = isOneSignalProductionConfigured();
+  const [showVibrationInfo, setShowVibrationInfo] = useState(false);
+  const [systemNotificationsEnabled, setSystemNotificationsEnabledState] = useState(() => getSystemNotificationsEnabled());
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() => getNotificationPermission());
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [notificationPreferences, setNotificationPreferencesState] = useState<NotificationPreferences>(() => getNotificationPreferences());
+  const updateVibrationEnabled = (enabled: boolean) => { if (!vibrationSupported) return; setVibrationEnabledState(enabled); setVibrationEnabled(enabled); };
+  const updateVibrationStyle = (style: VibrationStyle) => { setVibrationStyleState(style); setVibrationStyle(style); };
+  const updateSoundEnabled = (enabled: boolean) => { setSoundEnabledState(enabled); setSoundEnabled(enabled); };
+  const updateSoundVolume = (volume: number) => { setSoundVolumeState(volume); setSoundVolume(volume); };
+  const updateSystemNotificationsEnabled = (enabled: boolean) => {
+    setSystemNotificationsEnabledState(enabled);
+    setSystemNotificationsEnabled(enabled);
+    if (enabled) void enableOneSignalPush();
+    else void disableOneSignalPush();
   };
+  const updateNotificationPreference = <K extends keyof NotificationPreferences>(key: K, value: NotificationPreferences[K]) => {
+    const next = { ...notificationPreferences, [key]: value };
+    setNotificationPreferencesState(next);
+    setNotificationPreferences(next);
+  };
+  const enableSystemNotifications = async () => {
+    if (notificationBusy) return;
+    setNotificationBusy(true);
+    if (!oneSignalConfigured) {
+      import('sonner').then(({ toast }) => toast.info('Open the published Attendenz app to enable system notifications.'));
+      setNotificationBusy(false);
+      return;
+    }
+    const result = await enableOneSignalPush();
+    const permission = getNotificationPermission();
+    setNotificationPermission(permission);
+    if (result === 'enabled' && permission === 'granted') {
+      setSystemNotificationsEnabledState(true);
+      setSystemNotificationsEnabled(true);
+      const shown = await testSystemNotification();
+      if (shown) notifySuccess('System notifications enabled.');
+      else import('sonner').then(({ toast }) => toast.info('Notifications are enabled. Use the OneSignal test later to confirm delivery.'));
+    } else if (result === 'denied' || permission === 'denied') {
+      import('sonner').then(({ toast }) => toast.info('Notifications are blocked. Allow them in your iPhone settings if you want to use them.'));
+    } else {
+      import('sonner').then(({ toast }) => toast.info('System notifications could not be connected yet. Please try again on the published app.'));
+    }
+    setNotificationBusy(false);
+  };
+  const testNotificationFromSettings = async () => {
+    if (notificationPermission !== 'granted' || !systemNotificationsEnabled) return;
+    const shown = await testSystemNotification();
+    if (!shown) import('sonner').then(({ toast }) => toast.info('The test notification could not be shown. Check notification permission and device settings.'));
+  };
+
+  useEffect(() => {
+    if (activeSettingModal === 'notifications' && oneSignalConfigured) void prepareOneSignal();
+  }, [activeSettingModal, oneSignalConfigured]);
+
   const openCurriculumManager = () => {
     setConfirmMarkComplete(false);
     setCurricula(getCurricula());
@@ -572,17 +670,18 @@ export default function Account() {
       const created = createCurriculum(newCurriculumName);
       setNewCurriculumName('');
       setCurricula(getCurricula());
-      import('sonner').then(({ toast }) => toast.success(`${created.name} created empty. Use AddNew Import if you want to bring in a routine structure.`));
+      notifySuccess(`${created.name} created empty. Use AddNew Import if you want to bring in a routine structure.`);
     } catch (error) {
       import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not create curriculum.'));
     }
   };
-  const handleActivateCurriculum = (id: string) => {
+  const handleActivateCurriculum = async (id: string) => {
     if (id === activeCurriculumId) return;
     try {
-      activateCurriculum(id);
+      await activateCurriculum(id);
+      await flushStorageWrites();
       setShowSwitchDialog(false);
-      import('sonner').then(({ toast }) => toast.success('Curriculum switched.'));
+      notifySuccess('Curriculum switched.');
       setLocation('/');
       window.location.reload();
     } catch {
@@ -645,65 +744,36 @@ export default function Account() {
 
   const [backupTransferOpen, setBackupTransferOpen] = useState(false);
   useEffect(() => {
-    const modalOpen = Boolean(showDeleteDataDialog || showUpdatePrompt || pendingPct !== null || confirmMarkComplete || snapshotToRestore || snapshotToDelete || activeSettingModal || showSwitchDialog || backupTransferOpen || restoreConfirmType);
+    const modalOpen = Boolean(isEditingName || showDeleteDataDialog || showUpdatePrompt || pendingPct !== null || confirmMarkComplete || snapshotToRestore || snapshotToDelete || activeSettingModal || showSwitchDialog || backupTransferOpen || restoreConfirmType);
     if (!modalOpen) return;
     lockScroll();
     return () => unlockScroll();
-  }, [showDeleteDataDialog, showUpdatePrompt, pendingPct, confirmMarkComplete, snapshotToRestore, snapshotToDelete, activeSettingModal, showSwitchDialog, backupTransferOpen, restoreConfirmType]);
+  }, [isEditingName, showDeleteDataDialog, showUpdatePrompt, pendingPct, confirmMarkComplete, snapshotToRestore, snapshotToDelete, activeSettingModal, showSwitchDialog, backupTransferOpen, restoreConfirmType]);
 
   return (
-    <Layout
-      headerRight={
-        <button type="button" onClick={toggleTheme} className="action-button action-button--update theme-toggle-button shrink-0" title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}>
-          <span className="text-[10px] font-extrabold uppercase tracking-wide">{isDark ? 'Light' : 'Dark'}</span>
-        </button>
-      }
-    >
-      <div className="max-w-xl mx-auto space-y-3 pb-6 scroll-reachability">
+    <Layout>
+      <div className="max-w-xl mx-auto space-y-2 pb-6 scroll-reachability">
         {/* 1. Active Account */}
-        <div className="space-y-2">
-          <StickySectionLabel label="Active Account" zClass="z-30" />
-          <div className="relative flex items-center gap-4 bg-card border border-border rounded-3xl p-5 shadow-sm">
-            <div className="relative w-16 h-16 rounded-2xl group cursor-pointer active:scale-95 transition-transform shrink-0" onClick={handleImageClick}>
-              <div className="w-full h-full rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden border border-primary/20 relative">
-                <AnimatePresence mode="wait">
-                  <motion.img key={profileImage || 'default'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} src={profileImage || getDefaultAvatar()} className="w-full h-full object-cover" alt="Profile" />
-                </AnimatePresence>
-                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <Camera className="w-6 h-6 text-white" />
-                </div>
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-lg border-2 border-card">
-                <Camera className="w-3 h-3 text-primary-foreground" />
-              </div>
-              <input type="file" ref={fileInputRef} onChange={handleImageChange} className="hidden" accept="image/png, image/jpeg, image/jpg, image/webp, image/*" />
-            </div>
-            <div className="flex-1 min-w-0 space-y-0.5">
-              {isEditingName ? (
-                <div className="flex items-center gap-1.5">
-                  <input type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); }} className="bg-muted px-2.5 py-1 rounded-xl text-sm font-bold text-foreground outline-none border border-primary/50 focus:ring-2 focus:ring-primary/20 w-full max-w-[180px]" autoFocus />
-                  <button type="button" onClick={handleSaveName} className="action-button action-button--save shrink-0" title="Save Name">Save</button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 min-w-0">
-                  <button type="button" onClick={() => setIsEditingName(true)} className="min-w-0 truncate text-left font-extrabold text-xl sm:text-2xl text-foreground cursor-pointer">{username}</button>
-                  <button type="button" onClick={() => setIsEditingName(true)} className="action-button action-button--edit action-button--compact shrink-0" title="Edit Name">Edit</button>
-                </div>
-              )}
-              <p className="text-[10px] text-muted-foreground truncate">{getActiveCurriculumName()}</p>
-            </div>
+        <div className="contents">
+          <StickySectionLabel label="Active Account" stackIndex={0} zClass="z-30" />
+          <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden">
+            <button type="button" onClick={() => setActiveSettingModal('identity')} className="w-full flex items-center justify-between gap-3 text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
+              <span className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border border-primary/30 bg-primary/10"><img src={profileImage || getDefaultAvatar()} alt="Profile" className="w-full h-full object-cover" /></span>
+              <span className="min-w-0 flex-1"><span className="block font-extrabold text-sm text-foreground truncate">{username}</span><span className="block text-[10px] text-muted-foreground mt-0.5 truncate">{getActiveCurriculumName()}</span></span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            </button>
           </div>
         </div>
 
         {/* 2. Preference & Statistic */}
-        <div className="space-y-2">
-          <StickySectionLabel label="Preference & Statistic" zClass="z-30" />
+        <div className="contents">
+          <StickySectionLabel label="Preference" stackIndex={1} zClass="z-30" />
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
             <button type="button" onClick={() => setActiveSettingModal('preferredPc')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
               <div className="flex items-center gap-3">
                 <div className="w-8.5 h-8.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><span className="font-bold text-xs">%</span></div>
                 <div>
-                  <p className="font-semibold text-xs text-foreground">Preferred Percentage</p>
+                  <p className="font-semibold text-xs text-foreground">Curriculum Percentage</p>
                   <p className="text-[10px] text-muted-foreground">Target attendance threshold ({preferredPercentage}%)</p>
                 </div>
               </div>
@@ -726,61 +796,33 @@ export default function Account() {
           </div>
         </div>
 
-        {/* 3. Other Settings */}
-        <div className="space-y-2">
-          <StickySectionLabel label="Other Setting" offsetClass="top-[calc(var(--app-header-height)+2rem)]" zClass="z-20" />
+        {/* 3. Storage & Data */}
+        <div className="contents">
+          <StickySectionLabel label="Storage & Data" stackIndex={2} zClass="z-30" />
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
-            <button
-              type="button"
-              onClick={() => setBackupTransferOpen(true)}
-              className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8.5 h-8.5 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 border border-blue-500/20">
-                  <Database className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="font-semibold text-xs text-foreground">Backup / Transfer</p>
-                  <p className="text-[10px] text-muted-foreground">Backup, restore, or transfer your complete app data.</p>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            </button>
-
-            <div onClick={() => setActiveSettingModal('snapshot')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="w-8.5 h-8.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"><SnapshotIcon className="w-4 h-4" /></div>
-                <div>
-                  <p className="font-semibold text-xs text-foreground">Snapshots & Storage</p>
-                  <p className="text-[10px] text-muted-foreground">Manage local state backups & cache</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-              </div>
-            </div>
-
-            <button type="button" onClick={() => setActiveSettingModal('export')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="w-8.5 h-8.5 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0"><FileText className="w-4 h-4" /></div>
-                <div>
-                  <p className="font-semibold text-xs text-foreground">Export Attendance Data</p>
-                  <p className="text-[10px] text-muted-foreground">Export records in PDF, Excel, or CSV formats</p>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            </button>
-            <button type="button" onClick={() => setActiveSettingModal('dataProtection')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="w-8.5 h-8.5 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0"><Database className="w-4 h-4" /></div>
-                <div>
-                  <p className="font-semibold text-xs text-foreground">Data Protection & Storage</p>
-                  <p className="text-[10px] font-bold text-emerald-500">{runtimeStorageInfo.techTitle}</p>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            </button>
+            <SettingRow icon={<Database className="w-4 h-4" />} title="Backup / Transfer" description="Backup, restore, or transfer your complete app data." tone="blue" onClick={() => setBackupTransferOpen(true)} />
+            <SettingRow icon={<SnapshotIcon className="w-4 h-4" />} title="Snapshots & Storage" description="Manage local state backups & cache" tone="primary" onClick={() => setActiveSettingModal('snapshot')} />
+            <SettingRow icon={<FileText className="w-4 h-4" />} title="Export Attendance Data" description="Export records in PDF, Excel, or CSV formats" tone="amber" onClick={() => setActiveSettingModal('export')} />
+            <SettingRow icon={<Database className="w-4 h-4" />} title="Data Protection & Storage" description={runtimeStorageInfo.techTitle} tone="emerald" onClick={() => setActiveSettingModal('dataProtection')} />
           </div>
+        </div>
+
+        {/* 4. App Settings */}
+        <div className="contents">
+          <StickySectionLabel label="App Settings" stackIndex={3} zClass="z-30" />
+          <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
+            <SettingRow icon={<Vibrate className="w-4 h-4" />} title="Feedback & Sounds" description="Choose how Attendenz responds after you save or mark attendance" tone="violet" onClick={() => setActiveSettingModal('feedback')} />
+            <SettingRow icon={<Bell className="w-4 h-4" />} title="System Notifications" description="Choose which reminders you want to receive" tone="blue" onClick={() => setActiveSettingModal('notifications')} />
+            <SettingRow icon={<Info className="w-4 h-4" />} title="Theme" description={`${themePreference === 'system' ? 'System' : themePreference === 'dark' ? 'Dark' : 'Light'} appearance preference`} tone="primary" onClick={() => setActiveSettingModal('theme')} />
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl overflow-hidden shrink-0 border border-border/50 bg-muted/20"><img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Logo" className="w-full h-full object-cover" /></div>
+                <div className="min-w-0 flex-1 text-left"><div className="flex items-center justify-between gap-2"><p className="font-extrabold text-xs text-foreground truncate">Attendenz Tracker</p>{isUpdateAvailable ? <span className="text-[9px] font-extrabold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">Update Available</span> : <span className="text-[9px] font-extrabold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">Up to Date</span>}</div><p className="text-[10px] text-muted-foreground mt-0.5">Version {installedVersion}</p><p className="text-[10px] text-muted-foreground/80">Developer: <strong className="text-foreground">benzavraar</strong></p><p className="text-[10px] text-muted-foreground/80">Storage Used: {runtimeStorageInfo.usedMB}</p></div>
+              </div>
+              <div className="flex gap-2 border-t border-border/40 pt-3"><button type="button" onClick={() => setWhatsNewOpen(true)} className="action-button action-button--neutral flex-1"><Sparkles className="w-4 h-4 text-primary" />What’s New</button>{isUpdateAvailable && <button type="button" onClick={() => setShowUpdatePrompt(true)} className="action-button action-button--update flex-1"><RefreshCw className="w-4 h-4" />Update App</button>}</div>
+            </div>
+          </div>
+        </div>
 
           <AnimatePresence>
             {backupTransferOpen && (
@@ -788,7 +830,7 @@ export default function Account() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-y-auto"
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden"
                 onClick={() => setBackupTransferOpen(false)}
               >
                 <motion.div
@@ -802,15 +844,8 @@ export default function Account() {
                   <div className="flex items-center justify-between border-b border-border/50 pb-3">
                     <div>
                       <h3 className="text-sm font-bold text-foreground">Backup / Transfer</h3>
-                      <p className="text-[10px] text-muted-foreground">Backup, restore, or transfer your complete app data.</p>
+                      <p className="text-[10px] text-muted-foreground">Complete app backup keeps both Preset and Custom workspaces. Routine bundles use the active mode only.</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setBackupTransferOpen(false)}
-                      className="action-button action-button--neutral action-button--icon shrink-0"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
 
                   {busy && <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{busy}</p>}
@@ -822,7 +857,7 @@ export default function Account() {
                     <div className="space-y-2">
                       <button
                         onClick={handleShareData}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                        className="action-button action-button--transfer w-full"
                       >
                         <Send className="w-4 h-4" /> Send to Another Device
                       </button>
@@ -832,10 +867,10 @@ export default function Account() {
                           setTimeout(() => {
                             exportDataAsJSON();
                             setBusy(null);
-                            import('sonner').then(({ toast }) => toast.success('Backup downloaded.'));
+                            notifySuccess('Backup downloaded.');
                           }, 400);
                         }}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                        className="action-button action-button--save w-full"
                       >
                         <Upload className="w-4 h-4" /> Export Backup (.json)
                       </button>
@@ -849,13 +884,13 @@ export default function Account() {
                     <div className="space-y-2">
                       <button
                         onClick={() => setRestoreConfirmType('transfer')}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold transition-colors border border-border cursor-pointer"
+                        className="action-button action-button--transfer w-full"
                       >
                         <Download className="w-4 h-4" /> Receive from Another Device
                       </button>
                       <button
                         onClick={() => setRestoreConfirmType('file')}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold transition-colors border border-border cursor-pointer"
+                        className="action-button action-button--transfer w-full"
                       >
                         <RefreshCw className="w-4 h-4" /> Restore from File
                       </button>
@@ -876,6 +911,7 @@ export default function Account() {
                           if (file) {
                             importDataFromJSON(file, (success) => {
                               if (success) {
+                                triggerConfirmationFeedback('success');
                                 import('sonner').then(({ toast }) => toast.info('Backup restored successfully! Reloading app...'));
                                 setLocation('/');
                                 window.location.reload();
@@ -901,7 +937,7 @@ export default function Account() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => setRestoreConfirmType(null)}
-                            className="flex-1 py-2 rounded-xl border border-border text-foreground text-xs font-semibold hover:bg-muted/40 transition-colors cursor-pointer"
+                            className="action-button action-button--cancel flex-1"
                           >
                             Cancel
                           </button>
@@ -914,7 +950,7 @@ export default function Account() {
                               }
                               setRestoreConfirmType(null);
                             }}
-                            className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors cursor-pointer"
+                            className="action-button action-button--warning flex-1"
                           >
                             Continue Restore
                           </button>
@@ -929,14 +965,14 @@ export default function Account() {
                         <AlertCircle className="w-4 h-4 shrink-0" />
                         <p className="text-xs font-bold">Import Data Confirmation</p>
                       </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">You are about to replace your current local data with the received backup. We recommend creating a Full App Backup before continuing.</p>
+                      <p className="text-xs text-muted-foreground leading-relaxed">You are about to replace the complete app backup on this device, including both Preset and Custom workspaces. We recommend creating a Full App Backup before continuing.</p>
                       <div className="bg-background rounded-xl border border-border/60 p-2.5 space-y-1.5 mt-2">
                         <div className="flex justify-between text-xs"><span className="text-muted-foreground">App Version</span><span className="font-bold text-foreground">{transferImportData.att_app_version || 'Unknown'}</span></div>
                         <div className="flex justify-between text-xs"><span className="text-muted-foreground">Routine Mode</span><span className="font-bold text-foreground">{transferImportData.att_subject_mode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine'}</span></div>
                         <div className="flex justify-between text-xs"><span className="text-muted-foreground">Total Snapshots</span><span className="font-bold text-foreground">{transferImportData.attendenz_snapshots_v1 ? JSON.parse(transferImportData.attendenz_snapshots_v1).length : 0}</span></div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 pt-2">
-                        <button onClick={() => setTransferImportData(null)} className="action-button action-button--neutral w-full">Cancel</button>
+                        <button onClick={() => setTransferImportData(null)} className="action-button action-button--cancel w-full">Cancel</button>
                         <button onClick={executeTransferImport} className="action-button action-button--danger w-full">Replace & Import</button>
                       </div>
                     </div>
@@ -946,7 +982,7 @@ export default function Account() {
                     <button
                       type="button"
                       onClick={() => setBackupTransferOpen(false)}
-                      className="px-4 py-2 rounded-xl bg-muted/40 text-foreground font-bold text-xs border border-border hover:bg-muted transition-all cursor-pointer"
+                      className="action-button action-button--close"
                     >
                       Close
                     </button>
@@ -958,22 +994,30 @@ export default function Account() {
 
           <AnimatePresence>
             {activeSettingModal && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={cn("fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4", activeSettingModal === 'preferredPc' ? "overflow-visible" : "overflow-y-auto")} onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
-                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className={cn("modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative", activeSettingModal === 'preferredPc' ? "max-h-none overflow-visible" : "max-h-[min(70dvh,48rem)] overflow-y-auto")} onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center justify-between border-b border-border/50 pb-3">
-                    <div className="flex items-center gap-3">
-                      {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden" onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
+                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-h-[min(70dvh,48rem)] shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                      <div className="flex items-center justify-between border-b border-border/50 pb-3 shrink-0">
+                      <div className="flex items-center gap-3">
+                        {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
                       {activeSettingModal === 'curriculum' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><GraduationCap className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'snapshot' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><SnapshotIcon className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'export' && (<div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20"><FileText className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'dataProtection' && (<div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 border border-emerald-500/20"><Database className="w-5 h-5" /></div>)}
+                      {activeSettingModal === 'identity' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><Camera className="w-5 h-5" /></div>)}
+                      {activeSettingModal === 'feedback' && (<div className="w-9 h-9 rounded-xl bg-violet-500/10 text-violet-500 flex items-center justify-center shrink-0 border border-violet-500/20"><Vibrate className="w-5 h-5" /></div>)}
+                      {activeSettingModal === 'notifications' && (<div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 border border-blue-500/20"><Bell className="w-5 h-5" /></div>)}
+                      {activeSettingModal === 'theme' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><Info className="w-5 h-5" /></div>)}
                       <div>
                         <h3 className="font-bold text-base text-foreground">
-                          {activeSettingModal === 'preferredPc' && 'Preferred Percentage'}
+                          {activeSettingModal === 'preferredPc' && 'Curriculum Percentage'}
                           {activeSettingModal === 'curriculum' && 'Curriculum Management'}
                           {activeSettingModal === 'snapshot' && 'Snapshots & Storage'}
                           {activeSettingModal === 'export' && 'Export Attendance Data'}
                           {activeSettingModal === 'dataProtection' && 'Data Protection & Storage'}
+                          {activeSettingModal === 'identity' && 'Identity Card'}
+                          {activeSettingModal === 'feedback' && 'Feedback & Sounds'}
+                          {activeSettingModal === 'notifications' && 'System Notifications'}
+                          {activeSettingModal === 'theme' && 'Theme'}
                         </h3>
                         <p className="text-xs text-muted-foreground">
                           {activeSettingModal === 'preferredPc' && 'Target attendance threshold percentage'}
@@ -981,14 +1025,80 @@ export default function Account() {
                           {activeSettingModal === 'snapshot' && 'Manage local state backups & cache'}
                           {activeSettingModal === 'export' && 'Export records in PDF, Excel, or CSV formats'}
                           {activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}
+                          {activeSettingModal === 'identity' && 'Profile, display name, and active curriculum'}
+                          {activeSettingModal === 'feedback' && 'Choose what you hear after a confirmation'}
+                          {activeSettingModal === 'notifications' && 'Choose when Attendenz should remind you'}
+                          {activeSettingModal === 'theme' && 'Choose how Attendenz follows your device'}
                         </p>
                       </div>
                     </div>
-                    <button type="button" onClick={() => { setActiveSettingModal(null); setPendingPct(null); }} className="action-button action-button--neutral action-button--icon shrink-0" title="Close">
+                    <button type="button" onClick={() => { setActiveSettingModal(null); setPendingPct(null); }} className="action-button action-button--close action-button--icon shrink-0" title="Close">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="pt-1">
+                  <div className="pt-1 flex-1 min-h-0 overflow-y-auto">
+                    {activeSettingModal === 'identity' && (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-4 rounded-2xl border border-border/50 bg-muted/20 p-4">
+                          <button type="button" onClick={handleImageClick} className="relative w-20 h-20 rounded-2xl overflow-hidden shrink-0 border border-primary/30 bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/40" aria-label="Change profile picture">
+                            <AnimatePresence mode="wait"><motion.img key={profileImage || 'default'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} src={profileImage || getDefaultAvatar()} className="w-full h-full object-cover" alt="Profile" /></AnimatePresence>
+                            <span className="absolute inset-x-0 bottom-0 bg-black/50 py-1 text-[9px] font-bold text-white">Change</span>
+                          </button>
+                          <input type="file" ref={fileInputRef} onChange={handleImageChange} className="hidden" accept="image/png, image/jpeg, image/jpg, image/webp, image/*" />
+                          <div className="min-w-0 flex-1 text-left">
+                            <p className="text-lg font-extrabold text-foreground truncate">{username}</p>
+                            <p className="text-[11px] text-muted-foreground mt-1">Active: {getActiveCurriculumName()}</p>
+                            <button type="button" onClick={() => { setNameInput(username); setIsEditingName(true); }} className="action-button action-button--edit action-button--compact mt-3">Edit name</button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">Your profile picture and display name are stored locally with the rest of your app data.</p>
+                      </div>
+                    )}
+                    {activeSettingModal === 'feedback' && (
+                      <div className="space-y-3">
+                        <div className={cn('rounded-2xl border border-violet-500/20 bg-violet-500/5 p-3.5', !vibrationSupported && 'opacity-55')}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 min-w-0"><Vibrate className="w-4 h-4 text-violet-500 shrink-0" /><span className="text-xs font-bold text-foreground">Vibration feedback</span></div>
+                            <SettingToggle checked={vibrationEnabled} onChange={updateVibrationEnabled} label="Vibration feedback" disabled={!vibrationSupported} />
+                          </div>
+                          {vibrationSupported ? (
+                            <label className="flex items-center justify-between gap-3 mt-3 text-xs font-semibold text-foreground"><span className="text-muted-foreground">Vibration strength</span><select value={vibrationStyle} onChange={e => updateVibrationStyle(e.target.value as VibrationStyle)} disabled={!vibrationEnabled} className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground disabled:opacity-50"><option value="subtle">Subtle</option><option value="standard">Standard</option><option value="strong">Strong</option></select></label>
+                          ) : (
+                            <div className="mt-2 flex items-start gap-2 text-[10px] leading-relaxed text-muted-foreground"><Info className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span>Vibration isn’t available in this iPhone browser app. Nothing is wrong with your phone or attendance records. <button type="button" onClick={() => setShowVibrationInfo(v => !v)} className="font-bold text-primary underline underline-offset-2">{showVibrationInfo ? 'Hide details' : 'More info'}</button>{showVibrationInfo && <span className="block mt-1">iPhone Safari does not allow web apps to use the phone’s vibration control, so this option is unavailable here.</span>}</span></div>
+                          )}
+                        </div>
+                        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5">
+                          <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 min-w-0"><Volume2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-xs font-bold text-foreground">Confirmation sound</span></div><SettingToggle checked={soundEnabled} onChange={updateSoundEnabled} label="Confirmation sound" /></div>
+                          <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">Play a short confirmation sound after you save or mark attendance. Your iPhone’s Silent mode, volume, and sound settings still control what you hear.</p>
+                          <label className="mt-3 flex items-center gap-3 text-xs font-semibold text-foreground"><span className="shrink-0 text-muted-foreground">Volume</span><input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={e => updateSoundVolume(Number(e.target.value))} disabled={!soundEnabled} className="min-w-0 flex-1 accent-blue-500 disabled:opacity-50" aria-label="Confirmation sound volume" /><output className="w-10 text-right text-xs font-bold text-blue-500">{Math.round(soundVolume * 100)}%</output></label>
+                        </div>
+                        <button type="button" onClick={testConfirmationFeedback} className="action-button action-button--update w-full">Test feedback</button>
+                      </div>
+                    )}
+                    {activeSettingModal === 'notifications' && (
+                      <div className="space-y-3">
+                        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5 space-y-3">
+                          <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold text-foreground">System notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Choose the reminders you want on this device</p></div>{notificationPermission === 'granted' && <SettingToggle checked={systemNotificationsEnabled} onChange={updateSystemNotificationsEnabled} label="System notifications" />}</div>
+                          {notificationPermission !== 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-muted-foreground">{notificationPermission === 'denied' ? 'Blocked in iPhone settings' : notificationPermission === 'insecure' ? 'Secure connection needed' : notificationPermission === 'unsupported' ? 'Not available on this device' : 'Permission needed'}</span><button type="button" onClick={enableSystemNotifications} disabled={notificationBusy || notificationPermission === 'denied' || notificationPermission === 'unsupported' || notificationPermission === 'insecure'} className="action-button action-button--update action-button--compact disabled:opacity-50">{notificationBusy ? 'Checking…' : 'Allow notifications'}</button></div>}
+                          {notificationPermission === 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">Permission granted</span><button type="button" onClick={testNotificationFromSettings} disabled={!systemNotificationsEnabled} className="action-button action-button--neutral action-button--compact disabled:opacity-50">Test</button></div>}
+                          <p className="text-[10px] leading-relaxed text-muted-foreground">Choose the reminders you want. You can change these choices at any time; your selections will be kept for reminder delivery.</p>
+                        </div>
+                        <div className="space-y-2.5">
+                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Midnight Need Attention summary</span><span className="block text-[10px] text-muted-foreground mt-0.5">One grouped alert for today’s warning subjects</span></span><SettingToggle checked={notificationPreferences.midnightNeedAttention} onChange={value => updateNotificationPreference('midnightNeedAttention', value)} label="Midnight Need Attention summary" /></label>
+                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Before-class warning reminder</span><span className="block text-[10px] text-muted-foreground mt-0.5">One alert {notificationPreferences.leadMinutes} minutes before each warning subject</span></span><SettingToggle checked={notificationPreferences.preClassNeedAttention} onChange={value => updateNotificationPreference('preClassNeedAttention', value)} label="Before-class warning reminder" /></label>
+                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">All scheduled subjects</span><span className="block text-[10px] text-muted-foreground mt-0.5">Also remind me about normal classes in one grouped message</span></span><SettingToggle checked={notificationPreferences.allScheduledDigest} onChange={value => updateNotificationPreference('allScheduledDigest', value)} label="All scheduled subjects" /></label>
+                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">AddNew changes</span><span className="block text-[10px] text-muted-foreground mt-0.5">Extra alerts after you make changes in Manage</span></span><SettingToggle checked={notificationPreferences.addNewChanges} onChange={value => updateNotificationPreference('addNewChanges', value)} label="AddNew changes" /></label>
+                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update available</span><span className="block text-[10px] text-muted-foreground mt-0.5">Tell me once when a new version is ready</span></span><SettingToggle checked={notificationPreferences.updateAvailable} onChange={value => updateNotificationPreference('updateAvailable', value)} label="Update available" /></label>
+                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update completed</span><span className="block text-[10px] text-muted-foreground mt-0.5">Tell me once when the update finishes</span></span><SettingToggle checked={notificationPreferences.updateCompleted} onChange={value => updateNotificationPreference('updateCompleted', value)} label="Update completed" /></label>
+                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="text-xs font-semibold text-foreground">Warning reminder lead time</span><select value={notificationPreferences.leadMinutes} onChange={e => updateNotificationPreference('leadMinutes', Number(e.target.value) as NotificationLeadMinutes)} className="ml-auto shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground"><option value={15}>15 minutes</option><option value={30}>30 minutes</option><option value={60}>60 minutes</option></select></label>
+                        </div>
+                      </div>
+                    )}
+                    {activeSettingModal === 'theme' && (
+                      <div className="space-y-2">
+                        {(['system', 'light', 'dark'] as ThemePreference[]).map(option => <button key={option} type="button" onClick={() => { setThemePreference(option); localStorage.setItem('theme', option); applyThemePreference(option); }} className={cn('w-full flex items-center justify-between rounded-xl border p-3 text-left transition-colors', themePreference === option ? 'border-primary bg-primary/10' : 'border-border/60 bg-muted/20 hover:bg-muted/40')}><span><span className="block text-xs font-bold text-foreground">{option === 'system' ? 'System' : option === 'light' ? 'Light' : 'Dark'}</span><span className="block text-[10px] text-muted-foreground mt-0.5">{option === 'system' ? 'Follow iPhone appearance' : `Always use ${option} appearance`}</span></span><span className={cn('text-[10px] font-extrabold uppercase', themePreference === option ? 'text-primary' : 'text-muted-foreground')}>{themePreference === option ? 'Selected' : 'Choose'}</span></button>)}
+                      </div>
+                    )}
                     {activeSettingModal === 'preferredPc' && (
                       <div className="space-y-4">
                         <div className="bg-muted/30 p-3.5 rounded-2xl border border-border/50 space-y-2">
@@ -1012,7 +1122,7 @@ export default function Account() {
                           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-left space-y-2">
                             <p className="text-xs font-bold text-foreground">Apply {pendingPct}% target?</p>
                             <p className="text-[11px] text-muted-foreground">All subjects and wards in this curriculum will use this threshold.</p>
-                            <div className="flex gap-2"><button type="button" onClick={() => setPendingPct(null)} className="action-button action-button--neutral flex-1">Cancel</button><button type="button" onClick={() => { setPreferredPercentage(pendingPct); setPendingPct(null); }} className="action-button action-button--save flex-1">Apply</button></div>
+                            <div className="flex gap-2"><button type="button" onClick={() => setPendingPct(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={() => { setPreferredPercentage(pendingPct); setPendingPct(null); }} className="action-button action-button--save flex-1">Apply</button></div>
                           </div>
                         )}
                         {pendingPct === null && <div className="pt-2 flex justify-end"><button type="button" onClick={() => setActiveSettingModal(null)} className="action-button action-button--save">Save & Close</button></div>}
@@ -1023,11 +1133,11 @@ export default function Account() {
                         <div className="grid grid-cols-1 gap-2 bg-muted/30 p-3.5 rounded-2xl border border-border/50">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-medium text-muted-foreground">Current Curriculum:</span>
-                            <span className="text-xs font-bold text-foreground">{getActiveCurriculumName()}</span>
+                            <span className="text-xs font-bold text-foreground">{activeCurriculum?.name || getActiveCurriculumName()}</span>
                           </div>
                           <div className="flex items-center justify-between pt-1 border-t border-border/30">
                             <span className="text-xs font-medium text-muted-foreground">Current Routine Mode:</span>
-                            <span className="text-xs font-bold text-primary">{subjectMode === 'preloaded' ? '5th Year / Final Phase structure' : 'User-created structure'}</span>
+                            <span className="text-xs font-bold text-primary">{subjectMode === 'preloaded' ? 'Preset routine' : 'Custom routine'}</span>
                           </div>
                           <div className="flex items-center justify-between pt-1 border-t border-border/30">
                             <span className="text-xs font-medium text-muted-foreground">Curriculum Status:</span>
@@ -1050,13 +1160,13 @@ export default function Account() {
                           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left space-y-3">
                             <h4 className="text-sm font-bold text-foreground">Restore this snapshot?</h4>
                             <p className="text-xs text-muted-foreground leading-relaxed">{snapshotToRestore.label} · {snapshotToRestore.timestamp}. Current data will be replaced by this backup point.</p>
-                            <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToRestore(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={() => { const id = snapshotToRestore.id; setSnapshotToRestore(null); handleRestoreSnapshot(id); }} className="action-button action-button--transfer flex-1">Restore</button></div>
+                            <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToRestore(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={() => { const id = snapshotToRestore.id; setSnapshotToRestore(null); handleRestoreSnapshot(id); }} className="action-button action-button--transfer flex-1">Restore</button></div>
                           </div>
                         ) : snapshotToDelete ? (
                           <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-left space-y-3">
                             <h4 className="text-sm font-bold text-foreground">Delete this snapshot?</h4>
                             <p className="text-xs text-muted-foreground leading-relaxed">This removes only the selected snapshot. Your active curriculum data is not changed.</p>
-                            <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToDelete(null)} className="flex-1 py-2.5 rounded-xl border border-border text-foreground text-xs font-semibold cursor-pointer">Cancel</button><button type="button" onClick={handleDeleteSnapshot} className="action-button action-button--danger flex-1">Delete</button></div>
+                            <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToDelete(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteSnapshot} className="action-button action-button--danger flex-1">Delete</button></div>
                           </div>
                         ) : (
                         <>
@@ -1065,17 +1175,17 @@ export default function Account() {
                           <button type="button" onClick={handleTakeSnapshot} className="action-button action-button--transfer">Take Snapshot</button>
                         </div>
                         <div className="grid grid-cols-2 gap-2 pt-1">
-                          <button onClick={() => setShowSnapshotsList(!showSnapshotsList)} className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-muted hover:bg-muted/80 text-foreground text-xs font-medium rounded-xl transition-all cursor-pointer">
+                          <button onClick={() => setShowSnapshotsList(!showSnapshotsList)} className="action-button action-button--neutral w-full">
                             <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                             <span>Saved ({snapshots.length})</span>
                           </button>
-                          <button onClick={handleClearCache} className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-muted hover:bg-muted/80 text-foreground text-xs font-medium rounded-xl transition-all cursor-pointer">
+                          <button onClick={handleClearCache} className="action-button action-button--warning w-full">
                             <Eraser className="w-3.5 h-3.5 text-muted-foreground" />
                             <span>Clear Cache</span>
                           </button>
                         </div>
                         {showSnapshotsList && (
-                          <div className="pt-2 border-t border-border/40 space-y-2 max-h-48 overflow-y-auto">
+                          <div className="pt-2 border-t border-border/40 space-y-2">
                             {snapshots.length === 0 ? (
                               <p className="text-xs text-muted-foreground text-center py-2">No snapshots saved yet.</p>
                             ) : (
@@ -1086,11 +1196,11 @@ export default function Account() {
                                     <p className="text-[10px] text-muted-foreground">{s.timestamp}</p>
                                   </div>
                                   <div className="flex items-center gap-1.5 shrink-0">
-                                    <button onClick={() => setSnapshotToRestore(s)} className="flex items-center gap-1 text-xs font-medium text-primary hover:underline px-2.5 py-1 rounded-lg bg-primary/10 cursor-pointer">
+                                    <button onClick={() => setSnapshotToRestore(s)} className="action-button action-button--transfer action-button--compact">
                                       <RefreshCw className="w-3 h-3" />
                                       Restore
                                     </button>
-                                    <button onClick={() => setSnapshotToDelete(s)} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer" title="Delete snapshot">
+                                    <button onClick={() => setSnapshotToDelete(s)} className="action-button action-button--danger action-button--compact" title="Delete snapshot">
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
@@ -1111,13 +1221,13 @@ export default function Account() {
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Supported Formats</label>
                           <div className="grid grid-cols-3 gap-2">
-                            <button type="button" onClick={() => setExportFormat('pdf')} className={cn("py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer", exportFormat === 'pdf' ? "bg-primary text-primary-foreground border-primary shadow-sm" : "bg-muted/40 border-border text-foreground hover:bg-muted")}>
+                            <button type="button" onClick={() => setExportFormat('pdf')} className={cn("action-button action-button--compact w-full", exportFormat === 'pdf' ? "action-button--warning" : "action-button--neutral")}>
                               <FileText className="w-3.5 h-3.5" /><span>PDF (.pdf)</span>
                             </button>
-                            <button type="button" onClick={() => setExportFormat('excel')} className={cn("py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer", exportFormat === 'excel' ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : "bg-muted/40 border-border text-foreground hover:bg-muted")}>
+                            <button type="button" onClick={() => setExportFormat('excel')} className={cn("action-button action-button--compact w-full", exportFormat === 'excel' ? "action-button--save" : "action-button--neutral")}>
                               <FileSpreadsheet className="w-3.5 h-3.5" /><span>Excel (.xlsx)</span>
                             </button>
-                            <button type="button" onClick={() => setExportFormat('csv')} className={cn("py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer", exportFormat === 'csv' ? "bg-sky-600 text-white border-sky-600 shadow-sm" : "bg-muted/40 border-border text-foreground hover:bg-muted")}>
+                            <button type="button" onClick={() => setExportFormat('csv')} className={cn("action-button action-button--compact w-full", exportFormat === 'csv' ? "action-button--transfer" : "action-button--neutral")}>
                               <Download className="w-3.5 h-3.5" /><span>CSV (.csv)</span>
                             </button>
                           </div>
@@ -1192,7 +1302,7 @@ export default function Account() {
                           <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 space-y-3">
                             <h4 className="text-sm font-bold text-foreground">Delete All App Data?</h4>
                             <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases attendance, routines, snapshots, profile data, target settings, and setup state. Export a backup first if you are unsure.</p>
-                            <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--neutral flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
+                            <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
                           </div>
                         ) : (
                         <>
@@ -1220,7 +1330,7 @@ export default function Account() {
                                 } else {
                                   import("sonner").then(({ toast }) => toast.info('Browser kept standard storage policy. Install app as PWA to grant persistent storage.'));
                                 }
-                              }} className="text-[10px] font-bold px-2.5 py-1 bg-primary text-primary-foreground rounded-lg shadow-sm cursor-pointer shrink-0">
+                              }} className="action-button action-button--transfer action-button--compact shrink-0">
                                 Request Permission
                               </button>
                             )}
@@ -1246,53 +1356,13 @@ export default function Account() {
             )}
           </AnimatePresence>
 
-          {/* App Info & Update */}
-          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3.5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl overflow-hidden shrink-0 border border-border/50 shadow-sm bg-muted/20">
-                <img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Logo" className="w-full h-full object-cover" />
-              </div>
-              <div className="text-xs space-y-0.5 text-left flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-extrabold text-foreground text-xs truncate">Attendenz Tracker</span>
-                  {isUpdateAvailable ? (
-                    <span className="text-[10px] font-extrabold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">Update Available</span>
-                  ) : (
-                    <span className="text-[10px] font-extrabold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">v{installedVersion} • Up to Date</span>
-                  )}
-                </div>
-                <p className="text-[11px] text-muted-foreground font-medium">Developer: <strong className="text-foreground font-bold">benzavraar</strong></p>
-                <p className="text-[10px] text-muted-foreground/80 font-medium">Storage Used: {runtimeStorageInfo.usedMB}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 pt-1 border-t border-border/50">
-              <button type="button" onClick={() => setWhatsNewOpen(true)} className="flex-1 py-2 px-3 rounded-xl bg-muted/50 hover:bg-muted text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-border/50 cursor-pointer">
-                <Sparkles className="w-3.5 h-3.5 text-primary" />
-                <span>What's New</span>
-              </button>
-              {isUpdateAvailable && (
-                <button type="button" onClick={() => setShowUpdatePrompt(true)} className="flex-1 py-2 px-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer">
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Update App</span>
-                </button>
-              )}
+          {/* 5. Danger Zone */}
+          <div className="contents">
+            <StickySectionLabel label="Danger Zone" stackIndex={4} zClass="z-30" />
+            <div className="bg-card/80 backdrop-blur-xl border border-destructive/30 rounded-2xl shadow-sm overflow-hidden">
+              <SettingRow icon={<Trash2 className="w-4 h-4" />} title="Delete All App’s Data" description="Permanently erase all local app data" tone="danger" onClick={() => setShowDeleteDataDialog(true)} />
             </div>
           </div>
-
-          {/* Danger Zone */}
-          <div onClick={() => setShowDeleteDataDialog(true)} className="w-full bg-destructive/10 border border-destructive/30 hover:bg-destructive/20 rounded-2xl p-4 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all shadow-sm group">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-destructive/20 text-destructive shrink-0">
-                <Trash2 className="w-5 h-5 text-destructive" />
-              </div>
-              <div className="text-left">
-                <p className="font-bold text-xs text-destructive">Danger Zone: Delete All App Data</p>
-                <p className="text-[10px] text-destructive/80 font-medium">Permanently erase all attendance records & act as brand new app</p>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-destructive/70 group-hover:translate-x-0.5 transition-transform" />
-          </div>
-                </div>
       </div>
       {/* All dialogs remain as before */}
       <AnimatePresence>
@@ -1312,7 +1382,7 @@ export default function Account() {
                   <Download className="w-4 h-4" /><span>Backup & Continue</span>
                 </button>
                 <button type="button" onClick={() => handleApplyUpdate(false)} className="action-button action-button--neutral w-full">Skip Backup</button>
-                <button type="button" onClick={() => setShowUpdatePrompt(false)} className="action-button action-button--neutral w-full">Cancel</button>
+                <button type="button" onClick={() => setShowUpdatePrompt(false)} className="action-button action-button--cancel w-full">Cancel</button>
               </div>
             </motion.div>
           </motion.div>
@@ -1347,7 +1417,7 @@ export default function Account() {
             <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} transition={{ type: 'spring', damping: 26, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-destructive/30 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
               <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-destructive/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div><div><h3 className="text-base font-bold text-foreground">Delete All App Data?</h3><p className="text-[11px] text-destructive font-semibold">Irreversible action</p></div></div>
               <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases attendance records, routines, snapshots, profile data, target settings, and setup state. Export a backup first if you are unsure.</p>
-              <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--neutral flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
+              <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
             </motion.div>
           </motion.div>
         )}
@@ -1360,16 +1430,16 @@ export default function Account() {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="w-5 h-5 text-primary" /></div>
-                  <div className="text-left"><h3 className="text-base font-bold text-foreground">Curriculum Management</h3><p className="text-[11px] text-muted-foreground">Choose where your routine and attendance belong</p></div>
+                  <div className="text-left"><h3 className="text-base font-bold text-foreground">Curriculum Management</h3><p className="text-[11px] text-muted-foreground">Switch between saved routines. Each keeps its own subjects, SGTs, wards, schedules, and attendance.</p></div>
                 </div>
-                <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); }} className="action-button action-button--neutral shrink-0">Close</button>
+                <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); }} className="action-button action-button--close shrink-0">Close</button>
               </div>
               {confirmMarkComplete ? (
                 <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left space-y-3">
                   <h4 className="text-sm font-bold text-foreground">Mark curriculum as Completed?</h4>
                   <p className="text-xs text-muted-foreground leading-relaxed">An auto-snapshot of the current records will be saved first, so nothing is lost.</p>
                   <div className="flex gap-2 pt-1">
-                    <button type="button" onClick={() => setConfirmMarkComplete(false)} className="action-button action-button--neutral flex-1">Cancel</button>
+                    <button type="button" onClick={() => setConfirmMarkComplete(false)} className="action-button action-button--cancel flex-1">Cancel</button>
                     <button type="button" onClick={applyMarkComplete} className="action-button action-button--save flex-1">Mark Completed</button>
                   </div>
                 </div>
@@ -1377,15 +1447,16 @@ export default function Account() {
               <>
               <div className="space-y-2">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Active curricula</p>
-                {curricula.filter(c => c.status === 'active').map(c => (
+                {curricula.filter(c => c.status === 'active').sort((a, b) => Number(b.id === activeCurriculumId) - Number(a.id === activeCurriculumId)).map(c => (
                   <div key={c.id} className={cn('rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60')}>
                     <div className="flex items-center justify-between gap-2">
                       <button type="button" onClick={() => handleActivateCurriculum(c.id)} className="min-w-0 flex-1 text-left cursor-pointer">
-                        <p className="text-sm font-bold text-foreground truncate">{c.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{c.id === activeCurriculumId ? 'Currently selected' : 'Select this curriculum to return to it'}</p>
+                        <p className="text-sm font-bold text-foreground truncate">{c.name} <span className="text-[9px] font-extrabold uppercase tracking-wider text-primary">{c.kind === 'preset' ? 'Preset' : 'Custom'}</span></p>
+                        <p className="text-[10px] text-muted-foreground">{c.id === activeCurriculumId ? 'Currently selected' : c.kind === 'preset' ? 'Editable 5th Year / Final Phase reference routine' : 'Separate Custom routine with its own data'}</p>
                       </button>
                       <div className="flex items-center gap-1 shrink-0">
                         <button type="button" onClick={() => { setEditingCurriculumId(c.id); setEditingCurriculumName(c.name); }} className="action-button action-button--edit shrink-0" aria-label={`Rename ${c.name}`}>Rename</button>
+                        {c.id !== activeCurriculumId && <button type="button" onClick={() => handleArchiveCurriculum(c.id)} className="action-button action-button--warning shrink-0" aria-label={`Archive ${c.name}`}>Archive</button>}
                         {editingCurriculumId === c.id && <button type="button" onClick={() => handleRenameCurriculum(c.id)} className="action-button action-button--save">Save</button>}
                       </div>
                     </div>
@@ -1393,13 +1464,12 @@ export default function Account() {
                   </div>
                 ))}
               </div>
-              {curricula.some(c => c.status === 'archived') && <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Archived curricula</p>{curricula.filter(c => c.status === 'archived').map(c => <div key={c.id} className="rounded-2xl border border-border/60 p-3 flex items-center gap-2"><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="flex-1 min-w-0 text-left cursor-pointer"><p className="text-sm font-bold text-foreground truncate">{c.name}</p><p className="text-[10px] text-muted-foreground">Reopen this curriculum with all its saved data</p></button><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="action-button action-button--edit shrink-0">Reopen</button></div>)}</div>}
+              {curricula.some(c => c.status === 'archived') && <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Archived curricula</p>{curricula.filter(c => c.status === 'archived').map(c => <div key={c.id} className="rounded-2xl border border-border/60 p-3 flex items-center gap-2"><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="flex-1 min-w-0 text-left cursor-pointer"><p className="text-sm font-bold text-foreground truncate">{c.name} <span className="text-[9px] font-extrabold uppercase tracking-wider text-primary">{c.kind === 'preset' ? 'Preset' : 'Custom'}</span></p><p className="text-[10px] text-muted-foreground">Reopen this curriculum with all its saved data</p></button><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="action-button action-button--edit shrink-0">Reopen</button></div>)}</div>}
               <div className="border-t border-border/50 pt-4 space-y-2">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Create empty curriculum</p>
-                <p className="text-[10px] text-muted-foreground text-left leading-relaxed">It starts empty. If you want another routine structure, create it first and use Import in AddNew.</p>
-                <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. Phase 1 / 3rd Year" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit shrink-0">Create</button></div>
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Create another Custom routine</p>
+                <p className="text-[10px] text-muted-foreground text-left leading-relaxed">Create a separate routine for another year or phase. It starts empty and will not change your other routines.</p>
+                <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. 2nd Year / Second Phase" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit shrink-0">Create Custom Routine</button></div>
               </div>
-              <div className="flex flex-wrap gap-2 pt-1">{curricula.filter(c => c.status === 'active' && c.id !== activeCurriculumId).map(c => <button key={`archive-${c.id}`} type="button" onClick={() => handleArchiveCurriculum(c.id)} className="action-button action-button--warning">Archive {c.name}</button>)}</div>
               </>
               )}
             </motion.div>
@@ -1407,6 +1477,23 @@ export default function Account() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {isEditingName && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-end justify-center p-4" onClick={() => setIsEditingName(false)}>
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
+              <div>
+                <h3 className="text-base font-bold text-foreground">Edit Name</h3>
+                <p className="text-[11px] text-muted-foreground">Update your display name.</p>
+              </div>
+              <input type="text" value={nameInput} onChange={e => setNameInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); }} className="w-full bg-muted px-3 py-2.5 rounded-xl text-sm font-bold text-foreground outline-none border border-primary/40 focus:ring-2 focus:ring-primary/20" autoFocus />
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setIsEditingName(false)} className="action-button action-button--cancel flex-1">Cancel</button>
+                <button type="button" onClick={handleSaveName} className="action-button action-button--save flex-1">Save</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Layout>
   );
 }

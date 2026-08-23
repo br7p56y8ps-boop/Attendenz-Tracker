@@ -1,4 +1,4 @@
-export const APP_VERSION = '4.3.3.1';
+export const APP_VERSION = '4.3.4';
 export const LATEST_VERSION = APP_VERSION;
 
 export interface WhatsNewItem {
@@ -10,71 +10,86 @@ export interface WhatsNewItem {
 export const WHATS_NEW_UPGRADES: WhatsNewItem[] = [
   {
     title: 'Independent Curriculum Workspaces',
-    summary: 'Keep multiple curricula separate and easy to switch between.',
-    details: 'Create, name, archive, reopen, and switch between independent curricula. Each workspace keeps its own subjects, routines, attendance, home selections, finished states, target percentage, and curriculum snapshot without mixing data.',
+    summary: 'Keep each year, phase, or rotation routine in its own workspace.',
+    details: 'Create, name, archive, reopen, and switch between saved curricula. Each workspace keeps its own subjects, schedules, attendance, home selections, finished states, target percentage, and snapshots.',
   },
   {
     title: '5th Year / Final Phase Routine',
-    summary: 'The built-in medical curriculum now has a clear identity.',
-    details: 'The provided academic, clinical, ward, and SGT structure is identified as 5th Year / Final Phase. New curricula start empty so users can create their own structure or populate it through routine import.',
+    summary: 'Start with the built-in 5th Year / Final Phase reference routine.',
+    details: 'The included academic, clinical, ward, and SGT structure is clearly identified as a reference routine. Your college curriculum may follow a different plan, so you can edit this routine or choose a Custom routine for another year or phase.',
   },
   {
-    title: 'Preset-to-Custom Continuity',
-    summary: 'User-added subjects stay available when changing routine modes.',
-    details: 'Subjects added to the built-in routine remain available when moving to a custom curriculum through stable IDs. The transition avoids duplicate records, preserves the original routine, and keeps attendance associated with the correct subject.',
+    title: 'Named Custom Routines',
+    summary: 'Give every Custom routine a name that matches your curriculum.',
+    details: 'Create a routine for any year or phase, name it such as 1st Year or First Phase, and create more separate Custom routines later. New Custom curricula start empty and never mix their records with another workspace.',
   },
   {
-    title: 'Faster Startup and Reports',
-    summary: 'The app loads lighter and opens reports only when needed.',
-    details: 'Pages are loaded on demand, while PDF and Excel libraries are loaded only when their export actions are used. This reduces the initial mobile payload and makes everyday navigation more responsive.',
+    title: 'Independent Preset and Custom Data',
+    summary: 'Keep subjects, wards, SGTs, schedules, and attendance in the correct workspace.',
+    details: 'Preset additions remain inside the 5th Year / Final Phase workspace. Custom additions remain inside their selected Custom curriculum. Switching curricula restores the selected workspace without copying or displaying records from another one.',
+  },
+  {
+    title: 'Responsive Offline Experience',
+    summary: 'Move through Home, Subjects, Manage, Timetable, and Settings more comfortably.',
+    details: 'Important navigation surfaces, day controls, section labels, routine windows, rotation browsing, and mobile modals have been refined for clearer scrolling, better spacing, and more reliable touch interaction.',
   },
 ];
 
 export const WHATS_NEW_FIXES: WhatsNewItem[] = [
   {
-    title: 'Persistent Home and Section Navigation',
-    summary: 'Important navigation surfaces stay clear while content scrolls.',
-    details: 'The Home date wheel remains in place while attendance cards scroll in their own region. Section labels across the app use ordered, theme-aware sticky surfaces that remain readable and stack without overlap.',
+    title: 'Safer Offline Storage',
+    summary: 'Protect local attendance records more carefully.',
+    details: 'IndexedDB remains the source of truth, writes are serialized, inactive curriculum workspaces are preserved during switching, legacy identifiers are handled safely, and storage status is visible in Settings.',
+  },
+  {
+    title: 'Safer Backup and Routine Transfer',
+    summary: 'Use complete backups and mode-specific routine bundles with clearer boundaries.',
+    details: 'Complete app backups preserve both Preset and Custom workspaces. Routine bundles use only the active workspace, reject the wrong routine mode, and avoid overwriting the opposite workspace during import or replacement.',
+  },
+  {
+    title: 'Clearer Home and Timetable Views',
+    summary: 'See the right day, routine, statistics, and attendance state more reliably.',
+    details: 'Home date navigation, Saturday-first Preset scheduling, Custom day ordering, rotation dates, attendance identifiers, Needs Attention, and Maximum Possible Attendance calculations now follow the selected workspace more consistently.',
+  },
+  {
+    title: 'Improved Manage and Edit Data',
+    summary: 'Add, edit, remove, and organise routine records with less confusion.',
+    details: 'Manage now exposes only the active workspace, keeps Preset and Custom records separate, provides editing paths for Custom records, and keeps the day selector and schedule surface readable in both light and dark themes.',
   },
   {
     title: 'Responsive Glass-Style Modals',
-    summary: 'Dialogs now behave more naturally on small screens.',
-    details: 'Modal surfaces use a consistent responsive presentation with locked background scrolling, stable headers and footers, inline confirmation states, smoother transitions, and dropdown placement that adapts to the available viewport.',
+    summary: 'Use dialogs that fit better on smaller screens.',
+    details: 'Modal surfaces use consistent bottom-sheet presentation, single close actions, smoother transitions, controlled scrolling, inline confirmations, and controls that adapt to the available screen height.',
   },
   {
-    title: 'Smoother Manage and Calendar Interaction',
-    summary: 'Routine management and rotation browsing feel more controlled.',
-    details: 'The Manage controls and subject window keep their intended sticky relationship, Add Slot content can scroll within its available space, and the clinical rotation wheel responds to horizontal gestures without capturing ordinary vertical page scrolling.',
+    title: 'Account Settings and Feedback Controls',
+    summary: 'Manage appearance and confirmation feedback from one place.',
+    details: 'Account settings include system-aware theme selection, vibration capability feedback, confirmation sound controls, volume adjustment, storage information, curriculum status, and clearer profile editing.',
   },
   {
-    title: 'Clearer Calendar Statistics',
-    summary: 'Calendar statistics focus on subjects that still need attention.',
-    details: 'Statistics use consistent section presentation, short names, readable category badges, correct zero-attendance percentages, and Maximum Possible predictions that omit completed clinical periods and subjects with no remaining planned classes.',
+    title: 'Permission-Aware Notification Controls',
+    summary: 'Notification preferences now respect device support and permission state.',
+    details: 'The notification settings explain permission requirements, allow reminder preferences and lead-time choices to be saved, and prevent notification setup from being attempted on an unsupported or non-published origin.',
   },
   {
-    title: 'Reliable Offline Storage',
-    summary: 'Local attendance data is protected more carefully.',
-    details: 'Canonical IDs, legacy-data migration, orphan quarantine, serialized localStorage and IndexedDB writes, page-hide flushing, and visible storage warnings reduce the risk of silent data loss during everyday offline use.',
+    title: 'Faster Reports and Startup',
+    summary: 'Load everyday screens faster and open report tools only when needed.',
+    details: 'Pages are loaded on demand, while PDF and Excel report libraries are loaded only when their export actions are used. This reduces the initial mobile payload and keeps routine navigation more responsive.',
   },
   {
-    title: 'Safer Restore, Import, and Update Flows',
-    summary: 'Backups and updates provide clearer recovery paths.',
-    details: 'Routine replacement cleans omitted entities while preserving attendance history. Restore and import flows re-run migration safely, and the manual update flow supports an optional backup before restoring the pending snapshot and reinitializing the app.',
-  },
-  {
-    title: 'Manual Offline Service Worker',
-    summary: 'Offline caching remains simple and predictable.',
-    details: 'The application continues to use the manually registered sw.js service worker and does not generate a duplicate gen-sw.js worker during production builds.',
+    title: 'Clearer Updates and Offline Recovery',
+    summary: 'Make app updates and recovery steps easier to understand.',
+    details: 'The manual offline service worker remains the single application worker, update checks use the published version manifest, and approved updates can refresh the cached app shell with an optional safety snapshot.',
   },
 ];
 
 export const FEATURES_UPDATED = [
-  { emoji: '🧭', title: 'Curriculum & Navigation', desc: 'Independent curriculum workspaces, stable subject continuity, persistent Home controls, and ordered sticky section labels.' },
-  { emoji: '🧰', title: 'Manage, Import & Export', desc: 'Responsive glass-style modals, safer routine replacement and restore, resilient AI JSON parsing, and lazy-loaded report exports.' },
-  { emoji: '🛡️', title: 'Offline Safety', desc: 'Canonical ID migration, orphan quarantine, serialized dual-store writes, storage health warnings, and manual update recovery.' },
+  { emoji: '🧭', title: 'Curriculum and Navigation', desc: 'Independent workspaces, named Custom routines, active-first curriculum switching, persistent Home controls, and ordered section navigation.' },
+  { emoji: '🧰', title: 'Manage, Timetable, and Reports', desc: 'Active-workspace editing, clearer routine transfer, responsive mobile controls, rotation browsing, attendance statistics, and on-demand report exports.' },
+  { emoji: '🛡️', title: 'Offline Safety and Settings', desc: 'Protected local storage, safer recovery flows, system-aware themes, confirmation feedback controls, and permission-aware notification preferences.' },
 ];
 
 export const RELEASE_NOTES = {
   version: APP_VERSION,
-  summary: 'Release 4.3.3 brings independent curricula, safer offline data protection, clearer responsive navigation, smoother mobile interactions, and faster on-demand loading.',
+  summary: 'Release 4.3.4 brings independent curriculum workspaces, named Custom routines, safer offline data protection, clearer mobile navigation, improved routine management, and more responsive settings.',
 };

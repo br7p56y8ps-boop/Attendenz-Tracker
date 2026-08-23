@@ -19,6 +19,7 @@ export default function SetupScreen() {
   const [detectedMode, setDetectedMode] = useState<SubjectMode>('preloaded');
   const [showDataDetectedView, setShowDataDetectedView] = useState<boolean>(false);
   const [chosenRoutineMode, setChosenRoutineMode] = useState<SubjectMode>('preloaded');
+  const [customRoutineName, setCustomRoutineName] = useState('');
   const [localIdentityName, setLocalIdentityName] = useState('');
   const [showConfirmStartFresh, setShowConfirmStartFresh] = useState<boolean>(false);
 
@@ -91,7 +92,7 @@ export default function SetupScreen() {
   const finishSetup = (mode: SubjectMode) => {
     if (localIdentityName.trim()) updateUsername(localIdentityName.trim());
     localStorage.removeItem('att_just_updated');
-    completeSetup(mode);
+    completeSetup(mode, mode === 'custom' ? customRoutineName : undefined);
     setLocation('/');
     setWhatsNewOpen(true);
   };
@@ -204,37 +205,44 @@ export default function SetupScreen() {
                 <button
                   type="button"
                   onClick={() => setChosenRoutineMode('preloaded')}
-                  className={`w-full bg-card border rounded-3xl p-4 text-left transition-all active:scale-[0.98] group shadow-sm cursor-pointer ${chosenRoutineMode === 'preloaded' ? 'border-primary/60 ring-2 ring-primary/25 bg-primary/5' : 'border-border hover:bg-muted/40'}`}
+                  className={`w-full bg-card border rounded-3xl p-4 text-left transition-all active:scale-[0.98] group shadow-sm cursor-pointer ${chosenRoutineMode === 'preloaded' ? 'border-primary/70 ring-2 ring-primary/35 bg-primary/15' : 'border-border hover:bg-muted/40'}`}
                 >
                   <div className="flex items-center gap-3.5">
                     <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
                       <BookOpen className="w-5 h-5 text-primary" />
                     </div>
                     <div className="flex-1">
-                      <p className="font-bold text-foreground text-sm">Use Preloaded MBBS Subjects</p>
-                      <p className="text-muted-foreground text-[11px] mt-1 leading-relaxed">
-                        A pre-admitted chart for the BMDC new-curriculum <span className="whitespace-nowrap">5th year:</span> subjects, weekly timetable & ward rotations already written up. If your college's routine differs <span className="whitespace-nowrap">(it's medicine —</span> <span className="whitespace-nowrap">it usually does),</span> adjustments are always allowed from the <span className="whitespace-nowrap">Manage tab,</span> or a full mode change later from the <span className="whitespace-nowrap">Settings tab.</span> <span className="whitespace-nowrap">No referral needed.</span>
-                      </p>
+                        <p className="font-bold text-foreground text-sm">Use the 5th Year / Final Phase Routine</p>
+                        <p className="text-muted-foreground text-[11px] mt-1 leading-relaxed">
+                          Start with a ready-made 5th year routine with subjects, timetable, and ward rotations. Your college curriculum may follow a different plan because medicine rarely agrees on one timetable. You can edit this routine and add your own subjects, SGTs, and wards. For another year or phase, choose Custom.
+                        </p>
                     </div>
                   </div>
                 </button>
                 <button
                   type="button"
                   onClick={() => setChosenRoutineMode('custom')}
-                  className={`w-full bg-card border rounded-3xl p-4 text-left transition-all active:scale-[0.98] group shadow-sm cursor-pointer ${chosenRoutineMode === 'custom' ? 'border-emerald-500/60 ring-2 ring-emerald-500/25 bg-emerald-500/5' : 'border-border hover:bg-muted/40'}`}
+                  className={`w-full bg-card border rounded-3xl p-4 text-left transition-all active:scale-[0.98] group shadow-sm cursor-pointer ${chosenRoutineMode === 'custom' ? 'border-emerald-500/70 ring-2 ring-emerald-500/35 bg-emerald-500/15' : 'border-border hover:bg-muted/40'}`}
                 >
                   <div className="flex items-center gap-3.5">
                     <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition-colors">
                       <Pencil className="w-5 h-5 text-emerald-500" />
                     </div>
                     <div className="flex-1">
-                      <p className="font-bold text-foreground text-sm">Create My Own Subjects</p>
+                      <p className="font-bold text-foreground text-sm">Create My Own Routine</p>
                       <p className="text-muted-foreground text-[11px] mt-1 leading-relaxed">
-                        Start from <span className="whitespace-nowrap">zero vitals</span> and build the routine yourself — subjects, departments & rotations. <span className="whitespace-nowrap">No pre-filled opinions;</span> <span className="whitespace-nowrap">full clinical freedom.</span>
+                        Build a routine for your own year or phase with your subjects, SGTs, departments, and rotations. Name it to match your curriculum, and create more separate Custom routines later. No pre-filled opinions, full clinical freedom.
                       </p>
                     </div>
                   </div>
                 </button>
+                {chosenRoutineMode === 'custom' && (
+                  <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-left">
+                    <label htmlFor="custom-routine-name" className="block text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Name your Custom routine, optional</label>
+                    <input id="custom-routine-name" type="text" value={customRoutineName} onChange={e => setCustomRoutineName(e.target.value)} placeholder="e.g. 1st Year / First Phase" className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" />
+                    <p className="mt-1.5 text-[10px] text-muted-foreground">Leave blank to use My Custom Routine.</p>
+                  </div>
+                )}
               </div>
 
               {/* Done button */}
@@ -242,7 +250,7 @@ export default function SetupScreen() {
                 <button
                   type="button"
                   onClick={() => finishSetup(chosenRoutineMode)}
-                  className="px-8 py-3 bg-primary text-primary-foreground font-bold rounded-2xl shadow-md hover:bg-primary/90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-xs cursor-pointer"
+                  className="action-button action-button--save"
                 >
                   <span>Done</span>
                   <ArrowRight className="w-4 h-4" />
@@ -279,7 +287,7 @@ export default function SetupScreen() {
                 Starting fresh will configure a new schedule. Your previous data can still be restored later from a backup file if needed.
               </p>
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowConfirmStartFresh(false)} className="action-button action-button--neutral flex-1">Cancel</button>
+                <button type="button" onClick={() => setShowConfirmStartFresh(false)} className="action-button action-button--cancel flex-1">Cancel</button>
                 <button type="button" onClick={handleConfirmStartFresh} className="action-button action-button--warning flex-1">Start Fresh</button>
               </div>
             </motion.div>

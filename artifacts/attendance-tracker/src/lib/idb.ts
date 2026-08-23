@@ -144,11 +144,33 @@ export async function idbSet(key: string, value: string): Promise<void> {
   }
 }
 
+export async function idbSetMany(entries: Array<[string, string]>): Promise<void> {
+  try {
+    await withStore('readwrite', store => {
+      entries.forEach(([key, value]) => store.put({ key, value }));
+    });
+  } catch (err) {
+    notifyStorageError(err, 'set-many');
+    throw err;
+  }
+}
+
 export async function idbRemove(key: string): Promise<void> {
   try {
     await withStore('readwrite', store => store.delete(key));
   } catch (err) {
     notifyStorageError(err, 'remove', key);
+    throw err;
+  }
+}
+
+export async function idbRemoveMany(keys: string[]): Promise<void> {
+  try {
+    await withStore('readwrite', store => {
+      keys.forEach(key => store.delete(key));
+    });
+  } catch (err) {
+    notifyStorageError(err, 'remove-many');
     throw err;
   }
 }

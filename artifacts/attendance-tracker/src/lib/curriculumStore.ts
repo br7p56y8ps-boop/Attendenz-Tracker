@@ -1,4 +1,4 @@
-import { storageRemoveItem, storageSetItem } from '@/lib/idb';
+import { storageSetItem, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
 
 export type CurriculumStatus = 'active' | 'archived';
 export type CurriculumKind = 'preset' | 'custom';
@@ -47,14 +47,38 @@ const ALIAS_KEYS = [
 const nowIso = () => new Date().toISOString();
 const makeId = () => `curriculum_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
+const SHARED_ALIAS_KEYS = new Set<string>([
+  'att_subject_mode',
+  'attendance_tracker_preferred_percentage',
+  'att_curriculum_status',
+]);
+const PRESET_ALIAS_KEYS = new Set<string>([
+  'att_user_added_subjects',
+  'att_preset_timetable',
+  'att_preset_ward_schedule',
+  'att_preset_subject_totals',
+  'att_preset_subject_renames',
+  'att_preset_ward_renames',
+  'attendance_tracker_subjects_preset',
+  'attendance_tracker_ward_preset',
+  'attendance_tracker_home_selections_preset',
+  'attendance_tracker_finished_map_preset',
+]);
+const CUSTOM_ALIAS_KEYS = new Set<string>([
+  'att_custom_subjects',
+  'att_custom_wards',
+  'attendance_tracker_subjects_custom',
+  'attendance_tracker_ward_custom',
+  'attendance_tracker_home_selections_custom',
+  'attendance_tracker_finished_map_custom',
+]);
+
+const isOwnedByKind = (key: string, kind: CurriculumKind): boolean =>
+  SHARED_ALIAS_KEYS.has(key) || (kind === 'preset' ? PRESET_ALIAS_KEYS.has(key) : CUSTOM_ALIAS_KEYS.has(key));
+
 function write(key: string, value: string): void {
   localStorage.setItem(key, value);
   storageSetItem(key, value);
-}
-
-function remove(key: string): void {
-  localStorage.removeItem(key);
-  storageRemoveItem(key);
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -87,9 +111,16 @@ export function getActiveCurriculumName(): string {
   return getActiveCurriculum()?.name || '5th Year / Final Phase';
 }
 
-export function captureActiveBundle(): CurriculumBundle {
+export function captureActiveBundle(kind?: CurriculumKind): CurriculumBundle {
+  const activeKind: CurriculumKind = kind
+    || (localStorage.getItem('att_subject_mode') === 'custom' ? 'custom' : 'preset');
+  return captureWorkspaceBundle(activeKind);
+}
+
+function captureWorkspaceBundle(kind: CurriculumKind): CurriculumBundle {
   const data: CurriculumBundle = {};
   for (const key of ALIAS_KEYS) {
+    if (!isOwnedByKind(key, kind)) continue;
     const value = localStorage.getItem(key);
     if (value !== null) data[key] = value;
   }
@@ -104,11 +135,69 @@ export function getCurriculumBundle(id: string): CurriculumBundle {
   return readJson<CurriculumBundle>(`att_curriculum_bundle_${id}`, {});
 }
 
-export function syncBundleToActiveAliases(bundle: CurriculumBundle): void {
+const defaultCurriculumId = (kind: CurriculumKind): string =>
+  kind === 'preset' ? 'curriculum_final_phase_5th_year' : 'curriculum_custom_routine';
+
+export function getCurriculumForKind(kind: CurriculumKind): CurriculumRecord | null {
+  const curricula = getCurricula();
+  const active = getActiveCurriculum();
+  if (active?.kind === kind) return active;
+  return curricula.find(c => c.id === defaultCurriculumId(kind) && c.kind === kind)
+    || curricula.find(c => c.kind === kind && c.status === 'active')
+    || curricula.find(c => c.kind === kind)
+    || null;
+}
+
+function repairPresetBundleFromLiveWorkspace(): void {
+  const record = getCurricula().find(c => c.id === defaultCurriculumId('preset') && c.kind === 'preset');
+  if (!record) return;
+  const stored = getCurriculumBundle(record.id);
+  const live = captureWorkspaceBundle('preset');
+  const repaired: CurriculumBundle = { ...stored };
+  let changed = false;
+  for (const [key, value] of Object.entries(live)) {
+    if (repaired[key] === undefined) {
+      repaired[key] = value;
+      changed = true;
+    }
+  }
+  if (repaired['att_subject_mode'] !== 'preloaded') {
+    repaired['att_subject_mode'] = 'preloaded';
+    changed = true;
+  }
+  if (changed) saveCurriculumBundle(record.id, repaired);
+}
+
+export function reconcileActiveCurriculumToMode(): void {
+  const kind: CurriculumKind = localStorage.getItem('att_subject_mode') === 'custom' ? 'custom' : 'preset';
+  const active = getActiveCurriculum();
+  const target = getCurriculumForKind(kind);
+  if (!target) return;
+
+  if (active?.kind !== kind || active.id !== target.id) {
+    const live = captureWorkspaceBundle(kind);
+    const targetBundle = getCurriculumBundle(target.id);
+    saveCurriculumBundle(target.id, {
+      ...targetBundle,
+      ...live,
+      'att_subject_mode': kind === 'custom' ? 'custom' : 'preloaded',
+    });
+    setActiveCurriculumId(target.id);
+  }
+}
+
+export function syncBundleToActiveAliases(bundle: CurriculumBundle, kind?: CurriculumKind): void {
+  const targetKind: CurriculumKind = kind
+    || (bundle['att_subject_mode'] === 'custom' ? 'custom' : 'preset');
   for (const key of ALIAS_KEYS) {
+    if (!isOwnedByKind(key, targetKind)) continue;
     const value = bundle[key];
-    if (value === undefined) remove(key);
-    else write(key, value);
+    if (value !== undefined) {
+      write(key, value);
+    } else if (!SHARED_ALIAS_KEYS.has(key)) {
+      localStorage.removeItem(key);
+      void storageRemoveItem(key);
+    }
   }
 }
 
@@ -136,12 +225,6 @@ export function createCurriculum(name: string): CurriculumRecord {
     'att_subject_mode': 'custom',
     'att_custom_subjects': '[]',
     'att_custom_wards': '[]',
-    'att_user_added_subjects': '[]',
-    'att_preset_timetable': '{}',
-    'att_preset_ward_schedule': '[]',
-    'att_preset_subject_totals': '{}',
-    'att_preset_subject_renames': '{}',
-    'att_preset_ward_renames': '{}',
     'attendance_tracker_subjects_custom': '{}',
     'attendance_tracker_ward_custom': '{}',
     'attendance_tracker_home_selections_custom': '{}',
@@ -170,24 +253,41 @@ export function setCurriculumStatus(id: string, status: CurriculumStatus): Curri
   return updated;
 }
 
-export function activateCurriculum(id: string): void {
+export async function activateCurriculum(id: string): Promise<void> {
   const target = getCurricula().find(c => c.id === id);
   if (!target) throw new Error('Curriculum not found.');
   const currentId = getActiveCurriculumId();
-  if (currentId) saveCurriculumBundle(currentId, captureActiveBundle());
-  const next = getCurriculumBundle(id);
+  const currentKind: CurriculumKind = localStorage.getItem('att_subject_mode') === 'custom' ? 'custom' : 'preset';
+  const current = currentId ? getCurricula().find(c => c.id === currentId) : null;
+  if (current && current.kind === currentKind) {
+    saveCurriculumBundle(currentId!, captureActiveBundle(currentKind));
+  } else if (current && current.kind !== currentKind) {
+    const matching = getCurriculumForKind(currentKind);
+    if (matching) saveCurriculumBundle(matching.id, captureActiveBundle(currentKind));
+  }
+  const next = {
+    ...getCurriculumBundle(id),
+    'att_subject_mode': target.kind === 'custom' ? 'custom' : 'preloaded',
+  };
   setActiveCurriculumId(id);
-  syncBundleToActiveAliases(next);
+  syncBundleToActiveAliases(next, target.kind);
   const curricula = getCurricula().map(c => c.id === id ? { ...c, status: 'active' as const, updatedAt: nowIso() } : c);
   saveCurricula(curricula);
+  await flushStorageWrites();
 }
 
 export function ensureCurriculumMigration(): void {
-  if (localStorage.getItem(CURRICULUM_MIGRATION_KEY) === 'true' && getActiveCurriculum()) return;
+  if (localStorage.getItem(CURRICULUM_MIGRATION_KEY) === 'true' && getActiveCurriculum()) {
+    repairPresetBundleFromLiveWorkspace();
+    reconcileActiveCurriculumToMode();
+    return;
+  }
 
   const existing = getCurricula();
   if (existing.length > 0 && getActiveCurriculumId()) {
+    repairPresetBundleFromLiveWorkspace();
     write(CURRICULUM_MIGRATION_KEY, 'true');
+    reconcileActiveCurriculumToMode();
     return;
   }
 
@@ -210,16 +310,13 @@ export function ensureCurriculumMigration(): void {
   };
 
   const currentMode = localStorage.getItem('att_subject_mode') === 'custom' ? 'custom' : 'preloaded';
-  const currentBundle = captureActiveBundle();
-  const presetBundle: CurriculumBundle = {};
-  const customBundle: CurriculumBundle = {};
-
-  for (const key of ALIAS_KEYS) {
-    const value = currentBundle[key];
-    if (value === undefined) continue;
-    if (key.endsWith('_custom') || key === 'att_custom_subjects' || key === 'att_custom_wards') customBundle[key] = value;
-    else presetBundle[key] = value;
-  }
+  const currentBundle = captureActiveBundle(currentMode === 'custom' ? 'custom' : 'preset');
+  const presetBundle: CurriculumBundle = currentMode === 'preloaded'
+    ? { ...currentBundle }
+    : captureWorkspaceBundle('preset');
+  const customBundle: CurriculumBundle = currentMode === 'custom'
+    ? { ...currentBundle }
+    : captureWorkspaceBundle('custom');
 
   const currentWorkspace = currentMode === 'custom' ? customBundle : presetBundle;
   for (const key of ['attendance_tracker_preferred_percentage', 'att_curriculum_status']) {
@@ -229,7 +326,6 @@ export function ensureCurriculumMigration(): void {
   customBundle['att_subject_mode'] = 'custom';
   if (!customBundle['att_custom_subjects']) customBundle['att_custom_subjects'] = '[]';
   if (!customBundle['att_custom_wards']) customBundle['att_custom_wards'] = '[]';
-  if (!customBundle['att_user_added_subjects']) customBundle['att_user_added_subjects'] = '[]';
   if (!customBundle['attendance_tracker_subjects_custom']) customBundle['attendance_tracker_subjects_custom'] = '{}';
   if (!customBundle['attendance_tracker_ward_custom']) customBundle['attendance_tracker_ward_custom'] = '{}';
   if (!customBundle['attendance_tracker_home_selections_custom']) customBundle['attendance_tracker_home_selections_custom'] = '{}';
@@ -247,6 +343,7 @@ export function ensureCurriculumMigration(): void {
   }
   saveCurricula([preset, custom]);
   write(CURRICULUM_MIGRATION_KEY, 'true');
+  reconcileActiveCurriculumToMode();
 }
 
 export const CURRICULUM_KEYS = { CURRICULA_KEY, ACTIVE_CURRICULUM_KEY, CURRICULUM_MIGRATION_KEY };

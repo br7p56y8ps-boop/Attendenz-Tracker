@@ -223,23 +223,30 @@ export default function Home() {
   const selectedTodayAbbr = DAY_ABBRS[selectedDayOfWeek];
 
   const customWard = useMemo(() => {
+    if (subjectMode !== 'custom') return undefined;
     for (const w of customWards) {
       if (selectedDateStr >= w.startDate && selectedDateStr <= w.endDate) return w;
     }
     return undefined;
-  }, [customWards, selectedDateStr]);
+  }, [subjectMode, customWards, selectedDateStr]);
 
   const presetWardObj = useMemo(() => {
     if (subjectMode === 'preloaded') return getCurrentPresetWard(selectedDate);
     return null;
   }, [subjectMode, getCurrentPresetWard, selectedDate]);
 
-  const currentWard = customWard ? customWard.name : (presetWardObj ? presetWardObj.ward : null);
+  const currentWard = subjectMode === 'custom'
+    ? (customWard ? customWard.name : null)
+    : (presetWardObj ? presetWardObj.ward : null);
   const isWardHoliday = currentWard === 'Holiday';
 
   const todayCustomSubjects = useMemo(() => {
     if (subjectMode !== 'custom') return [];
     return customSubjects.flatMap(s => {
+      const isSGT = s.subjectType === 'allied' && s.parentName === 'Small Group Teaching';
+      if (isSGT && ((s.startDate && selectedDateStr < s.startDate) || (s.endDate && selectedDateStr > s.endDate))) {
+        return [];
+      }
       if (s.schedules && s.schedules.length > 0) {
         const daySchedules = s.schedules.filter(sch => sch.day === selectedTodayAbbr);
         return daySchedules.map(sch => ({
@@ -419,6 +426,68 @@ export default function Home() {
 
   const cardMode: 'today' | 'past' | 'future' = isTodaySelected ? 'today' : isPast ? 'past' : 'future';
 
+  const dateWheel = (
+    <div className="pt-1 pb-1">
+      <div
+        ref={wheelContainerRef}
+        className="date-wheel-surface relative z-[3] bg-background border border-border rounded-3xl shadow-md select-none overflow-hidden"
+        style={{ height: '4rem' }}
+      >
+        <div
+          className="relative w-full h-full"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          style={{ touchAction: 'pan-y' }}
+        >
+          <div
+            className="absolute top-0 bottom-0 flex items-center"
+            style={{
+              transform: `translateX(${wheelTranslateX}px)`,
+              transition: isDragging.current ? 'none' : 'transform 0.2s ease-out',
+              willChange: 'transform',
+            }}
+          >
+            {wheelDates.map((dateStr, idx) => {
+              const date = new Date(dateStr + 'T12:00:00');
+              const day = date.getDate();
+              const month = date.toLocaleDateString('en-US', { month: 'short' });
+              const isCenter = idx === effectiveIndex;
+              const distance = idx - effectiveIndex;
+              const scale = 1 - Math.abs(distance) * 0.12;
+              const opacity = 1 - Math.abs(distance) * 0.35;
+              const rotateY = distance * 12;
+              return (
+                <div
+                  key={dateStr}
+                  className="flex-shrink-0 flex flex-col items-center justify-center cursor-pointer rounded-xl"
+                  style={{
+                    width: ITEM_WIDTH,
+                    height: '4rem',
+                    transform: `perspective(500px) rotateY(${rotateY}deg) scale(${scale})`,
+                    opacity: Math.max(0.35, opacity),
+                    transition: isDragging.current ? 'none' : 'all 0.2s ease-out',
+                    zIndex: isCenter ? 10 : 0,
+                    backgroundColor: isCenter ? 'var(--color-primary, #3b82f6)' : 'transparent',
+                  }}
+                  onClick={() => setSelectedDateStr(dateStr)}
+                >
+                  <span className={cn('text-sm font-bold', isCenter ? 'text-primary-foreground' : 'text-foreground', !isCenter && 'font-semibold')}>
+                    {day} {month}
+                  </span>
+                  <span className={cn('text-[10px]', isCenter ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
+                    {DAY_ABBRS[date.getDay()]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <Layout
       headerRight={showUpdatePill ? (
@@ -440,80 +509,10 @@ export default function Home() {
           </button>
         </div>
       ) : undefined}
+      headerBottom={dateWheel}
     >
-      <div className="-mt-6 flex h-[calc(100dvh-var(--app-header-height)-0.5rem)] min-h-0 flex-col">
+      <div className="min-h-0 flex flex-col">
         {/* ── Date Wheel ── */}
-        <div className="sticky top-[var(--app-header-height)] z-40 bg-background pt-2 pb-2 soft-entry-boundary">
-          <div
-            ref={wheelContainerRef}
-            className="bg-background border border-border rounded-3xl shadow-md select-none overflow-hidden"
-            style={{ height: '4rem' }}
-          >
-          <div
-            className="relative w-full h-full"
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-            style={{ touchAction: 'pan-y' }}
-          >
-            <div
-              className="absolute top-0 bottom-0 flex items-center"
-              style={{
-                transform: `translateX(${wheelTranslateX}px)`,
-                transition: isDragging.current ? 'none' : 'transform 0.2s ease-out',
-                willChange: 'transform',
-              }}
-            >
-              {wheelDates.map((dateStr, idx) => {
-                const date = new Date(dateStr + 'T12:00:00');
-                const day = date.getDate();
-                const month = date.toLocaleDateString('en-US', { month: 'short' });
-                const isCenter = idx === effectiveIndex;
-                const distance = idx - effectiveIndex;
-                const scale = 1 - Math.abs(distance) * 0.12;
-                const opacity = 1 - Math.abs(distance) * 0.35;
-                const rotateY = distance * 12;
-                return (
-                  <div
-                    key={dateStr}
-                    className="flex-shrink-0 flex flex-col items-center justify-center cursor-pointer rounded-xl"
-                    style={{
-                      width: ITEM_WIDTH,
-                      height: '4rem',
-                      transform: `perspective(500px) rotateY(${rotateY}deg) scale(${scale})`,
-                      opacity: Math.max(0.35, opacity),
-                      transition: isDragging.current ? 'none' : 'all 0.2s ease-out',
-                      zIndex: isCenter ? 10 : 0,
-                      backgroundColor: isCenter ? 'var(--color-primary, #3b82f6)' : 'transparent',
-                    }}
-                    onClick={() => setSelectedDateStr(dateStr)}
-                  >
-                    <span
-                      className={cn(
-                        "text-sm font-bold",
-                        isCenter ? "text-primary-foreground" : "text-foreground",
-                        !isCenter && "font-semibold"
-                      )}
-                    >
-                      {day} {month}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-[10px]",
-                        isCenter ? "text-primary-foreground/80" : "text-muted-foreground"
-                      )}
-                    >
-                      {DAY_ABBRS[date.getDay()]}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          </div>
-        </div>
-
         <div className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain pb-0 scroll-fade-viewport scroll-reachability">
         {/* ── Content ── */}
         {!hasAnything ? (
@@ -650,7 +649,7 @@ export default function Home() {
               <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold text-foreground">New Version Available <span className="text-emerald-400">(v{serverVersion})</span></h3>
-                  <button type="button" onClick={() => setUpdateInfoOpen(false)} className="action-button action-button--neutral action-button--icon"><X className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => setUpdateInfoOpen(false)} className="action-button action-button--close action-button--icon"><X className="w-3.5 h-3.5" /></button>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p>
                 {!online && (

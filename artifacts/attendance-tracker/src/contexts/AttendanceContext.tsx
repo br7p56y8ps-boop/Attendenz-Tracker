@@ -457,15 +457,10 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       const rawSubjects = JSON.parse(localStorage.getItem(keys.subjectsKey) || '{}');
       const rawHomeSelections = JSON.parse(localStorage.getItem(keys.homeSelectionsKey) || '{}');
       const sgtList: Array<{ id: string; name: string }> = [];
-      const uaRaw = localStorage.getItem(USER_ADDED_SUBJECTS_STORAGE);
-      if (uaRaw) {
-        JSON.parse(uaRaw).forEach((s: any) => {
-          if (s.parentName === 'Small Group Teaching' && s.id) sgtList.push({ id: s.id, name: s.name });
-        });
-      }
-      const csRaw = localStorage.getItem(CUSTOM_SUBJECTS_STORAGE);
-      if (csRaw) {
-        JSON.parse(csRaw).forEach((s: any) => {
+      const sourceKey = mode === 'preloaded' ? USER_ADDED_SUBJECTS_STORAGE : CUSTOM_SUBJECTS_STORAGE;
+      const sourceRaw = localStorage.getItem(sourceKey);
+      if (sourceRaw) {
+        JSON.parse(sourceRaw).forEach((s: any) => {
           if (s.parentName === 'Small Group Teaching' && s.id) sgtList.push({ id: s.id, name: s.name });
         });
       }

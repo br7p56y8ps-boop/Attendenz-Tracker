@@ -51,6 +51,19 @@ export function useUpdateFlow() {
   useEffect(() => { if (updatePhase === 'none') return; const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450); return () => window.clearInterval(t); }, [updatePhase]);
 
   const applyUpdate = async (withBackup: boolean) => {
+    if (withBackup) {
+      setUpdatePhase('backing');
+      const snapshotCreated = await createSnapshot('Pre-Update Backup');
+      if (!snapshotCreated) {
+        setUpdatePhase('none');
+        return;
+      }
+      const snaps = getSnapshots();
+      if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
+        await storageSetItem('att_pending_update_restore', snaps[0].id);
+      }
+    }
+
     await Promise.all([
       storageRemoveItem('att_pwa_update_ready'),
       storageRemoveItem('att_pwa_latest_version'),
@@ -60,10 +73,6 @@ export function useUpdateFlow() {
       storageRemoveItem('att_app_version'),
     ]);
     if (withBackup) {
-      setUpdatePhase('backing');
-      createSnapshot('Pre-Update Backup');
-      const snaps = getSnapshots();
-      if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) localStorage.setItem('att_pending_update_restore', snaps[0].id);
       await new Promise(r => setTimeout(r, 5500));
     }
     setUpdatePhase('updating');

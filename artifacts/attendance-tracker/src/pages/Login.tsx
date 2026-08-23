@@ -18,7 +18,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
@@ -47,12 +47,12 @@ export default function Login() {
         return;
       }
 
-      const ok = createAccount(localUsername.trim(), localPassword);
+      const ok = await createAccount(localUsername.trim(), localPassword);
       if (!ok) {
         setError('Could not create account. Please try again.');
       }
     } else {
-      const ok = login(localUsername.trim(), localPassword);
+      const ok = await login(localUsername.trim(), localPassword);
       if (!ok) {
         setError('Incorrect username or password.');
       }

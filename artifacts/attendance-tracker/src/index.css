@@ -64,10 +64,10 @@
   --background: #000000;
   --foreground: #FFFFFF;
   
-  --card: rgba(28, 28, 30, 0.45);
+  --card: rgba(28, 28, 30, 0.65);
   --card-foreground: #FFFFFF;
   
-  --border: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.16);
   
   --primary: #0A84FF; /* iOS Dark Blue */
   --primary-foreground: #FFFFFF;
@@ -92,8 +92,8 @@
 }
 
 .dark .glass-panel {
-  background: rgba(20, 20, 25, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(20, 20, 25, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
@@ -106,8 +106,8 @@
 }
 
 .dark .glass-card {
-  background: rgba(30, 30, 35, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(30, 30, 35, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.13);
   box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.3);
 }
 
@@ -191,6 +191,22 @@
 .action-button--neutral:hover:not(:disabled) {
   background: color-mix(in srgb, var(--muted) 100%, transparent);
 }
+.action-button--cancel {
+  border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: var(--primary);
+}
+.action-button--cancel:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+}
+.action-button--close {
+  border-color: color-mix(in srgb, var(--destructive) 55%, transparent);
+  background: color-mix(in srgb, var(--destructive) 9%, transparent);
+  color: var(--destructive);
+}
+.action-button--close:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--destructive) 16%, transparent);
+}
 .action-button--edit,
 .action-button--transfer,
 .action-button--update {
@@ -252,6 +268,7 @@
 .modal-sheet-content {
   transform-origin: center bottom;
   will-change: transform, opacity;
+  min-height: 12rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -345,9 +362,32 @@ input[type="time"] {
 .scroll-reachability::after {
   content: '';
   display: block;
-  height: calc(var(--app-bottom-nav-height) + var(--app-bottom-nav-offset) + 1rem);
+  height: 0;
   pointer-events: none;
-  background: transparent;
+}
+
+/* Keep fixed lower edges visible without adding an extra blur band. */
+.date-wheel-surface {
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+.manage-window-surface {
+  box-shadow: inset 0 -1px 0 var(--border), 0 4px 12px color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+/* Let content remain faintly visible, but softened, beneath the fixed bottom nav. */
+.bottom-nav-surface {
+  isolation: isolate;
+}
+
+.bottom-nav-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
+.manage-window-surface::after,
+.manage-controls-surface::after {
+  bottom: 0.7rem;
+  opacity: 0.62;
 }
 
 .soft-entry-boundary::after,
@@ -360,6 +400,8 @@ input[type="time"] {
   pointer-events: none;
   z-index: 2;
   opacity: 0.96;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
 }
 
 .soft-entry-boundary::after {

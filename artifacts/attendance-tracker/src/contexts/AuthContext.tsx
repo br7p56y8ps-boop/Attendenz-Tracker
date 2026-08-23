@@ -6,19 +6,57 @@ const SESSION_KEY = 'att_session';
 const PROFILE_IMAGE_KEY = 'att_profile_image';
 const LAST_ACTIVE_KEY = 'att_last_active_at';
 
-/** UTF-8 safe base64 encode — btoa() alone throws on non-Latin1 characters. */
-function encodePassword(password: string): string {
-  const bytes = new TextEncoder().encode(password);
-  return btoa(String.fromCharCode(...bytes));
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+  return btoa(binary);
 }
 
-function checkPassword(password: string, encoded: string): boolean {
-  try { return encodePassword(password) === encoded; } catch { return false; }
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+}
+
+async function derivePasswordHash(password: string, salt: Uint8Array): Promise<string> {
+  if (!globalThis.crypto?.subtle) throw new Error('Web Crypto is unavailable.');
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: salt.buffer as ArrayBuffer, iterations: 120_000, hash: 'SHA-256' },
+    keyMaterial,
+    256,
+  );
+  return bytesToBase64(new Uint8Array(bits));
+}
+
+async function createPasswordRecord(password: string): Promise<{ passwordHash: string; passwordSalt: string }> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return { passwordHash: await derivePasswordHash(password, salt), passwordSalt: bytesToBase64(salt) };
+}
+
+async function checkPassword(password: string, stored: StoredAuth): Promise<boolean> {
+  try {
+    if (stored.passwordHash && stored.passwordSalt) {
+      return await derivePasswordHash(password, base64ToBytes(stored.passwordSalt)) === stored.passwordHash;
+    }
+    if (stored.passwordEncoded) {
+      const bytes = new TextEncoder().encode(password);
+      return bytesToBase64(bytes) === stored.passwordEncoded;
+    }
+  } catch {}
+  return false;
 }
 
 interface StoredAuth {
   username: string;
   passwordEncoded?: string;
+  passwordHash?: string;
+  passwordSalt?: string;
   email?: string;
 }
 
@@ -58,8 +96,8 @@ interface AuthContextType {
   updateProfileImage: (image: string | null) => void;
   
   // Local Auth
-  createAccount: (username: string, password: string) => boolean;
-  login: (username: string, password: string) => boolean;
+  createAccount: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<boolean>;
   updateUsername: (newUsername: string) => void;
   
   logout: () => void;
@@ -148,12 +186,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [retentionPolicy] = useState(calculateRetentionPolicy());
 
   // Local account creation
-  const createAccount = (user: string, password: string): boolean => {
+  const createAccount = async (user: string, password: string): Promise<boolean> => {
     if (!user.trim() || !password) return false;
     try {
-      const stored: StoredAuth = { username: user.trim(), passwordEncoded: encodePassword(password) };
-      storageSetItem(AUTH_KEY, JSON.stringify(stored));
-      storageSetItem(SESSION_KEY, 'true');
+      const stored: StoredAuth = { username: user.trim(), ...(await createPasswordRecord(password)) };
+      await Promise.all([
+        storageSetItem(AUTH_KEY, JSON.stringify(stored)),
+        storageSetItem(SESSION_KEY, 'true'),
+      ]);
       storageRemoveItem('att_setup_done');
       storageRemoveItem('att_subject_mode');
       setHasAccount(true);
@@ -167,13 +207,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Local login
-  const login = (user: string, password: string): boolean => {
+  const login = async (user: string, password: string): Promise<boolean> => {
     const raw = localStorage.getItem(AUTH_KEY);
     if (!raw) return false;
     try {
       const stored: StoredAuth = JSON.parse(raw);
-      if (stored.username.toLowerCase() === user.trim().toLowerCase() && checkPassword(password, stored.passwordEncoded || '')) {
-        storageSetItem(SESSION_KEY, 'true');
+      if (stored.username.toLowerCase() === user.trim().toLowerCase() && await checkPassword(password, stored)) {
+        if (stored.passwordEncoded && !stored.passwordHash) {
+          const upgraded = await createPasswordRecord(password);
+          const { passwordEncoded: _legacyPassword, ...withoutLegacyPassword } = stored;
+          await storageSetItem(AUTH_KEY, JSON.stringify({ ...withoutLegacyPassword, ...upgraded }));
+        }
+        await storageSetItem(SESSION_KEY, 'true');
         setIsLoggedIn(true);
         setIsNewAccount(false);
         setUsername(stored.username);

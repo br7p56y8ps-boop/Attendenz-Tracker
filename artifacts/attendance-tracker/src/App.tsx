@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
+import { applyThemePreference, readThemePreference } from '@/lib/theme';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
@@ -132,15 +133,18 @@ export default function App() {
   useEffect(() => {
     let alive = true;
     initStorageAndMigrate().then(() => ensureCurriculumMigration()).finally(() => { if (alive) setStorageReady(true); });
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'light') {
-      document.documentElement.classList.remove('dark');
-    } else {
-      document.documentElement.classList.add('dark');
-      if (!savedTheme) {
-        localStorage.setItem('theme', 'dark');
-      }
-    }
+
+    const applyCurrentTheme = () => applyThemePreference(readThemePreference());
+    applyCurrentTheme();
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSystemThemeChange = () => {
+      if (readThemePreference() === 'system') applyCurrentTheme();
+    };
+    mediaQuery.addEventListener?.('change', onSystemThemeChange);
+    return () => {
+      alive = false;
+      mediaQuery.removeEventListener?.('change', onSystemThemeChange);
+    };
   }, []);
 
   if (!storageReady) return null;

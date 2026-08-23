@@ -30,9 +30,9 @@ export const SubjectCard = ({
   sgtId,
 }: SubjectCardProps) => {
   const { subjects, wards, finishedMap, updateSubject, updateWard, toggleFinished, preferredPercentage } = useAttendance();
-  const { getPresetSubjectDisplayName, getSubjectIdByName } = useCustomData();
+  const { subjectMode, getPresetSubjectDisplayName, getSubjectIdByName } = useCustomData();
 
-  const displayName = getPresetSubjectDisplayName(subject);
+  const displayName = subjectMode === 'preloaded' ? getPresetSubjectDisplayName(subject) : subject;
 
   const resolvedId = getSubjectIdByName(subject, isWard ? 'clinical' : 'academic');
   const attendanceKey: string | null = isSGT && sgtId
@@ -272,7 +272,7 @@ export const SubjectCard = ({
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setActiveStatInfo(null); }}
-                  className="action-button action-button--neutral action-button--icon"
+                  className="action-button action-button--close action-button--icon"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -348,7 +348,7 @@ export const SubjectCard = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end justify-center p-4 overflow-y-auto"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end justify-center p-4 overflow-hidden"
               onClick={closeModal}
             >
               <motion.div
@@ -382,7 +382,7 @@ export const SubjectCard = ({
                     <button
                       type="button"
                       onClick={closeModal}
-                      className="action-button action-button--neutral action-button--icon"
+                      className="action-button action-button--close action-button--icon"
                       title="Close"
                     >
                       <X className="w-4 h-4" />

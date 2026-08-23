@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { X, Wrench, Zap, ChevronDown } from 'lucide-react';
+import { Wrench, Zap, ChevronDown } from 'lucide-react';
 import { APP_VERSION, WHATS_NEW_UPGRADES, WHATS_NEW_FIXES } from '@/lib/appVersion';
 import type { WhatsNewItem } from '@/lib/appVersion';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
@@ -124,14 +124,6 @@ export function WhatsNewPopup() {
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleClose}
-                aria-label="Close What's New"
-                className="action-button action-button--neutral action-button--icon shrink-0"
-              >
-                <X className="h-4 w-4" />
-              </button>
             </div>
 
             {/* Soft top and bottom boundaries surround the only scrolling region. */}

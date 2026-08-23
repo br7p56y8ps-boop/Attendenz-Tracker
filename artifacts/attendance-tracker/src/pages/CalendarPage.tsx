@@ -6,8 +6,36 @@ import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, canonicalizeTimeRange } from '@/lib/utils';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 
-const DAYS_ORDER = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+const DEFAULT_DAYS_ORDER = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const DAY_INDEX_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const DAY_AFTER_HOLIDAY_INDEX = 6; // Saturday follows the app-wide Friday holiday boundary.
+
+function getDisplayDayOrder(
+  subjectMode: 'preloaded' | 'custom',
+  activeTimetable: Record<number, any[]> | any[][],
+  sgtEntries: Array<{ day: string }>,
+): string[] {
+  if (subjectMode === 'preloaded') return DEFAULT_DAYS_ORDER;
+
+  let firstDayIndex = DAY_AFTER_HOLIDAY_INDEX;
+  for (let offset = 0; offset < 7; offset += 1) {
+    const dayIndex = (DAY_AFTER_HOLIDAY_INDEX + offset) % 7;
+    const day = Object.keys(DAY_INDEX_MAP).find(name => DAY_INDEX_MAP[name] === dayIndex) || 'Sat';
+    const hasAcademicSlot = (activeTimetable[dayIndex] || []).some(slot =>
+      slot?.type !== 'ward' && slot?.type !== 'ward_replacement' && Array.isArray(slot?.subjects) && slot.subjects.length > 0,
+    );
+    const hasSGTSlot = sgtEntries.some(entry => entry.day === day);
+    if (hasAcademicSlot || hasSGTSlot) {
+      firstDayIndex = dayIndex;
+      break;
+    }
+  }
+
+  return Array.from({ length: 7 }, (_, offset) => {
+    const dayIndex = (firstDayIndex + offset) % 7;
+    return Object.keys(DAY_INDEX_MAP).find(name => DAY_INDEX_MAP[name] === dayIndex) || 'Sat';
+  });
+}
 
 function shortenSubject(name: string) {
   const map: Record<string, string> = {
@@ -89,8 +117,9 @@ export default function CalendarPage() {
     const entries: Array<{ day: string; range: string; name: string; start: number; end: number }> = [];
     store.forEach(s => {
       if (!(s.subjectType === 'allied' && s.parentName === 'Small Group Teaching')) return;
+      const start = (s as any).startDate;
       const end = (s as any).endDate;
-      if (end && end < todayStr) return;
+      if ((start && todayStr < start) || (end && todayStr > end)) return;
       const scheds: Array<{ day: string; range: string }> = [];
       (s.schedules || []).forEach((sch: any) => {
         const range = sch.time ? canonicalizeTimeRange(sch.time) : `${sch.start}–${sch.end}`;
@@ -234,8 +263,9 @@ export default function CalendarPage() {
     const list: { name: string; start: string; end: string }[] = [];
     if (subjectMode === 'preloaded') {
       presetWardSchedule.forEach(ws => list.push({ name: ws.ward, start: ws.start, end: ws.end }));
+    } else {
+      customWards.forEach(w => list.push({ name: w.name, start: w.startDate, end: w.endDate }));
     }
-    customWards.forEach(w => list.push({ name: w.name, start: w.startDate, end: w.endDate }));
     list.sort((a, b) => a.start.localeCompare(b.start));
     return list;
   }, [subjectMode, customWards, presetWardSchedule]);
@@ -380,6 +410,10 @@ export default function CalendarPage() {
   }, [subjectMode, presetTimetable, customSubjects]);
 
   const hasCustomSchedule = subjectMode === 'custom' && (Object.values(activeTimetable).some((day: any[]) => day.length > 0) || sgtEntries.length > 0);
+  const displayDaysOrder = useMemo(
+    () => getDisplayDayOrder(subjectMode, activeTimetable, sgtEntries),
+    [subjectMode, activeTimetable, sgtEntries],
+  );
 
   /* ── Columns: base preset + extra (custom + SGT), chronological ── */
   const columns = useMemo<GridColumn[]>(() => {
@@ -388,7 +422,7 @@ export default function CalendarPage() {
       if (coveredByBase(r)) return;
       if (!extra.some(c => c.start === r.start && c.end === r.end)) extra.push({ ...r, base: false, id: `x${r.start}-${r.end}` });
     };
-    DAYS_ORDER.forEach(day => {
+    displayDaysOrder.forEach(day => {
       (activeTimetable[DAY_INDEX_MAP[day]] || []).forEach(slot => {
         if (slot.type === 'ward' || slot.type === 'ward_replacement') return;
         if (!slot.subjects || slot.subjects.length === 0) return;
@@ -399,11 +433,11 @@ export default function CalendarPage() {
     sgtEntries.forEach(e => push({ start: e.start, end: e.end }));
     const base = subjectMode === 'preloaded' ? BASE_PRESET_COLS.map((c, i) => ({ ...c, base: true, id: `b${i}` })) : [];
     return [...base, ...extra].sort((a, b) => a.start - b.start);
-  }, [activeTimetable, subjectMode, sgtEntries]);
+  }, [activeTimetable, subjectMode, sgtEntries, displayDaysOrder]);
 
   /* ── Grid cells ── */
   const timetableGrid = useMemo(() => {
-    const rows = DAYS_ORDER.map(day => {
+    const rows = displayDaysOrder.map(day => {
       if (subjectMode === 'preloaded' && day === 'Fri') return { day, cells: [{ key: 'hol', colStart: 0, span: columns.length, subjects: [], sgt: [], isRest: false, isHoliday: true, rowspan: 1, hidden: false }] };
       const dayIdx = DAY_INDEX_MAP[day];
 
@@ -468,7 +502,7 @@ export default function CalendarPage() {
       }
     }
     return rows;
-  }, [activeTimetable, subjectMode, columns, sgtEntries]);
+  }, [activeTimetable, subjectMode, columns, sgtEntries, displayDaysOrder]);
 
   const dense = columns.length >= 6;
   const overallColor = overall.pct >= target ? 'text-emerald-500' : overall.pct >= target - 10 ? 'text-amber-500' : 'text-rose-500';
@@ -484,7 +518,7 @@ export default function CalendarPage() {
     <Layout>
       <div className="space-y-4 pb-8 scroll-reachability">
         {/* ═══════════ WEEKLY TIME TABLE ═══════════ */}
-        <StickySectionLabel label="Academic" zClass="z-40" />
+        <StickySectionLabel label="Academic" stackIndex={0} zClass="z-40" />
         <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-3">
           {subjectMode === 'custom' && !hasCustomSchedule ? (
             <p className="text-xs text-muted-foreground text-center py-8">No custom schedule yet. Add subjects in Manage tab.</p>
@@ -509,10 +543,9 @@ export default function CalendarPage() {
                 {timetableGrid.map(row => {
                   const isToday = row.day === todayAbbr;
                   return (
-                    <tr key={row.day} className={cn(isToday && 'bg-primary/5')}>
-                      <td className="border border-border/40 px-1.5 py-2 text-[10px] font-bold text-foreground text-center">
+                    <tr key={row.day} className={cn(isToday && 'bg-primary/15 dark:bg-primary/20')}>
+                      <td className={cn('border border-border/40 px-1.5 py-2 text-[10px] font-bold text-foreground text-center', isToday && 'text-primary')}>
                         {row.day}
-                        {isToday && <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-primary align-middle" />}
                       </td>
                       {row.cells.filter(cell => !cell.hidden).map(cell => cell.isHoliday ? (
                         <td key={cell.key} colSpan={cell.span} className="border border-border/40 text-center text-[10px] font-bold text-muted-foreground tracking-[0.3em] py-4">HOLIDAY</td>
@@ -549,7 +582,7 @@ export default function CalendarPage() {
         </section>
 
         {/* ═══════════ CLINICAL / WARD ROTATION WHEEL ═══════════ */}
-        <StickySectionLabel label="Clinical / Ward Rotation" offsetClass="top-[calc(var(--app-header-height)+2rem)]" zClass="z-40" />
+        <StickySectionLabel label="Clinical / Ward Rotation" stackIndex={1} zClass="z-40" />
         <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-2">
           {totalItems === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-6">No rotations scheduled.</p>
@@ -587,7 +620,7 @@ export default function CalendarPage() {
           )}
         </section>
 
-        <StickySectionLabel label="Statistics" offsetClass="top-[calc(var(--app-header-height)+4rem)]" zClass="z-40" />
+        <StickySectionLabel label="Statistics" stackIndex={2} zClass="z-40" />
 
         {/* ═══════════ STATISTICS ═══════════ */}
         <section className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">

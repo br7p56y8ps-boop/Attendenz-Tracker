@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { path: '/account',   label: 'Settings',  description: 'Preferences, backups, and app settings', Icon: Hospital },
 ] as const;
 
-export const Layout = ({ children, headerRight }: { children: React.ReactNode; headerRight?: React.ReactNode }) => {
+export const Layout = ({ children, headerRight, headerBottom }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode }) => {
   const [location, setLocation] = useLocation();
   const headerRef = useRef<HTMLElement>(null);
   const [headerHeight, setHeaderHeight] = useState(72);
@@ -32,20 +32,23 @@ export const Layout = ({ children, headerRight }: { children: React.ReactNode; h
 
   return (
     <div
-      className="min-h-[100dvh] pb-32 pt-safe bg-background flex flex-col text-foreground transition-colors duration-300"
-      style={{ '--app-header-height': `${headerHeight}px`, '--app-bottom-nav-height': '4.5rem', '--app-bottom-nav-offset': '1.5rem' } as React.CSSProperties}
+      className="min-h-[100dvh] pb-0 pt-safe bg-background flex flex-col text-foreground transition-colors duration-300"
+      style={{ '--app-header-height': `${headerHeight}px`, '--app-bottom-nav-height': '4.5rem', '--app-bottom-nav-offset': '0px' } as React.CSSProperties}
     >
-      <header ref={headerRef} className="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/90 backdrop-blur-xl supports-[backdrop-filter]:bg-background/75">
-        <div className="max-w-3xl mx-auto w-full px-4 pt-safe py-3 flex items-center justify-between gap-3 min-h-[4.5rem]">
-          <div className="min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{currentItem.label}</h1>
-            <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{currentItem.description}</p>
+      <header ref={headerRef} className="fixed inset-x-0 top-0 z-50 border-b border-border/80 bg-card/75 backdrop-blur-2xl rounded-b-[28px] shadow-[0_12px_32px_rgba(0,0,0,0.18)] supports-[backdrop-filter]:bg-card/65">
+        <div className="max-w-3xl mx-auto w-full px-4 pt-safe py-3">
+          <div className="flex items-center justify-between gap-3 min-h-[4.5rem]">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{currentItem.label}</h1>
+              <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{currentItem.description}</p>
+            </div>
+            {headerRight}
           </div>
-          {headerRight}
+          {headerBottom}
         </div>
       </header>
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4" style={{ paddingTop: 'calc(var(--app-header-height) + 2rem)' }}>
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4" style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'var(--app-bottom-nav-height)' }}>
         <div key={location}>
           {children}
         </div>
@@ -56,8 +59,8 @@ export const Layout = ({ children, headerRight }: { children: React.ReactNode; h
         transition={{ type: 'spring', stiffness: 260, damping: 26 }}
         style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
         className={cn(
-          'fixed bottom-6 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:right-auto md:w-full md:max-w-md',
-          'bg-card/75 backdrop-blur-2xl border border-border/80 rounded-[28px] py-2 px-3 shadow-[0_16px_40px_rgba(0,0,0,0.35)] z-40 before:pointer-events-none before:absolute before:inset-x-0 before:-top-5 before:h-5 before:rounded-t-[28px] before:bg-gradient-to-t before:from-card/20 before:to-transparent',
+          'fixed bottom-0 left-0 right-0 md:left-0 md:right-0 md:w-full',
+          'bottom-nav-surface bg-card/75 backdrop-blur-2xl border-x-0 border-b-0 border-t border-border/80 rounded-t-[28px] rounded-b-none py-2 px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40 before:pointer-events-none before:absolute before:inset-x-0 before:-top-5 before:h-5 before:rounded-t-[28px] before:bg-gradient-to-t before:from-card/20 before:to-transparent',
           'transition-all duration-300'
         )}
       >

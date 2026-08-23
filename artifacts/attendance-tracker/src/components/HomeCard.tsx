@@ -4,6 +4,7 @@ import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, getCurrentDateStr, getSubjectColor } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
+import { triggerConfirmationFeedback } from '@/lib/feedback';
 
 interface HomeCardProps {
   subject: string; time: string; isWard?: boolean; title?: string; subtitle?: string;
@@ -130,9 +131,14 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
 
   let originalPlannedClasses: number | undefined;
   if (isWard) {
-    const cWard = customWards?.find(w => w.name.toLowerCase() === subject.toLowerCase());
-    if (cWard) originalPlannedClasses = getCustomWardTotalPlanned(cWard.startDate, cWard.endDate);
-    else { const p = getPresetWardTotalPlanned(subject); originalPlannedClasses = p > 0 ? p : getSubjectPlannedTotal(subject); }
+    if (subjectMode === 'custom') {
+      const cWard = customWards?.find(w => w.name.toLowerCase() === subject.toLowerCase());
+      originalPlannedClasses = cWard
+        ? getCustomWardTotalPlanned(cWard.startDate, cWard.endDate, cWard.vacationPeriods)
+        : 0;
+    } else {
+      originalPlannedClasses = getPresetWardTotalPlanned(subject);
+    }
   } else if (isSGT && sgtId) {
     const s = subjectMode === 'preloaded' ? userAddedSubjects?.find(x => x.id === sgtId) : customSubjects?.find(x => x.id === sgtId);
     originalPlannedClasses = s ? s.plannedClasses : getSubjectPlannedTotal(subject);
@@ -164,15 +170,17 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const isScheduledOn = (d: Date): boolean => {
     const ds = toStr(d); const abbr = DAY_ABBRS[d.getDay()]; const dow = d.getDay();
     if (isWard) {
-      const cw = customWards?.find(w => ds >= w.startDate && ds <= w.endDate);
-      if (cw) return cw.name.toLowerCase() === subject.toLowerCase();
-      if (subjectMode === 'preloaded') { const pw = getCurrentPresetWard(d); return !!pw && pw.ward === subject && pw.ward !== 'Holiday'; }
-      return false;
+      if (subjectMode === 'custom') {
+        const cw = customWards?.find(w => ds >= w.startDate && ds <= w.endDate);
+        return !!cw && cw.name.toLowerCase() === subject.toLowerCase();
+      }
+      const pw = getCurrentPresetWard(d);
+      return !!pw && pw.ward === subject && pw.ward !== 'Holiday';
     }
     if (isSGT && sgtId) {
       const s: any = subjectMode === 'preloaded' ? userAddedSubjects?.find(x => x.id === sgtId) : customSubjects?.find(x => x.id === sgtId);
       if (!s) return false;
-      if (s.startDate && s.endDate && (ds < s.startDate || ds > s.endDate)) return false;
+      if ((s.startDate && ds < s.startDate) || (s.endDate && ds > s.endDate)) return false;
       if ((s.schedules || []).some((x: any) => x.day === abbr)) return true;
       if (s.days && s.days.split(',').map((t: string) => t.trim()).includes(abbr)) return true;
       return false;
@@ -261,6 +269,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
       setMarkCount(c => c + 1);
       setUndoPending(false);
       updateHomeSelection(selectionKey, attendanceKey, sel, isWard);
+      triggerConfirmationFeedback(sel === 'off' ? 'info' : sel === 'missed' ? 'danger' : 'success');
       setTimeout(() => setEcgPhase(null), 1500);
     } else setPendingSelection(sel);
   };

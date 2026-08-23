@@ -1,6 +1,6 @@
-import { idbRemove, idbSet, storageSetItem, storageRemoveItem } from '@/lib/idb';
-
+import { idbGetAll, idbRemove, idbRemoveMany, idbSetMany, storageRemoveItem } from '@/lib/idb';
 import { CURRICULUM_KEYS, getActiveCurriculumName } from '@/lib/curriculumStore';
+import { assertBackupSize, filterStoredData, makeBackupEnvelope, validateBackupPayload, MAX_BACKUP_BYTES } from '@/utils/dataTransferSecurity';
 
 export interface Snapshot {
   id: string;
@@ -11,6 +11,34 @@ export interface Snapshot {
 
 const SNAPSHOTS_KEY = 'attendenz_snapshots_v1';
 const MAX_SNAPSHOTS = 5;
+
+function mirrorToLocalStorage(entries: Array<[string, string]>): void {
+  for (const [key, value] of entries) {
+    try { localStorage.setItem(key, value); } catch {}
+  }
+}
+
+function removeFromLocalStorage(keys: string[]): void {
+  for (const key of keys) {
+    try { localStorage.removeItem(key); } catch {}
+  }
+}
+
+async function collectUserData(includeSnapshots = false): Promise<Record<string, string>> {
+  const localData: Record<string, string> = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key) {
+      const value = localStorage.getItem(key);
+      if (value !== null) localData[key] = value;
+    }
+  }
+
+  const indexedData = await idbGetAll();
+  const data = { ...filterStoredData(localData), ...filterStoredData(indexedData) };
+  if (!includeSnapshots) delete data[SNAPSHOTS_KEY];
+  return data;
+}
 
 /**
  * Format date strictly as dd/mm/yy (e.g., 26/07/26)
@@ -63,34 +91,26 @@ export function getSnapshots(): Snapshot[] {
 /**
  * Capture a snapshot of current storage state
  */
-export function createSnapshot(label: string = 'Auto Snapshot'): void {
+export async function createSnapshot(label: string = 'Auto Snapshot'): Promise<boolean> {
   try {
     const snapshots = getSnapshots();
-    const data: Record<string, string> = {};
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && !key.startsWith('attendenz_snapshots')) {
-        const val = localStorage.getItem(key);
-        if (val !== null) data[key] = val;
-      }
-    }
-
+    const data = await collectUserData();
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const newSnapshot: Snapshot = {
       id: Date.now().toString(),
       timestamp: `${formatDateDDMMYY()} ${timeStr}`,
       label: `${getActiveCurriculumName()} — ${label}`,
-      data
+      data,
     };
 
     const updated = [newSnapshot, ...snapshots].slice(0, MAX_SNAPSHOTS);
     const jsonStr = JSON.stringify(updated);
-
-    localStorage.setItem(SNAPSHOTS_KEY, jsonStr);
-    storageSetItem(SNAPSHOTS_KEY, jsonStr);
+    await idbSetMany([[SNAPSHOTS_KEY, jsonStr]]);
+    mirrorToLocalStorage([[SNAPSHOTS_KEY, jsonStr]]);
+    return true;
   } catch (err) {
-     // console.error('Failed to create snapshot:', err);
+    // Callers can decide whether a safety-critical operation should proceed.
+    return false;
   }
 }
 
@@ -98,7 +118,7 @@ export function createSnapshot(label: string = 'Auto Snapshot'): void {
  * Triggered when all cards for today are marked.
  * Updates today's existing snapshot in-place if edited later in the day.
  */
-export function snapshotDayComplete(isComplete: boolean): void {
+export async function snapshotDayComplete(isComplete: boolean): Promise<boolean> {
   try {
     const todayStr = formatDateDDMMYY();
       const label = `${getActiveCurriculumName()} — Day Complete (${todayStr})`;
@@ -106,15 +126,7 @@ export function snapshotDayComplete(isComplete: boolean): void {
 
     if (isComplete) {
       const snapshots = getSnapshots();
-      const data: Record<string, string> = {};
-
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && !key.startsWith('attendenz_snapshots')) {
-          const val = localStorage.getItem(key);
-          if (val !== null) data[key] = val;
-        }
-      }
+      const data = await collectUserData();
 
       // Find if today's snapshot already exists
       const existingIndex = snapshots.findIndex(s => s.label === label);
@@ -138,29 +150,24 @@ export function snapshotDayComplete(isComplete: boolean): void {
       }
 
       const jsonStr = JSON.stringify(updated);
-      localStorage.setItem(SNAPSHOTS_KEY, jsonStr);
-      storageSetItem(SNAPSHOTS_KEY, jsonStr);
-      localStorage.setItem(LAST_DAY_COMPLETE_KEY, todayStr);
-      storageSetItem(LAST_DAY_COMPLETE_KEY, todayStr);
+      await idbSetMany([[SNAPSHOTS_KEY, jsonStr], [LAST_DAY_COMPLETE_KEY, todayStr]]);
+      mirrorToLocalStorage([[SNAPSHOTS_KEY, jsonStr], [LAST_DAY_COMPLETE_KEY, todayStr]]);
     } else {
       // Unmarked a card - clear completion flag
-      localStorage.removeItem(LAST_DAY_COMPLETE_KEY);
-      storageRemoveItem(LAST_DAY_COMPLETE_KEY);
+      await idbRemove(LAST_DAY_COMPLETE_KEY);
+      removeFromLocalStorage([LAST_DAY_COMPLETE_KEY]);
     }
+    return true;
   } catch (err) {
-     // console.error('Failed day-complete snapshot:', err);
+    return false;
   }
 }
 
 /**
  * Pre-edit backup trigger before major actions (resetting, deleting subjects)
  */
-export function snapshotBeforeEdit(actionName: string): void {
-  try {
-    createSnapshot(`Pre-Edit (${actionName})`);
-  } catch (err) {
-     // console.error('Failed pre-edit snapshot:', err);
-  }
+export async function snapshotBeforeEdit(actionName: string): Promise<boolean> {
+  return createSnapshot(`Pre-Edit (${actionName})`);
 }
 
 /**
@@ -169,9 +176,11 @@ export function snapshotBeforeEdit(actionName: string): void {
  * - Clears mode-specific attendance keys to avoid stale conflicts
  * - Removes mode-separation flag so migration can run again on next load
  */
-async function prepareRestoreEnvironment(): Promise<void> {
+async function prepareRestoreEnvironment(): Promise<boolean> {
+  const snapshotCreated = await createSnapshot('Pre-Restore Safety');
+  if (!snapshotCreated) return false;
+
   try {
-    createSnapshot('Pre-Restore Safety');
 
     const MODE_SPECIFIC_ATTENDANCE_KEYS = [
       'attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'attendance_tracker_finished_map',
@@ -184,15 +193,11 @@ async function prepareRestoreEnvironment(): Promise<void> {
       CURRICULUM_KEYS.CURRICULUM_MIGRATION_KEY,
     ];
 
-    await Promise.all(MODE_SPECIFIC_ATTENDANCE_KEYS.map(async key => {
-      localStorage.removeItem(key);
-      await idbRemove(key);
-    }));
-
-    localStorage.removeItem('att_mode_separation_done_v1');
-    await idbRemove('att_mode_separation_done_v1');
+    await idbRemoveMany(MODE_SPECIFIC_ATTENDANCE_KEYS);
+    removeFromLocalStorage(MODE_SPECIFIC_ATTENDANCE_KEYS);
+    return true;
   } catch (err) {
-     // console.error('Failed to prepare restore environment:', err);
+    return false;
   }
 }
 
@@ -205,19 +210,17 @@ export async function restoreSnapshot(snapshotId: string): Promise<boolean> {
     const target = snapshots.find(s => s.id === snapshotId);
     if (!target) return false;
 
-    // Clear mode-specific keys and remove migration flag first
-    await prepareRestoreEnvironment();
+    // Clear mode-specific keys only after a safety snapshot succeeds.
+    if (!await prepareRestoreEnvironment()) return false;
 
-    await Promise.all(Object.entries(target.data).map(async ([k, v]) => {
-      localStorage.setItem(k, v);
-      await idbSet(k, v);
-    }));
+    const entries = Object.entries(target.data);
+    await idbSetMany(entries);
+    mirrorToLocalStorage(entries);
 
     // Force startup migration after any snapshot restore, including newer snapshots.
-    for (const flag of ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom']) {
-      localStorage.removeItem(flag);
-      await idbRemove(flag);
-    }
+    const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];
+    await idbRemoveMany(migrationFlags);
+    removeFromLocalStorage(migrationFlags);
 
     return true;
   } catch (err) {
@@ -265,17 +268,10 @@ export function autoSnapshotOnLoad(): void {
 /**
  * Export all localStorage & IndexedDB data as a downloadable JSON file
  */
-export function exportDataAsJSON(returnData: boolean = false): string | void {
+export async function exportDataAsJSON(returnData: boolean = false): Promise<string | void> {
   try {
-    const backupData: Record<string, string> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) {
-        backupData[key] = localStorage.getItem(key) || '';
-      }
-    }
-    
-    const jsonData = JSON.stringify(backupData, null, 2);
+    const backupData = await collectUserData(true);
+    const jsonData = JSON.stringify(makeBackupEnvelope(backupData), null, 2);
     if (returnData) {
       return jsonData;
     }
@@ -311,7 +307,7 @@ export function exportDataAsJSON(returnData: boolean = false): string | void {
 
 export async function shareDataAsJSON(): Promise<boolean> {
   try {
-    const jsonData = exportDataAsJSON(true) as string;
+    const jsonData = await exportDataAsJSON(true) as string;
     const blob = new Blob([jsonData], { type: 'application/json' });
     const dateStr = formatDateDDMMYY().replace(/\//g, '-');
     const file = new File([blob], `attendenz_backup_${dateStr}.json`, { type: 'application/json' });
@@ -337,32 +333,29 @@ export async function shareDataAsJSON(): Promise<boolean> {
  * Import and restore data from an uploaded JSON file
  */
 export function importDataFromJSON(file: File, callback: (success: boolean) => void): void {
+  if (file.size > MAX_BACKUP_BYTES) { callback(false); return; }
   const reader = new FileReader();
   reader.onload = async (event) => {
     try {
       const content = event.target?.result as string;
+      assertBackupSize(content);
       const parsedData = JSON.parse(content);
-      
-      if (!parsedData || typeof parsedData !== 'object' || Array.isArray(parsedData)) {
-        throw new Error('Invalid backup file format.');
+      const validatedData = validateBackupPayload(parsedData);
+
+      // Validate the complete payload before preparing or writing any current data.
+      if (!await prepareRestoreEnvironment()) {
+        callback(false);
+        return;
       }
 
-      // Prepare environment: safety snapshot, clear mode-specific keys, remove migration flag
-      await prepareRestoreEnvironment();
-
-      await Promise.all(Object.entries(parsedData).map(async ([key, value]) => {
-        if (value !== null && value !== undefined) {
-          const stringVal = typeof value === 'string' ? value : JSON.stringify(value);
-          localStorage.setItem(key, stringVal);
-          await idbSet(key, stringVal);
-        }
-      }));
+      const entries = Object.entries(validatedData);
+      await idbSetMany(entries);
+      mirrorToLocalStorage(entries);
 
       // Force startup migration after any uploaded backup restore.
-      for (const flag of ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom']) {
-        localStorage.removeItem(flag);
-        await idbRemove(flag);
-      }
+      const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];
+      await idbRemoveMany(migrationFlags);
+      removeFromLocalStorage(migrationFlags);
 
       callback(true);
     } catch (err) {

@@ -13,7 +13,24 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(self.clients.claim()); // Take control immediately
+  e.waitUntil(self.clients.claim()); // Take control immediately to replace broken worker
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const targetUrl = typeof e.notification.data?.url === 'string' ? e.notification.data.url : self.registration.scope;
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          await client.focus();
+          if ('navigate' in client && client.url !== targetUrl) await client.navigate(targetUrl);
+          return;
+        }
+      }
+      if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
+    })
+  );
 });
 
 self.addEventListener('fetch', (e) => {

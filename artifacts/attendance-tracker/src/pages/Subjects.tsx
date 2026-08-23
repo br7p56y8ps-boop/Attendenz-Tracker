@@ -41,8 +41,8 @@ const CircularProgress = ({
   );
 };
 
-const SectionHeading = ({ icon, label, offsetClass = 'top-[var(--app-header-height)]' }: { icon?: React.ReactNode; label: string; offsetClass?: string }) => (
-  <StickySectionLabel icon={icon} label={label} offsetClass={offsetClass} zClass="z-10" />
+const SectionHeading = ({ icon, label }: { icon?: React.ReactNode; label: string }) => (
+  <StickySectionLabel icon={icon} label={label} />
 );
 
 interface ChildDetail {
@@ -167,9 +167,11 @@ export default function Subjects() {
   } = useCustomData();
   const [, setLocation] = useLocation();
   const today = new Date();
-  const customWard = getCurrentCustomWard();
+  const customWard = subjectMode === 'custom' ? getCurrentCustomWard() : null;
   const presetWardObj = subjectMode === 'preloaded' ? getCurrentPresetWard(today) : null;
-  const activeWard = customWard ? customWard.name : (presetWardObj ? presetWardObj.ward : null);
+  const activeWard = subjectMode === 'custom'
+    ? (customWard ? customWard.name : null)
+    : (presetWardObj ? presetWardObj.ward : null);
   const isWardHoliday = activeWard === 'Holiday';
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
   const toggleCategory = (catName: string) => {
@@ -188,11 +190,13 @@ export default function Subjects() {
    * an academic subject's total.
    */
   const plannedFor = (name: string): number => {
-    const cSub = customSubjects.find(s => norm(s.name) === norm(name) && !isSGTSubject(s));
-    if (cSub) return cSub.plannedClasses;
+    if (subjectMode === 'custom') {
+      const cSub = customSubjects.find(s => norm(s.name) === norm(name) && !isSGTSubject(s));
+      return cSub?.plannedClasses ?? 0;
+    }
     const uaSub = userAddedSubjects.find(s => norm(s.name) === norm(name) && !isSGTSubject(s));
     if (uaSub) return uaSub.plannedClasses;
-    return getSubjectPlannedTotal(name) || 40;
+    return getSubjectPlannedTotal(name) ?? 40;
   };
 
   const calcSummary = (
@@ -220,7 +224,7 @@ export default function Subjects() {
           p = getPresetWardTotalPlanned(sub.name);
         } else {
           const cWard = customWards.find(w => w.name.toLowerCase() === sub.name.toLowerCase());
-          p = cWard ? getCustomWardTotalPlanned(cWard.startDate, cWard.endDate) : (sub.total || 40);
+          p = cWard ? getCustomWardTotalPlanned(cWard.startDate, cWard.endDate, cWard.vacationPeriods) : 0;
         }
       } else {
         p = plannedFor(sub.name);
@@ -610,7 +614,7 @@ export default function Subjects() {
         })()}
 
         {/* ══════════════════ CLINICAL SECTION ══════════════════ */}
-        {(subjectMode === 'preloaded' || customHasAnySubjects) && <SectionHeading icon={<Stethoscope className="w-4 h-4 text-primary" />} label="Clinical" offsetClass="top-[calc(var(--app-header-height)+2rem)]" />}
+        {(subjectMode === 'preloaded' || customHasAnySubjects) && <SectionHeading icon={<Stethoscope className="w-4 h-4 text-primary" />} label="Clinical" />}
         {subjectMode === 'custom' && customHasAnySubjects && customClinicalCount === 0 && <p className="text-xs text-muted-foreground px-3 py-2">No subjects in this section.</p>}
 
         {/* ── Ward Rotations (Grouped in ONE Card) ── */}
