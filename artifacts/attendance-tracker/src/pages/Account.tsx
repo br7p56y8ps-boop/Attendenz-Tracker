@@ -871,16 +871,18 @@ export default function Account() {
         {/* 4. App Settings */}
         <div className="contents">
           <StickySectionLabel label="App Settings" stackIndex={3} zClass="z-30" />
-          <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
-            <SettingRow icon={<Vibrate className="w-4 h-4" />} title="Feedback & Sounds" description="Choose how Attendenz responds after you save or mark attendance" tone="violet" onClick={() => setActiveSettingModal('feedback')} />
-            <SettingRow icon={<Bell className="w-4 h-4" />} title="System Notifications" description="Choose which reminders you want to receive" tone="blue" onClick={() => setActiveSettingModal('notifications')} />
-            <SettingRow icon={<Info className="w-4 h-4" />} title="Theme" description={`${themePreference === 'system' ? 'System' : themePreference === 'dark' ? 'Dark' : 'Light'} appearance preference`} tone="primary" onClick={() => setActiveSettingModal('theme')} />
-            <div className="p-4 space-y-3">
+          <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden">
+            <div className="divide-y divide-border/40">
+              <SettingRow icon={<Vibrate className="w-4 h-4" />} title="Feedback & Sounds" description="Choose how Attendenz responds after you save or mark attendance" tone="violet" onClick={() => setActiveSettingModal('feedback')} />
+              <SettingRow icon={<Bell className="w-4 h-4" />} title="System Notifications" description="Choose which reminders you want to receive" tone="blue" onClick={() => setActiveSettingModal('notifications')} />
+              <SettingRow icon={<Info className="w-4 h-4" />} title="Theme" description={`${themePreference === 'system' ? 'System' : themePreference === 'dark' ? 'Dark' : 'Light'} appearance preference`} tone="primary" onClick={() => setActiveSettingModal('theme')} />
+            </div>
+            <div className="p-4 sm:p-5 space-y-4 bg-gradient-to-br from-primary/5 via-card to-card">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl overflow-hidden shrink-0 border border-border/50 bg-muted/20"><img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Logo" className="w-full h-full object-cover" /></div>
-                <div className="min-w-0 flex-1 text-left"><div className="flex items-center justify-between gap-2"><p className="font-extrabold text-xs text-foreground truncate">Attendenz Tracker</p>{isUpdateAvailable ? <span className="text-[9px] font-extrabold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">Update Available</span> : <span className="text-[9px] font-extrabold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">Up to Date</span>}</div><p className="text-[10px] text-muted-foreground mt-0.5">Version {installedVersion}</p><p className="text-[10px] text-muted-foreground/80">Developer: <strong className="text-foreground">benzavraar</strong></p><p className="text-[10px] text-muted-foreground/80">Storage Used: {runtimeStorageInfo.usedMB}</p></div>
+                <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border border-primary/30 bg-primary/10 shadow-sm"><img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Logo" className="w-full h-full object-cover" /></div>
+                <div className="min-w-0 flex-1 text-left"><div className="flex items-center justify-between gap-2"><p className="font-extrabold text-sm text-foreground truncate">Attendenz Tracker</p>{isUpdateAvailable ? <span className="text-[9px] font-extrabold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">Update Available</span> : <span className="text-[9px] font-extrabold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">Up to Date</span>}</div><p className="text-xs font-semibold text-muted-foreground mt-1">Version {installedVersion}</p><p className="text-[11px] text-muted-foreground/90 mt-0.5">Developer: <strong className="text-foreground">benzavraar</strong></p><p className="text-[11px] text-muted-foreground/90">Storage Used: {runtimeStorageInfo.usedMB}</p></div>
               </div>
-              <div className="flex gap-2 border-t border-border/40 pt-3"><button type="button" onClick={() => setWhatsNewOpen(true)} className="action-button action-button--neutral flex-1"><Sparkles className="w-4 h-4 text-primary" />What’s New</button>{isUpdateAvailable && <button type="button" onClick={() => setShowUpdatePrompt(true)} className="action-button action-button--update flex-1"><RefreshCw className="w-4 h-4" />Update App</button>}</div>
+              <div className="flex gap-2 pt-1"><button type="button" onClick={() => setWhatsNewOpen(true)} className="action-button action-button--neutral flex-1"><Sparkles className="w-4 h-4 text-primary" />What’s New</button>{isUpdateAvailable && <button type="button" onClick={() => setShowUpdatePrompt(true)} className="action-button action-button--update flex-1"><RefreshCw className="w-4 h-4" />Update App</button>}</div>
             </div>
           </div>
         </div>
@@ -1427,8 +1429,8 @@ export default function Account() {
           {/* 5. Danger Zone */}
           <div className="contents">
             <StickySectionLabel label="Danger Zone" stackIndex={4} zClass="z-30" />
-            <div className="bg-card/80 backdrop-blur-xl border border-destructive/30 rounded-2xl shadow-sm overflow-hidden">
-              <SettingRow icon={<Trash2 className="w-4 h-4" />} title="Delete All App’s Data" description="Permanently erase all local app data" tone="danger" onClick={() => setShowDeleteDataDialog(true)} />
+            <div className="bg-destructive/5 backdrop-blur-xl border border-destructive/40 rounded-2xl shadow-md shadow-destructive/10 overflow-hidden">
+              <SettingRow icon={<Trash2 className="w-4 h-4" />} title="Delete All App’s Data" description="Permanently erase data from every curriculum" tone="danger" onClick={() => setShowDeleteDataDialog(true)} />
             </div>
           </div>
       </div>

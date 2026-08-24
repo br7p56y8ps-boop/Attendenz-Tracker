@@ -543,8 +543,8 @@ export default function CalendarPage() {
                 {timetableGrid.map(row => {
                   const isToday = row.day === todayAbbr;
                   return (
-                    <tr key={row.day} className={cn(isToday && 'bg-primary/15 dark:bg-primary/20')}>
-                      <td className={cn('border border-border/40 px-1.5 py-2 text-[10px] font-bold text-foreground text-center', isToday && 'text-primary')}>
+                    <tr key={row.day}>
+                      <td className={cn('border border-border/40 px-1.5 py-2 text-[10px] font-bold text-foreground text-center', isToday && 'bg-primary/15 dark:bg-primary/20 text-primary')}>
                         {row.day}
                       </td>
                       {row.cells.filter(cell => !cell.hidden).map(cell => cell.isHoliday ? (

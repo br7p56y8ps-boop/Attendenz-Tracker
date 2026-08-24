@@ -1981,7 +1981,7 @@ export default function AddNew() {
     >
       <div className="space-y-2 pb-24 scroll-reachability">
         <div className="sticky top-[calc(var(--app-header-height)+0.5rem)] z-30">
-          <div className="manage-controls-surface relative z-[3] isolate -mx-4 bg-background px-4 py-1.5 shadow-sm border-y border-border/80 before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background">
+          <div className="manage-controls-surface relative z-[3] isolate -mx-4 bg-background px-4 py-1.5 shadow-sm border-y border-border/80 after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-2 after:h-2 after:bg-background before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background">
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={() => section === 'academic' ? toggleControls() : setSection('academic')}
               className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',
@@ -2009,11 +2009,11 @@ export default function AddNew() {
         <section
           style={{ '--manage-top-stack-height': controlsExpanded ? '7.125rem' : '4.25rem' } as React.CSSProperties}
           className={cn(
-            'manage-window-surface z-[3] -mx-1 mt-1 bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 soft-entry-boundary relative flex flex-col overflow-clip',
+            'manage-window-surface z-[3] isolate -mx-1 mt-1 bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 soft-entry-boundary relative flex flex-col overflow-clip',
           )}>
           {section === 'academic' && (
             <div className="flex flex-col">
-              <div className="sticky top-[calc(var(--app-header-height)+var(--manage-top-stack-height)+0.5rem)] z-20 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-background border-b border-border/70 shadow-sm isolate before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background">
+              <div className="sticky top-[calc(var(--app-header-height)+var(--manage-top-stack-height)+0.5rem)] z-30 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-background border-b border-border/70 shadow-sm isolate after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-2 after:h-2 after:bg-background before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background">
                 <div className="bg-background border border-border/50 rounded-xl p-1 flex justify-between gap-1">
                 {academicDayOrder.map(dayIndex => {
                   const day = DAY_ABBRS[dayIndex];
@@ -2032,7 +2032,7 @@ export default function AddNew() {
                 </div>
               </div>
 
-              <div className="space-y-1.5 pr-1 pb-1">
+              <div className="relative z-0 space-y-1.5 pr-1 pb-1 bg-card">
               {groupedAcademicSlots.length === 0 ? (
                 <div className="flex items-center justify-center min-h-[160px] bg-background/40 border border-dashed border-border rounded-xl">
                   <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
@@ -2099,7 +2099,7 @@ export default function AddNew() {
 
           {section === 'clinical' && (
             <div className="flex flex-col">
-              <div className="space-y-2 pr-1 pb-2">
+              <div className="relative z-0 space-y-2 pr-1 pb-2 bg-card">
                 {allClinicalSubjects.map(name => {
                   const group = { rotation: getRotationForSubject(name), sgt: getSGTForSubject(name) };
                   return (

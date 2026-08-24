@@ -295,12 +295,12 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const finishedTargetMet = totalPlannedClasses ? attended >= Math.ceil(totalPlannedClasses * (preferredPercentage / 100)) : true;
   const markTint = currentSelection === 'attended' ? 'bg-emerald-500/15' : currentSelection === 'missed' ? 'bg-rose-500/15' : currentSelection === 'off' ? 'bg-amber-500/15' : '';
   const borderCls = effectiveMode !== 'today' && isFinished
-    ? (finishedTargetMet ? 'border-emerald-500/60 ring-2 ring-emerald-500/40' : 'border-rose-500/60 ring-2 ring-rose-500/40')
-    : currentSelection === 'attended' ? 'border-emerald-500/60 ring-2 ring-emerald-500/40'
-    : currentSelection === 'missed' ? 'border-rose-500/60 ring-2 ring-rose-500/40'
-    : currentSelection === 'off' ? 'border-amber-500/60 ring-2 ring-amber-500/40'
+    ? (finishedTargetMet ? 'border-emerald-500/60' : 'border-rose-500/60')
+    : currentSelection === 'attended' ? 'border-emerald-500/60'
+    : currentSelection === 'missed' ? 'border-rose-500/60'
+    : currentSelection === 'off' ? 'border-amber-500/60'
     : (effectiveMode === 'today' && isFinished && !currentSelection)
-      ? (finishedTargetMet ? 'border-emerald-500/60 ring-2 ring-emerald-500/40' : 'border-rose-500/60 ring-2 ring-rose-500/40')
+      ? (finishedTargetMet ? 'border-emerald-500/60' : 'border-rose-500/60')
       : 'border-card-border';
   const selColor = (s: string) => s === 'attended' ? 'text-emerald-500' : s === 'missed' ? 'text-rose-500' : 'text-amber-500';
   const selBg = (s: string) => s === 'attended' ? 'bg-emerald-500/25 border-emerald-500/60' : s === 'missed' ? 'bg-rose-500/25 border-rose-500/60' : 'bg-amber-500/25 border-amber-500/60';
@@ -330,7 +330,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
 
   return (
     <div ref={cardRef} className={cn('relative rounded-2xl border overflow-hidden select-none mb-4 bg-card', borderCls)}
-      style={effectiveMode !== 'today' && !isFinished ? { borderColor: subjectColor } : undefined}>
+      style={effectiveMode !== 'today' && !isFinished && !currentSelection ? { borderColor: subjectColor } : undefined}>
       <div className={cn('p-5', effectiveMode === 'today' ? markTint : '')}>
         {/* ── PAST ── */}
         {effectiveMode === 'past' ? (
