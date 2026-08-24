@@ -42,6 +42,16 @@ declare global {
 let clientPromise: Promise<OneSignalClientState | null> | null = null;
 export const ONE_SIGNAL_STATE_CHANGED_EVENT = 'attendenz:onesignal-state-changed';
 
+async function waitForPushOptIn(client: OneSignalClient): Promise<boolean> {
+  const subscription = client.User.PushSubscription;
+  if (subscription.optedIn !== false) return true;
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await new Promise(resolve => window.setTimeout(resolve, 250));
+    if ((subscription.optedIn as boolean | undefined) === true) return true;
+  }
+  return subscription.optedIn !== false;
+}
+
 export function isOneSignalConfiguredForCurrentOrigin(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -134,15 +144,13 @@ export async function enableOneSignalPush(): Promise<
       return "unavailable";
     await state.client.setConsentGiven(true);
     await state.initialized;
-    // Permission was already requested from the user gesture above. This call
-    // synchronizes OneSignal's permission state without showing a second prompt.
-    await state.client.Notifications.requestPermission();
-    if (!state.client.Notifications.permission) return "denied";
+    // The browser permission was already handled at the start of this user gesture.
+    // Calling the SDK permission method a second time can fail on iOS even when the
+    // native permission is already granted. optIn() is the supported re-enable path.
     await state.client.User.PushSubscription.optIn();
+    if (!(await waitForPushOptIn(state.client))) return "failed";
     window.dispatchEvent(new Event(ONE_SIGNAL_STATE_CHANGED_EVENT));
-    return state.client.User.PushSubscription.optedIn === false
-      ? "failed"
-      : "enabled";
+    return "enabled";
   } catch {
     return "failed";
   }
