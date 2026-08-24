@@ -12,4 +12,4 @@ ALLOWED_ORIGIN = "https://benz-attendance-tracker.pages.dev"
 [[d1_databases]]
 binding = "DB"
 database_name = "attendenz-reminders"
-database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+database_id = "23f74491-b2f1-4c25-b09d-b6c452e52c08"
