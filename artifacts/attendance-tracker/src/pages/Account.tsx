@@ -20,7 +20,7 @@ import { disableOneSignalPush, enableOneSignalPush, isOneSignalProductionConfigu
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
-import { generatePDFReport, generateExcelReport, generateCSVReport } from '@/lib/exportUtils';
+import { generatePDFReport, generateExcelReport, generateCSVReport, isStandalonePWA } from '@/lib/exportUtils';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
 import femaleStudentProfile from '@/assets/images/female_student_profile_1784286920737.jpg';
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
@@ -496,11 +496,15 @@ export default function Account() {
       overallPct
     };
     setBusy('Exporting…');
+    const pdfTargetWindow = exportFormat === 'pdf' && isStandalonePWA() ? window.open('', '_blank') : null;
     try {
-      if (exportFormat === 'pdf') await generatePDFReport(reportOptions);
+      if (exportFormat === 'pdf') await generatePDFReport({ ...reportOptions, pdfTargetWindow });
       else if (exportFormat === 'excel') await generateExcelReport(reportOptions);
       else if (exportFormat === 'csv') generateCSVReport(reportOptions);
       notifySuccess('Report exported.');
+    } catch (error) {
+      if (pdfTargetWindow && !pdfTargetWindow.closed) pdfTargetWindow.close();
+      throw error;
     } finally { setBusy(null); }
   };
 
