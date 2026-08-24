@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.6";
+export const APP_VERSION = "1.6.1";
 export const LATEST_VERSION = APP_VERSION;
 
 export interface WhatsNewItem {
@@ -132,5 +132,5 @@ export const FEATURES_UPDATED = [
 export const RELEASE_NOTES = {
   version: APP_VERSION,
   summary:
-    "Release v1.6 includes clearer App Notification choices for the final scheduled class and first class of the day, alongside Feedback & Sounds controls, the iPhone permission-flow fix, independent curriculum workspaces, safer offline protection, and clearer mobile navigation.",
+    "Release v1.6.1 includes clearer App Notification choices for the final scheduled class and first class of the day, alongside Feedback & Sounds controls, the iPhone permission-flow fix, independent curriculum workspaces, safer offline protection, clearer mobile navigation, and Manage history controls that clear one displayed entry without changing app data.",
 };
