@@ -21,6 +21,8 @@ type OneSignalClient = {
       optIn: () => Promise<void> | void;
       optOut: () => Promise<void> | void;
       optedIn?: boolean;
+      addEventListener?: (event: 'change', listener: () => void) => void;
+      removeEventListener?: (event: 'change', listener: () => void) => void;
     };
   };
 };
@@ -100,6 +102,8 @@ async function loadOneSignalClient(): Promise<OneSignalClientState | null> {
           // The promise may wait for consent. Keep its rejection handled until the
           // user-triggered flow awaits it, while exposing the client immediately.
           void initialized.catch(() => undefined);
+          const onSubscriptionChange = () => window.dispatchEvent(new Event(ONE_SIGNAL_STATE_CHANGED_EVENT));
+          client.User.PushSubscription.addEventListener?.('change', onSubscriptionChange);
           resolve({ client, initialized });
         } catch (error) {
           reject(error);

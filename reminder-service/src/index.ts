@@ -277,7 +277,44 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
   ];
 
   await env.DB.batch(statements);
-  return json({ ok: true, expiresAt: expiryIso() }, 200, origin);
+  return json({ ok: true, expiresAt: expiryIso(), occurrenceCount: payload.occurrences.length }, 200, origin);
+}
+
+async function testDevice(request: Request, env: Env): Promise<Response> {
+  const origin = allowedOrigin(request, env);
+  if (!hasAllowedOrigin(request, env)) return error('origin_not_allowed', 403, origin);
+  const token = authToken(request);
+  if (!token || token.length < 32) return error('authorization_required', 401, origin);
+
+  let payload: unknown;
+  try {
+    payload = await readJson(request);
+  } catch (cause) {
+    return error(cause instanceof Error && cause.message === 'payload_too_large' ? 'payload_too_large' : 'invalid_json', 400, origin);
+  }
+  if (!payload || typeof payload !== 'object') return error('invalid_test_payload', 400, origin);
+  const item = payload as { deviceId?: unknown; oneSignalSubscriptionId?: unknown };
+  if (!isValidId(item.deviceId, 16, 96) || !isValidId(item.oneSignalSubscriptionId, 8, 160)) {
+    return error('invalid_test_payload', 400, origin);
+  }
+
+  const existing = await env.DB.prepare(
+    'SELECT device_id, token_hash, one_signal_subscription_id FROM devices WHERE device_id = ?1',
+  ).bind(item.deviceId).first<{ device_id: string; token_hash: string; one_signal_subscription_id: string }>();
+  if (!existing) return error('device_not_registered', 404, origin);
+  const tokenHash = await hashToken(token);
+  if (existing.token_hash !== tokenHash) return error('device_authorization_failed', 401, origin);
+  if (existing.one_signal_subscription_id !== item.oneSignalSubscriptionId) return error('subscription_mismatch', 409, origin);
+
+  const messageId = await sendPush(
+    env,
+    existing.one_signal_subscription_id,
+    'Attendenz remote test',
+    'This test travelled through the reminder Worker and OneSignal.',
+    ALLOWED_ORIGIN,
+    `${existing.device_id}:remote-test:${Date.now()}`,
+  );
+  return json({ ok: true, sent: Boolean(messageId) }, 200, origin);
 }
 
 async function deleteDevice(request: Request, env: Env): Promise<Response> {
@@ -495,6 +532,7 @@ export default {
     } });
     const url = new URL(request.url);
     if (url.pathname === '/v1/device/reminder-state' && request.method === 'POST') return syncDevice(request, env);
+    if (url.pathname === '/v1/device/test' && request.method === 'POST') return testDevice(request, env);
     if (url.pathname === '/v1/device/reminder-state' && request.method === 'DELETE') return deleteDevice(request, env);
     return error('not_found', 404, origin);
   },

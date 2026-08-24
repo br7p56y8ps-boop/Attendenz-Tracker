@@ -68,19 +68,26 @@ export function StickySectionLabel({
     if (!labelEl) return;
 
     const scrollParent = findScrollParent(labelEl);
-    const initialScroll = getScrollPosition(scrollParent);
-    const initialRectTop = labelEl.getBoundingClientRect().top;
-    const initialScrollportTop = getScrollportTop(scrollParent);
     const offsetTokens = offsetClass.split(/\s+/).filter(Boolean);
-    labelEl.classList.add('sticky', ...offsetTokens);
-    const stickyTop = getStickyTop(labelEl);
-    labelEl.classList.remove('sticky', ...offsetTokens);
-    const threshold = initialScroll + initialRectTop - (initialScrollportTop + stickyTop);
-    labelEl.dataset.stickyThreshold = String(threshold);
+    const measureThreshold = () => {
+      // Measure the label in normal flow. A previously sticky label otherwise
+      // reports the shared sticky-slot position and causes early release when
+      // another section expands or collapses above it.
+      const wasStuck = labelEl.classList.contains('sticky');
+      if (wasStuck) labelEl.classList.remove('sticky', ...offsetTokens);
+      const currentScroll = getScrollPosition(scrollParent);
+      const rectTop = labelEl.getBoundingClientRect().top;
+      const scrollportTop = getScrollportTop(scrollParent);
+      labelEl.classList.add('sticky', ...offsetTokens);
+      const stickyTop = getStickyTop(labelEl);
+      if (!wasStuck) labelEl.classList.remove('sticky', ...offsetTokens);
+      labelEl.dataset.stickyThreshold = String(currentScroll + rectTop - (scrollportTop + stickyTop));
+    };
 
     let frame: number | null = null;
     const checkPosition = () => {
       frame = null;
+      measureThreshold();
       const currentScroll = getScrollPosition(scrollParent);
       const activeLabel = getActiveLabel(scrollParent, currentScroll);
       setIsStuck(activeLabel === labelEl);
@@ -100,7 +107,7 @@ export function StickySectionLabel({
       delete labelEl.dataset.stickyThreshold;
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [offsetClass]);
 
   return (
     <div

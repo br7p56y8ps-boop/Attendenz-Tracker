@@ -35,8 +35,21 @@ const SYNC_STATUS_KEY = 'att_a1_reminder_sync_status_v1';
 export const REMINDER_SYNC_STATUS_CHANGED_EVENT = 'attendenz:reminder-sync-status-changed';
 
 export type ReminderSyncStatus =
-  | { state: 'not-configured' | 'offline' | 'waiting-for-permission' | 'error'; at?: string }
-  | { state: 'synced'; at: string };
+  | { state: 'not-configured' | 'offline' | 'waiting-for-permission' | 'error'; at?: string; details?: string }
+  | { state: 'synced'; at: string; occurrenceCount?: number };
+
+export type ReminderRegistrationDiagnostics = {
+  productionOrigin: boolean;
+  serviceConfigured: boolean;
+  permission: ReturnType<typeof import('@/lib/notifications').getNotificationPermission>;
+  systemEnabled: boolean;
+  subscription: 'available' | 'missing' | 'not-applicable';
+  sync: ReminderSyncStatus;
+};
+
+export type RemoteNotificationTestResult =
+  | { state: 'sent' }
+  | { state: 'preview-blocked' | 'not-configured' | 'permission-required' | 'subscription-missing' | 'not-registered' | 'error'; details?: string };
 
 export function getReminderSyncStatus(): ReminderSyncStatus {
   if (typeof window === 'undefined') return { state: 'not-configured' };
@@ -361,14 +374,67 @@ async function syncReminderState(payload: ReminderSyncPayload): Promise<void> {
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
+    const responseBody = await response.json().catch(() => null) as { error?: string; occurrenceCount?: number } | null;
     if (!response.ok) {
-      setReminderSyncStatus({ state: 'error', at: new Date().toISOString() });
+      setReminderSyncStatus({ state: 'error', at: new Date().toISOString(), details: responseBody?.error || `http_${response.status}` });
       return;
     }
-    setReminderSyncStatus({ state: 'synced', at: new Date().toISOString() });
+    setReminderSyncStatus({ state: 'synced', at: new Date().toISOString(), occurrenceCount: responseBody?.occurrenceCount });
   } catch {
     setReminderSyncStatus({ state: 'error', at: new Date().toISOString() });
     // Reminder sync must never interrupt offline attendance use.
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+export async function getReminderRegistrationDiagnostics(): Promise<ReminderRegistrationDiagnostics> {
+  const productionOrigin = isOneSignalConfiguredForCurrentOrigin();
+  const permission = (await import('@/lib/notifications')).getNotificationPermission();
+  const systemEnabled = getSystemNotificationsEnabled();
+  const subscription = !productionOrigin
+    ? 'not-applicable'
+    : await getOneSignalSubscriptionId()
+      ? 'available'
+      : 'missing';
+  return {
+    productionOrigin,
+    serviceConfigured: Boolean(SERVICE_URL),
+    permission,
+    systemEnabled,
+    subscription,
+    sync: getReminderSyncStatus(),
+  };
+}
+
+export async function testRemoteNotification(): Promise<RemoteNotificationTestResult> {
+  if (!isOneSignalConfiguredForCurrentOrigin()) return { state: 'preview-blocked' };
+  if (!SERVICE_URL) return { state: 'not-configured' };
+  if ((await import('@/lib/notifications')).getNotificationPermission() !== 'granted' || !getSystemNotificationsEnabled()) {
+    return { state: 'permission-required' };
+  }
+  const subscriptionId = await getOneSignalSubscriptionId();
+  if (!subscriptionId) return { state: 'subscription-missing' };
+  const deviceId = getDeviceValue(DEVICE_ID_KEY);
+  const deviceToken = getDeviceValue(DEVICE_TOKEN_KEY);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(`${SERVICE_URL}/v1/device/test`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${deviceToken}`,
+      },
+      body: JSON.stringify({ deviceId, oneSignalSubscriptionId: subscriptionId }),
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => null) as { error?: string } | null;
+    if (response.ok) return { state: 'sent' };
+    if (body?.error === 'device_not_registered') return { state: 'not-registered' };
+    return { state: 'error', details: body?.error || `http_${response.status}` };
+  } catch (cause) {
+    return { state: 'error', details: cause instanceof DOMException && cause.name === 'AbortError' ? 'request_timeout' : 'network_error' };
   } finally {
     window.clearTimeout(timeout);
   }
