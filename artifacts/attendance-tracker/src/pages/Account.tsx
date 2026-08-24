@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
 import { getSoundEnabled, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type VibrationStyle } from '@/lib/feedback';
 import { getNotificationPermission, getNotificationPreferences, getSystemNotificationsEnabled, setNotificationPreferences, setSystemNotificationsEnabled, testSystemNotification, type NotificationLeadMinutes, type NotificationPermissionState, type NotificationPreferences } from '@/lib/notifications';
-import { getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, type ReminderSyncStatus } from '@/lib/reminderSync';
+import { getReminderRegistrationDiagnostics, getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, testRemoteNotification, type ReminderRegistrationDiagnostics, type ReminderSyncStatus } from '@/lib/reminderSync';
 import { disableOneSignalPush, enableOneSignalPush, isOneSignalProductionConfigured, ONE_SIGNAL_PRODUCTION_ORIGIN, prepareOneSignal } from '@/lib/onesignal';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
@@ -637,6 +637,8 @@ export default function Account() {
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [notificationPreferences, setNotificationPreferencesState] = useState<NotificationPreferences>(() => getNotificationPreferences());
   const [reminderSyncStatus, setReminderSyncStatusState] = useState<ReminderSyncStatus>(() => getReminderSyncStatus());
+  const [registrationDiagnostics, setRegistrationDiagnostics] = useState<ReminderRegistrationDiagnostics | null>(null);
+  const [remoteTestBusy, setRemoteTestBusy] = useState(false);
   const notificationPreferencesDisabled = !systemNotificationsEnabled || notificationBusy;
   const updateVibrationEnabled = (enabled: boolean) => { if (!vibrationSupported) return; setVibrationEnabledState(enabled); setVibrationEnabled(enabled); };
   const updateVibrationStyle = (style: VibrationStyle) => { setVibrationStyleState(style); setVibrationStyle(style); };
@@ -708,17 +710,45 @@ export default function Account() {
   const testNotificationFromSettings = async () => {
     if (notificationPermission !== 'granted' || !systemNotificationsEnabled) return;
     const shown = await testSystemNotification();
-    if (!shown) import('sonner').then(({ toast }) => toast.info('The test notification could not be shown. Check notification permission and device settings.'));
+    if (!shown) import('sonner').then(({ toast }) => toast.info('The local test notification could not be shown. Check notification permission and device settings.'));
+  };
+  const refreshRegistrationDiagnostics = async () => {
+    setRegistrationDiagnostics(await getReminderRegistrationDiagnostics());
+  };
+  const testRemoteNotificationFromSettings = async () => {
+    if (remoteTestBusy) return;
+    setRemoteTestBusy(true);
+    try {
+      const result = await testRemoteNotification();
+      await refreshRegistrationDiagnostics();
+      if (result.state === 'sent') {
+        import('sonner').then(({ toast }) => toast.success('Remote test sent. Check this iPhone for the push notification.'));
+      } else if (result.state === 'not-registered') {
+        import('sonner').then(({ toast }) => toast.info('This device has not reached the reminder Worker yet. Keep notifications enabled and try again.'));
+      } else if (result.state === 'preview-blocked') {
+        import('sonner').then(({ toast }) => toast.info('Remote push is available only on the published Attendenz app.'));
+      } else {
+        import('sonner').then(({ toast }) => toast.info(`Remote test not sent: ${result.details || result.state}.`));
+      }
+    } finally {
+      setRemoteTestBusy(false);
+    }
   };
 
   useEffect(() => {
-    if (activeSettingModal === 'notifications' && oneSignalConfigured) void prepareOneSignal();
+    if (activeSettingModal === 'notifications' && oneSignalConfigured) {
+      void prepareOneSignal();
+      void refreshRegistrationDiagnostics();
+    }
   }, [activeSettingModal, oneSignalConfigured]);
   useEffect(() => {
-    const onReminderSyncStatusChanged = () => setReminderSyncStatusState(getReminderSyncStatus());
+    const onReminderSyncStatusChanged = () => {
+      setReminderSyncStatusState(getReminderSyncStatus());
+      if (activeSettingModal === 'notifications') void refreshRegistrationDiagnostics();
+    };
     window.addEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, onReminderSyncStatusChanged);
     return () => window.removeEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, onReminderSyncStatusChanged);
-  }, []);
+  }, [activeSettingModal]);
 
   const openCurriculumManager = () => {
     setConfirmMarkComplete(false);
@@ -1148,8 +1178,13 @@ export default function Account() {
                               <button type="button" onClick={() => window.location.assign(ONE_SIGNAL_PRODUCTION_ORIGIN)} className="action-button action-button--update action-button--compact w-full">Open published app</button>
                             </div>
                           ) : notificationPermission !== 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-muted-foreground">{notificationPermission === 'denied' ? 'Blocked in iPhone settings' : notificationPermission === 'insecure' ? 'Secure connection needed' : notificationPermission === 'unsupported' ? 'Not available on this device' : 'Permission needed'}</span><button type="button" onClick={enableSystemNotifications} disabled={notificationBusy || notificationPermission === 'denied' || notificationPermission === 'unsupported' || notificationPermission === 'insecure'} className="action-button action-button--update action-button--compact disabled:opacity-50">{notificationBusy ? 'Checking…' : 'Allow notifications'}</button></div>}
-                          {notificationPermission === 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">Permission granted</span><button type="button" onClick={testNotificationFromSettings} disabled={!systemNotificationsEnabled} className="action-button action-button--neutral action-button--compact disabled:opacity-50">Test</button></div>}
-                          {systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Reminder connection: {reminderSyncStatus.state === 'synced' ? `Synced ${new Date(reminderSyncStatus.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : reminderSyncStatus.state === 'waiting-for-permission' ? 'Waiting for this device to finish connecting.' : reminderSyncStatus.state === 'offline' ? 'Waiting for an internet connection.' : reminderSyncStatus.state === 'error' ? 'Last connection attempt failed. It will retry automatically.' : 'Not configured yet.'}</p>}
+                          {notificationPermission === 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">Permission granted</span><button type="button" onClick={testNotificationFromSettings} disabled={!systemNotificationsEnabled} className="action-button action-button--neutral action-button--compact disabled:opacity-50">Local test</button></div>}
+                          {oneSignalConfigured && notificationPermission === 'granted' && systemNotificationsEnabled && <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold text-foreground">Remote delivery test</p><p className="text-[10px] text-muted-foreground mt-0.5">Checks this device → Worker → OneSignal.</p></div><button type="button" onClick={testRemoteNotificationFromSettings} disabled={remoteTestBusy || registrationDiagnostics?.subscription !== 'available'} className="action-button action-button--update action-button--compact shrink-0 disabled:opacity-50">{remoteTestBusy ? 'Sending…' : 'Remote test'}</button></div>
+                            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[10px]"><span className="text-muted-foreground">Permission</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.permission || notificationPermission}</span><span className="text-muted-foreground">OneSignal subscription</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.subscription === 'available' ? 'Available' : registrationDiagnostics?.subscription === 'missing' ? 'Missing' : 'Not available on preview'}</span><span className="text-muted-foreground">Worker registration</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.sync.state === 'synced' ? `${registrationDiagnostics.sync.occurrenceCount ?? 0} schedule items synced` : registrationDiagnostics?.sync.state === 'error' ? `Failed${registrationDiagnostics.sync.details ? ` (${registrationDiagnostics.sync.details})` : ''}` : registrationDiagnostics?.sync.state === 'waiting-for-permission' ? 'Waiting for subscription' : registrationDiagnostics?.sync.state === 'offline' ? 'Waiting for internet' : 'Not configured'}</span></div>
+                            <p className="text-[10px] leading-relaxed text-muted-foreground">Local test only checks this browser’s service worker. Remote test sends one actual push through the reminder service.</p>
+                          </div>}
+                          {systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Reminder connection: {reminderSyncStatus.state === 'synced' ? `Synced ${new Date(reminderSyncStatus.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${reminderSyncStatus.occurrenceCount !== undefined ? ` · ${reminderSyncStatus.occurrenceCount} schedule items` : ''}` : reminderSyncStatus.state === 'waiting-for-permission' ? 'Waiting for this device to finish connecting.' : reminderSyncStatus.state === 'offline' ? 'Waiting for an internet connection.' : reminderSyncStatus.state === 'error' ? `Last connection attempt failed${reminderSyncStatus.details ? ` (${reminderSyncStatus.details})` : ''}. It will retry automatically.` : 'Not configured yet.'}</p>}
                         </div>
                         <div className="space-y-2.5">
                           <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Midnight Need Attention summary</span><span className="block text-[10px] text-muted-foreground mt-0.5">One grouped alert for today’s warning subjects</span></span><SettingToggle checked={notificationPreferences.midnightNeedAttention} onChange={value => updateNotificationPreference('midnightNeedAttention', value)} label="Midnight Need Attention summary" disabled={notificationPreferencesDisabled} /></label>
