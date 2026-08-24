@@ -62,8 +62,14 @@ async function withOneSignalTimeout<T>(operation: Promise<T> | void, label: stri
 }
 
 async function loadOneSignalClientWithTimeout(): Promise<OneSignalClientState | null> {
-  const loaded = await withOneSignalTimeout(loadOneSignalClient(), 'OneSignal SDK load timed out');
-  return loaded || null;
+  try {
+    const loaded = await withOneSignalTimeout(loadOneSignalClient(), 'OneSignal SDK load timed out');
+    return loaded || null;
+  } catch {
+    // A timed-out SDK promise must not poison every later tap on the enable button.
+    clientPromise = null;
+    return null;
+  }
 }
 
 async function waitForPushOptIn(client: OneSignalClient): Promise<boolean> {
@@ -85,7 +91,7 @@ async function loadOneSignalClient(): Promise<OneSignalClientState | null> {
   if (!isOneSignalConfiguredForCurrentOrigin()) return null;
   if (clientPromise) return clientPromise;
 
-  clientPromise = new Promise<OneSignalClientState | null>(
+  const pendingClientPromise = new Promise<OneSignalClientState | null>(
     (resolve, reject) => {
       const deferred = window.OneSignalDeferred || [];
       window.OneSignalDeferred = deferred;
@@ -123,7 +129,11 @@ async function loadOneSignalClient(): Promise<OneSignalClientState | null> {
         reject(new Error("OneSignal SDK could not be loaded."));
       document.head.appendChild(script);
     },
-  ).catch(() => null);
+  );
+  clientPromise = pendingClientPromise.catch(() => {
+    clientPromise = null;
+    return null;
+  });
 
   return clientPromise;
 }
@@ -169,12 +179,10 @@ export async function enableOneSignalPush(): Promise<
     await withOneSignalTimeout(state.client.setConsentGiven(true), 'OneSignal consent timed out');
     await withOneSignalTimeout(state.initialized, 'OneSignal initialization timed out');
     // Browser permission alone does not guarantee that OneSignal has created its
-    // own web-push subscription. On a fresh install, use the SDK permission flow
-    // when no ready subscription exists; for an existing subscription, optIn()
-    // remains the re-enable path and avoids a second native prompt.
-    if (!hasPushSubscriptionId(state.client)) {
-      await withOneSignalTimeout(state.client.Notifications.requestPermission(), 'OneSignal permission flow timed out');
-    }
+    // own web-push subscription. optIn() is the SDK-supported path for both cases:
+    // it subscribes an existing token or prompts when a token is not available.
+    // Calling Notifications.requestPermission() a second time after iOS has
+    // already granted permission can leave the user-initiated flow unresolved.
     if (!hasReadyPushSubscription(state.client)) {
       await withOneSignalTimeout(state.client.User.PushSubscription.optIn(), 'OneSignal opt-in timed out');
     }
@@ -182,6 +190,9 @@ export async function enableOneSignalPush(): Promise<
     window.dispatchEvent(new Event(ONE_SIGNAL_STATE_CHANGED_EVENT));
     return "enabled";
   } catch {
+    // Clear the cached SDK state so a later user tap can recover from a transient
+    // iOS/Web Push or SDK initialization failure.
+    clientPromise = null;
     return "failed";
   }
 }
