@@ -20,6 +20,7 @@ import {
   getSubjectColor,
 } from '@/lib/utils';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
+import { notifyAddNewChange } from '@/lib/notifications';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { storageSetItem } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
@@ -434,6 +435,7 @@ export default function AddNew() {
     setNote({ msg, kind });
     noteTimer.current = window.setTimeout(() => setNote(null), 2600);
   };
+  const notifyDataChange = (summary: string) => { void notifyAddNewChange(summary); };
   useEffect(() => () => { if (noteTimer.current) window.clearTimeout(noteTimer.current); }, []);
 
   const [formError, setFormError] = useState<string | null>(null);
@@ -737,6 +739,7 @@ export default function AddNew() {
       }
     }
     showToast('Slot added.');
+    notifyDataChange(`Added ${addSlotSubject} on ${DAY_ABBRS[selDay]} at ${time}.`);
     setAddSuccess(true);
   };
 
@@ -776,7 +779,7 @@ export default function AddNew() {
     setSubjectName(''); setPlanned(''); setSubjectRows([newRow([])]); setChildStart(''); setChildEnd('');
   };
 
-  const commitSubjects = (items: any[]) => {
+  const commitSubjects = (items: any[], notify = true) => {
     try {
       if (subjectMode === 'preloaded') {
         addUserAddedSubjects(items.map(it => ({
@@ -808,7 +811,9 @@ export default function AddNew() {
       const academicItems = items.filter((i: any) => i.subjectType !== 'allied-parent');
       if (academicItems.length > 0) recordHistory('Added Subject', { names: academicItems.map((i: any) => i.name) });
       setSubjectName(''); setPlanned(''); setSubjectRows([newRow([])]); setStagedChildren([]); setNewParentName(''); setChildStart(''); setChildEnd('');
+      const summary = items.length > 1 ? `${items.length} subjects or rotations were added.` : `Added ${items[0]?.name || 'a new item'} successfully.`;
       setFormError(null); showToast(items.length > 1 ? `${items.length} items added.` : 'Added successfully.');
+      if (notify) notifyDataChange(summary);
       setConflictSheet(null);
       setAddSuccess(true);
     } catch { showToast('Failed to save — please try again.', 'err'); setFormError('Failed to save.'); }
@@ -885,6 +890,7 @@ export default function AddNew() {
       recordHistory('Added Rotation', { name, start, end });
       setWardName(''); setWardStart(''); setWardEnd(''); setWardVacations([]);
       setFormError(null); showToast('Rotation added.');
+      notifyDataChange(`Added rotation ${name}.`);
       setAddSuccess(true);
     } catch { showToast('Failed to save rotation — please try again.', 'err'); setFormError('Failed to save rotation.'); }
   };
@@ -960,6 +966,7 @@ export default function AddNew() {
         recordHistory('Added SGT', { name: finalSgtName, clinicalSubject: clinicalSubjectName, planned: pc });
         setSgtClinicalSubject(''); setSgtName(''); setSgtStartDate(''); setSgtEndDate(''); setSgtRows([newRow([])]); setSgtVacations([]);
         setFormError(null); showToast(`SGT added with ${pc} planned classes.`);
+        notifyDataChange(`Added SGT ${finalSgtName}.`);
         setAddSuccess(true);
       };
 
@@ -1071,6 +1078,7 @@ export default function AddNew() {
       showToast(`Moved ${namesToMove.length} subject(s).`);
       setAddSuccess(true);
     }
+    notifyDataChange(`Moved ${namesToMove.join(', ')} to ${DAY_ABBRS[targetDay]} at ${time}.`);
     recordHistory('Moved Subjects', { names: namesToMove, fromDay: currentDay, fromTime: sourceSlot.time, toDay: targetDay, toTime: time });
   };
 
@@ -1133,6 +1141,7 @@ export default function AddNew() {
         }
         recordHistory('Removed from Slot', { subject: slotRemove.subject, day: slotRemove.day, time: slotRemove.time });
         showToast(`Removed "${slotRemove.subject}" from slot.`);
+        notifyDataChange(`Removed ${slotRemove.subject} from its scheduled slot.`);
       }
     } catch { showToast('Failed to remove subject.', 'err'); }
     setSlotRemove(null); setSlotRemoveConfirm(false);
@@ -1163,6 +1172,7 @@ export default function AddNew() {
         }
         recordHistory('Removed from Slot', { subject: slot.subjects.join(', '), day: editSlot.day, time: slot.time });
         showToast('Slot removed.');
+        notifyDataChange(`Removed the ${slot.subjects.join(', ')} scheduled slot.`);
         setAddSuccess(true);
       }
     } catch { showToast('Failed to remove slot.', 'err'); }
@@ -1194,7 +1204,8 @@ export default function AddNew() {
           } else {
             for (const n of namesToPurge) removeSubjectData(n);
           }
-          setDeleteSheet(null); showToast(`Deleted "${item.name}".`);
+            setDeleteSheet(null); showToast(`Deleted "${item.name}".`);
+            notifyDataChange(`Deleted ${item.name}.`);
         } catch { showToast('Delete failed — please try again.', 'err'); }
       }
     });
@@ -1212,6 +1223,7 @@ export default function AddNew() {
             removePresetWardEntry(idx);
             if (presetWardSchedule.filter(x => x.ward === e.ward).length <= 1) removeWardData(e.ward);
             setDeleteSheet(null); showToast(`Deleted "${e.ward}".`);
+            notifyDataChange(`Deleted rotation ${e.ward}.`);
           } catch { showToast('Delete failed — please try again.', 'err'); }
         }
       });
@@ -1226,6 +1238,7 @@ export default function AddNew() {
             removeCustomWard(w.id);
             removeWardData(w.name);
             setDeleteSheet(null); showToast(`Deleted "${w.name}".`);
+            notifyDataChange(`Deleted rotation ${w.name}.`);
           } catch { showToast('Delete failed — please try again.', 'err'); }
         }
       });
@@ -1357,7 +1370,9 @@ export default function AddNew() {
         if (editSubject.store === 'userAdded') updateUserAddedSubject(editSubject.id, patch);
         else updateCustomSubject(editSubject.id, patch);
       }
-      setEditError(null); showToast('Changes saved.'); window.setTimeout(() => setEditSubject(null), 900);
+      setEditError(null); showToast('Changes saved.');
+      notifyDataChange(`Updated ${editSubject.name}.`);
+      window.setTimeout(() => setEditSubject(null), 900);
     } catch { showToast('Failed to save changes — please try again.', 'err'); setEditError('Failed to save changes.'); }
   };
 
@@ -1402,7 +1417,9 @@ export default function AddNew() {
           vacationPeriods: vacationData,
         });
       }
-      setEditError(null); showToast('Rotation updated.'); window.setTimeout(() => setEditWard(null), 900);
+      setEditError(null); showToast('Rotation updated.');
+      notifyDataChange(`Updated rotation ${editWard.name}.`);
+      window.setTimeout(() => setEditWard(null), 900);
     } catch { showToast('Failed to save rotation — please try again.', 'err'); setEditError('Failed to save rotation.'); }
   };
 
@@ -1451,6 +1468,7 @@ export default function AddNew() {
         }
       }
       showToast('Planned classes updated.', 'ok');
+      notifyDataChange(`Updated planned classes for ${item.name}.`);
     } catch {
       showToast('Failed to update planned classes.', 'err');
     }
@@ -1731,6 +1749,7 @@ export default function AddNew() {
         wardsAdded++;
       }
       let rotationsAdded = 0;
+      let timetableChanges = 0;
       for (const e of subjectMode === 'preloaded' ? (b.presetWardSchedule || []) : []) {
         if (!e || e.addedByUser !== true) continue;
         if (presetWardSchedule.some(x => x.ward.toLowerCase() === String(e.ward).toLowerCase() && x.start === e.start && x.end === e.end)) continue;
@@ -1752,20 +1771,26 @@ export default function AddNew() {
             const existingIdx = (presetTimetable[day] || []).findIndex(s => canonicalizeTimeRange(s.time) === time);
             if (existingIdx >= 0) {
               const merged = Array.from(new Set([...(presetTimetable[day][existingIdx].subjects || []), ...slot.subjects]));
+              if (merged.length !== (presetTimetable[day][existingIdx].subjects || []).length) timetableChanges += 1;
               updatePresetTimetableSlot(day, existingIdx, time, merged, day);
             } else {
               slot.subjects.forEach((n: string) => addSubjectToSlot(day, time, n));
+              timetableChanges += 1;
             }
           }
         });
       }
-      if (items.length) commitSubjects(items);
+      if (items.length) commitSubjects(items, false);
       recordHistory('Imported (Merge)', { subjects: items.length, rotations: wardsAdded + rotationsAdded });
       setPreview(null);
       setMoreMenuOpen(true);
-      const total = items.length + wardsAdded + rotationsAdded;
+      const total = items.length + wardsAdded + rotationsAdded + timetableChanges;
       if (total === 0) showToast('Nothing new to merge (duplicates or preset-only data). Use Replace to adopt the bundle.', 'info');
-      else showToast(`Merged ${items.length} subject(s), ${wardsAdded + rotationsAdded} rotation(s).`);
+      else {
+        const summary = `Imported ${items.length} subject(s), ${wardsAdded + rotationsAdded} rotation(s), and ${timetableChanges} timetable change(s).`;
+        showToast(`Merged ${items.length} subject(s), ${wardsAdded + rotationsAdded} rotation(s).`);
+        notifyDataChange(summary);
+      }
     } catch { showToast('Merge failed — please try again.', 'err'); }
   };
 
@@ -1890,6 +1915,7 @@ export default function AddNew() {
     setPreview(null);
     setMoreMenuOpen(true);
     showToast('Routine replaced — reloading…');
+    await notifyAddNewChange('Replaced the active routine from an imported bundle.');
     setLocation('/');
     setTimeout(() => window.location.reload(), 900);
   };

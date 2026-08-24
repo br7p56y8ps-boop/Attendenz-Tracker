@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
 import { APP_VERSION } from '@/lib/appVersion';
+import { notifyUpdateAvailable } from '@/lib/notifications';
 
 const base = import.meta.env.BASE_URL || '/';
 const SILENT_BUILD_REVISION_KEY = 'att_silent_build_revision_v1';
@@ -115,6 +116,7 @@ if ('serviceWorker' in navigator) {
           localStorage.setItem('att_pwa_latest_version', j.version);
           if (typeof j.summary === 'string') localStorage.setItem('att_pwa_update_summary', j.summary);
           window.dispatchEvent(new CustomEvent('attendenz:update-ready'));
+          void notifyUpdateAvailable(j.version, typeof j.summary === 'string' ? j.summary : '');
         } else {
           clearUpdateState();
         }

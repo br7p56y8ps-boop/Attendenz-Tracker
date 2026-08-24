@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
 import { getSoundEnabled, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type VibrationStyle } from '@/lib/feedback';
 import { getNotificationPermission, getNotificationPreferences, getSystemNotificationsEnabled, setNotificationPreferences, setSystemNotificationsEnabled, testSystemNotification, type NotificationLeadMinutes, type NotificationPermissionState, type NotificationPreferences } from '@/lib/notifications';
+import { getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, type ReminderSyncStatus } from '@/lib/reminderSync';
 import { disableOneSignalPush, enableOneSignalPush, isOneSignalProductionConfigured, ONE_SIGNAL_PRODUCTION_ORIGIN, prepareOneSignal } from '@/lib/onesignal';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
@@ -610,15 +611,41 @@ export default function Account() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() => getNotificationPermission());
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [notificationPreferences, setNotificationPreferencesState] = useState<NotificationPreferences>(() => getNotificationPreferences());
+  const [reminderSyncStatus, setReminderSyncStatusState] = useState<ReminderSyncStatus>(() => getReminderSyncStatus());
   const updateVibrationEnabled = (enabled: boolean) => { if (!vibrationSupported) return; setVibrationEnabledState(enabled); setVibrationEnabled(enabled); };
   const updateVibrationStyle = (style: VibrationStyle) => { setVibrationStyleState(style); setVibrationStyle(style); };
   const updateSoundEnabled = (enabled: boolean) => { setSoundEnabledState(enabled); setSoundEnabled(enabled); };
   const updateSoundVolume = (volume: number) => { setSoundVolumeState(volume); setSoundVolume(volume); };
-  const updateSystemNotificationsEnabled = (enabled: boolean) => {
-    setSystemNotificationsEnabledState(enabled);
-    setSystemNotificationsEnabled(enabled);
-    if (enabled) void enableOneSignalPush();
-    else void disableOneSignalPush();
+  const updateSystemNotificationsEnabled = async (enabled: boolean) => {
+    if (notificationBusy) return;
+    setNotificationBusy(true);
+    if (!enabled) {
+      await disableOneSignalPush();
+      setSystemNotificationsEnabledState(false);
+      setSystemNotificationsEnabled(false);
+      setNotificationPermission(getNotificationPermission());
+      setNotificationBusy(false);
+      return;
+    }
+
+    if (!oneSignalConfigured) {
+      setNotificationBusy(false);
+      import('sonner').then(({ toast }) => toast.info('Open the published Attendenz app to enable system notifications.'));
+      return;
+    }
+
+    const result = await enableOneSignalPush();
+    const permission = getNotificationPermission();
+    setNotificationPermission(permission);
+    if (result === 'enabled' && permission === 'granted') {
+      setSystemNotificationsEnabledState(true);
+      setSystemNotificationsEnabled(true);
+    } else {
+      setSystemNotificationsEnabledState(false);
+      setSystemNotificationsEnabled(false);
+      import('sonner').then(({ toast }) => toast.info(result === 'denied' || permission === 'denied' ? 'Notifications are blocked in iPhone settings.' : 'Notifications could not be connected yet. Please try again on the published app.'));
+    }
+    setNotificationBusy(false);
   };
   const updateNotificationPreference = <K extends keyof NotificationPreferences>(key: K, value: NotificationPreferences[K]) => {
     const next = { ...notificationPreferences, [key]: value };
@@ -658,6 +685,11 @@ export default function Account() {
   useEffect(() => {
     if (activeSettingModal === 'notifications' && oneSignalConfigured) void prepareOneSignal();
   }, [activeSettingModal, oneSignalConfigured]);
+  useEffect(() => {
+    const onReminderSyncStatusChanged = () => setReminderSyncStatusState(getReminderSyncStatus());
+    window.addEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, onReminderSyncStatusChanged);
+    return () => window.removeEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, onReminderSyncStatusChanged);
+  }, []);
 
   const openCurriculumManager = () => {
     setConfirmMarkComplete(false);
@@ -1078,7 +1110,7 @@ export default function Account() {
                     {activeSettingModal === 'notifications' && (
                       <div className="space-y-3">
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5 space-y-3">
-                          <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold text-foreground">System notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Choose the reminders you want on this device</p></div>{notificationPermission === 'granted' && <SettingToggle checked={systemNotificationsEnabled} onChange={updateSystemNotificationsEnabled} label="System notifications" />}</div>
+                          <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold text-foreground">System notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Choose the reminders you want on this device</p></div>{notificationPermission === 'granted' && <SettingToggle checked={systemNotificationsEnabled} onChange={updateSystemNotificationsEnabled} label="System notifications" disabled={notificationBusy} />}</div>
                           {!oneSignalConfigured ? (
                             <div className="space-y-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
                               <p className="text-[10px] font-semibold leading-relaxed text-amber-700 dark:text-amber-300">Notifications can be enabled only from the published Attendenz app, not from a Cloudflare preview link.</p>
@@ -1086,6 +1118,7 @@ export default function Account() {
                             </div>
                           ) : notificationPermission !== 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-muted-foreground">{notificationPermission === 'denied' ? 'Blocked in iPhone settings' : notificationPermission === 'insecure' ? 'Secure connection needed' : notificationPermission === 'unsupported' ? 'Not available on this device' : 'Permission needed'}</span><button type="button" onClick={enableSystemNotifications} disabled={notificationBusy || notificationPermission === 'denied' || notificationPermission === 'unsupported' || notificationPermission === 'insecure'} className="action-button action-button--update action-button--compact disabled:opacity-50">{notificationBusy ? 'Checking…' : 'Allow notifications'}</button></div>}
                           {notificationPermission === 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">Permission granted</span><button type="button" onClick={testNotificationFromSettings} disabled={!systemNotificationsEnabled} className="action-button action-button--neutral action-button--compact disabled:opacity-50">Test</button></div>}
+                          {systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Reminder connection: {reminderSyncStatus.state === 'synced' ? `Synced ${new Date(reminderSyncStatus.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : reminderSyncStatus.state === 'waiting-for-permission' ? 'Waiting for this device to finish connecting.' : reminderSyncStatus.state === 'offline' ? 'Waiting for an internet connection.' : reminderSyncStatus.state === 'error' ? 'Last connection attempt failed. It will retry automatically.' : 'Not configured yet.'}</p>}
                           <p className="text-[10px] leading-relaxed text-muted-foreground">Choose the reminders you want. You can change these choices at any time; your selections will be kept for reminder delivery.</p>
                         </div>
                         <div className="space-y-2.5">

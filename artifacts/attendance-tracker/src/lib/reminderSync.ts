@@ -31,6 +31,26 @@ const DEVICE_ID_KEY = 'att_a1_reminder_device_id_v1';
 const DEVICE_TOKEN_KEY = 'att_a1_reminder_device_token_v1';
 const HORIZON_DAYS = 21;
 const MAX_OCCURRENCES = 250;
+const SYNC_STATUS_KEY = 'att_a1_reminder_sync_status_v1';
+export const REMINDER_SYNC_STATUS_CHANGED_EVENT = 'attendenz:reminder-sync-status-changed';
+
+export type ReminderSyncStatus =
+  | { state: 'not-configured' | 'offline' | 'waiting-for-permission' | 'error'; at?: string }
+  | { state: 'synced'; at: string };
+
+export function getReminderSyncStatus(): ReminderSyncStatus {
+  if (typeof window === 'undefined') return { state: 'not-configured' };
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SYNC_STATUS_KEY) || 'null') as ReminderSyncStatus | null;
+    if (parsed && typeof parsed.state === 'string') return parsed;
+  } catch {}
+  return { state: SERVICE_URL ? 'waiting-for-permission' : 'not-configured' };
+}
+
+function setReminderSyncStatus(status: ReminderSyncStatus): void {
+  try { localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(status)); } catch {}
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(REMINDER_SYNC_STATUS_CHANGED_EVENT));
+}
 
 type ReminderCategory = 'academic' | 'clinical' | 'sgt' | 'ward';
 
@@ -321,11 +341,18 @@ function buildOccurrences(input: {
 }
 
 async function syncReminderState(payload: ReminderSyncPayload): Promise<void> {
-  if (!SERVICE_URL || !navigator.onLine) return;
+  if (!SERVICE_URL) {
+    setReminderSyncStatus({ state: 'not-configured' });
+    return;
+  }
+  if (!navigator.onLine) {
+    setReminderSyncStatus({ state: 'offline', at: new Date().toISOString() });
+    return;
+  }
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 8_000);
   try {
-    await fetch(`${SERVICE_URL}/v1/device/reminder-state`, {
+    const response = await fetch(`${SERVICE_URL}/v1/device/reminder-state`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -334,7 +361,13 @@ async function syncReminderState(payload: ReminderSyncPayload): Promise<void> {
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
+    if (!response.ok) {
+      setReminderSyncStatus({ state: 'error', at: new Date().toISOString() });
+      return;
+    }
+    setReminderSyncStatus({ state: 'synced', at: new Date().toISOString() });
   } catch {
+    setReminderSyncStatus({ state: 'error', at: new Date().toISOString() });
     // Reminder sync must never interrupt offline attendance use.
   } finally {
     window.clearTimeout(timeout);
@@ -350,7 +383,10 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
     const sync = async () => {
       if (!alive || !custom.setupDone || !isOneSignalConfiguredForCurrentOrigin()) return;
       const oneSignalSubscriptionId = await getOneSignalSubscriptionId();
-      if (!alive || !oneSignalSubscriptionId) return;
+      if (!alive || !oneSignalSubscriptionId) {
+        setReminderSyncStatus({ state: 'waiting-for-permission' });
+        return;
+      }
       const preferences = getNotificationPreferences();
       const payload: ReminderSyncPayload = {
         version: 1,
