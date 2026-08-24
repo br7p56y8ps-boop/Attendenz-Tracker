@@ -1981,7 +1981,7 @@ export default function AddNew() {
     >
       <div className="space-y-2 pb-24 scroll-reachability">
         <div className="sticky top-[calc(var(--app-header-height)+0.5rem)] z-30">
-          <div className="manage-controls-surface relative z-[3] isolate -mx-4 bg-background px-4 py-1.5 shadow-sm border-y border-border/80 after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-2 after:h-2 after:bg-background before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background">
+          <div className="manage-controls-surface relative z-[3] isolate -mx-4 bg-background px-4 py-1.5 shadow-sm border-y border-border/80 before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background">
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={() => section === 'academic' ? toggleControls() : setSection('academic')}
               className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',

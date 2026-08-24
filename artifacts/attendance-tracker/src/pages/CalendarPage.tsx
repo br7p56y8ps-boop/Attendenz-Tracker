@@ -548,9 +548,9 @@ export default function CalendarPage() {
                         {row.day}
                       </td>
                       {row.cells.filter(cell => !cell.hidden).map(cell => cell.isHoliday ? (
-                        <td key={cell.key} colSpan={cell.span} className="border border-border/40 text-center text-[10px] font-bold text-muted-foreground tracking-[0.3em] py-4">HOLIDAY</td>
+                        <td key={cell.key} colSpan={cell.span} className={cn('border border-border/40 text-center text-[10px] font-bold text-muted-foreground tracking-[0.3em] py-4', isToday && 'bg-primary/15 dark:bg-primary/20')}>HOLIDAY</td>
                       ) : (
-                        <td key={cell.key} colSpan={cell.span} rowSpan={cell.rowspan > 1 ? cell.rowspan : undefined} className={cn('border border-border/40 p-1 text-center align-middle', cell.isRest && 'bg-muted/20')}>
+                        <td key={cell.key} colSpan={cell.span} rowSpan={cell.rowspan > 1 ? cell.rowspan : undefined} className={cn('border border-border/40 p-1 text-center align-middle', cell.isRest && 'bg-muted/20', isToday && cell.rowspan <= 1 && 'bg-primary/15 dark:bg-primary/20')}>
                           {cell.subjects.length === 0 && cell.sgt.length === 0 ? (
                             <span className="text-muted-foreground/40 text-[9px]">—</span>
                           ) : cell.isRest ? (
