@@ -5,10 +5,6 @@ import { APP_VERSION } from '@/lib/appVersion';
 import { notifyUpdateAvailable } from '@/lib/notifications';
 
 const base = import.meta.env.BASE_URL || '/';
-const SILENT_BUILD_REVISION_KEY = 'att_silent_build_revision_v1';
-
-type BuildRevisionManifest = { revision?: unknown };
-
 function isVersionNewer(candidate: string, current: string): boolean {
   const a = String(candidate).split('.').map(n => parseInt(n, 10) || 0);
   const b = String(current).split('.').map(n => parseInt(n, 10) || 0);
@@ -59,46 +55,6 @@ async function refreshCachedShell(): Promise<boolean> {
   }
 }
 
-let silentRefreshInFlight: Promise<void> | null = null;
-
-async function checkSilentBuildRevision(): Promise<void> {
-  if (!navigator.onLine || typeof caches === 'undefined') return;
-  if (localStorage.getItem('att_pwa_update_ready') === 'true') return;
-  try {
-    const versionResponse = await fetch(`${base}version.json?silent=${Date.now()}`, { cache: 'no-store' });
-    if (versionResponse.ok) {
-      const versionManifest = await versionResponse.json();
-      if (versionManifest && typeof versionManifest.version === 'string' && isVersionNewer(versionManifest.version, APP_VERSION)) return;
-    }
-
-    const response = await fetch(`${base}build-revision.json?ts=${Date.now()}`, { cache: 'no-store' });
-    if (!response.ok) return;
-    const manifest = (await response.json()) as BuildRevisionManifest;
-    const revision = typeof manifest.revision === 'string' ? manifest.revision.trim() : '';
-    if (!revision) return;
-
-    const current = localStorage.getItem(SILENT_BUILD_REVISION_KEY);
-    if (!current) {
-      localStorage.setItem(SILENT_BUILD_REVISION_KEY, revision);
-      return;
-    }
-    if (current === revision || document.visibilityState === 'hidden') return;
-
-    if (!silentRefreshInFlight) {
-      silentRefreshInFlight = (async () => {
-        const refreshed = await refreshCachedShell();
-        if (!refreshed) return;
-        localStorage.setItem(SILENT_BUILD_REVISION_KEY, revision);
-      })().finally(() => {
-        silentRefreshInFlight = null;
-      });
-    }
-    await silentRefreshInFlight;
-  } catch {
-    // Offline or an unavailable internal manifest: keep the current app running.
-  }
-}
-
 /* ── Manual updates: permanent guard worker + visible version.json gate ── */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -126,15 +82,11 @@ if ('serviceWorker' in navigator) {
 
   window.addEventListener('load', () => {
     void checkForUpdate();
-    void checkSilentBuildRevision();
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      void checkForUpdate();
-      void checkSilentBuildRevision();
-    }
+    if (!document.hidden) void checkForUpdate();
   });
-  window.setInterval(() => { void checkForUpdate(); void checkSilentBuildRevision(); }, 60000);
+  window.setInterval(() => { void checkForUpdate(); }, 60000);
 }
 
 /* Account's visible Update button calls this: updates the cached shell directly. */

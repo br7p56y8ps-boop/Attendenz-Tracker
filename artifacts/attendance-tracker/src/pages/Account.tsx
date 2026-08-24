@@ -70,7 +70,28 @@ export default function Account() {
   const [, setLocation] = useLocation();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(username);
+  const [identityKeyboardInset, setIdentityKeyboardInset] = useState(0);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setNameInput(username); }, [username]);
+  useEffect(() => {
+    if (!isEditingName) {
+      setIdentityKeyboardInset(0);
+      return;
+    }
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const updateKeyboardInset = () => {
+      const inset = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+      setIdentityKeyboardInset(inset);
+    };
+    updateKeyboardInset();
+    viewport.addEventListener('resize', updateKeyboardInset);
+    viewport.addEventListener('scroll', updateKeyboardInset);
+    return () => {
+      viewport.removeEventListener('resize', updateKeyboardInset);
+      viewport.removeEventListener('scroll', updateKeyboardInset);
+    };
+  }, [isEditingName]);
   const handleSaveName = () => { if (nameInput.trim()) updateUsername(nameInput.trim()); setIsEditingName(false); };
   const { subjects, wards, homeSelections, preferredPercentage, setPreferredPercentage } = useAttendance();
   const quarantineUnresolvedAttendance = (type: 'subject' | 'ward', name: string, data: unknown) => {
@@ -1522,13 +1543,13 @@ export default function Account() {
 
       <AnimatePresence>
         {isEditingName && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-end justify-center p-4" onClick={() => setIsEditingName(false)}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-end justify-center p-4" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }} onClick={() => setIsEditingName(false)}>
             <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
               <div>
                 <h3 className="text-base font-bold text-foreground">Edit Name</h3>
                 <p className="text-[11px] text-muted-foreground">Update your display name.</p>
               </div>
-              <input type="text" value={nameInput} onChange={e => setNameInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); }} className="w-full bg-muted px-3 py-2.5 rounded-xl text-sm font-bold text-foreground outline-none border border-primary/40 focus:ring-2 focus:ring-primary/20" autoFocus />
+              <input ref={nameInputRef} type="text" value={nameInput} onChange={e => setNameInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); }} onFocus={() => window.setTimeout(() => nameInputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80)} className="w-full bg-muted px-3 py-2.5 rounded-xl text-sm font-bold text-foreground outline-none border border-primary/40 focus:ring-2 focus:ring-primary/20" autoFocus />
               <div className="flex gap-2">
                 <button type="button" onClick={() => setIsEditingName(false)} className="action-button action-button--cancel flex-1">Cancel</button>
                 <button type="button" onClick={handleSaveName} className="action-button action-button--save flex-1">Save</button>
