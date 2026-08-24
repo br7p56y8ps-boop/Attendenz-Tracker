@@ -43,9 +43,13 @@ let clientPromise: Promise<OneSignalClientState | null> | null = null;
 export const ONE_SIGNAL_STATE_CHANGED_EVENT = 'attendenz:onesignal-state-changed';
 const ONE_SIGNAL_OPERATION_TIMEOUT_MS = 8_000;
 
+function hasPushSubscriptionId(client: OneSignalClient): boolean {
+  const id = client.User.PushSubscription.id;
+  return typeof id === 'string' && id.length > 0;
+}
+
 function hasReadyPushSubscription(client: OneSignalClient): boolean {
-  const subscription = client.User.PushSubscription;
-  return subscription.optedIn === true && typeof subscription.id === 'string' && subscription.id.length > 0;
+  return client.User.PushSubscription.optedIn === true && hasPushSubscriptionId(client);
 }
 
 async function withOneSignalTimeout<T>(operation: Promise<T> | void, label: string): Promise<T | void> {
@@ -160,10 +164,16 @@ export async function enableOneSignalPush(): Promise<
       return "unavailable";
     await withOneSignalTimeout(state.client.setConsentGiven(true), 'OneSignal consent timed out');
     await withOneSignalTimeout(state.initialized, 'OneSignal initialization timed out');
-    // The browser permission was already handled at the start of this user gesture.
-    // Calling the SDK permission method a second time can fail on iOS even when the
-    // native permission is already granted. optIn() is the supported re-enable path.
-    await withOneSignalTimeout(state.client.User.PushSubscription.optIn(), 'OneSignal opt-in timed out');
+    // Browser permission alone does not guarantee that OneSignal has created its
+    // own web-push subscription. On a fresh install, use the SDK permission flow
+    // when no ready subscription exists; for an existing subscription, optIn()
+    // remains the re-enable path and avoids a second native prompt.
+    if (!hasPushSubscriptionId(state.client)) {
+      await withOneSignalTimeout(state.client.Notifications.requestPermission(), 'OneSignal permission flow timed out');
+    }
+    if (!hasReadyPushSubscription(state.client)) {
+      await withOneSignalTimeout(state.client.User.PushSubscription.optIn(), 'OneSignal opt-in timed out');
+    }
     if (!(await waitForPushOptIn(state.client))) return "failed";
     window.dispatchEvent(new Event(ONE_SIGNAL_STATE_CHANGED_EVENT));
     return "enabled";
