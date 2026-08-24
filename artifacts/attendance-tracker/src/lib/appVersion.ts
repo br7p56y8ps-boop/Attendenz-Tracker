@@ -1,4 +1,4 @@
-export const APP_VERSION = "4.3.4.1";
+export const APP_VERSION = "4.3.5";
 export const LATEST_VERSION = APP_VERSION;
 
 export interface WhatsNewItem {
@@ -12,7 +12,7 @@ export const WHATS_NEW_UPGRADES: WhatsNewItem[] = [
     title: "App Notifications",
     summary: "Choose which reminders you want to use on this device.",
     details:
-      "The published app now connects to OneSignal for permission-aware system notifications. Choose grouped Need Attention summaries, before-class warning reminders, update notices, AddNew changes, and a flexible reminder lead time. The iPhone Allow notifications flow is also fixed. Your choices stay saved on this device; timed reminder delivery will arrive in a later update.",
+      "The app now connects to OneSignal for permission-aware system notifications. Choose a grouped Need Attention summary, a notice for the final scheduled class of a subject today, the first class and time of the day, before-class warning reminders, update notices, AddNew changes, and a flexible reminder lead time. The iPhone Allow notifications flow is also fixed. Your choices stay saved on this device for automatic scheduled delivery.",
   },
   {
     title: "Feedback & Sounds",
@@ -132,5 +132,5 @@ export const FEATURES_UPDATED = [
 export const RELEASE_NOTES = {
   version: APP_VERSION,
   summary:
-    "Release 4.3.4.1 brings App Notifications, Feedback & Sounds controls, the iPhone permission-flow fix, independent curriculum workspaces, safer offline protection, and clearer mobile navigation.",
+    "Release 4.3.5 adds clearer App Notification choices for the final scheduled class and first class of the day, alongside Feedback & Sounds controls, the iPhone permission-flow fix, independent curriculum workspaces, safer offline protection, and clearer mobile navigation.",
 };
