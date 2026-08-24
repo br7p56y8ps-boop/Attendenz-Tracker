@@ -7,9 +7,6 @@ import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext'
 import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageSetItem } from '@/lib/idb';
 import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
-import { ReminderSyncProvider } from '@/lib/reminderSync';
-import { notifyUpdateCompleted } from '@/lib/notifications';
-import { APP_VERSION } from '@/lib/appVersion';
 import { restoreSnapshot } from '@/utils/snapshotUtils';
 import { useUpdateFlow, UpdateModal, UpdateOverlay } from '@/utils/useUpdateFlow';
 const WelcomeVideoScreen = lazy(() => import('@/components/video/WelcomeVideoScreen'));
@@ -95,7 +92,6 @@ function MainAppFlow() {
         }}
         onComplete={async () => {
           const pendingRestoreId = localStorage.getItem('att_pending_update_restore');
-          const justUpdated = localStorage.getItem('att_just_updated') === 'true';
           if (pendingRestoreId) {
             try { await restoreSnapshot(pendingRestoreId); } catch (e) {}
             await storageRemoveItem('att_pending_update_restore');
@@ -104,12 +100,10 @@ function MainAppFlow() {
             await storageRemoveItem('att_pwa_update_ready');
             await storageRemoveItem('att_pwa_latest_version');
             await storageRemoveItem('att_pwa_update_summary');
-            if (justUpdated) await notifyUpdateCompleted(APP_VERSION);
             window.location.reload();
             return;
           }
           await storageSetItem(HAS_SEEN_WELCOME_KEY, 'true');
-          if (justUpdated) await notifyUpdateCompleted(APP_VERSION);
           await storageRemoveItem('att_just_updated');
           setShowWelcome(false);
         }}
@@ -168,11 +162,9 @@ export default function App() {
       <AuthProvider>
       <CustomDataProvider>
         <AttendanceProvider>
-          <ReminderSyncProvider>
-            <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
-              <MainAppFlow />
-            </WouterRouter>
-          </ReminderSyncProvider>
+          <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
+            <MainAppFlow />
+          </WouterRouter>
         </AttendanceProvider>
       </CustomDataProvider>
       </AuthProvider>

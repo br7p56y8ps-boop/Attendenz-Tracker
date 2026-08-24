@@ -14,9 +14,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
 import { getSoundEnabled, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type VibrationStyle } from '@/lib/feedback';
-import { getNotificationPermission, getNotificationPreferences, getSystemNotificationsEnabled, setNotificationPreferences, setSystemNotificationsEnabled, testSystemNotification, type NotificationLeadMinutes, type NotificationPermissionState, type NotificationPreferences } from '@/lib/notifications';
-import { getReminderRegistrationDiagnostics, getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, testRemoteNotification, type ReminderRegistrationDiagnostics, type ReminderSyncStatus } from '@/lib/reminderSync';
-import { disableOneSignalPush, enableOneSignalPush, isOneSignalProductionConfigured, ONE_SIGNAL_PRODUCTION_ORIGIN, prepareOneSignal } from '@/lib/onesignal';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
@@ -630,125 +627,11 @@ export default function Account() {
   const [soundEnabled, setSoundEnabledState] = useState(() => getSoundEnabled());
   const [soundVolume, setSoundVolumeState] = useState(() => getSoundVolume());
   const vibrationSupported = isVibrationSupported();
-  const oneSignalConfigured = isOneSignalProductionConfigured();
   const [showVibrationInfo, setShowVibrationInfo] = useState(false);
-  const [systemNotificationsEnabled, setSystemNotificationsEnabledState] = useState(() => getSystemNotificationsEnabled());
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() => getNotificationPermission());
-  const [notificationBusy, setNotificationBusy] = useState(false);
-  const [notificationPreferences, setNotificationPreferencesState] = useState<NotificationPreferences>(() => getNotificationPreferences());
-  const [reminderSyncStatus, setReminderSyncStatusState] = useState<ReminderSyncStatus>(() => getReminderSyncStatus());
-  const [registrationDiagnostics, setRegistrationDiagnostics] = useState<ReminderRegistrationDiagnostics | null>(null);
-  const [remoteTestBusy, setRemoteTestBusy] = useState(false);
-  const notificationPreferencesDisabled = !systemNotificationsEnabled || notificationBusy;
   const updateVibrationEnabled = (enabled: boolean) => { if (!vibrationSupported) return; setVibrationEnabledState(enabled); setVibrationEnabled(enabled); };
   const updateVibrationStyle = (style: VibrationStyle) => { setVibrationStyleState(style); setVibrationStyle(style); };
   const updateSoundEnabled = (enabled: boolean) => { setSoundEnabledState(enabled); setSoundEnabled(enabled); };
   const updateSoundVolume = (volume: number) => { setSoundVolumeState(volume); setSoundVolume(volume); };
-  const updateSystemNotificationsEnabled = async (enabled: boolean) => {
-    if (notificationBusy) return;
-    setNotificationBusy(true);
-    try {
-      if (!enabled) {
-        await disableOneSignalPush();
-        setSystemNotificationsEnabledState(false);
-        setSystemNotificationsEnabled(false);
-        setNotificationPermission(getNotificationPermission());
-        return;
-      }
-
-      if (!oneSignalConfigured) {
-        import('sonner').then(({ toast }) => toast.info('Open the published Attendenz app to enable system notifications.'));
-        return;
-      }
-
-      const result = await enableOneSignalPush();
-      const permission = getNotificationPermission();
-      setNotificationPermission(permission);
-      if (result === 'enabled' && permission === 'granted') {
-        setSystemNotificationsEnabledState(true);
-        setSystemNotificationsEnabled(true);
-      } else {
-        setSystemNotificationsEnabledState(false);
-        setSystemNotificationsEnabled(false);
-        import('sonner').then(({ toast }) => toast.info(result === 'denied' || permission === 'denied' ? 'Notifications are blocked in iPhone settings.' : 'Notifications could not be connected yet. Please try again on the published app.'));
-      }
-    } finally {
-      setNotificationBusy(false);
-    }
-  };
-  const updateNotificationPreference = <K extends keyof NotificationPreferences>(key: K, value: NotificationPreferences[K]) => {
-    const next = { ...notificationPreferences, [key]: value };
-    setNotificationPreferencesState(next);
-    setNotificationPreferences(next);
-  };
-  const enableSystemNotifications = async () => {
-    if (notificationBusy) return;
-    setNotificationBusy(true);
-    try {
-      if (!oneSignalConfigured) {
-        import('sonner').then(({ toast }) => toast.info('Open the published Attendenz app to enable system notifications.'));
-        return;
-      }
-      const result = await enableOneSignalPush();
-      const permission = getNotificationPermission();
-      setNotificationPermission(permission);
-      if (result === 'enabled' && permission === 'granted') {
-        setSystemNotificationsEnabledState(true);
-        setSystemNotificationsEnabled(true);
-        const shown = await testSystemNotification();
-        if (shown) notifySuccess('System notifications enabled.');
-        else import('sonner').then(({ toast }) => toast.info('Notifications are enabled. Use the OneSignal test later to confirm delivery.'));
-      } else if (result === 'denied' || permission === 'denied') {
-        import('sonner').then(({ toast }) => toast.info('Notifications are blocked. Allow them in your iPhone settings if you want to use them.'));
-      } else {
-        import('sonner').then(({ toast }) => toast.info('System notifications could not be connected yet. Please try again on the published app.'));
-      }
-    } finally {
-      setNotificationBusy(false);
-    }
-  };
-  const testNotificationFromSettings = async () => {
-    if (notificationPermission !== 'granted' || !systemNotificationsEnabled) return;
-    const shown = await testSystemNotification();
-    if (!shown) import('sonner').then(({ toast }) => toast.info('The local test notification could not be shown. Check notification permission and device settings.'));
-  };
-  const refreshRegistrationDiagnostics = async () => {
-    setRegistrationDiagnostics(await getReminderRegistrationDiagnostics());
-  };
-  const testRemoteNotificationFromSettings = async () => {
-    if (remoteTestBusy) return;
-    setRemoteTestBusy(true);
-    try {
-      const result = await testRemoteNotification();
-      await refreshRegistrationDiagnostics();
-      if (result.state === 'sent') {
-        import('sonner').then(({ toast }) => toast.success('Remote test sent. Check this iPhone for the push notification.'));
-      } else if (result.state === 'not-registered') {
-        import('sonner').then(({ toast }) => toast.info('This device has not reached the reminder Worker yet. Keep notifications enabled and try again.'));
-      } else if (result.state === 'preview-blocked') {
-        import('sonner').then(({ toast }) => toast.info('Remote push is available only on the published Attendenz app.'));
-      } else {
-        import('sonner').then(({ toast }) => toast.info(`Remote test not sent: ${result.details || result.state}.`));
-      }
-    } finally {
-      setRemoteTestBusy(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeSettingModal === 'notifications' && oneSignalConfigured) {
-      void prepareOneSignal();
-      void refreshRegistrationDiagnostics();
-    }
-  }, [activeSettingModal, oneSignalConfigured]);
-  useEffect(() => {
-    const onReminderSyncStatusChanged = () => {
-      setReminderSyncStatusState(getReminderSyncStatus());
-      if (activeSettingModal === 'notifications') void refreshRegistrationDiagnostics();
-    };
-    window.addEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, onReminderSyncStatusChanged);
-    return () => window.removeEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, onReminderSyncStatusChanged);
-  }, [activeSettingModal]);
 
   const openCurriculumManager = () => {
     setConfirmMarkComplete(false);
@@ -904,7 +787,7 @@ export default function Account() {
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden">
             <div className="divide-y divide-border/40">
               <SettingRow icon={<Vibrate className="w-4 h-4" />} title="Feedback & Sounds" description="Choose how Attendenz responds after you save or mark attendance" tone="violet" onClick={() => setActiveSettingModal('feedback')} />
-              <SettingRow icon={<Bell className="w-4 h-4" />} title="System Notifications" description="Choose which reminders you want to receive" tone="blue" onClick={() => setActiveSettingModal('notifications')} />
+              <SettingRow icon={<Bell className="w-4 h-4" />} title="System Notifications" description="Coming soon · currently under development" tone="blue" onClick={() => setActiveSettingModal('notifications')} />
               <SettingRow icon={<Info className="w-4 h-4" />} title="Theme" description={`${themePreference === 'system' ? 'System' : themePreference === 'dark' ? 'Dark' : 'Light'} appearance preference`} tone="primary" onClick={() => setActiveSettingModal('theme')} />
             </div>
             <div className="p-4 sm:p-5 space-y-4 bg-gradient-to-br from-primary/5 via-card to-card">
@@ -1120,7 +1003,7 @@ export default function Account() {
                           {activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}
                           {activeSettingModal === 'identity' && 'Profile, display name, and active curriculum'}
                           {activeSettingModal === 'feedback' && 'Choose what you hear after a confirmation'}
-                          {activeSettingModal === 'notifications' && 'Choose when Attendenz should remind you'}
+                          {activeSettingModal === 'notifications' && 'Feature under development · coming soon'}
                           {activeSettingModal === 'theme' && 'Choose how Attendenz follows your device'}
                         </p>
                       </div>
@@ -1169,6 +1052,20 @@ export default function Account() {
                       </div>
                     )}
                     {activeSettingModal === 'notifications' && (
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5 text-center space-y-3">
+                          <div className="mx-auto w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center border border-blue-500/20"><Bell className="w-6 h-6" /></div>
+                          <div>
+                            <p className="text-sm font-extrabold text-foreground">System Notifications are coming soon</p>
+                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">This feature is currently under development. Notification delivery and reminder controls will be available in a future update.</p>
+                          </div>
+                          <span className="inline-flex rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-500">In development</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* FUTURE REFERENCE ONLY: previous System Notifications implementation. Keep for later re-enablement.
+                    {activeSettingModal === 'notifications' && (
                       <div className="space-y-3">
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5 space-y-3">
                           <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold text-foreground">System notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Choose the reminders you want on this device</p></div>{notificationPermission === 'granted' && <SettingToggle checked={systemNotificationsEnabled} onChange={updateSystemNotificationsEnabled} label="System notifications" disabled={notificationBusy} />}</div>
@@ -1199,6 +1096,7 @@ export default function Account() {
                         </div>
                       </div>
                     )}
+                    */}
                     {activeSettingModal === 'theme' && (
                       <div className="space-y-2">
                         {(['system', 'light', 'dark'] as ThemePreference[]).map(option => <button key={option} type="button" onClick={() => { setThemePreference(option); localStorage.setItem('theme', option); applyThemePreference(option); }} className={cn('w-full flex items-center justify-between rounded-xl border p-3 text-left transition-colors', themePreference === option ? 'border-primary bg-primary/10' : 'border-border/60 bg-muted/20 hover:bg-muted/40')}><span><span className="block text-xs font-bold text-foreground">{option === 'system' ? 'System' : option === 'light' ? 'Light' : 'Dark'}</span><span className="block text-[10px] text-muted-foreground mt-0.5">{option === 'system' ? 'Follow iPhone appearance' : `Always use ${option} appearance`}</span></span><span className={cn('text-[10px] font-extrabold uppercase', themePreference === option ? 'text-primary' : 'text-muted-foreground')}>{themePreference === option ? 'Selected' : 'Choose'}</span></button>)}

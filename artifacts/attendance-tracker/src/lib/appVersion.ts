@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.6.1";
+export const APP_VERSION = "1.6.2";
 export const LATEST_VERSION = APP_VERSION;
 
 export interface WhatsNewItem {
@@ -9,10 +9,10 @@ export interface WhatsNewItem {
 
 export const WHATS_NEW_UPGRADES: WhatsNewItem[] = [
   {
-    title: "App Notifications",
-    summary: "Choose which reminders you want to use on this device.",
+    title: "System Notifications are coming soon",
+    summary: "Notification delivery is currently under development.",
     details:
-      "The app now connects to OneSignal for permission-aware system notifications. Choose a grouped Need Attention summary, a notice for the final scheduled class of a subject today, the first class and time of the day, before-class warning reminders, update notices, AddNew changes, and a flexible reminder lead time. The iPhone Allow notifications flow is also fixed. Your choices stay saved on this device for automatic scheduled delivery.",
+      "System notification delivery and reminder controls are being developed for a future update. Attendenz continues to work normally for local attendance, schedules, curriculum workspaces, backups, and all other existing features.",
   },
   {
     title: "Feedback & Sounds",
@@ -125,12 +125,12 @@ export const FEATURES_UPDATED = [
   {
     emoji: "🛡️",
     title: "Offline Safety and Settings",
-    desc: "Protected local storage, safer recovery flows, system-aware themes, Feedback & Sounds controls, and permission-aware App Notifications.",
+    desc: "Protected local storage, safer recovery flows, system-aware themes, Feedback & Sounds controls, and System Notifications in development.",
   },
 ];
 
 export const RELEASE_NOTES = {
   version: APP_VERSION,
   summary:
-    "Release v1.6.1 includes clearer App Notification choices for the final scheduled class and first class of the day, alongside Feedback & Sounds controls, the iPhone permission-flow fix, independent curriculum workspaces, safer offline protection, clearer mobile navigation, and Manage history controls that clear one displayed entry without changing app data.",
+    "Release v1.6.2 keeps System Notifications clearly marked as under development while preserving the complete local attendance experience, Manage history controls, independent curriculum workspaces, safer offline protection, and clearer mobile navigation.",
 };
