@@ -4,7 +4,7 @@ This service is for the A1 device-only reminder mode. It does not require an Att
 
 ## Reminder behavior
 
-The service sends one grouped Need Attention summary around each device's local midnight when `midnightNeedAttention` is enabled. It sends one reminder for each upcoming warning/danger subject at the configured lead time when `preClassNeedAttention` is enabled. An optional grouped digest of all scheduled subjects is controlled by `allScheduledDigest`.
+The service sends one grouped Need Attention summary around each device's local midnight when `midnightNeedAttention` is enabled. By default, it also sends one alert for each subject whose final planned class is today when `finalClassToday` is enabled. The optional `firstClassToday` setting is disabled by default and sends one alert naming the first scheduled subject and time of the day. It sends one reminder for each upcoming warning/danger subject at the configured lead time when `preClassNeedAttention` is enabled. An optional grouped digest of all scheduled subjects is controlled by `allScheduledDigest`.
 
 The Worker runs every five minutes. Cloudflare Cron Triggers run in UTC, so the Worker converts each device's saved IANA timezone before deciding whether local midnight or a lead-time window is due. The five-minute window is intentional: it tolerates normal trigger timing variance while delivery keys prevent duplicates.
 

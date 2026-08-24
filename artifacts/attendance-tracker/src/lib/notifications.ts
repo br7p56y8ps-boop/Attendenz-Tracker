@@ -13,6 +13,8 @@ export type NotificationLeadMinutes = 15 | 30 | 60;
 
 export interface NotificationPreferences {
   midnightNeedAttention: boolean;
+  finalClassToday: boolean;
+  firstClassToday: boolean;
   preClassNeedAttention: boolean;
   allScheduledDigest: boolean;
   addNewChanges: boolean;
@@ -23,6 +25,8 @@ export interface NotificationPreferences {
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   midnightNeedAttention: true,
+  finalClassToday: true,
+  firstClassToday: false,
   preClassNeedAttention: true,
   allScheduledDigest: false,
   addNewChanges: false,
@@ -61,6 +65,8 @@ export function getNotificationPreferences(): NotificationPreferences {
     const leadMinutes = parsed.leadMinutes === 15 || parsed.leadMinutes === 60 ? parsed.leadMinutes : 30;
     return {
       midnightNeedAttention: parsed.midnightNeedAttention !== false,
+      finalClassToday: parsed.finalClassToday !== false,
+      firstClassToday: parsed.firstClassToday === true,
       preClassNeedAttention: parsed.preClassNeedAttention !== false,
       allScheduledDigest: parsed.allScheduledDigest === true,
       addNewChanges: parsed.addNewChanges === true,

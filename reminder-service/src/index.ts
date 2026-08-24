@@ -13,6 +13,8 @@ export interface Env {
 
 export interface A1Preferences {
   midnightNeedAttention: boolean;
+  finalClassToday: boolean;
+  firstClassToday: boolean;
   preClassNeedAttention: boolean;
   allScheduledDigest: boolean;
   leadMinutes: 15 | 30 | 60;
@@ -25,6 +27,7 @@ export interface ReminderOccurrence {
   subjectLabel: string;
   category: 'academic' | 'clinical' | 'sgt' | 'ward';
   needsAttention: boolean;
+  isFinalForSubject: boolean;
 }
 
 export interface A1ReminderPayload {
@@ -48,6 +51,8 @@ type DeviceRow = {
   timezone: string;
   notifications_enabled: number;
   midnight_need_attention: number;
+  final_class_today: number;
+  first_class_today: number;
   pre_class_need_attention: number;
   all_scheduled_digest: number;
   lead_minutes: number;
@@ -127,7 +132,8 @@ function isValidOccurrence(value: unknown): value is ReminderOccurrence {
     item.subjectLabel.length <= 120 &&
     typeof item.category === 'string' &&
     CATEGORY_VALUES.has(item.category) &&
-    typeof item.needsAttention === 'boolean'
+    typeof item.needsAttention === 'boolean' &&
+    typeof item.isFinalForSubject === 'boolean'
   );
 }
 
@@ -136,6 +142,8 @@ function isValidPreferences(value: unknown): value is A1Preferences {
   const prefs = value as Partial<A1Preferences>;
   return (
     typeof prefs.midnightNeedAttention === 'boolean' &&
+    typeof prefs.finalClassToday === 'boolean' &&
+    typeof prefs.firstClassToday === 'boolean' &&
     typeof prefs.preClassNeedAttention === 'boolean' &&
     typeof prefs.allScheduledDigest === 'boolean' &&
     (prefs.leadMinutes === 15 || prefs.leadMinutes === 30 || prefs.leadMinutes === 60)
@@ -214,27 +222,32 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
   const deviceStatement = env.DB.prepare(
     `INSERT INTO devices (
       device_id, token_hash, one_signal_subscription_id, timezone, notifications_enabled,
-      midnight_need_attention, pre_class_need_attention, all_scheduled_digest,
+      midnight_need_attention, final_class_today, first_class_today,
+      pre_class_need_attention, all_scheduled_digest,
       lead_minutes, last_sync_at, expires_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
     ON CONFLICT(device_id) DO UPDATE SET
       token_hash = excluded.token_hash,
       one_signal_subscription_id = excluded.one_signal_subscription_id,
       timezone = excluded.timezone,
       notifications_enabled = excluded.notifications_enabled,
       midnight_need_attention = excluded.midnight_need_attention,
+      final_class_today = excluded.final_class_today,
+      first_class_today = excluded.first_class_today,
       pre_class_need_attention = excluded.pre_class_need_attention,
       all_scheduled_digest = excluded.all_scheduled_digest,
       lead_minutes = excluded.lead_minutes,
       last_sync_at = excluded.last_sync_at,
       expires_at = excluded.expires_at`,
-  ).bind(
+    ).bind(
     payload.deviceId,
     tokenHash,
     payload.oneSignalSubscriptionId,
     payload.timezone,
     boolInt(payload.notificationsEnabled),
     boolInt(payload.preferences.midnightNeedAttention),
+    boolInt(payload.preferences.finalClassToday),
+    boolInt(payload.preferences.firstClassToday),
     boolInt(payload.preferences.preClassNeedAttention),
     boolInt(payload.preferences.allScheduledDigest),
     payload.preferences.leadMinutes,
@@ -248,8 +261,8 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
     ...payload.occurrences.map(occurrence => env.DB.prepare(
       `INSERT INTO occurrences (
         occurrence_id, device_id, local_date, start_minute, subject_label,
-        category, needs_attention, created_at
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+        category, needs_attention, is_final_for_subject, created_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
     ).bind(
       occurrence.id,
       payload.deviceId,
@@ -258,6 +271,7 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       occurrence.subjectLabel.trim(),
       occurrence.category,
       boolInt(occurrence.needsAttention),
+      boolInt(occurrence.isFinalForSubject),
       now,
     )),
   ];
@@ -306,6 +320,14 @@ function localClock(timestamp: number, timezone: string): { date: string; hour: 
 
 function cleanLabel(value: string): string {
   return value.replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
+function formatMinute(totalMinutes: number): string {
+  const hour24 = Math.floor(totalMinutes / 60) % 24;
+  const minute = totalMinutes % 60;
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`;
 }
 
 function isWithinFiveMinuteWindow(currentMinute: number, dueMinute: number): boolean {
@@ -364,7 +386,8 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
   const rows = await env.DB.prepare(
     `SELECT occurrence_id as id, device_id, local_date as localDate,
       start_minute as startMinute, subject_label as subjectLabel,
-      category, needs_attention as needsAttention
+      category, needs_attention as needsAttention,
+      is_final_for_subject as isFinalForSubject
      FROM occurrences WHERE device_id = ?1 AND local_date = ?2
      ORDER BY start_minute ASC`,
   ).bind(device.device_id, clock.date).all<OccurrenceRow>();
@@ -383,6 +406,32 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
         url,
       );
     }
+  }
+
+  if (clock.hour === 0 && clock.minute < 5 && device.final_class_today) {
+    const finalClasses = occurrences.filter(item => item.isFinalForSubject);
+    for (const item of finalClasses) {
+      await deliverIfNew(
+        env,
+        device,
+        `${device.device_id}:final:${item.localDate}:${item.id}`,
+        'Attendenz: Final Class Today',
+        `${cleanLabel(item.subjectLabel)} has its final planned class today at ${formatMinute(item.startMinute)}.`,
+        url,
+      );
+    }
+  }
+
+  if (clock.hour === 0 && clock.minute < 5 && device.first_class_today && occurrences.length > 0) {
+    const first = occurrences[0];
+    await deliverIfNew(
+      env,
+      device,
+      `${device.device_id}:first:${clock.date}`,
+      'Attendenz: First Class Today',
+      `Your first class today is ${cleanLabel(first.subjectLabel)} at ${formatMinute(first.startMinute)}.`,
+      url,
+    );
   }
 
   if (clock.hour === 0 && clock.minute < 5 && device.all_scheduled_digest && occurrences.length > 0) {
@@ -417,9 +466,9 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
 
 async function runScheduled(env: Env, scheduledAt: number): Promise<void> {
   const devices = await env.DB.prepare(
-    `SELECT device_id, one_signal_id, timezone, notifications_enabled,
-      midnight_need_attention, pre_class_need_attention,
-      all_scheduled_digest, lead_minutes
+    `SELECT device_id, one_signal_subscription_id, timezone, notifications_enabled,
+      midnight_need_attention, final_class_today, first_class_today,
+      pre_class_need_attention, all_scheduled_digest, lead_minutes
      FROM devices WHERE notifications_enabled = 1 AND expires_at > ?1`,
   ).bind(new Date(scheduledAt).toISOString()).all<DeviceRow>();
   for (const device of devices.results || []) {

@@ -41,6 +41,7 @@ type ReminderOccurrence = {
   subjectLabel: string;
   category: ReminderCategory;
   needsAttention: boolean;
+  isFinalForSubject: boolean;
 };
 
 type ReminderSyncPayload = {
@@ -50,7 +51,7 @@ type ReminderSyncPayload = {
   oneSignalSubscriptionId: string;
   timezone: string;
   notificationsEnabled: boolean;
-  preferences: Pick<NotificationPreferences, 'midnightNeedAttention' | 'preClassNeedAttention' | 'allScheduledDigest' | 'leadMinutes'>;
+  preferences: Pick<NotificationPreferences, 'midnightNeedAttention' | 'finalClassToday' | 'firstClassToday' | 'preClassNeedAttention' | 'allScheduledDigest' | 'leadMinutes'>;
   occurrences: ReminderOccurrence[];
 };
 
@@ -101,6 +102,36 @@ function isWithinDates(date: string, startDate?: string, endDate?: string, perio
   if (startDate && date < startDate) return false;
   if (endDate && date > endDate) return false;
   return !isInVacation(date, periods);
+}
+
+function isFinalOccurrence(
+  localDate: string,
+  rows: Array<{ day: string; time: string }>,
+  endDate?: string,
+  periods?: Array<{ start: string; end: string }>,
+): boolean {
+  if (!endDate) return false;
+  const date = new Date(`${localDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  date.setDate(date.getDate() + 1);
+  while (date <= end) {
+    const nextDate = localDateString(date);
+    if (isWithinDates(nextDate, undefined, endDate, periods) && rows.some(row => row.day === dayAbbreviation(date) && Boolean(parseTime(row.time)))) return false;
+    date.setDate(date.getDate() + 1);
+  }
+  return true;
+}
+
+function isFinalDailyOccurrence(localDate: string, endDate: string, periods?: Array<{ start: string; end: string }>): boolean {
+  const date = new Date(`${localDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  date.setDate(date.getDate() + 1);
+  while (date <= end) {
+    const nextDate = localDateString(date);
+    if (isWithinDates(nextDate, undefined, endDate, periods)) return false;
+    date.setDate(date.getDate() + 1);
+  }
+  return true;
 }
 
 function rowsForSubject(subject: CustomSubject | UserAddedSubject): Array<{ day: string; time: string }> {
@@ -206,6 +237,7 @@ function buildOccurrences(input: {
             subjectLabel: subject.name,
             category,
             needsAttention: subjectAttention(subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, planned, input.preferredPercentage),
+            isFinalForSubject: isFinalOccurrence(localDate, rowsForSubject(subject), subject.endDate, subject.vacationPeriods),
           });
         }
       }
@@ -222,6 +254,7 @@ function buildOccurrences(input: {
             subjectLabel: ward.name,
             category: 'ward',
             needsAttention: subjectAttention(ward.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods), input.preferredPercentage),
+            isFinalForSubject: isFinalDailyOccurrence(localDate, ward.endDate, ward.vacationPeriods),
           });
         }
       }
@@ -242,6 +275,7 @@ function buildOccurrences(input: {
             subjectLabel: label,
             category,
             needsAttention: subjectAttention(label, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getSubjectPlannedTotal(name), input.preferredPercentage),
+            isFinalForSubject: false,
           });
         }
       }
@@ -259,6 +293,7 @@ function buildOccurrences(input: {
             subjectLabel: `${subject.name} (SGT)`,
             category: 'sgt',
             needsAttention: subjectAttention(subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, subject.plannedClasses, input.preferredPercentage),
+            isFinalForSubject: isFinalOccurrence(localDate, rowsForSubject(subject), subject.endDate, subject.vacationPeriods),
           });
         }
       }
@@ -275,6 +310,7 @@ function buildOccurrences(input: {
             subjectLabel: input.getPresetWardDisplayName(ward.ward),
             category: 'ward',
             needsAttention: subjectAttention(ward.ward, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getPresetWardTotalPlanned(ward.ward), input.preferredPercentage),
+            isFinalForSubject: isFinalDailyOccurrence(localDate, ward.end, ward.vacationPeriods),
           });
         }
       }
@@ -325,6 +361,8 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
         notificationsEnabled: getSystemNotificationsEnabled(),
         preferences: {
           midnightNeedAttention: preferences.midnightNeedAttention,
+          finalClassToday: preferences.finalClassToday,
+          firstClassToday: preferences.firstClassToday,
           preClassNeedAttention: preferences.preClassNeedAttention,
           allScheduledDigest: preferences.allScheduledDigest,
           leadMinutes: preferences.leadMinutes,

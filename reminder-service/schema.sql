@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS devices (
   timezone TEXT NOT NULL,
   notifications_enabled INTEGER NOT NULL DEFAULT 0,
   midnight_need_attention INTEGER NOT NULL DEFAULT 1,
+  final_class_today INTEGER NOT NULL DEFAULT 1,
+  first_class_today INTEGER NOT NULL DEFAULT 0,
   pre_class_need_attention INTEGER NOT NULL DEFAULT 1,
   all_scheduled_digest INTEGER NOT NULL DEFAULT 0,
   lead_minutes INTEGER NOT NULL DEFAULT 30,
@@ -20,6 +22,7 @@ CREATE TABLE IF NOT EXISTS occurrences (
   subject_label TEXT NOT NULL,
   category TEXT NOT NULL,
   needs_attention INTEGER NOT NULL DEFAULT 0,
+  is_final_for_subject INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   PRIMARY KEY (device_id, occurrence_id),
   FOREIGN KEY (device_id) REFERENCES devices(device_id) ON DELETE CASCADE
