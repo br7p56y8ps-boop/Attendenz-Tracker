@@ -28,7 +28,7 @@ import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '
 import {
   Plus, Trash2, X, AlertTriangle,
   GraduationCap, Stethoscope, Download, Upload, Copy, Share2,
-  Check, ChevronDown, ChevronRight, SendToBack,
+  Check, ChevronDown, ChevronRight, SendToBack, Pencil,
 } from 'lucide-react';
 
 /* ── Shared styles ── */
@@ -221,6 +221,14 @@ function getInitialAcademicDay(
   }
   return DAY_AFTER_HOLIDAY_INDEX;
 }
+
+const getHistoryCategory = (entry: any): 'Academic' | 'Clinical' | 'SGT' | 'Routine' => {
+  const category = entry?.data?.category;
+  if (category === 'Academic' || category === 'Clinical' || category === 'SGT') return category;
+  if (entry?.type === 'Added SGT' || entry?.data?.clinicalSubject) return 'SGT';
+  if (entry?.data?.ward || /Rotation|Ward/.test(String(entry?.type || ''))) return 'Clinical';
+  return entry?.data?.section === 'clinical' ? 'Clinical' : entry?.data?.section === 'academic' ? 'Academic' : 'Routine';
+};
 
 const formatHistoryDetail = (entry: any): string => {
   const d = entry.data;
@@ -441,28 +449,10 @@ export default function AddNew() {
   const [formError, setFormError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [controlsExpanded, setControlsExpanded] = useState(true);
-  const controlsCollapseTimer = useRef<number | null>(null);
-  const [addModalScrolled, setAddModalScrolled] = useState(false);
   const [section, setSection] = useState<'academic' | 'clinical'>('academic');
-  useEffect(() => { if (!moreOpen) setAddModalScrolled(false); }, [moreOpen]);
-  useEffect(() => {
-    setControlsExpanded(true);
-    if (controlsCollapseTimer.current) window.clearTimeout(controlsCollapseTimer.current);
-    controlsCollapseTimer.current = window.setTimeout(() => setControlsExpanded(false), 3000);
-    return () => {
-      if (controlsCollapseTimer.current) window.clearTimeout(controlsCollapseTimer.current);
-    };
-  }, [section]);
-  const toggleControls = () => {
-    setControlsExpanded(prev => {
-      const next = !prev;
-      if (controlsCollapseTimer.current) window.clearTimeout(controlsCollapseTimer.current);
-      if (next) controlsCollapseTimer.current = window.setTimeout(() => setControlsExpanded(false), 3000);
-      return next;
-    });
-  };
-  const [selDay, setSelDay] = useState<number>(() => getInitialAcademicDay(subjectMode, presetTimetable, customSubjects, userAddedSubjects));
+  const [returnToMoreAfterAdd, setReturnToMoreAfterAdd] = useState(false);
+  const [returnToMoreAfterEditData, setReturnToMoreAfterEditData] = useState(false);
+  const [selDay, setSelDay] = useState<number>(() => new Date().getDay());
   const academicDayOrder = useMemo(() => {
     const firstDay = subjectMode === 'preloaded'
       ? DAY_AFTER_HOLIDAY_INDEX
@@ -524,6 +514,7 @@ export default function AddNew() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
+  const [historyClearEntry, setHistoryClearEntry] = useState<any | null>(null);
   const [editDataOpen, setEditDataOpen] = useState(false);
   const [editDataTab, setEditDataTab] = useState<'preset' | 'added'>('preset');
   const [expandedEditItemId, setExpandedEditItemId] = useState<string | null>(null);
@@ -639,6 +630,23 @@ export default function AddNew() {
     return Array.from(set).sort();
   }, [subjectMode, userAddedSubjects, customSubjects]);
 
+  const openEditDataFromMore = () => {
+    setMoreMenuOpen(false);
+    setReturnToMoreAfterEditData(true);
+    setEditDataOpen(true);
+    setEditDataTab(subjectMode === 'preloaded' ? 'preset' : 'added');
+    setExpandedEditItemId(null);
+    setDraftPlanned(null);
+  };
+  const closeEditData = () => {
+    const shouldReturnToMore = returnToMoreAfterEditData;
+    setEditDataOpen(false);
+    setExpandedEditItemId(null);
+    setDraftPlanned(null);
+    setReturnToMoreAfterEditData(false);
+    if (shouldReturnToMore) setMoreMenuOpen(true);
+  };
+
   const HISTORY_KEY = 'att_manage_history';
   useEffect(() => {
     try { const stored = localStorage.getItem(HISTORY_KEY); if (stored) setHistoryEntries(JSON.parse(stored)); } catch {}
@@ -662,19 +670,42 @@ export default function AddNew() {
   useEffect(() => {
     if (addSuccess) {
       const t = window.setTimeout(() => {
+        const shouldReturnToMore = returnToMoreAfterAdd;
         setMoreOpen(false);
         setAddSlotOpen(false);
         setAddSuccess(false);
         setEditSlot(null);
         setMoveCompleted(false);
+        setReturnToMoreAfterAdd(false);
+        if (shouldReturnToMore) setMoreMenuOpen(true);
       }, 2000);
       return () => window.clearTimeout(t);
     }
     return undefined;
-  }, [addSuccess]);
+  }, [addSuccess, returnToMoreAfterAdd]);
+
+  const clearHistoryEntry = (entry: any) => {
+    setHistoryEntries(prev => {
+      const updated = prev.filter(item => item.id !== entry.id);
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+        void storageSetItem(HISTORY_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    setHistoryClearEntry(null);
+    showToast('History entry cleared.');
+  };
 
   const recordHistory = (type: string, data: any) => {
-    const entry = { id: genId('hist'), type, timestamp: new Date().toISOString(), data: { ...data, section } };
+    const category = data?.category || (
+      type === 'Added SGT' || data?.clinicalSubject
+        ? 'SGT'
+        : data?.ward || /Rotation|Ward/.test(type) || section === 'clinical'
+          ? 'Clinical'
+          : section === 'academic' ? 'Academic' : 'Routine'
+    );
+    const entry = { id: genId('hist'), type, timestamp: new Date().toISOString(), data: { ...data, section, category } };
     setHistoryEntries(prev => {
       const updated = [entry, ...prev].slice(0, 50);
       try { localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)); storageSetItem(HISTORY_KEY, JSON.stringify(updated)); } catch {}
@@ -683,6 +714,21 @@ export default function AddNew() {
   };
 
   const openAddSlot = () => { setAddSlotSubject(''); setAddSlotStart('09:00 AM'); setAddSlotEnd('10:00 AM'); setAddSlotPlanned(0); setFormError(null); setAddSlotOpen(true); setAddSuccess(false); };
+  const openAddFromMore = () => {
+    setMoreMenuOpen(false);
+    setReturnToMoreAfterAdd(true);
+    setFormError(null);
+    setAddSuccess(false);
+    setMoreOpen(true);
+  };
+  const closeAddModal = () => {
+    const shouldReturnToMore = returnToMoreAfterAdd;
+    setMoreOpen(false);
+    setFormError(null);
+    setAddSuccess(false);
+    setReturnToMoreAfterAdd(false);
+    if (shouldReturnToMore) setMoreMenuOpen(true);
+  };
 
   const saveAddSlot = () => {
     if (!addSlotSubject) { setFormError('Select a subject.'); return; }
@@ -1188,7 +1234,7 @@ export default function AddNew() {
       title: `Delete "${item.name}"?`,
       lines: ['This subject and all its attendance records will be permanently removed.', 'This action cannot be undone.'],
       onConfirm: () => {
-        recordHistory('Deleted Subject', { name: item.name, store, id });
+        recordHistory('Deleted Subject', { name: item.name, store, id, category: isSGTRecord(item) ? 'SGT' : section === 'clinical' ? 'Clinical' : 'Academic' });
         try {
           const namesToPurge = [item.name];
           if (item.subjectType === 'allied-parent') {
@@ -1322,7 +1368,7 @@ export default function AddNew() {
       const rp = rowProblem(editSubject.rows);
       if (rp) { setEditError(rp); return; }
     }
-    recordHistory('Edited Subject', { old: { name: editSubject.originalName }, new: { name: editSubject.name } });
+    recordHistory('Edited Subject', { old: { name: editSubject.originalName }, new: { name: editSubject.name }, category: editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' ? 'SGT' : undefined });
     try {
       if (editSubject.subjectType === 'allied-parent') {
         const patch = { name: editSubject.name };
@@ -1429,21 +1475,21 @@ export default function AddNew() {
     const addedItems: any[] = [];
     if (section === 'academic') {
       if (subjectMode === 'preloaded') {
-        CATEGORIES.forEach(cat => cat.subjects.forEach(s => presetItems.push({ id: (s as any).id || s.name, name: s.name, store: 'preset' as const, deletable: false, planned: getSubjectPlannedTotal(s.name) })));
-        INTEGRATED_SUBJECTS.forEach(s => presetItems.push({ id: (s as any).id || s.name, name: s.name, store: 'preset' as const, deletable: false, planned: getSubjectPlannedTotal(s.name) }));
-        userAddedSubjects.filter(s => !isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'userAdded' as const, deletable: true, planned: s.plannedClasses }));
+        CATEGORIES.forEach(cat => cat.subjects.forEach(s => presetItems.push({ id: (s as any).id || s.name, name: s.name, store: 'preset' as const, category: 'Academic' as const, deletable: false, planned: getSubjectPlannedTotal(s.name) })));
+        INTEGRATED_SUBJECTS.forEach(s => presetItems.push({ id: (s as any).id || s.name, name: s.name, store: 'preset' as const, category: 'Academic' as const, deletable: false, planned: getSubjectPlannedTotal(s.name) }));
+        userAddedSubjects.filter(s => !isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'userAdded' as const, category: 'Academic' as const, deletable: true, planned: s.plannedClasses }));
       } else {
-        customSubjects.filter(s => !isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'custom' as const, deletable: true, planned: s.plannedClasses }));
+        customSubjects.filter(s => !isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'custom' as const, category: 'Academic' as const, deletable: true, planned: s.plannedClasses }));
       }
     } else {
       if (subjectMode === 'preloaded') {
         const seenWards = new Set<string>();
-        WARD_SUBJECTS.forEach(w => { seenWards.add(w.name); presetItems.push({ id: `ward:${w.name}`, name: w.name, store: 'preset-ward' as const, deletable: false, planned: getPresetWardTotalPlanned(w.name) }); });
-        presetWardSchedule.forEach(e => { if (!seenWards.has(e.ward)) { seenWards.add(e.ward); presetItems.push({ id: `ward:${e.ward}`, name: e.ward, store: 'preset-ward' as const, deletable: false, planned: getPresetWardTotalPlanned(e.ward) }); } });
-        userAddedSubjects.filter(s => isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'sgt' as const, deletable: true, planned: s.plannedClasses }));
+        WARD_SUBJECTS.forEach(w => { seenWards.add(w.name); presetItems.push({ id: `ward:${w.name}`, name: w.name, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(w.name) }); });
+        presetWardSchedule.forEach(e => { if (!seenWards.has(e.ward)) { seenWards.add(e.ward); presetItems.push({ id: `ward:${e.ward}`, name: e.ward, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(e.ward) }); } });
+        userAddedSubjects.filter(s => isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'sgt' as const, category: 'SGT' as const, deletable: true, planned: s.plannedClasses }));
       } else {
-        customWards.forEach(w => addedItems.push({ id: w.id, name: w.name, store: 'custom-ward' as const, deletable: true, planned: getCustomWardTotalPlanned(w.startDate, w.endDate, w.vacationPeriods) }));
-        customSubjects.filter(s => isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'sgt' as const, deletable: true, planned: s.plannedClasses }));
+        customWards.forEach(w => addedItems.push({ id: w.id, name: w.name, store: 'custom-ward' as const, category: 'Clinical' as const, deletable: true, planned: getCustomWardTotalPlanned(w.startDate, w.endDate, w.vacationPeriods) }));
+        customSubjects.filter(s => isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'sgt' as const, category: 'SGT' as const, deletable: true, planned: s.plannedClasses }));
       }
     }
     return { presetItems, addedItems };
@@ -1971,62 +2017,73 @@ export default function AddNew() {
     return Object.entries(groups).map(([time, items]) => ({ time, items }));
   }, [academicSlotsForDay]);
 
+  const manageSectionSwitcher = (
+    <div className="pt-1 pb-1">
+      <div className="date-wheel-surface relative z-[3] bg-background border border-border rounded-3xl shadow-md select-none overflow-hidden p-1.5">
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            type="button"
+            onClick={() => setSection('academic')}
+            className={cn('h-10 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5', section === 'academic' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted/30')}
+            aria-pressed={section === 'academic'}
+          >
+            <GraduationCap className="w-3.5 h-3.5" /> Academic
+          </button>
+          <button
+            type="button"
+            onClick={() => setSection('clinical')}
+            className={cn('h-10 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5', section === 'clinical' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted/30')}
+            aria-pressed={section === 'clinical'}
+          >
+            <Stethoscope className="w-3.5 h-3.5" /> Clinical
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const manageDaySelector = section === 'academic' ? (
+    <div className="flex justify-between gap-1">
+          {academicDayOrder.map(dayIndex => {
+            const day = DAY_ABBRS[dayIndex];
+            return (
+              <button
+                key={day}
+                type="button"
+                onClick={() => setSelDay(dayIndex)}
+                className={cn('flex-1 min-w-0 py-1.5 rounded-2xl text-[11px] font-bold transition-all cursor-pointer border', selDay === dayIndex ? 'text-primary border-primary/60 bg-primary/10' : 'text-muted-foreground border-transparent bg-background/40 hover:bg-muted/30')}
+                aria-pressed={selDay === dayIndex}
+              >
+                {day}
+              </button>
+            );
+          })}
+    </div>
+  ) : null;
+
   return (
     <Layout
       headerRight={
-        <button type="button" onClick={() => setMoreMenuOpen(true)} className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More">
+        <button type="button" onClick={() => setMoreMenuOpen(true)} className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage actions">
           <SendToBack className="w-4 h-4" />
         </button>
       }
+      headerBottom={manageSectionSwitcher}
     >
       <div className="space-y-2 pb-24 scroll-reachability">
-        <div className="sticky top-[calc(var(--app-header-height)+0.5rem)] z-30">
-          <div className="manage-controls-surface relative z-[3] isolate -mx-4 bg-background px-4 py-1.5 shadow-sm border-y border-border/80 before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background">
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => section === 'academic' ? toggleControls() : setSection('academic')}
-              className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',
-                section === 'academic' ? 'bg-primary/15 text-primary border-primary/30' : 'bg-muted/20 text-muted-foreground border-border hover:bg-muted/40')}>
-              <GraduationCap className="w-3.5 h-3.5" /> Academic Section
-            </button>
-            <button type="button" onClick={() => section === 'clinical' ? toggleControls() : setSection('clinical')}
-              className={cn('h-10 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer',
-                section === 'clinical' ? 'bg-primary/15 text-primary border-primary/30' : 'bg-muted/20 text-muted-foreground border-border hover:bg-muted/40')}>
-              <Stethoscope className="w-3.5 h-3.5" /> Clinical Section
-            </button>
+        {manageDaySelector && (
+          <div className="sticky top-[calc(var(--app-header-height)+0.5rem)] z-30 mt-2 mb-2 rounded-3xl border border-border/80 bg-background px-2 py-2 shadow-md">
+            {manageDaySelector}
           </div>
-          <div className={cn('grid grid-cols-2 gap-2 overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-out', controlsExpanded ? 'mt-1 max-h-12 opacity-100' : 'mt-0 max-h-0 opacity-0 pointer-events-none')}>
-            <button type="button" onClick={() => { setFormError(null); setMoreOpen(true); }} className="h-10 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-amber-500/20 transition-all cursor-pointer px-2 text-center leading-tight">
-              {section === 'academic' ? 'Add New (Academic)' : 'Add New (Clinical)'}
-            </button>
-            <button type="button" onClick={() => { setEditDataOpen(true); setEditDataTab(subjectMode === 'preloaded' ? 'preset' : 'added'); setExpandedEditItemId(null); }} className="h-10 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-violet-500/20 transition-all cursor-pointer px-2 text-center leading-tight">
-              {section === 'academic' ? 'Edit Academic Data' : 'Edit Clinical Data'}
-            </button>
-          </div>
-          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-px bg-border/80" />
-          </div>
-        </div>
-
+        )}
         <section
-          style={{ '--manage-top-stack-height': controlsExpanded ? '7.125rem' : '4.25rem' } as React.CSSProperties}
           className={cn(
             'manage-window-surface z-[3] isolate -mx-1 mt-1 bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 soft-entry-boundary relative flex flex-col overflow-clip',
           )}>
           {section === 'academic' && (
             <div className="flex flex-col">
-              <div className="sticky top-[calc(var(--app-header-height)+var(--manage-top-stack-height)+0.5rem)] z-30 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-background border-b border-border/70 shadow-sm isolate after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-2 after:h-2 after:bg-background before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background">
-                <div className="bg-background border border-border/50 rounded-xl p-1 flex justify-between gap-1">
-                {academicDayOrder.map(dayIndex => {
-                  const day = DAY_ABBRS[dayIndex];
-                  return (
-                    <button key={day} type="button" onClick={() => setSelDay(dayIndex)}
-                      className={cn('flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer border',
-                        selDay === dayIndex ? 'text-primary border-primary/60 bg-primary/10' : 'text-muted-foreground border-transparent bg-background/40 hover:bg-muted/30')}>
-                      {day}
-                    </button>
-                  );
-                })}
-                </div>
-                <div className="flex items-center justify-between border-b border-border/40 pb-2">
+              <div className="shrink-0 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-card border-b border-border/60">
+                <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold uppercase tracking-wide text-primary">{DAY_ABBRS[selDay]}'s Academic Schedule</h3>
                   <span className="text-xs text-muted-foreground font-semibold">{academicSlotsForDay.length} Slots</span>
                 </div>
@@ -2040,7 +2097,7 @@ export default function AddNew() {
               ) : (
                 groupedAcademicSlots.map((group) => (
                   <React.Fragment key={group.time}>
-                    <span className="isolate mb-1.5 flex min-h-7 w-full items-center justify-center border-y border-border/60 bg-card px-2 py-1 text-center text-xs font-bold text-primary whitespace-nowrap shadow-sm">
+                    <span className="mb-1.5 flex min-h-7 w-full items-center justify-center border-y border-border/60 bg-card px-2 py-1 text-center text-xs font-bold text-primary">
                       {group.time}
                     </span>
                     <div className="space-y-2">
@@ -2110,8 +2167,8 @@ export default function AddNew() {
                       hasSGT={!!group.sgt}
                       rotation={group.rotation}
                       sgt={group.sgt}
-                      onAddRotation={() => { setClinicalParentChoice('rotation'); setWardName(name); setMoreOpen(true); }}
-                      onAddSGT={() => { setClinicalParentChoice('sgt'); setSgtClinicalSubject(name); setSgtName(name); setMoreOpen(true); }}
+                      onAddRotation={() => { setReturnToMoreAfterAdd(false); setClinicalParentChoice('rotation'); setWardName(name); setMoreOpen(true); }}
+                      onAddSGT={() => { setReturnToMoreAfterAdd(false); setClinicalParentChoice('sgt'); setSgtClinicalSubject(name); setSgtName(name); setMoreOpen(true); }}
                       onEditRotation={() => { if (group.rotation!.store === 'preset') openEditWardPreset(group.rotation!.index!); else openEditWardCustom(group.rotation!.id!); }}
                       onEditSGT={() => { openEditSubject(getSGTStore(group.sgt), group.sgt!.id); }}
                       onDeleteRotation={() => { if (group.rotation!.store === 'preset') requestDeleteWard('preset', group.rotation!.index!); else requestDeleteWard('custom', group.rotation!.id!); }}
@@ -2131,7 +2188,7 @@ export default function AddNew() {
         {/* Add New Modal */}
         <OverlayModal
           open={moreOpen}
-          onClose={() => { setMoreOpen(false); setFormError(null); setAddSuccess(false); }}
+          onClose={closeAddModal}
           maxW="max-w-lg"
           heightClass="!max-h-[80dvh]"
           dense
@@ -2140,7 +2197,7 @@ export default function AddNew() {
             <div>
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-foreground">{section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}</h3>
-                <button type="button" onClick={() => { setMoreOpen(false); setFormError(null); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
+                <button type="button" onClick={closeAddModal} className="action-button action-button--close action-button--icon" aria-label="Close Add New"><X className="w-4 h-4" /></button>
               </div>
 
               {/* Static type selector */}
@@ -2217,7 +2274,7 @@ export default function AddNew() {
                 {isAllied && (
                   <div>
                     <label className={labelCls}>Parent</label>
-                    <p className={cn(descCls, 'transition-all duration-200 ease-out', addModalScrolled ? 'max-h-0 opacity-0 overflow-hidden mb-0' : 'max-h-8 opacity-100')}>Select an existing parent or create a new one.</p>
+                    <p className={descCls}>Select an existing parent or create a new one.</p>
                     <select value={parentChoice} onChange={e => setParentChoice(e.target.value)} className={inputCls}>
                       <option value="">Select parent…</option>
                       <optgroup label="Parents">{academicParentOptions.map(p => <option key={p} value={p}>{p}</option>)}</optgroup>
@@ -2237,7 +2294,7 @@ export default function AddNew() {
 
                 <div>
                   <label className={labelCls}>{isAllied ? 'Child subject name' : 'Subject name'}</label>
-                  <p className={cn(descCls, 'transition-all duration-200 ease-out', addModalScrolled ? 'max-h-0 opacity-0 overflow-hidden mb-0' : 'max-h-8 opacity-100')}>Enter a clear subject name.</p>
+                  <p className={descCls}>Enter a clear subject name.</p>
                   <input value={subjectName} onChange={e => setSubjectName(e.target.value)} placeholder="e.g. Cardiology" inputMode="text" className={inputCls} />
                 </div>
 
@@ -2357,7 +2414,7 @@ export default function AddNew() {
         {/* Edit Data Modal */}
         <OverlayModal
           open={editDataOpen}
-          onClose={() => { setEditDataOpen(false); setExpandedEditItemId(null); setDraftPlanned(null); }}
+          onClose={closeEditData}
           maxW="max-w-2xl"
           heightClass=""
           header={
@@ -2371,7 +2428,7 @@ export default function AddNew() {
                       : subjectMode === 'custom' ? 'Edit planned classes or delete Custom routine items.' : 'Edit planned classes or delete user-added items.'}
                   </p>
                 </div>
-                <button type="button" onClick={() => { setEditDataOpen(false); setExpandedEditItemId(null); setDraftPlanned(null); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
+                <button type="button" onClick={closeEditData} className="action-button action-button--close action-button--icon" aria-label="Close Edit Data"><X className="w-4 h-4" /></button>
               </div>
 
               {/* Active-mode data selector */}
@@ -2423,7 +2480,10 @@ export default function AddNew() {
                           }}
                         >
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold truncate" style={{ color: getSubjectColor(item.name) }}>{item.name}</p>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <p className="text-xs font-bold truncate" style={{ color: getSubjectColor(item.name) }}>{item.name}</p>
+                              <span className="shrink-0 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-muted-foreground">{item.category}</span>
+                            </div>
                             <p className="text-[10px] text-muted-foreground">
                               {item.store === 'preset-ward' || item.store === 'custom-ward' || item.store === 'sgt'
                                 ? `Auto-calculated · Planned: ${item.planned}`
@@ -2488,7 +2548,10 @@ export default function AddNew() {
                           }}
                         >
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold truncate" style={{ color: getSubjectColor(item.name) }}>{item.name}</p>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <p className="text-xs font-bold truncate" style={{ color: getSubjectColor(item.name) }}>{item.name}</p>
+                              <span className="shrink-0 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-muted-foreground">{item.category}</span>
+                            </div>
                             <p className="text-[10px] text-muted-foreground">
                               {item.store === 'sgt' || item.store === 'custom-ward'
                                 ? `Auto-calculated · Planned: ${item.planned}`
@@ -2595,17 +2658,25 @@ export default function AddNew() {
           </div>
         }>
           <div className="p-4 sm:p-5 space-y-2">
-            <button type="button" onClick={() => { setMoreMenuOpen(false); setHistoryOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
-              <SendToBack className="w-4 h-4 text-primary shrink-0" />
-              <span><span className="block text-xs font-bold text-foreground">History</span><span className="block text-[10px] text-muted-foreground">View recent Manage actions</span></span>
+            <button type="button" onClick={openAddFromMore} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
+              <Plus className="w-4 h-4 text-primary shrink-0" />
+              <span><span className="block text-xs font-bold text-foreground">Add New ({section === 'academic' ? 'Academic' : 'Clinical'})</span><span className="block text-[10px] text-muted-foreground">Create a subject, rotation, or SGT</span></span>
+            </button>
+            <button type="button" onClick={openEditDataFromMore} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
+              <Pencil className="w-4 h-4 text-primary shrink-0" />
+              <span><span className="block text-xs font-bold text-foreground">Edit {section === 'academic' ? 'Academic' : 'Clinical'} Data</span><span className="block text-[10px] text-muted-foreground">Update planned data or remove added items</span></span>
             </button>
             <button type="button" onClick={() => { setMoreMenuOpen(false); setImportError(null); setImportOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
               <Download className="w-4 h-4 text-primary shrink-0" />
               <span><span className="block text-xs font-bold text-foreground">Import</span><span className="block text-[10px] text-muted-foreground">Add or replace a routine</span></span>
             </button>
             <button type="button" onClick={() => { setMoreMenuOpen(false); setExportOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
-              <Upload className="w-4 h-4 text-emerald-500 shrink-0" />
+              <Upload className="w-4 h-4 text-primary shrink-0" />
               <span><span className="block text-xs font-bold text-foreground">Export</span><span className="block text-[10px] text-muted-foreground">Save a copy of your routine</span></span>
+            </button>
+            <button type="button" onClick={() => { setMoreMenuOpen(false); setHistoryOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
+              <SendToBack className="w-4 h-4 text-primary shrink-0" />
+              <span><span className="block text-xs font-bold text-foreground">History</span><span className="block text-[10px] text-muted-foreground">View recent Manage actions</span></span>
             </button>
           </div>
         </OverlayModal>
@@ -2622,15 +2693,24 @@ export default function AddNew() {
                 <p className="text-xs text-muted-foreground text-center py-5">No manage actions yet.</p>
               ) : (
                 historyEntries.map(entry => (
-                  <div key={entry.id} className="bg-background border border-border/60 rounded-xl p-2.5">
+                  <div key={entry.id} className="bg-background border border-border/60 rounded-xl p-2.5" aria-label={`${entry.type} · ${getHistoryCategory(entry)}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <p className="text-xs font-semibold text-foreground truncate">{entry.type}</p>
-                        {entry.data?.section && (
-                          <span className={cn('text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full shrink-0', entry.data.section === 'academic' ? 'bg-primary/10 text-primary' : 'bg-violet-500/10 text-violet-400')}>{entry.data.section}</span>
-                        )}
+                        <span className="shrink-0 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-muted-foreground">{getHistoryCategory(entry)}</span>
                       </div>
-                      <p className="text-[10px] text-muted-foreground shrink-0">{new Date(entry.timestamp).toLocaleString()}</p>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <p className="text-[10px] text-muted-foreground">{new Date(entry.timestamp).toLocaleString()}</p>
+                        <button
+                          type="button"
+                          onClick={(event) => { event.stopPropagation(); setHistoryClearEntry(entry); }}
+                          className="action-button action-button--close px-2 py-1 text-[10px]"
+                          aria-label={`Clear ${entry.type} history entry`}
+                          title="Clear this history entry only"
+                        >
+                          Clear
+                        </button>
+                      </div>
                     </div>
                     {formatHistoryDetail(entry) && <p className="text-[10px] text-muted-foreground mt-0.5">{formatHistoryDetail(entry)}</p>}
                   </div>
@@ -2638,6 +2718,30 @@ export default function AddNew() {
               )}
             </div>
           </div>
+        </OverlayModal>
+
+        {/* Clear History Entry Modal */}
+        <OverlayModal open={!!historyClearEntry} onClose={() => setHistoryClearEntry(null)} maxW="max-w-md">
+          {historyClearEntry && (
+            <div className="p-4 sm:p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-muted-foreground" /></div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">Clear this History entry?</h3>
+                  <p className="text-[10px] text-muted-foreground">Only this displayed history record will be removed.</p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-background px-3 py-2">
+                <p className="text-xs font-semibold text-foreground">{historyClearEntry.type} · {getHistoryCategory(historyClearEntry)}</p>
+                {formatHistoryDetail(historyClearEntry) && <p className="text-[10px] text-muted-foreground mt-0.5">{formatHistoryDetail(historyClearEntry)}</p>}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Your subject, schedule, attendance, curriculum, and notification data will remain unchanged.</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setHistoryClearEntry(null)} className={cn(btnCancel, 'flex-1')}>Cancel</button>
+                <button type="button" onClick={() => clearHistoryEntry(historyClearEntry)} className="action-button action-button--danger flex-1">Clear History Entry</button>
+              </div>
+            </div>
+          )}
         </OverlayModal>
 
         {/* Edit Subject Modal */}
