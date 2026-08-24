@@ -3,6 +3,11 @@ export type NotificationPermissionState = NotificationPermission | NotificationS
 
 const ENABLED_KEY = 'att_system_notifications_enabled_v1';
 const PREFS_KEY = 'att_system_notification_prefs_v1';
+export const NOTIFICATION_SETTINGS_CHANGED_EVENT = 'attendenz:notification-settings-changed';
+
+function notifySettingsChanged(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(NOTIFICATION_SETTINGS_CHANGED_EVENT));
+}
 
 export type NotificationLeadMinutes = 15 | 30 | 60;
 
@@ -46,6 +51,7 @@ export function getSystemNotificationsEnabled(): boolean {
 
 export function setSystemNotificationsEnabled(enabled: boolean): void {
   localStorage.setItem(ENABLED_KEY, String(enabled));
+  notifySettingsChanged();
 }
 
 export function getNotificationPreferences(): NotificationPreferences {
@@ -69,6 +75,7 @@ export function getNotificationPreferences(): NotificationPreferences {
 
 export function setNotificationPreferences(preferences: NotificationPreferences): void {
   localStorage.setItem(PREFS_KEY, JSON.stringify(preferences));
+  notifySettingsChanged();
 }
 
 export async function requestNotificationPermission(): Promise<NotificationPermissionState> {

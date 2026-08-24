@@ -15,7 +15,9 @@ type OneSignalClient = {
     isPushSupported?: () => boolean;
   };
   User: {
+    onesignalId?: string | null;
     PushSubscription: {
+      id?: string | null;
       optIn: () => Promise<void> | void;
       optOut: () => Promise<void> | void;
       optedIn?: boolean;
@@ -38,6 +40,7 @@ declare global {
 }
 
 let clientPromise: Promise<OneSignalClientState | null> | null = null;
+export const ONE_SIGNAL_STATE_CHANGED_EVENT = 'attendenz:onesignal-state-changed';
 
 export function isOneSignalConfiguredForCurrentOrigin(): boolean {
   return (
@@ -136,6 +139,7 @@ export async function enableOneSignalPush(): Promise<
     await state.client.Notifications.requestPermission();
     if (!state.client.Notifications.permission) return "denied";
     await state.client.User.PushSubscription.optIn();
+    window.dispatchEvent(new Event(ONE_SIGNAL_STATE_CHANGED_EVENT));
     return state.client.User.PushSubscription.optedIn === false
       ? "failed"
       : "enabled";
@@ -149,8 +153,21 @@ export async function disableOneSignalPush(): Promise<void> {
   if (!state) return;
   try {
     await state.client.User.PushSubscription.optOut();
+    window.dispatchEvent(new Event(ONE_SIGNAL_STATE_CHANGED_EVENT));
   } catch {
     // Notification opt-out must never interrupt normal app use.
+  }
+}
+
+export async function getOneSignalSubscriptionId(): Promise<string | null> {
+  const state = await loadOneSignalClient();
+  if (!state) return null;
+  try {
+    await state.initialized;
+    const id = state.client.User.PushSubscription.id;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  } catch {
+    return null;
   }
 }
 

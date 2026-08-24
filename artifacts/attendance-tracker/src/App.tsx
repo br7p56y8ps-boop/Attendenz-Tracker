@@ -7,6 +7,7 @@ import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext'
 import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageSetItem } from '@/lib/idb';
 import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
+import { ReminderSyncProvider } from '@/lib/reminderSync';
 import { restoreSnapshot } from '@/utils/snapshotUtils';
 import { useUpdateFlow, UpdateModal, UpdateOverlay } from '@/utils/useUpdateFlow';
 const WelcomeVideoScreen = lazy(() => import('@/components/video/WelcomeVideoScreen'));
@@ -162,9 +163,11 @@ export default function App() {
       <AuthProvider>
       <CustomDataProvider>
         <AttendanceProvider>
-          <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
-            <MainAppFlow />
-          </WouterRouter>
+          <ReminderSyncProvider>
+            <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
+              <MainAppFlow />
+            </WouterRouter>
+          </ReminderSyncProvider>
         </AttendanceProvider>
       </CustomDataProvider>
       </AuthProvider>
