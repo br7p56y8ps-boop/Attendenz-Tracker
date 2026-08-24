@@ -3,6 +3,8 @@ export type NotificationPermissionState = NotificationPermission | NotificationS
 
 const ENABLED_KEY = 'att_system_notifications_enabled_v1';
 const PREFS_KEY = 'att_system_notification_prefs_v1';
+const UPDATE_AVAILABLE_SENT_KEY = 'att_update_notification_available_v1';
+const UPDATE_COMPLETED_SENT_KEY = 'att_update_notification_completed_v1';
 export const NOTIFICATION_SETTINGS_CHANGED_EVENT = 'attendenz:notification-settings-changed';
 
 function notifySettingsChanged(): void {
@@ -108,6 +110,39 @@ export async function showSystemNotification(
   } catch {
     return false;
   }
+}
+
+export async function notifyAddNewChange(summary: string): Promise<boolean> {
+  if (!getNotificationPreferences().addNewChanges) return false;
+  return showSystemNotification('Attendenz: Schedule updated', {
+    body: summary,
+    tag: `attendenz-addnew-${Date.now()}`,
+    data: { url: '/add-new' },
+  });
+}
+
+export async function notifyUpdateAvailable(version: string, summary = ''): Promise<boolean> {
+  if (!getNotificationPreferences().updateAvailable) return false;
+  if (localStorage.getItem(UPDATE_AVAILABLE_SENT_KEY) === version) return false;
+  const shown = await showSystemNotification(`Attendenz v${version} is ready`, {
+    body: summary || 'A new version is available. Open Attendenz to review and install it.',
+    tag: `attendenz-update-available-${version}`,
+    data: { url: '/' },
+  });
+  if (shown) localStorage.setItem(UPDATE_AVAILABLE_SENT_KEY, version);
+  return shown;
+}
+
+export async function notifyUpdateCompleted(version: string): Promise<boolean> {
+  if (!getNotificationPreferences().updateCompleted) return false;
+  if (localStorage.getItem(UPDATE_COMPLETED_SENT_KEY) === version) return false;
+  const shown = await showSystemNotification('Attendenz update completed', {
+    body: `Attendenz v${version} is ready to use.`,
+    tag: `attendenz-update-completed-${version}`,
+    data: { url: '/' },
+  });
+  if (shown) localStorage.setItem(UPDATE_COMPLETED_SENT_KEY, version);
+  return shown;
 }
 
 export async function testSystemNotification(): Promise<boolean> {
