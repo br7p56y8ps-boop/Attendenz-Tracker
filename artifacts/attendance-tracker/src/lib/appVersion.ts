@@ -1,4 +1,4 @@
-export const APP_VERSION = "4.3.5";
+export const APP_VERSION = "4.3.5.1";
 export const LATEST_VERSION = APP_VERSION;
 
 export interface WhatsNewItem {
@@ -132,5 +132,5 @@ export const FEATURES_UPDATED = [
 export const RELEASE_NOTES = {
   version: APP_VERSION,
   summary:
-    "Release 4.3.5 adds clearer App Notification choices for the final scheduled class and first class of the day, alongside Feedback & Sounds controls, the iPhone permission-flow fix, independent curriculum workspaces, safer offline protection, and clearer mobile navigation.",
+    "Release 4.3.5.1 adds clearer App Notification choices for the final scheduled class and first class of the day, alongside Feedback & Sounds controls, the iPhone permission-flow fix, independent curriculum workspaces, safer offline protection, and clearer mobile navigation.",
 };
