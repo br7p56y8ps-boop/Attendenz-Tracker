@@ -41,15 +41,31 @@ declare global {
 
 let clientPromise: Promise<OneSignalClientState | null> | null = null;
 export const ONE_SIGNAL_STATE_CHANGED_EVENT = 'attendenz:onesignal-state-changed';
+const ONE_SIGNAL_OPERATION_TIMEOUT_MS = 8_000;
+
+function hasReadyPushSubscription(client: OneSignalClient): boolean {
+  const subscription = client.User.PushSubscription;
+  return subscription.optedIn === true && typeof subscription.id === 'string' && subscription.id.length > 0;
+}
+
+async function withOneSignalTimeout<T>(operation: Promise<T> | void, label: string): Promise<T | void> {
+  return Promise.race([
+    Promise.resolve(operation),
+    new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error(label)), ONE_SIGNAL_OPERATION_TIMEOUT_MS)),
+  ]);
+}
+
+async function loadOneSignalClientWithTimeout(): Promise<OneSignalClientState | null> {
+  const loaded = await withOneSignalTimeout(loadOneSignalClient(), 'OneSignal SDK load timed out');
+  return loaded || null;
+}
 
 async function waitForPushOptIn(client: OneSignalClient): Promise<boolean> {
-  const subscription = client.User.PushSubscription;
-  if (subscription.optedIn !== false) return true;
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    if (hasReadyPushSubscription(client)) return true;
     await new Promise(resolve => window.setTimeout(resolve, 250));
-    if ((subscription.optedIn as boolean | undefined) === true) return true;
   }
-  return subscription.optedIn !== false;
+  return hasReadyPushSubscription(client);
 }
 
 export function isOneSignalConfiguredForCurrentOrigin(): boolean {
@@ -133,7 +149,7 @@ export async function enableOneSignalPush(): Promise<
   if (permission === "denied") return "denied";
   if (permission !== "granted") return "failed";
 
-  const state = await loadOneSignalClient();
+  const state = await loadOneSignalClientWithTimeout();
   if (!state) return "unavailable";
 
   try {
@@ -142,12 +158,12 @@ export async function enableOneSignalPush(): Promise<
       !state.client.Notifications.isPushSupported()
     )
       return "unavailable";
-    await state.client.setConsentGiven(true);
-    await state.initialized;
+    await withOneSignalTimeout(state.client.setConsentGiven(true), 'OneSignal consent timed out');
+    await withOneSignalTimeout(state.initialized, 'OneSignal initialization timed out');
     // The browser permission was already handled at the start of this user gesture.
     // Calling the SDK permission method a second time can fail on iOS even when the
     // native permission is already granted. optIn() is the supported re-enable path.
-    await state.client.User.PushSubscription.optIn();
+    await withOneSignalTimeout(state.client.User.PushSubscription.optIn(), 'OneSignal opt-in timed out');
     if (!(await waitForPushOptIn(state.client))) return "failed";
     window.dispatchEvent(new Event(ONE_SIGNAL_STATE_CHANGED_EVENT));
     return "enabled";
@@ -157,10 +173,10 @@ export async function enableOneSignalPush(): Promise<
 }
 
 export async function disableOneSignalPush(): Promise<void> {
-  const state = await loadOneSignalClient();
+  const state = await loadOneSignalClientWithTimeout();
   if (!state) return;
   try {
-    await state.client.User.PushSubscription.optOut();
+    await withOneSignalTimeout(state.client.User.PushSubscription.optOut(), 'OneSignal opt-out timed out');
     window.dispatchEvent(new Event(ONE_SIGNAL_STATE_CHANGED_EVENT));
   } catch {
     // Notification opt-out must never interrupt normal app use.
@@ -168,10 +184,10 @@ export async function disableOneSignalPush(): Promise<void> {
 }
 
 export async function getOneSignalSubscriptionId(): Promise<string | null> {
-  const state = await loadOneSignalClient();
+  const state = await loadOneSignalClientWithTimeout();
   if (!state) return null;
   try {
-    await state.initialized;
+    await withOneSignalTimeout(state.initialized, 'OneSignal initialization timed out');
     const id = state.client.User.PushSubscription.id;
     return typeof id === "string" && id.length > 0 ? id : null;
   } catch {

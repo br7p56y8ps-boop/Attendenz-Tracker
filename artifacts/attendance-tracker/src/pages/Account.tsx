@@ -619,33 +619,34 @@ export default function Account() {
   const updateSystemNotificationsEnabled = async (enabled: boolean) => {
     if (notificationBusy) return;
     setNotificationBusy(true);
-    if (!enabled) {
-      await disableOneSignalPush();
-      setSystemNotificationsEnabledState(false);
-      setSystemNotificationsEnabled(false);
-      setNotificationPermission(getNotificationPermission());
-      setNotificationBusy(false);
-      return;
-    }
+    try {
+      if (!enabled) {
+        await disableOneSignalPush();
+        setSystemNotificationsEnabledState(false);
+        setSystemNotificationsEnabled(false);
+        setNotificationPermission(getNotificationPermission());
+        return;
+      }
 
-    if (!oneSignalConfigured) {
-      setNotificationBusy(false);
-      import('sonner').then(({ toast }) => toast.info('Open the published Attendenz app to enable system notifications.'));
-      return;
-    }
+      if (!oneSignalConfigured) {
+        import('sonner').then(({ toast }) => toast.info('Open the published Attendenz app to enable system notifications.'));
+        return;
+      }
 
-    const result = await enableOneSignalPush();
-    const permission = getNotificationPermission();
-    setNotificationPermission(permission);
-    if (result === 'enabled' && permission === 'granted') {
-      setSystemNotificationsEnabledState(true);
-      setSystemNotificationsEnabled(true);
-    } else {
-      setSystemNotificationsEnabledState(false);
-      setSystemNotificationsEnabled(false);
-      import('sonner').then(({ toast }) => toast.info(result === 'denied' || permission === 'denied' ? 'Notifications are blocked in iPhone settings.' : 'Notifications could not be connected yet. Please try again on the published app.'));
+      const result = await enableOneSignalPush();
+      const permission = getNotificationPermission();
+      setNotificationPermission(permission);
+      if (result === 'enabled' && permission === 'granted') {
+        setSystemNotificationsEnabledState(true);
+        setSystemNotificationsEnabled(true);
+      } else {
+        setSystemNotificationsEnabledState(false);
+        setSystemNotificationsEnabled(false);
+        import('sonner').then(({ toast }) => toast.info(result === 'denied' || permission === 'denied' ? 'Notifications are blocked in iPhone settings.' : 'Notifications could not be connected yet. Please try again on the published app.'));
+      }
+    } finally {
+      setNotificationBusy(false);
     }
-    setNotificationBusy(false);
   };
   const updateNotificationPreference = <K extends keyof NotificationPreferences>(key: K, value: NotificationPreferences[K]) => {
     const next = { ...notificationPreferences, [key]: value };
@@ -655,26 +656,28 @@ export default function Account() {
   const enableSystemNotifications = async () => {
     if (notificationBusy) return;
     setNotificationBusy(true);
-    if (!oneSignalConfigured) {
-      import('sonner').then(({ toast }) => toast.info('Open the published Attendenz app to enable system notifications.'));
+    try {
+      if (!oneSignalConfigured) {
+        import('sonner').then(({ toast }) => toast.info('Open the published Attendenz app to enable system notifications.'));
+        return;
+      }
+      const result = await enableOneSignalPush();
+      const permission = getNotificationPermission();
+      setNotificationPermission(permission);
+      if (result === 'enabled' && permission === 'granted') {
+        setSystemNotificationsEnabledState(true);
+        setSystemNotificationsEnabled(true);
+        const shown = await testSystemNotification();
+        if (shown) notifySuccess('System notifications enabled.');
+        else import('sonner').then(({ toast }) => toast.info('Notifications are enabled. Use the OneSignal test later to confirm delivery.'));
+      } else if (result === 'denied' || permission === 'denied') {
+        import('sonner').then(({ toast }) => toast.info('Notifications are blocked. Allow them in your iPhone settings if you want to use them.'));
+      } else {
+        import('sonner').then(({ toast }) => toast.info('System notifications could not be connected yet. Please try again on the published app.'));
+      }
+    } finally {
       setNotificationBusy(false);
-      return;
     }
-    const result = await enableOneSignalPush();
-    const permission = getNotificationPermission();
-    setNotificationPermission(permission);
-    if (result === 'enabled' && permission === 'granted') {
-      setSystemNotificationsEnabledState(true);
-      setSystemNotificationsEnabled(true);
-      const shown = await testSystemNotification();
-      if (shown) notifySuccess('System notifications enabled.');
-      else import('sonner').then(({ toast }) => toast.info('Notifications are enabled. Use the OneSignal test later to confirm delivery.'));
-    } else if (result === 'denied' || permission === 'denied') {
-      import('sonner').then(({ toast }) => toast.info('Notifications are blocked. Allow them in your iPhone settings if you want to use them.'));
-    } else {
-      import('sonner').then(({ toast }) => toast.info('System notifications could not be connected yet. Please try again on the published app.'));
-    }
-    setNotificationBusy(false);
   };
   const testNotificationFromSettings = async () => {
     if (notificationPermission !== 'granted' || !systemNotificationsEnabled) return;
@@ -1119,7 +1122,6 @@ export default function Account() {
                           ) : notificationPermission !== 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-muted-foreground">{notificationPermission === 'denied' ? 'Blocked in iPhone settings' : notificationPermission === 'insecure' ? 'Secure connection needed' : notificationPermission === 'unsupported' ? 'Not available on this device' : 'Permission needed'}</span><button type="button" onClick={enableSystemNotifications} disabled={notificationBusy || notificationPermission === 'denied' || notificationPermission === 'unsupported' || notificationPermission === 'insecure'} className="action-button action-button--update action-button--compact disabled:opacity-50">{notificationBusy ? 'Checking…' : 'Allow notifications'}</button></div>}
                           {notificationPermission === 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">Permission granted</span><button type="button" onClick={testNotificationFromSettings} disabled={!systemNotificationsEnabled} className="action-button action-button--neutral action-button--compact disabled:opacity-50">Test</button></div>}
                           {systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Reminder connection: {reminderSyncStatus.state === 'synced' ? `Synced ${new Date(reminderSyncStatus.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : reminderSyncStatus.state === 'waiting-for-permission' ? 'Waiting for this device to finish connecting.' : reminderSyncStatus.state === 'offline' ? 'Waiting for an internet connection.' : reminderSyncStatus.state === 'error' ? 'Last connection attempt failed. It will retry automatically.' : 'Not configured yet.'}</p>}
-                          <p className="text-[10px] leading-relaxed text-muted-foreground">Choose the reminders you want. You can change these choices at any time; your selections will be kept for reminder delivery.</p>
                         </div>
                         <div className="space-y-2.5">
                           <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Midnight Need Attention summary</span><span className="block text-[10px] text-muted-foreground mt-0.5">One grouped alert for today’s warning subjects</span></span><SettingToggle checked={notificationPreferences.midnightNeedAttention} onChange={value => updateNotificationPreference('midnightNeedAttention', value)} label="Midnight Need Attention summary" /></label>
