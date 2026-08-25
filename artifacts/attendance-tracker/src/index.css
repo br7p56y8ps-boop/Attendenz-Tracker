@@ -1,0 +1,439 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+
+  /* Required for shadcn */
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--card-foreground);
+  --color-popover-border: var(--border);
+  --color-card-border: var(--border);
+  --color-secondary: var(--muted);
+  --color-secondary-foreground: var(--foreground);
+  --color-accent: var(--muted);
+  --color-accent-foreground: var(--foreground);
+  --color-ring: var(--primary);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Inter, sans-serif;
+  
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+}
+
+/* Light Theme (Default) */
+:root {
+  --background: #F2F2F7;
+  --foreground: #000000;
+  
+  --card: #FFFFFF;
+  --card-foreground: #000000;
+  
+  --border: rgba(0, 0, 0, 0.08);
+  
+  --primary: #007AFF; /* iOS Light Blue */
+  --primary-foreground: #FFFFFF;
+  
+  --muted: rgba(0, 0, 0, 0.04);
+  --muted-foreground: rgba(0, 0, 0, 0.55);
+  
+  --destructive: #FF3B30;
+  --destructive-foreground: #FFFFFF;
+  
+  --success: #34C759;
+  --warning: #FF9500;
+}
+
+/* Dark Theme */
+.dark {
+  --background: #000000;
+  --foreground: #FFFFFF;
+  
+  --card: rgba(28, 28, 30, 0.65);
+  --card-foreground: #FFFFFF;
+  
+  --border: rgba(255, 255, 255, 0.16);
+  
+  --primary: #0A84FF; /* iOS Dark Blue */
+  --primary-foreground: #FFFFFF;
+  
+  --muted: rgba(255, 255, 255, 0.06);
+  --muted-foreground: rgba(255, 255, 255, 0.5);
+  
+  --destructive: #FF453A;
+  --destructive-foreground: #FFFFFF;
+  
+  --success: #32D74B;
+  --warning: #FF9F0A;
+}
+
+/* Premium Liquid Glass Styles */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.06);
+}
+
+.dark .glass-panel {
+  background: rgba(20, 20, 25, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.04);
+}
+
+.dark .glass-card {
+  background: rgba(30, 30, 35, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.3);
+}
+
+.glass-card-hover {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glass-card-hover:hover {
+  transform: translateY(-4px) scale(1.01);
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.08);
+}
+.dark .glass-card-hover:hover {
+  background: rgba(40, 40, 48, 0.5);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+}
+
+.glass-button {
+  background: rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dark .glass-button {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-button:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+.dark .glass-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.glass-button-primary {
+  background: #007AFF;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 15px rgba(0, 122, 255, 0.25);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dark .glass-button-primary {
+  background: #0A84FF;
+  box-shadow: 0 4px 15px rgba(10, 132, 255, 0.3);
+}
+
+/* Shared action controls: readable labels, colored outlines, light highlights. */
+.action-button {
+  display: inline-flex;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 160ms ease, box-shadow 180ms ease;
+}
+.action-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.action-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 45%, transparent);
+  outline-offset: 2px;
+}
+.action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.action-button--neutral {
+  border-color: color-mix(in srgb, var(--foreground) 18%, transparent);
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+  color: var(--foreground);
+}
+.action-button--neutral:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--muted) 100%, transparent);
+}
+.action-button--cancel {
+  border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: var(--primary);
+}
+.action-button--cancel:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+}
+.action-button--close {
+  border-color: color-mix(in srgb, var(--destructive) 55%, transparent);
+  background: color-mix(in srgb, var(--destructive) 9%, transparent);
+  color: var(--destructive);
+}
+.action-button--close:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--destructive) 16%, transparent);
+}
+.action-button--edit,
+.action-button--transfer,
+.action-button--update {
+  border-color: color-mix(in srgb, var(--primary) 52%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+.action-button--edit:hover:not(:disabled),
+.action-button--transfer:hover:not(:disabled),
+.action-button--update:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 17%, transparent);
+}
+.action-button--save {
+  border-color: color-mix(in srgb, var(--success) 52%, transparent);
+  background: color-mix(in srgb, var(--success) 11%, transparent);
+  color: color-mix(in srgb, var(--success) 85%, var(--foreground));
+}
+.action-button--save:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+}
+.action-button--danger {
+  border-color: color-mix(in srgb, var(--destructive) 55%, transparent);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+.action-button--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--destructive) 17%, transparent);
+}
+.action-button--warning {
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 11%, transparent);
+  color: color-mix(in srgb, var(--warning) 85%, var(--foreground));
+}
+.action-button--warning:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+}
+.action-button--compact {
+  min-height: 1.8rem;
+  border-radius: 0.6rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.65rem;
+}
+.theme-toggle-button {
+  min-width: 4.5rem;
+  height: 2.5rem;
+  padding-inline: 0.8rem;
+  border-radius: 0.65rem;
+}
+.action-button--icon {
+  width: 2.25rem;
+  padding: 0;
+}
+.action-button--icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Shared motion for modal/bottom-sheet content. */
+.modal-sheet-content {
+  transform-origin: center bottom;
+  will-change: transform, opacity;
+  min-height: 12rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-button,
+  .modal-sheet-content {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* iOS smooth scrolling & hidden scrollbars */
+::-webkit-scrollbar {
+  display: none;
+}
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* iOS inputs reset */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* Cross-browser WebKit / iOS date & time picker legibility & alignment fixes */
+input[type="date"],
+input[type="time"] {
+  color-scheme: dark light;
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 2.75rem;
+  line-height: 2.75rem;
+}
+
+.dark input[type="date"],
+.dark input[type="time"] {
+  color-scheme: dark;
+  color: #FFFFFF;
+}
+
+::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0.7;
+  filter: invert(0.8);
+  margin-left: 2px;
+}
+.dark ::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.9;
+}
+
+::-webkit-datetime-edit {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
+::-webkit-datetime-edit-fields-wrapper {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Soft entry boundary for content passing beneath sticky surfaces. */
+.soft-entry-boundary {
+  --entry-surface: var(--background);
+  --entry-fade-size: 0.9rem;
+  isolation: isolate;
+}
+
+.scroll-fade-viewport {
+  position: relative;
+}
+
+.scroll-reachability::after {
+  content: '';
+  display: block;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Keep fixed lower edges visible without adding an extra blur band. */
+.date-wheel-surface {
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+.manage-window-surface {
+  box-shadow: inset 0 -1px 0 var(--border), 0 4px 12px color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+/* Let content remain faintly visible, but softened, beneath the fixed bottom nav. */
+.bottom-nav-surface {
+  isolation: isolate;
+}
+
+.bottom-nav-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
+.manage-window-surface::after,
+.manage-controls-surface::after {
+  bottom: 0.7rem;
+  opacity: 0.62;
+}
+
+.soft-entry-boundary::after,
+.soft-entry-boundary::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--entry-fade-size);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.96;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.soft-entry-boundary::after {
+  bottom: -0.35rem;
+  background: linear-gradient(
+    to bottom,
+    var(--entry-surface) 0%,
+    color-mix(in srgb, var(--entry-surface) 72%, transparent) 42%,
+    color-mix(in srgb, var(--entry-surface) 0%, transparent) 100%
+  );
+}
+
+.soft-entry-boundary::before {
+  display: none;
+  top: -0.35rem;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--entry-surface) 0%, transparent),
+    color-mix(in srgb, var(--entry-surface) 42%, transparent) 45%,
+    var(--entry-surface) 100%
+  );
+}
+
+.soft-entry-boundary--top::before {
+  display: block;
+}
+
+.soft-entry-boundary > * {
+  position: relative;
+  z-index: 1;
+}
+
+.soft-entry-boundary--inner {
+  --entry-surface: var(--card);
+}
