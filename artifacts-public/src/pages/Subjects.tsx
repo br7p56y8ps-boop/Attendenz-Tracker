@@ -368,7 +368,7 @@ export default function Subjects() {
         {subjectMode === 'custom' && !customHasAnySubjects && (
           <div className="bg-card rounded-2xl p-8 border border-border text-center shadow-sm mt-2">
             <ClipboardList className="w-10 h-10 mx-auto mb-3 text-primary" />
-            <h3 className="text-lg font-semibold mb-2">No subjects yet</h3>
+            <h3 className="text-lg font-semibold mb-2">No Subjects yet</h3>
             <p className="text-muted-foreground text-sm mb-4">
               Add your own subjects and ward rotations from the Manage tab.
             </p>
@@ -383,7 +383,7 @@ export default function Subjects() {
 
         {/* ══════════════════ ACADEMIC SECTION ══════════════════ */}
         {(subjectMode === 'preloaded' || customHasAnySubjects) && <SectionHeading icon={<GraduationCap className="w-4 h-4 text-primary" />} label="Academic" />}
-        {subjectMode === 'custom' && customHasAnySubjects && customAcademicCount === 0 && <p className="text-xs text-muted-foreground px-3 py-2">No subjects in this section.</p>}
+        {subjectMode === 'custom' && customHasAnySubjects && customAcademicCount === 0 && <p className="text-xs text-muted-foreground px-3 py-2">No Subjects in this section.</p>}
 
         {/* ── Built-in Academic Categories (preloaded mode only) ── */}
         {subjectMode === 'preloaded' && CATEGORIES.map((cat) => {
@@ -442,7 +442,7 @@ export default function Subjects() {
               renderChildren={() => (
                 <>
                   {kids.length === 0 && (
-                    <p className="text-xs text-muted-foreground px-3 py-2">No children added yet.</p>
+                    <p className="text-xs text-muted-foreground px-3 py-2">No Children added yet.</p>
                   )}
                   {kids.map(k => (
                     <SubjectCard
@@ -514,7 +514,7 @@ export default function Subjects() {
               renderChildren={() => (
                 <>
                   {card.children.length === 0 && !card.host && (
-                    <p className="text-xs text-muted-foreground px-3 py-2">No children added yet.</p>
+                    <p className="text-xs text-muted-foreground px-3 py-2">No Children added yet.</p>
                   )}
                   {card.host && (
                     <SubjectCard
@@ -615,7 +615,7 @@ export default function Subjects() {
 
         {/* ══════════════════ CLINICAL SECTION ══════════════════ */}
         {(subjectMode === 'preloaded' || customHasAnySubjects) && <SectionHeading icon={<Stethoscope className="w-4 h-4 text-primary" />} label="Clinical" />}
-        {subjectMode === 'custom' && customHasAnySubjects && customClinicalCount === 0 && <p className="text-xs text-muted-foreground px-3 py-2">No subjects in this section.</p>}
+        {subjectMode === 'custom' && customHasAnySubjects && customClinicalCount === 0 && <p className="text-xs text-muted-foreground px-3 py-2">No Subjects in this section.</p>}
 
         {/* ── Ward Rotations (Grouped in ONE Card) ── */}
         {(subjectMode === 'preloaded' || customWards.length > 0) && (() => {

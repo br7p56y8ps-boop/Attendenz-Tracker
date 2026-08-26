@@ -654,12 +654,12 @@ export default function Home() {
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p>
                 {!online && (
                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5">
-                    <p className="text-[10px] font-bold text-amber-500">You're offline — connect to the Internet once to Install the Update.</p>
+                    <p className="text-[10px] font-bold text-amber-500">You're offline — connect to the internet once to install the update.</p>
                   </div>
                 )}
                 <div className="bg-muted/30 border border-border/50 rounded-xl p-3 space-y-1">
                   <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-1">How to Update</p>
-                  <p className="text-[10px] text-muted-foreground">1. Go to <strong className="text-foreground">Settings Tab</strong></p>
+                  <p className="text-[10px] text-muted-foreground">1. Go to the <strong className="text-foreground">Settings Tab</strong></p>
                   <p className="text-[10px] text-muted-foreground">2. Scroll to <strong className="text-foreground">App Info</strong></p>
                   <p className="text-[10px] text-muted-foreground">3. Click <strong className="text-foreground">Update App</strong></p>
                 </div>

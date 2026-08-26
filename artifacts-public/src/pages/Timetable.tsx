@@ -91,7 +91,7 @@ const coveredByBase = (r: { start: number; end: number }): boolean => {
   return true;
 };
 
-export default function CalendarPage() {
+export default function Timetable() {
   const { subjects, wards, homeSelections, preferredPercentage } = useAttendance();
   const {
     customSubjects, customWards, userAddedSubjects,
@@ -521,7 +521,7 @@ export default function CalendarPage() {
         <StickySectionLabel label="Academic" stackIndex={0} zClass="z-40" />
         <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-3">
           {subjectMode === 'custom' && !hasCustomSchedule ? (
-            <p className="text-xs text-muted-foreground text-center py-8">No custom schedule yet. Add subjects in Manage tab.</p>
+            <p className="text-xs text-muted-foreground text-center py-8">No custom schedule yet. Add Subjects in the Manage Tab.</p>
           ) : (
           <div className="overflow-x-auto rounded-xl border border-border/40">
             <table className="w-full text-left border-collapse table-fixed" style={{ minWidth: `${40 + columns.length * 56}px` }}>
@@ -585,7 +585,7 @@ export default function CalendarPage() {
         <StickySectionLabel label="Clinical / Ward Rotation" stackIndex={1} zClass="z-40" />
         <section className="bg-card border border-border rounded-2xl p-3.5 shadow-sm space-y-2">
           {totalItems === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-6">No rotations scheduled.</p>
+            <p className="text-xs text-muted-foreground text-center py-6">No Rotations scheduled.</p>
           ) : (
             <div
               ref={wheelRef}

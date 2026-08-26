@@ -15,9 +15,9 @@ import { APP_VERSION } from '@/lib/appVersion';
 const WelcomeVideoScreen = lazy(() => import('@/components/video/WelcomeVideoScreen'));
 const Home = lazy(() => import('@/pages/Home'));
 const Subjects = lazy(() => import('@/pages/Subjects'));
-const AddNew = lazy(() => import('@/pages/AddNew'));
-const CalendarPage = lazy(() => import('@/pages/CalendarPage'));
-const Account = lazy(() => import('@/pages/Account'));
+const Manage = lazy(() => import('@/pages/Manage'));
+const Timetable = lazy(() => import('@/pages/Timetable'));
+const Settings = lazy(() => import('@/pages/Settings'));
 const Login = lazy(() => import('@/pages/Login'));
 const SetupScreen = lazy(() => import('@/pages/SetupScreen'));
 const NotFound = lazy(() => import('@/pages/not-found'));
@@ -57,9 +57,9 @@ function AuthGate() {
           <Switch>
             <Route path="/" component={Home} />
             <Route path="/subjects" component={Subjects} />
-            <Route path="/add-new" component={AddNew} />
-            <Route path="/calendar" component={CalendarPage} />
-            <Route path="/account" component={Account} />
+            <Route path="/add-new" component={Manage} />
+            <Route path="/calendar" component={Timetable} />
+            <Route path="/account" component={Settings} />
             <Route component={NotFound} />
           </Switch>
         </Suspense>
@@ -160,8 +160,8 @@ export default function App() {
       {storageError && (
         <div className="fixed inset-x-3 top-[5.25rem] z-[180] rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 py-3 text-xs text-amber-100 shadow-xl backdrop-blur-xl">
           <div className="flex items-start justify-between gap-3">
-            <p><strong>Storage warning:</strong> Your latest changes may not be fully durable. Export a backup from Settings before closing the app.</p>
-            <button type="button" onClick={() => setStorageError(false)} className="shrink-0 font-bold text-amber-200" aria-label="Dismiss storage warning">Dismiss</button>
+            <p><strong>Storage Warning:</strong> Your latest changes may not be fully durable. Export a backup from Settings before closing the app.</p>
+            <button type="button" onClick={() => setStorageError(false)} className="shrink-0 font-bold text-amber-200" aria-label="Dismiss Storage Warning">Dismiss</button>
           </div>
         </div>
       )}

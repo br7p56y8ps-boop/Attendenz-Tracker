@@ -27,18 +27,9 @@ import {
   NOTIFICATION_SETTINGS_CHANGED_EVENT,
   setNotificationPreferences,
   setSystemNotificationsEnabled,
-  showLocalTestNotification,
   type NotificationLeadMinutes,
   type NotificationPreferences,
 } from '@/lib/webPush';
-import {
-  getReminderRegistrationDiagnostics,
-  getReminderSyncStatus,
-  REMINDER_SYNC_STATUS_CHANGED_EVENT,
-  testRemoteNotification,
-  type ReminderRegistrationDiagnostics,
-  type ReminderSyncStatus,
-} from '@/lib/webPushSync';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
 import femaleStudentProfile from '@/assets/images/female_student_profile_1784286920737.jpg';
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
@@ -83,7 +74,7 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-export default function Account() {
+export default function Settings() {
   const { username, updateUsername, profileImage, updateProfileImage, isPersistentStorage, requestPersistentStorage } = useAuth();
   const [, setLocation] = useLocation();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -172,9 +163,6 @@ export default function Account() {
   const [systemNotificationsEnabled, setSystemNotificationsEnabledState] = useState(() => getSystemNotificationsEnabled());
   const [notificationPreferences, setNotificationPreferencesState] = useState<NotificationPreferences>(() => getNotificationPreferences());
   const [notificationBusy, setNotificationBusy] = useState(false);
-  const [remoteTestBusy, setRemoteTestBusy] = useState(false);
-  const [registrationDiagnostics, setRegistrationDiagnostics] = useState<ReminderRegistrationDiagnostics | null>(null);
-  const [reminderSyncStatus, setReminderSyncStatus] = useState<ReminderSyncStatus>(() => getReminderSyncStatus());
   const [pendingPct, setPendingPct] = useState<number | null>(null);
   const [confirmMarkComplete, setConfirmMarkComplete] = useState(false);
   const [snapshotToRestore, setSnapshotToRestore] = useState<Snapshot | null>(null);
@@ -195,19 +183,15 @@ export default function Account() {
     setNotificationPermission(getNotificationPermission());
     setSystemNotificationsEnabledState(getSystemNotificationsEnabled());
     setNotificationPreferencesState(getNotificationPreferences());
-    setReminderSyncStatus(getReminderSyncStatus());
-    try { setRegistrationDiagnostics(await getReminderRegistrationDiagnostics()); } catch {}
   };
 
   useEffect(() => {
     void refreshNotificationState();
     const refresh = () => { void refreshNotificationState(); };
     window.addEventListener(NOTIFICATION_SETTINGS_CHANGED_EVENT, refresh);
-    window.addEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, refresh);
     window.addEventListener('focus', refresh);
     return () => {
       window.removeEventListener(NOTIFICATION_SETTINGS_CHANGED_EVENT, refresh);
-      window.removeEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, refresh);
       window.removeEventListener('focus', refresh);
     };
   }, []);
@@ -244,25 +228,6 @@ export default function Account() {
     await enableSystemNotifications();
   };
 
-  const testNotificationFromSettings = async () => {
-    if (!systemNotificationsEnabled) return;
-    const shown = await showLocalTestNotification();
-    if (shown) notifySuccess('Test Notification sent.');
-    else import('sonner').then(({ toast }) => toast.error('The Test Notification could not be displayed.'));
-  };
-
-  const testRemoteNotificationFromSettings = async () => {
-    if (remoteTestBusy || !systemNotificationsEnabled) return;
-    setRemoteTestBusy(true);
-    try {
-      const result = await testRemoteNotification();
-      if (result.state === 'sent') notifySuccess('Test Notification sent to this device.');
-      else import('sonner').then(({ toast }) => toast.error(result.state === 'not-configured' ? 'Notifications are temporarily unavailable. Please try again later.' : result.state === 'permission-required' ? 'Allow Notifications first.' : result.state === 'subscription-missing' || result.state === 'not-registered' ? 'Notifications need to be reconnected. Turn the setting off, then on again while connected to the internet.' : 'The Test Notification could not be sent.'));
-    } finally {
-      setRemoteTestBusy(false);
-      await refreshNotificationState();
-    }
-  };
 
   const handleToggleCurriculumStatus = () => {
     const next = curriculumStatus === 'Active' ? 'Completed' : 'Active';
@@ -745,7 +710,7 @@ export default function Account() {
       const created = createCurriculum(newCurriculumName);
       setNewCurriculumName('');
       setCurricula(getCurricula());
-      notifySuccess(`${created.name} created empty. Use AddNew Import if you want to bring in a routine structure.`);
+      notifySuccess(`${created.name} created empty. Use Manage Import if you want to bring in a routine structure.`);
     } catch (error) {
       import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not create curriculum.'));
     }
@@ -888,7 +853,7 @@ export default function Account() {
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden">
             <div className="divide-y divide-border/40">
               <SettingRow icon={<Vibrate className="w-4 h-4" />} title="Feedback & Sounds" description="Choose how Attendenz responds after you save or mark attendance" tone="violet" onClick={() => setActiveSettingModal('feedback')} />
-              <SettingRow icon={<Bell className="w-4 h-4" />} title="System Notifications" description={systemNotificationsEnabled ? 'On for this device' : 'Off · Tap to configure'} tone="blue" onClick={() => setActiveSettingModal('notifications')} />
+              <SettingRow icon={<Bell className="w-4 h-4" />} title="System Notifications" description={systemNotificationsEnabled ? 'On for this device' : 'Off · Tap to Configure'} tone="blue" onClick={() => setActiveSettingModal('notifications')} />
               <SettingRow icon={<Info className="w-4 h-4" />} title="Theme" description={`${themePreference === 'system' ? 'System' : themePreference === 'dark' ? 'Dark' : 'Light'} appearance preference`} tone="primary" onClick={() => setActiveSettingModal('theme')} />
             </div>
             <div className="p-4 sm:p-5 space-y-4 bg-gradient-to-br from-primary/5 via-card to-card">
@@ -1104,7 +1069,7 @@ export default function Account() {
                           {activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}
                           {activeSettingModal === 'identity' && 'Profile, display name, and active curriculum'}
                           {activeSettingModal === 'feedback' && 'Choose what you hear after a confirmation'}
-                          {activeSettingModal === 'notifications' && 'Choose reminders, routine updates, and app update alerts'}
+                          {activeSettingModal === 'notifications' && 'Choose Reminders, Routine Updates, and App Update Alerts'}
                           {activeSettingModal === 'theme' && 'Choose how Attendenz follows your device'}
                         </p>
                       </div>
@@ -1125,7 +1090,7 @@ export default function Account() {
                           <div className="min-w-0 flex-1 text-left">
                             <p className="text-lg font-extrabold text-foreground truncate">{username}</p>
                             <p className="text-[11px] text-muted-foreground mt-1">Active: {getActiveCurriculumName()}</p>
-                            <button type="button" onClick={() => { setNameInput(username); setIsEditingName(true); }} className="action-button action-button--edit action-button--compact mt-3">Edit name</button>
+                            <button type="button" onClick={() => { setNameInput(username); setIsEditingName(true); }} className="action-button action-button--edit action-button--compact mt-3">Edit Name</button>
                           </div>
                         </div>
                         <p className="text-xs text-muted-foreground leading-relaxed">Your profile picture and display name are stored locally with the rest of your app data.</p>
@@ -1135,51 +1100,51 @@ export default function Account() {
                       <div className="space-y-3">
                         <div className={cn('rounded-2xl border border-violet-500/20 bg-violet-500/5 p-3.5', !vibrationSupported && 'opacity-55')}>
                           <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2 min-w-0"><Vibrate className="w-4 h-4 text-violet-500 shrink-0" /><span className="text-xs font-bold text-foreground">Vibration feedback</span></div>
-                            <SettingToggle checked={vibrationEnabled} onChange={updateVibrationEnabled} label="Vibration feedback" disabled={!vibrationSupported} />
+                            <div className="flex items-center gap-2 min-w-0"><Vibrate className="w-4 h-4 text-violet-500 shrink-0" /><span className="text-xs font-bold text-foreground">Vibration Feedback</span></div>
+                            <SettingToggle checked={vibrationEnabled} onChange={updateVibrationEnabled} label="Vibration Feedback" disabled={!vibrationSupported} />
                           </div>
                           {vibrationSupported ? (
-                            <label className="flex items-center justify-between gap-3 mt-3 text-xs font-semibold text-foreground"><span className="text-muted-foreground">Vibration strength</span><select value={vibrationStyle} onChange={e => updateVibrationStyle(e.target.value as VibrationStyle)} disabled={!vibrationEnabled} className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground disabled:opacity-50"><option value="subtle">Subtle</option><option value="standard">Standard</option><option value="strong">Strong</option></select></label>
+                            <label className="flex items-center justify-between gap-3 mt-3 text-xs font-semibold text-foreground"><span className="text-muted-foreground">Vibration Strength</span><select value={vibrationStyle} onChange={e => updateVibrationStyle(e.target.value as VibrationStyle)} disabled={!vibrationEnabled} className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground disabled:opacity-50"><option value="subtle">Subtle</option><option value="standard">Standard</option><option value="strong">Strong</option></select></label>
                           ) : (
                             <div className="mt-2 flex items-start gap-2 text-[10px] leading-relaxed text-muted-foreground"><Info className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span>Vibration isn’t available in this iPhone browser app. Nothing is wrong with your phone or attendance records. <button type="button" onClick={() => setShowVibrationInfo(v => !v)} className="font-bold text-primary underline underline-offset-2">{showVibrationInfo ? 'Hide details' : 'More info'}</button>{showVibrationInfo && <span className="block mt-1">iPhone Safari does not allow web apps to use the phone’s vibration control, so this option is unavailable here.</span>}</span></div>
                           )}
                         </div>
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5">
-                          <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 min-w-0"><Volume2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-xs font-bold text-foreground">Confirmation sound</span></div><SettingToggle checked={soundEnabled} onChange={updateSoundEnabled} label="Confirmation sound" /></div>
+                          <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 min-w-0"><Volume2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-xs font-bold text-foreground">Confirmation Sound</span></div><SettingToggle checked={soundEnabled} onChange={updateSoundEnabled} label="Confirmation Sound" /></div>
                           <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">Play a short confirmation sound after you save or mark attendance. Your iPhone’s Silent mode, volume, and sound settings still control what you hear.</p>
                           <label className="mt-3 flex items-center gap-3 text-xs font-semibold text-foreground"><span className="shrink-0 text-muted-foreground">Volume</span><input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={e => updateSoundVolume(Number(e.target.value))} disabled={!soundEnabled} className="min-w-0 flex-1 accent-blue-500 disabled:opacity-50" aria-label="Confirmation sound volume" /><output className="w-10 text-right text-xs font-bold text-blue-500">{Math.round(soundVolume * 100)}%</output></label>
                         </div>
-                        <button type="button" onClick={testConfirmationFeedback} className="action-button action-button--update w-full">Test feedback</button>
+                        <button type="button" onClick={testConfirmationFeedback} className="action-button action-button--update w-full">Test Feedback</button>
                       </div>
                     )}
                     {activeSettingModal === 'notifications' && (
                       <div className="space-y-3">
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5 space-y-3">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0"><p className="text-xs font-bold text-foreground">System Notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Reminders, routine changes, and app updates for this device</p></div>
-                            <SettingToggle checked={systemNotificationsEnabled} onChange={updateSystemNotificationsEnabled} label="System Notifications" disabled={notificationBusy} />
+                            <div className="min-w-0"><p className="text-xs font-bold text-foreground">System Notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Reminders, Routine Changes, and App Updates for this device</p></div>
+                            <SettingToggle checked={systemNotificationsEnabled && notificationPermission === 'granted'} onChange={updateSystemNotificationsEnabled} label="System Notifications" disabled={notificationBusy} />
                           </div>
                           {notificationPermission === 'denied' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">Notifications are blocked on this device. Re-enable them in your device settings, then return here.</p>}
                           {notificationPermission === 'unsupported' && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are not available on this device or browser.</p>}
                           {notificationPermission === 'insecure' && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are available only from the secure Attendenz app.</p>}
+                          {notificationPermission === 'default' && <p className="text-[10px] leading-relaxed text-muted-foreground">Allow Notifications to receive your selected Reminders and App Updates.</p>}
                           {notificationPermission !== 'granted' && notificationPermission !== 'denied' && notificationPermission !== 'unsupported' && notificationPermission !== 'insecure' && <button type="button" onClick={enableSystemNotifications} disabled={notificationBusy} className="action-button action-button--update action-button--compact w-full disabled:opacity-50">{notificationBusy ? 'Setting Up…' : 'Allow Notifications'}</button>}
-                          {notificationPermission === 'granted' && !systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are allowed, but reminders are currently off. Turn on the switch to receive them again.</p>}
-                          {notificationPermission === 'granted' && systemNotificationsEnabled && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">On for this device</span><button type="button" onClick={testNotificationFromSettings} className="action-button action-button--neutral action-button--compact">Local test</button></div>}
+                          {notificationPermission === 'granted' && !systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are allowed, but Reminders are currently off. Turn on the switch to receive them again.</p>}
+                          {notificationPermission === 'granted' && systemNotificationsEnabled && <p className="text-[10px] font-bold text-emerald-500">On for this device</p>}
                         </div>
-                        {systemNotificationsEnabled && notificationPermission === 'granted' && <>
+                        <>
                           <div className="space-y-2.5">
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Need Attention Summary</span><span className="block text-[10px] text-muted-foreground mt-0.5">One grouped alert for today’s warning Subjects.</span></span><SettingToggle checked={notificationPreferences.midnightNeedAttention} onChange={value => updateNotificationPreference('midnightNeedAttention', value)} label="Need Attention Summary" /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Last Planned Class Today</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Tell me at midnight when a Subject’s last planned Class is today.</span></span><SettingToggle checked={notificationPreferences.finalClassToday} onChange={value => updateNotificationPreference('finalClassToday', value)} label="Last Planned Class Today" /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">First Class of the Day</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Tell me the first Subject and start time scheduled today.</span></span><SettingToggle checked={notificationPreferences.firstClassToday} onChange={value => updateNotificationPreference('firstClassToday', value)} label="First Class of the Day" /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Before-Class Warning</span><span className="block text-[10px] text-muted-foreground mt-0.5">One alert {notificationPreferences.leadMinutes} minutes before each warning Subject.</span></span><SettingToggle checked={notificationPreferences.preClassNeedAttention} onChange={value => updateNotificationPreference('preClassNeedAttention', value)} label="Before-Class Warning" /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">All Scheduled Classes</span><span className="block text-[10px] text-muted-foreground mt-0.5">Also remind me about normal Classes in one grouped message.</span></span><SettingToggle checked={notificationPreferences.allScheduledDigest} onChange={value => updateNotificationPreference('allScheduledDigest', value)} label="All Scheduled Classes" /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Changes Made in Manage</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me after a successful routine change.</span></span><SettingToggle checked={notificationPreferences.addNewChanges} onChange={value => updateNotificationPreference('addNewChanges', value)} label="Changes Made in Manage" /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update Available</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me when a new app version is ready.</span></span><SettingToggle checked={notificationPreferences.updateAvailable} onChange={value => updateNotificationPreference('updateAvailable', value)} label="Update Available" /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update Completed</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me after the app update finishes.</span></span><SettingToggle checked={notificationPreferences.updateCompleted} onChange={value => updateNotificationPreference('updateCompleted', value)} label="Update Completed" /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="text-xs font-semibold text-foreground">Warning Reminder Timing</span><select value={notificationPreferences.leadMinutes} onChange={e => updateNotificationPreference('leadMinutes', Number(e.target.value) as NotificationLeadMinutes)} className="ml-auto shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground"><option value={15}>15 minutes</option><option value={30}>30 minutes</option><option value={60}>60 minutes</option></select></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Need Attention Summary</span><span className="block text-[10px] text-muted-foreground mt-0.5">One grouped alert for today’s warning Subjects.</span></span><SettingToggle checked={notificationPreferences.midnightNeedAttention} onChange={value => updateNotificationPreference('midnightNeedAttention', value)} label="Need Attention Summary" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Last Planned Class Today</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Tell me at midnight when a Subject’s last planned Class is today.</span></span><SettingToggle checked={notificationPreferences.finalClassToday} onChange={value => updateNotificationPreference('finalClassToday', value)} label="Last Planned Class Today" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">First Class of the Day</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Tell me the first Subject and start time scheduled today.</span></span><SettingToggle checked={notificationPreferences.firstClassToday} onChange={value => updateNotificationPreference('firstClassToday', value)} label="First Class of the Day" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Before-Class Warning</span><span className="block text-[10px] text-muted-foreground mt-0.5">One alert {notificationPreferences.leadMinutes} minutes before each warning Subject.</span></span><SettingToggle checked={notificationPreferences.preClassNeedAttention} onChange={value => updateNotificationPreference('preClassNeedAttention', value)} label="Before-Class Warning" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">All Scheduled Classes</span><span className="block text-[10px] text-muted-foreground mt-0.5">Also remind me about normal Classes in one grouped message.</span></span><SettingToggle checked={notificationPreferences.allScheduledDigest} onChange={value => updateNotificationPreference('allScheduledDigest', value)} label="All Scheduled Classes" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Changes Made in Manage</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me after a successful Routine change.</span></span><SettingToggle checked={notificationPreferences.addNewChanges} onChange={value => updateNotificationPreference('addNewChanges', value)} label="Changes Made in Manage" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update Available</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me when a new app version is ready.</span></span><SettingToggle checked={notificationPreferences.updateAvailable} onChange={value => updateNotificationPreference('updateAvailable', value)} label="Update Available" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update Completed</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me after the app update finishes.</span></span><SettingToggle checked={notificationPreferences.updateCompleted} onChange={value => updateNotificationPreference('updateCompleted', value)} label="Update Completed" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="text-xs font-semibold text-foreground">Warning Reminder Timing</span><select value={notificationPreferences.leadMinutes} onChange={e => updateNotificationPreference('leadMinutes', Number(e.target.value) as NotificationLeadMinutes)} className="ml-auto shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'}><option value={15}>15 Minutes</option><option value={30}>30 Minutes</option><option value={60}>60 Minutes</option></select></label>
                           </div>
-                          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2"><div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold text-foreground">Send Test Notification</p><p className="text-[10px] text-muted-foreground mt-0.5">Sends one Test Notification to this device.</p></div><button type="button" onClick={testRemoteNotificationFromSettings} disabled={remoteTestBusy || registrationDiagnostics?.subscription !== 'available'} className="action-button action-button--update action-button--compact shrink-0 disabled:opacity-50">{remoteTestBusy ? 'Sending…' : 'Send Test Notification'}</button></div><div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[10px]"><span className="text-muted-foreground">Permission</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.permission || notificationPermission}</span><span className="text-muted-foreground">Connection</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.subscription === 'available' ? 'Available' : 'Missing'}</span><span className="text-muted-foreground">Reminder Status</span><span className="text-right font-semibold text-foreground">{reminderSyncStatus.state === 'synced' ? `${reminderSyncStatus.occurrenceCount ?? 0} schedule items ready` : reminderSyncStatus.state === 'error' ? 'Could not connect' : reminderSyncStatus.state === 'offline' ? 'Waiting for internet' : reminderSyncStatus.state === 'waiting-for-permission' ? 'Waiting for connection' : 'Temporarily unavailable'}</span></div></div>
-                        </>}
+                        </>
                       </div>
                     )}
 
@@ -1194,7 +1159,7 @@ export default function Account() {
                               <button type="button" onClick={() => window.location.assign(ONE_SIGNAL_PRODUCTION_ORIGIN)} className="action-button action-button--update action-button--compact w-full">Open published app</button>
                             </div>
                           ) : notificationPermission !== 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-muted-foreground">{notificationPermission === 'denied' ? 'Blocked in iPhone settings' : notificationPermission === 'insecure' ? 'Secure connection needed' : notificationPermission === 'unsupported' ? 'Not available on this device' : 'Permission needed'}</span><button type="button" onClick={enableSystemNotifications} disabled={notificationBusy || notificationPermission === 'denied' || notificationPermission === 'unsupported' || notificationPermission === 'insecure'} className="action-button action-button--update action-button--compact disabled:opacity-50">{notificationBusy ? 'Checking…' : 'Allow Notifications'}</button></div>}
-                          {notificationPermission === 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">Permission granted</span><button type="button" onClick={testNotificationFromSettings} disabled={!systemNotificationsEnabled} className="action-button action-button--neutral action-button--compact disabled:opacity-50">Local test</button></div>}
+                          {notificationPermission === 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">Permission granted</span><button type="button" onClick={testNotificationFromSettings} disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} className="action-button action-button--neutral action-button--compact disabled:opacity-50">Local test</button></div>}
                           {oneSignalConfigured && notificationPermission === 'granted' && <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
                             <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold text-foreground">Send Test Notification</p><p className="text-[10px] text-muted-foreground mt-0.5">Checks whether this device can receive a Test Notification.</p></div><button type="button" onClick={testRemoteNotificationFromSettings} disabled={remoteTestBusy || !systemNotificationsEnabled || registrationDiagnostics?.subscription !== 'available'} className="action-button action-button--update action-button--compact shrink-0 disabled:opacity-50">{remoteTestBusy ? 'Sending…' : 'Send Test Notification'}</button></div>
                             <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[10px]"><span className="text-muted-foreground">Permission</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.permission || notificationPermission}</span><span className="text-muted-foreground">Connection</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.subscription === 'available' ? 'Available' : registrationDiagnostics?.subscription === 'missing' ? 'Missing' : 'Not available on preview'}</span><span className="text-muted-foreground">Worker registration</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.sync.state === 'synced' ? `${registrationDiagnostics.sync.occurrenceCount ?? 0} schedule items synced` : registrationDiagnostics?.sync.state === 'error' ? `Failed${registrationDiagnostics.sync.details ? ` (${registrationDiagnostics.sync.details})` : ''}` : registrationDiagnostics?.sync.state === 'waiting-for-permission' ? 'Waiting for subscription' : registrationDiagnostics?.sync.state === 'offline' ? 'Waiting for internet' : 'Not configured'}</span></div>
@@ -1280,20 +1245,20 @@ export default function Account() {
                       <div className="space-y-3">
                         {snapshotToRestore ? (
                           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left space-y-3">
-                            <h4 className="text-sm font-bold text-foreground">Restore this snapshot?</h4>
+                            <h4 className="text-sm font-bold text-foreground">Restore This Snapshot?</h4>
                             <p className="text-xs text-muted-foreground leading-relaxed">{snapshotToRestore.label} · {snapshotToRestore.timestamp}. Current data will be replaced by this backup point.</p>
                             <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToRestore(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={() => { const id = snapshotToRestore.id; setSnapshotToRestore(null); handleRestoreSnapshot(id); }} className="action-button action-button--transfer flex-1">Restore</button></div>
                           </div>
                         ) : snapshotToDelete ? (
                           <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-left space-y-3">
-                            <h4 className="text-sm font-bold text-foreground">Delete this snapshot?</h4>
+                            <h4 className="text-sm font-bold text-foreground">Delete This Snapshot?</h4>
                             <p className="text-xs text-muted-foreground leading-relaxed">This removes only the selected snapshot. Your active curriculum data is not changed.</p>
                             <div className="flex gap-2"><button type="button" onClick={() => setSnapshotToDelete(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteSnapshot} className="action-button action-button--danger flex-1">Delete</button></div>
                           </div>
                         ) : (
                         <>
                         <div className="flex items-center justify-between bg-muted/30 p-2.5 rounded-xl border border-border/50">
-                          <span className="text-xs font-medium text-foreground">Create instant state snapshot</span>
+                          <span className="text-xs font-medium text-foreground">Create Instant State Snapshot</span>
                           <button type="button" onClick={handleTakeSnapshot} className="action-button action-button--transfer">Take Snapshot</button>
                         </div>
                         <div className="grid grid-cols-2 gap-2 pt-1">
@@ -1322,7 +1287,7 @@ export default function Account() {
                                       <RefreshCw className="w-3 h-3" />
                                       Restore
                                     </button>
-                                    <button onClick={() => setSnapshotToDelete(s)} className="action-button action-button--danger action-button--compact" title="Delete snapshot">
+                                    <button onClick={() => setSnapshotToDelete(s)} className="action-button action-button--danger action-button--compact" title="Delete Snapshot">
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
@@ -1537,7 +1502,7 @@ export default function Account() {
         {showDeleteDataDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/65 backdrop-blur-md z-[150] flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
             <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} transition={{ type: 'spring', damping: 26, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-destructive/30 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
-              <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-destructive/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div><div><h3 className="text-base font-bold text-foreground">Delete All App Data?</h3><p className="text-[11px] text-destructive font-semibold">Irreversible action</p></div></div>
+              <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-destructive/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div><div><h3 className="text-base font-bold text-foreground">Delete All App Data?</h3><p className="text-[11px] text-destructive font-semibold">Irreversible Action</p></div></div>
               <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases attendance records, routines, snapshots, profile data, target settings, and setup state. Export a backup first if you are unsure.</p>
               <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
             </motion.div>
@@ -1558,7 +1523,7 @@ export default function Account() {
               </div>
               {confirmMarkComplete ? (
                 <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left space-y-3">
-                  <h4 className="text-sm font-bold text-foreground">Mark curriculum as Completed?</h4>
+                  <h4 className="text-sm font-bold text-foreground">Mark Curriculum as Completed?</h4>
                   <p className="text-xs text-muted-foreground leading-relaxed">An auto-snapshot of the current records will be saved first, so nothing is lost.</p>
                   <div className="flex gap-2 pt-1">
                     <button type="button" onClick={() => setConfirmMarkComplete(false)} className="action-button action-button--cancel flex-1">Cancel</button>
@@ -1568,7 +1533,7 @@ export default function Account() {
               ) : (
               <>
               <div className="space-y-2">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Active curricula</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Active Curricula</p>
                 {curricula.filter(c => c.status === 'active').sort((a, b) => Number(b.id === activeCurriculumId) - Number(a.id === activeCurriculumId)).map(c => (
                   <div key={c.id} className={cn('rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60')}>
                     <div className="flex items-center justify-between gap-2">
@@ -1586,9 +1551,9 @@ export default function Account() {
                   </div>
                 ))}
               </div>
-              {curricula.some(c => c.status === 'archived') && <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Archived curricula</p>{curricula.filter(c => c.status === 'archived').map(c => <div key={c.id} className="rounded-2xl border border-border/60 p-3 flex items-center gap-2"><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="flex-1 min-w-0 text-left cursor-pointer"><p className="text-sm font-bold text-foreground truncate">{c.name} <span className="text-[9px] font-extrabold uppercase tracking-wider text-primary">{c.kind === 'preset' ? 'Preset' : 'Custom'}</span></p><p className="text-[10px] text-muted-foreground">Reopen this curriculum with all its saved data</p></button><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="action-button action-button--edit shrink-0">Reopen</button></div>)}</div>}
+              {curricula.some(c => c.status === 'archived') && <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Archived Curricula</p>{curricula.filter(c => c.status === 'archived').map(c => <div key={c.id} className="rounded-2xl border border-border/60 p-3 flex items-center gap-2"><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="flex-1 min-w-0 text-left cursor-pointer"><p className="text-sm font-bold text-foreground truncate">{c.name} <span className="text-[9px] font-extrabold uppercase tracking-wider text-primary">{c.kind === 'preset' ? 'Preset' : 'Custom'}</span></p><p className="text-[10px] text-muted-foreground">Reopen this curriculum with all its saved data</p></button><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="action-button action-button--edit shrink-0">Reopen</button></div>)}</div>}
               <div className="border-t border-border/50 pt-4 space-y-2">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Create another Custom routine</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Create Another Custom Routine</p>
                 <p className="text-[10px] text-muted-foreground text-left leading-relaxed">Create a separate routine for another year or phase. It starts empty and will not change your other routines.</p>
                 <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. 2nd Year / Second Phase" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit shrink-0">Create Custom Routine</button></div>
               </div>

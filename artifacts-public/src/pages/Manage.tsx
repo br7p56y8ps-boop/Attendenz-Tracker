@@ -411,7 +411,7 @@ Rules:
 - Vacation periods exclude those dates from planned class counts.
 Return only the JSON object, no markdown.`;
 
-export default function AddNew() {
+export default function Manage() {
   const {
     subjectMode,
     customSubjects, customWards,
@@ -2064,7 +2064,7 @@ export default function AddNew() {
       mainClassName="h-[100dvh] min-h-0 overflow-hidden"
       contentClassName="h-full min-h-0"
       headerRight={
-        <button type="button" onClick={() => setMoreMenuOpen(true)} className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage actions">
+        <button type="button" onClick={() => setMoreMenuOpen(true)} className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
           <SendToBack className="w-4 h-4" />
         </button>
       }
@@ -2178,7 +2178,7 @@ export default function AddNew() {
                   );
                 })}
                 {allClinicalSubjects.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-5">No clinical subjects found. Add a rotation or SGT to get started.</p>
+                  <p className="text-xs text-muted-foreground text-center py-5">No Clinical Subjects found. Add a Rotation or SGT to get started.</p>
                 )}
               </div>
             </div>
@@ -2203,7 +2203,7 @@ export default function AddNew() {
               {/* Static type selector */}
               {section === 'academic' ? (
                 <div className="mt-3">
-                  <label className={labelCls}>Subject kind</label>
+                  <label className={labelCls}>Subject Kind</label>
                   <div className="flex gap-2">
                     {(['single', 'allied'] as const).map(t => (
                       <button key={t} type="button" onClick={() => setSubjectType(t)}
@@ -2244,14 +2244,14 @@ export default function AddNew() {
                   <p key={i} className="text-[11px] text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</p>
                 ))}
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                  <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="action-button action-button--warning flex-1">Add anyway</button>
+                  <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change Details</button>
+                  <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="action-button action-button--warning flex-1">Add Anyway</button>
                 </div>
               </div>
             ) : section === 'academic' ? (
               isAllied ? (
                 <div className="flex gap-2">
-                  <button type="button" onClick={addStagedChild} className={cn(btnGhost, 'flex-1 flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add child</button>
+                  <button type="button" onClick={addStagedChild} className={cn(btnGhost, 'flex-1 flex items-center justify-center gap-1.5')}><Plus className="w-3.5 h-3.5" /> Add Child</button>
                   <button type="button" onClick={saveSubject} className={cn(btnSave, 'flex-1')}>Save</button>
                 </div>
               ) : (
@@ -2276,10 +2276,10 @@ export default function AddNew() {
                     <label className={labelCls}>Parent</label>
                     <p className={descCls}>Select an existing parent or create a new one.</p>
                     <select value={parentChoice} onChange={e => setParentChoice(e.target.value)} className={inputCls}>
-                      <option value="">Select parent…</option>
+                      <option value="">Select Parent…</option>
                       <optgroup label="Parents">{academicParentOptions.map(p => <option key={p} value={p}>{p}</option>)}</optgroup>
                       <optgroup label="Single Subjects (can become parent)">{groupedParents.singles.map(p => <option key={p} value={p}>{p}</option>)}</optgroup>
-                      <option value={CREATE_NEW}>+ Add new parent…</option>
+                      <option value={CREATE_NEW}>+ Add New Parent…</option>
                     </select>
                     {parentChoice === CREATE_NEW && (
                       <input value={newParentName} onChange={e => setNewParentName(e.target.value)} placeholder="New parent name" inputMode="text" className={cn(inputCls, 'mt-2')} />
@@ -2293,7 +2293,7 @@ export default function AddNew() {
                 )}
 
                 <div>
-                  <label className={labelCls}>{isAllied ? 'Child subject name' : 'Subject name'}</label>
+                  <label className={labelCls}>{isAllied ? 'Child Subject Name' : 'Subject Name'}</label>
                   <p className={descCls}>Enter a clear subject name.</p>
                   <input value={subjectName} onChange={e => setSubjectName(e.target.value)} placeholder="e.g. Cardiology" inputMode="text" className={inputCls} />
                 </div>
@@ -2303,25 +2303,25 @@ export default function AddNew() {
                     <label className={labelCls}>Day & Time</label>
                     {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow)}
                     <button type="button" onClick={addSubjectRow} disabled={subjectRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                      <Plus className="w-3.5 h-3.5" /> Add another day & time
+                      <Plus className="w-3.5 h-3.5" /> Add Another Day & Time
                     </button>
                   </div>
                   <div>
-                    <label className={labelCls}>Planned classes</label>
+                    <label className={labelCls}>Planned Classes</label>
                     <p className={descCls}>Total classes planned for this subject.</p>
                     <input type="number" inputMode="numeric" min={0} value={planned} onChange={e => setPlanned(e.target.value)} placeholder="e.g. 40" className={inputCls} />
                   </div>
 
                 {isAllied && parentIsSGT && (
                   <div className="grid grid-cols-2 gap-2.5">
-                    <div><label className={labelCls}>Placement start</label><p className={descCls}>Placement period start date.</p><input type="date" value={childStart} onChange={e => setChildStart(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
-                    <div><label className={labelCls}>Placement end</label><p className={descCls}>Placement period end date.</p><input type="date" value={childEnd} onChange={e => setChildEnd(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
+                    <div><label className={labelCls}>Placement Start</label><p className={descCls}>Placement period start date.</p><input type="date" value={childStart} onChange={e => setChildStart(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
+                    <div><label className={labelCls}>Placement End</label><p className={descCls}>Placement period end date.</p><input type="date" value={childEnd} onChange={e => setChildEnd(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
                   </div>
                 )}
 
                 {isAllied && stagedChildren.length > 0 && (
                   <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Children ready to save</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Children Ready to Save</p>
                     {stagedChildren.map((c, i) => (
                       <div key={`${c.name}-${i}`} className="flex items-center justify-between bg-muted/30 border border-border/50 rounded-xl px-3 py-2">
                         <div className="min-w-0">
@@ -2330,7 +2330,7 @@ export default function AddNew() {
                             {c.rows.map(r => `${r.day} ${canonicalTimeRange(r.startTime, r.endTime)}`).join(' · ')} · {c.plannedClasses} planned
                           </p>
                         </div>
-                        <button type="button" onClick={() => setStagedChildren(prev => prev.filter((_, j) => j !== i))} className="action-button action-button--danger action-button--icon" aria-label="Delete item"><Trash2 className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => setStagedChildren(prev => prev.filter((_, j) => j !== i))} className="action-button action-button--danger action-button--icon" aria-label="Delete Item"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     ))}
                   </div>
@@ -2342,13 +2342,13 @@ export default function AddNew() {
                 {clinicalParentChoice === 'rotation' ? (
                   <>
                     <div>
-                      <label className={labelCls}>Ward name</label>
+                      <label className={labelCls}>Ward Name</label>
                       <p className={descCls}>Name of the clinical rotation ward.</p>
                       <input value={wardName} onChange={e => setWardName(e.target.value)} placeholder="e.g. Internal Medicine" inputMode="text" className={inputCls} />
                     </div>
                     <div className="grid grid-cols-2 gap-2.5">
-                      <div><label className={labelCls}>Start date</label><p className={descCls}>Rotation start date.</p><input type="date" value={wardStart} onChange={e => setWardStart(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
-                      <div><label className={labelCls}>End date</label><p className={descCls}>Rotation end date.</p><input type="date" value={wardEnd} onChange={e => setWardEnd(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
+                      <div><label className={labelCls}>Start Date</label><p className={descCls}>Rotation start date.</p><input type="date" value={wardStart} onChange={e => setWardStart(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
+                      <div><label className={labelCls}>End Date</label><p className={descCls}>Rotation end date.</p><input type="date" value={wardEnd} onChange={e => setWardEnd(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
                     </div>
                     <div className="grid grid-cols-2 gap-2.5">
                       <div className="space-y-1.5"><label className={labelCls}>Morning</label><p className={descCls}>Morning ward session time.</p><TimeField value={mornStart} onChange={setMornStart} ariaLabel="morning start" /><TimeField value={mornEnd} onChange={setMornEnd} ariaLabel="morning end" /></div>
@@ -2357,7 +2357,7 @@ export default function AddNew() {
                     <VacationEditor vacations={wardVacations} onChange={setWardVacations} />
                     {wardStart && wardEnd && wardEnd >= wardStart && (
                       <div className="bg-muted/30 p-2.5 rounded-xl flex justify-between items-center">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned (auto)</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned (Auto)</span>
                         <span className="text-xs font-extrabold text-foreground">
                           {subjectMode === 'preloaded'
                             ? getPresetWardTotalPlanned(wardName)
@@ -2376,7 +2376,7 @@ export default function AddNew() {
                         setSgtClinicalSubject(val);
                         if (val && val !== CREATE_NEW) setSgtName(val); else setSgtName('');
                       }} className={inputCls}>
-                        <option value="">Select clinical subject…</option>
+                        <option value="">Select Clinical Subject…</option>
                         {clinicalSubjectOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                       </select>
                     </div>
@@ -2386,20 +2386,20 @@ export default function AddNew() {
                       <input value={sgtName} onChange={e => setSgtName(e.target.value)} placeholder="e.g. Surgery" inputMode="text" className={inputCls} />
                     </div>
                     <div className="grid grid-cols-2 gap-2.5">
-                      <div><label className={labelCls}>Placement start</label><p className={descCls}>SGT placement start date.</p><input type="date" value={sgtStartDate} onChange={e => setSgtStartDate(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
-                      <div><label className={labelCls}>Placement end</label><p className={descCls}>SGT placement end date.</p><input type="date" value={sgtEndDate} onChange={e => setSgtEndDate(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
+                      <div><label className={labelCls}>Placement Start</label><p className={descCls}>SGT placement start date.</p><input type="date" value={sgtStartDate} onChange={e => setSgtStartDate(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
+                      <div><label className={labelCls}>Placement End</label><p className={descCls}>SGT placement end date.</p><input type="date" value={sgtEndDate} onChange={e => setSgtEndDate(e.target.value)} className={cn(inputCls, 'text-center')} /></div>
                     </div>
                     <div>
                       <label className={labelCls}>Schedules (Day + Time)</label>
                       <p className={descCls}>Add weekly SGT class days and times.</p>
                       {renderRowList(sgtRows, updateSgtRow, removeSgtRow)}
                       <button type="button" onClick={addSgtRow} disabled={sgtRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                        <Plus className="w-3.5 h-3.5" /> Add another day & time
+                        <Plus className="w-3.5 h-3.5" /> Add Another Day & Time
                       </button>
                     </div>
                     <VacationEditor vacations={sgtVacations} onChange={setSgtVacations} />
                     <div>
-                      <label className={labelCls}>Planned classes (auto-calculated)</label>
+                      <label className={labelCls}>Planned Classes (Auto-Calculated)</label>
                       <div className="text-sm font-bold text-primary bg-muted/30 p-2 rounded-lg border border-border/50">
                         {computedPlanned} classes from schedules
                       </div>
@@ -2654,7 +2654,7 @@ export default function AddNew() {
         <OverlayModal open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} maxW="max-w-md" header={
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-foreground">More</h3>
-            <button type="button" onClick={() => setMoreMenuOpen(false)} className="action-button action-button--close action-button--icon" aria-label="Close More menu"><X className="w-4 h-4" /></button>
+            <button type="button" onClick={() => setMoreMenuOpen(false)} className="action-button action-button--close action-button--icon" aria-label="Close More Menu"><X className="w-4 h-4" /></button>
           </div>
         }>
           <div className="p-4 sm:p-5 space-y-2">
@@ -2690,7 +2690,7 @@ export default function AddNew() {
             </div>
             <div className="space-y-2">
               {historyEntries.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-5">No manage actions yet.</p>
+                <p className="text-xs text-muted-foreground text-center py-5">No Manage actions yet.</p>
               ) : (
                 historyEntries.map(entry => (
                   <div key={entry.id} className="bg-background border border-border/60 rounded-xl p-2.5" aria-label={`${entry.type} · ${getHistoryCategory(entry)}`}>
@@ -2706,7 +2706,7 @@ export default function AddNew() {
                           onClick={(event) => { event.stopPropagation(); setHistoryClearEntry(entry); }}
                           className="action-button action-button--close px-2 py-1 text-[10px]"
                           aria-label={`Clear ${entry.type} history entry`}
-                          title="Clear this history entry only"
+                          title="Clear This History Entry Only"
                         >
                           Clear
                         </button>
@@ -2727,7 +2727,7 @@ export default function AddNew() {
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-muted-foreground" /></div>
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">Clear this History entry?</h3>
+                  <h3 className="text-sm font-bold text-foreground">Clear This History Entry?</h3>
                   <p className="text-[10px] text-muted-foreground">Only this displayed history record will be removed.</p>
                 </div>
               </div>
@@ -2758,7 +2758,7 @@ export default function AddNew() {
           footer={
             <div className="flex gap-2 justify-end">
               <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={btnCancel}>Cancel</button>
-              <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save changes</button>
+              <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save Changes</button>
             </div>
           }
         >
@@ -2788,8 +2788,8 @@ export default function AddNew() {
               ) : null}
               {editSubject.subjectType === 'allied' && PRESET_PARENTS.includes(editSubject.parentName) && (
                 <div className="grid grid-cols-2 gap-2.5">
-                  <div><label className={labelCls}>Placement start</label><input type="date" value={editSubject.startDate || ''} onChange={e => setEditSubject({ ...editSubject, startDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
-                  <div><label className={labelCls}>Placement end</label><input type="date" value={editSubject.endDate || ''} onChange={e => setEditSubject({ ...editSubject, endDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
+                  <div><label className={labelCls}>Placement Start</label><input type="date" value={editSubject.startDate || ''} onChange={e => setEditSubject({ ...editSubject, startDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
+                  <div><label className={labelCls}>Placement End</label><input type="date" value={editSubject.endDate || ''} onChange={e => setEditSubject({ ...editSubject, endDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
                 </div>
               )}
               {editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' && (
@@ -2808,11 +2808,11 @@ export default function AddNew() {
                       (id) => setEditSubject({ ...editSubject, rows: editSubject.rows.filter(r => r.id !== id) })
                     )}
                     <button type="button" onClick={() => setEditSubject({ ...editSubject, rows: [...editSubject.rows, newRow(editSubject.rows.map(r => r.day))] })} disabled={editSubject.rows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
-                      <Plus className="w-3.5 h-3.5" /> Add another day & time
+                      <Plus className="w-3.5 h-3.5" /> Add Another Day & Time
                     </button>
                   </div>
                   <div className="bg-muted/30 p-2.5 rounded-xl flex justify-between items-center">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned (read-only)</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned (Read-Only)</span>
                     <span className="text-xs font-extrabold text-foreground">{editSubject.plannedClasses}</span>
                   </div>
                 </>
@@ -2835,7 +2835,7 @@ export default function AddNew() {
           footer={
             <div className="flex gap-2 justify-end">
               <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className={btnCancel}>Cancel</button>
-              <button type="button" onClick={saveEditWard} className={btnPrimary}>Save changes</button>
+              <button type="button" onClick={saveEditWard} className={btnPrimary}>Save Changes</button>
             </div>
           }
         >
@@ -2847,8 +2847,8 @@ export default function AddNew() {
                 <p className="text-xs font-bold text-foreground">{editWard.name}</p>
               </div>
               <div className="grid grid-cols-2 gap-2.5">
-                <div><label className={labelCls}>Start date</label><input type="date" value={editWard.startDate} onChange={e => setEditWard({ ...editWard, startDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
-                <div><label className={labelCls}>End date</label><input type="date" value={editWard.endDate} onChange={e => setEditWard({ ...editWard, endDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
+                <div><label className={labelCls}>Start Date</label><input type="date" value={editWard.startDate} onChange={e => setEditWard({ ...editWard, startDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
+                <div><label className={labelCls}>End Date</label><input type="date" value={editWard.endDate} onChange={e => setEditWard({ ...editWard, endDate: e.target.value })} className={cn(inputCls, 'text-center')} /></div>
               </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="space-y-1.5"><label className={labelCls}>Morning</label><TimeField value={editWard.mornStart} onChange={v => setEditWard({ ...editWard, mornStart: v })} ariaLabel="morning start" /><TimeField value={editWard.mornEnd} onChange={v => setEditWard({ ...editWard, mornEnd: v })} ariaLabel="morning end" /></div>
@@ -2882,7 +2882,7 @@ export default function AddNew() {
               <div className="grid grid-cols-3 gap-2">
                 <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full')}>Remove Slot</button>
                 <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnCancel, 'w-full')}>Cancel</button>
-                <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className={cn(btnPrimary, 'w-full')}>Merge anyway</button>
+                <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className={cn(btnPrimary, 'w-full')}>Merge Anyway</button>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
@@ -3003,7 +3003,7 @@ export default function AddNew() {
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0"><AlertTriangle className="w-5 h-5 text-amber-500" /></div>
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">Remove from slot?</h3>
+                  <h3 className="text-sm font-bold text-foreground">Remove from Slot?</h3>
                   <p className="text-xs text-muted-foreground">"{slotRemove.subject}" will be removed from the {DAY_ABBRS[slotRemove.day]} {slotRemove.time} slot.</p>
                 </div>
               </div>
@@ -3021,7 +3021,7 @@ export default function AddNew() {
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-rose-500" /></div>
               <div>
-                <h3 className="text-sm font-bold text-foreground">Remove this slot?</h3>
+                <h3 className="text-sm font-bold text-foreground">Remove This Slot?</h3>
                 <p className="text-xs text-muted-foreground">All subjects in this time slot will be removed.</p>
               </div>
             </div>
@@ -3069,8 +3069,8 @@ export default function AddNew() {
                 {conflictSheet.messages.map((m, i) => <li key={i} className="text-xs text-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{m}</li>)}
               </ul>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change details</button>
-                <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="action-button action-button--warning flex-1">Add anyway</button>
+                <button type="button" onClick={() => setConflictSheet(null)} className={cn(btnGhost, 'flex-1')}>Change Details</button>
+                <button type="button" onClick={() => { const fn = conflictSheet.onConfirm; setConflictSheet(null); fn(); }} className="action-button action-button--warning flex-1">Add Anyway</button>
               </div>
             </div>
           )}

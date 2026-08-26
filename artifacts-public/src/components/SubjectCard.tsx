@@ -280,7 +280,7 @@ export const SubjectCard = ({
               <div className="text-muted-foreground leading-relaxed text-[11px]">
                 {activeStatInfo === 'remaining' && (
                   <>
-                    <p className="mb-1 text-foreground font-medium">Remaining scheduled classes yet to be conducted.</p>
+                    <p className="mb-1 text-foreground font-medium">Remaining scheduled Classes yet to be conducted.</p>
                     <div className="bg-background/80 p-2 rounded-lg text-[10px] font-mono text-muted-foreground border border-border/50">
                       Formula: Planned − (Attended + Missed)
                     </div>
@@ -292,7 +292,7 @@ export const SubjectCard = ({
                 {activeStatInfo === 'canMiss' && (
                   <>
                     <p className="text-foreground font-medium mb-1">Maximum additional remaining classes that can still be missed while achieving {preferredPercentage}%.</p>
-                    <p className="text-[10px] text-muted-foreground italic">Already conducted classes are not included.</p>
+                    <p className="text-[10px] text-muted-foreground italic">Already conducted Classes are not included.</p>
                   </>
                 )}
                 {activeStatInfo === 'required' && (

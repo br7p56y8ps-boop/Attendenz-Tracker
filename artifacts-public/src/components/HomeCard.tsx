@@ -242,7 +242,7 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
 
   const renderTodayAdvisory = () => {
     if (isFinished) return <span className={cn('font-bold', getPercentageColor(percentage))}>{getFinishedMessage()}</span>;
-    if (total === 0) return <span>No classes conducted yet</span>;
+    if (total === 0) return <span>No Classes conducted yet</span>;
     if (percentage < preferredPercentage) {
       if (remainingClasses !== undefined && needToAttend > remainingClasses) {
         const maxPct = Math.round(((attended + remainingClasses) / (total + remainingClasses)) * 100);

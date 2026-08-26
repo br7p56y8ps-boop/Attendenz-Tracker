@@ -108,7 +108,7 @@ importers:
         specifier: ^7.1.0
         version: 7.4.1
 
-  artifacts/attendance-tracker:
+  artifacts-public:
     dependencies:
       jspdf:
         specifier: ^4.2.1
