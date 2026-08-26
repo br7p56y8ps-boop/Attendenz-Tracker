@@ -3,7 +3,7 @@ minimumReleaseAge: 1440
 minimumReleaseAgeExclude: []
 
 packages:
-  - artifacts-public
+  - artifacts
 
 catalog:
   '@tailwindcss/vite': ^4.1.14
