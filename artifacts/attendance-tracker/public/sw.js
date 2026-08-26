@@ -16,6 +16,33 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(self.clients.claim()); // Take control immediately to replace broken worker
 });
 
+self.addEventListener('push', (e) => {
+  let payload = {};
+  try { payload = e.data ? e.data.json() : {}; } catch {}
+  const title = typeof payload.title === 'string' ? payload.title : 'Attendenz';
+  const options = {
+    body: typeof payload.body === 'string' ? payload.body : 'You have an Attendenz reminder.',
+    tag: typeof payload.tag === 'string' ? payload.tag : 'attendenz-reminder',
+    data: { url: typeof payload.url === 'string' ? payload.url : '/' },
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const targetUrl = new URL(e.notification.data?.url || '/', self.location.origin).href;
+  e.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const existing = clients.find((client) => client.url === targetUrl || client.url.startsWith(self.location.origin));
+    if (existing && 'focus' in existing) {
+      await existing.focus();
+      if ('navigate' in existing && existing.url !== targetUrl) await existing.navigate(targetUrl);
+      return;
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
+  })());
+});
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;

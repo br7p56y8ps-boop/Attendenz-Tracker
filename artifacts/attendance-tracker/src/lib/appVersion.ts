@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.6.2";
+export const APP_VERSION = "1.6.3";
 export const LATEST_VERSION = APP_VERSION;
 
 export interface WhatsNewItem {
@@ -9,10 +9,10 @@ export interface WhatsNewItem {
 
 export const WHATS_NEW_UPGRADES: WhatsNewItem[] = [
   {
-    title: "System Notifications are coming soon",
-    summary: "Notification delivery is currently under development.",
+    title: "System Notifications",
+    summary: "Choose reminders, routine updates, and app update alerts.",
     details:
-      "System notification delivery and reminder controls are being developed for a future update. Attendenz continues to work normally for local attendance, schedules, curriculum workspaces, backups, and all other existing features.",
+      "System Notifications can keep you informed about Attention needed today, your Last Planned Class, your First Class of the Day, Before-Class warnings, successful changes made in Manage, and new app updates. You can turn the main setting off and on again at any time without changing your attendance records or other app data.",
   },
   {
     title: "Feedback & Sounds",
@@ -31,7 +31,7 @@ export const WHATS_NEW_UPGRADES: WhatsNewItem[] = [
     summary:
       "Start with the built-in 5th Year / Final Phase reference routine.",
     details:
-      "The included academic, clinical, ward, and SGT structure is clearly identified as a reference routine. Your college curriculum may follow a different plan, so you can edit this routine or choose a Custom routine for another year or phase.",
+      "The included Academic, Clinical, Ward, and SGT structure is clearly identified as a reference routine. Your college curriculum may follow a different plan, so you can edit this routine or choose a Custom routine for another year or phase.",
   },
   {
     title: "Named Custom Routines",
@@ -125,12 +125,12 @@ export const FEATURES_UPDATED = [
   {
     emoji: "🛡️",
     title: "Offline Safety and Settings",
-    desc: "Protected local storage, safer recovery flows, system-aware themes, Feedback & Sounds controls, and System Notifications in development.",
+    desc: "Protected local storage, safer recovery flows, system-aware themes, Feedback & Sounds controls, and reversible System Notifications.",
   },
 ];
 
 export const RELEASE_NOTES = {
   version: APP_VERSION,
   summary:
-    "Release v1.6.2 keeps System Notifications clearly marked as under development while preserving the complete local attendance experience, Manage history controls, independent curriculum workspaces, safer offline protection, and clearer mobile navigation.",
+    "Release v1.6.3 adds reversible System Notifications for reminders, successful Manage changes, and app updates while preserving the complete local attendance experience, Manage history controls, independent curriculum workspaces, safer offline protection, and clearer mobile navigation.",
 };

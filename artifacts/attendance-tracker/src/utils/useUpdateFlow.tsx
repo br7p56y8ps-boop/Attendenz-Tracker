@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { createSnapshot, getSnapshots } from '@/utils/snapshotUtils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { storageRemoveItem, storageSetItem } from '@/lib/idb';
+import { notifyUpdateAvailable } from '@/lib/webPush';
 
 function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -38,6 +39,15 @@ export function useUpdateFlow() {
     };
   }, []);
   const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0 || (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
+
+  useEffect(() => {
+    if (!isUpdateAvailable || compareVersions(serverVersion, installedVersion) <= 0) return;
+    const sentKey = `att_update_available_notified_${serverVersion}`;
+    if (localStorage.getItem(sentKey) === 'true') return;
+    void notifyUpdateAvailable(serverVersion).then(sent => {
+      if (sent) localStorage.setItem(sentKey, 'true');
+    });
+  }, [isUpdateAvailable, serverVersion, installedVersion]);
 
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   useEffect(() => {

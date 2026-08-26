@@ -23,6 +23,7 @@ import { triggerConfirmationFeedback } from '@/lib/feedback';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { storageSetItem } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
+import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import {
   Plus, Trash2, X, AlertTriangle,
@@ -783,6 +784,7 @@ export default function AddNew() {
       }
     }
     showToast('Slot added.');
+    void notifyManageChange(`${addSlotSubject} was added to your routine.`);
     setAddSuccess(true);
   };
 
@@ -855,6 +857,7 @@ export default function AddNew() {
       if (academicItems.length > 0) recordHistory('Added Subject', { names: academicItems.map((i: any) => i.name) });
       setSubjectName(''); setPlanned(''); setSubjectRows([newRow([])]); setStagedChildren([]); setNewParentName(''); setChildStart(''); setChildEnd('');
       setFormError(null); showToast(items.length > 1 ? `${items.length} items added.` : 'Added successfully.');
+      void notifyManageChange(items.length > 1 ? 'Your routine was updated successfully.' : `${items[0]?.name || 'Subject'} was added to your routine.`);
       setConflictSheet(null);
       setAddSuccess(true);
     } catch { showToast('Failed to save — please try again.', 'err'); setFormError('Failed to save.'); }
@@ -931,6 +934,7 @@ export default function AddNew() {
       recordHistory('Added Rotation', { name, start, end });
       setWardName(''); setWardStart(''); setWardEnd(''); setWardVacations([]);
       setFormError(null); showToast('Rotation added.');
+      void notifyManageChange(`${name} was added to your rotation schedule.`);
       setAddSuccess(true);
     } catch { showToast('Failed to save rotation — please try again.', 'err'); setFormError('Failed to save rotation.'); }
   };
@@ -1006,6 +1010,7 @@ export default function AddNew() {
         recordHistory('Added SGT', { name: finalSgtName, clinicalSubject: clinicalSubjectName, planned: pc });
         setSgtClinicalSubject(''); setSgtName(''); setSgtStartDate(''); setSgtEndDate(''); setSgtRows([newRow([])]); setSgtVacations([]);
         setFormError(null); showToast(`SGT added with ${pc} planned classes.`);
+        void notifyManageChange(`${finalSgtName} was added to your routine.`);
         setAddSuccess(true);
       };
 
@@ -1110,11 +1115,13 @@ export default function AddNew() {
       setEditSlot(null);
       setMoveCompleted(true);
       showToast(`Moved ${namesToMove.length} subject(s).`);
+      void notifyManageChange(`${namesToMove.join(', ')} was moved in your routine.`);
       setAddSuccess(true);
     } else {
       setEditSlot(prev => prev ? { ...prev, subjects: remaining.map(s => ({ ...s, id: genId('sel') })), targetDay } : null);
       setSelectedSubjects([]); setShowMoveForm(false); setSlotConflict(null);
       showToast(`Moved ${namesToMove.length} subject(s).`);
+      void notifyManageChange(`${namesToMove.join(', ')} was moved in your routine.`);
       setAddSuccess(true);
     }
     recordHistory('Moved Subjects', { names: namesToMove, fromDay: currentDay, fromTime: sourceSlot.time, toDay: targetDay, toTime: time });
@@ -1179,6 +1186,7 @@ export default function AddNew() {
         }
         recordHistory('Removed from Slot', { subject: slotRemove.subject, day: slotRemove.day, time: slotRemove.time });
         showToast(`Removed "${slotRemove.subject}" from slot.`);
+        void notifyManageChange(`${slotRemove.subject} was removed from your routine.`);
       }
     } catch { showToast('Failed to remove subject.', 'err'); }
     setSlotRemove(null); setSlotRemoveConfirm(false);
@@ -1209,6 +1217,7 @@ export default function AddNew() {
         }
         recordHistory('Removed from Slot', { subject: slot.subjects.join(', '), day: editSlot.day, time: slot.time });
         showToast('Slot removed.');
+        void notifyManageChange('A schedule slot was removed from your routine.');
         setAddSuccess(true);
       }
     } catch { showToast('Failed to remove slot.', 'err'); }
@@ -1241,6 +1250,7 @@ export default function AddNew() {
             for (const n of namesToPurge) removeSubjectData(n);
           }
             setDeleteSheet(null); showToast(`Deleted "${item.name}".`);
+            void notifyManageChange(`${item.name} was removed from your routine.`);
         } catch { showToast('Delete failed — please try again.', 'err'); }
       }
     });
@@ -1258,6 +1268,7 @@ export default function AddNew() {
             removePresetWardEntry(idx);
             if (presetWardSchedule.filter(x => x.ward === e.ward).length <= 1) removeWardData(e.ward);
             setDeleteSheet(null); showToast(`Deleted "${e.ward}".`);
+            void notifyManageChange(`${e.ward} was removed from your routine.`);
           } catch { showToast('Delete failed — please try again.', 'err'); }
         }
       });
@@ -1272,6 +1283,7 @@ export default function AddNew() {
             removeCustomWard(w.id);
             removeWardData(w.name);
             setDeleteSheet(null); showToast(`Deleted "${w.name}".`);
+            void notifyManageChange(`${w.name} was removed from your routine.`);
           } catch { showToast('Delete failed — please try again.', 'err'); }
         }
       });
@@ -1404,6 +1416,7 @@ export default function AddNew() {
         else updateCustomSubject(editSubject.id, patch);
       }
       setEditError(null); showToast('Changes saved.');
+      void notifyManageChange(`${editSubject.name} was updated in your routine.`);
       window.setTimeout(() => setEditSubject(null), 900);
     } catch { showToast('Failed to save changes — please try again.', 'err'); setEditError('Failed to save changes.'); }
   };
@@ -1450,6 +1463,7 @@ export default function AddNew() {
         });
       }
       setEditError(null); showToast('Rotation updated.');
+      void notifyManageChange(`${editWard.name} was updated in your routine.`);
       window.setTimeout(() => setEditWard(null), 900);
     } catch { showToast('Failed to save rotation — please try again.', 'err'); setEditError('Failed to save rotation.'); }
   };
@@ -1498,7 +1512,8 @@ export default function AddNew() {
           recordHistory('Edited Planned', { name: subj.name, planned: value });
         }
       }
-      showToast('Planned classes updated.', 'ok');
+      showToast('Planned Classes updated.', 'ok');
+      void notifyManageChange(`${item.name} planned Classes were updated.`);
     } catch {
       showToast('Failed to update planned classes.', 'err');
     }
@@ -1818,6 +1833,7 @@ export default function AddNew() {
       if (total === 0) showToast('Nothing new to merge (duplicates or preset-only data). Use Replace to adopt the bundle.', 'info');
       else {
         showToast(`Merged ${items.length} subject(s), ${wardsAdded + rotationsAdded} rotation(s).`);
+        void notifyManageChange('Your routine was updated successfully.');
       }
     } catch { showToast('Merge failed — please try again.', 'err'); }
   };
@@ -1943,6 +1959,7 @@ export default function AddNew() {
     setPreview(null);
     setMoreMenuOpen(true);
     showToast('Routine replaced — reloading…');
+    void notifyManageChange('Your routine was updated successfully.');
     setLocation('/');
     setTimeout(() => window.location.reload(), 900);
   };
@@ -2044,6 +2061,8 @@ export default function AddNew() {
 
   return (
     <Layout
+      mainClassName="h-[100dvh] min-h-0 overflow-hidden"
+      contentClassName="h-full min-h-0"
       headerRight={
         <button type="button" onClick={() => setMoreMenuOpen(true)} className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage actions">
           <SendToBack className="w-4 h-4" />
@@ -2051,18 +2070,18 @@ export default function AddNew() {
       }
       headerBottom={manageSectionSwitcher}
     >
-      <div className="space-y-2 pb-24 scroll-reachability">
+      <div className="flex h-full min-h-0 flex-col gap-2 scroll-reachability">
         {manageDaySelector && (
-          <div className="sticky top-[calc(var(--app-header-height)+0.5rem)] z-30 mt-2 mb-2 rounded-3xl border border-border/80 bg-background px-2 py-2 shadow-md">
+          <div className="shrink-0 rounded-3xl border border-border/80 bg-background px-2 py-2 shadow-md">
             {manageDaySelector}
           </div>
         )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-1 bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 soft-entry-boundary relative flex flex-col overflow-clip',
+            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 soft-entry-boundary relative flex flex-col overflow-hidden',
           )}>
           {section === 'academic' && (
-            <div className="flex flex-col">
+            <div className="flex min-h-0 flex-1 flex-col">
               <div className="shrink-0 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-card border-b border-border/60">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold uppercase tracking-wide text-primary">{DAY_ABBRS[selDay]}'s Academic Schedule</h3>
@@ -2070,7 +2089,7 @@ export default function AddNew() {
                 </div>
               </div>
 
-              <div className="relative z-0 space-y-1.5 pr-1 pb-1 bg-card">
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-1.5 pr-1 pb-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
               {groupedAcademicSlots.length === 0 ? (
                 <div className="flex items-center justify-center min-h-[160px] bg-background/40 border border-dashed border-border rounded-xl">
                   <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
@@ -2136,8 +2155,8 @@ export default function AddNew() {
           )}
 
           {section === 'clinical' && (
-            <div className="flex flex-col">
-              <div className="relative z-0 space-y-2 pr-1 pb-2 bg-card">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 pr-1 pb-2 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
                 {allClinicalSubjects.map(name => {
                   const group = { rotation: getRotationForSubject(name), sgt: getSGTForSubject(name) };
                   return (

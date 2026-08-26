@@ -9,6 +9,9 @@ import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
 import { restoreSnapshot } from '@/utils/snapshotUtils';
 import { useUpdateFlow, UpdateModal, UpdateOverlay } from '@/utils/useUpdateFlow';
+import { ReminderSyncProvider } from '@/lib/webPushSync';
+import { notifyUpdateCompleted } from '@/lib/webPush';
+import { APP_VERSION } from '@/lib/appVersion';
 const WelcomeVideoScreen = lazy(() => import('@/components/video/WelcomeVideoScreen'));
 const Home = lazy(() => import('@/pages/Home'));
 const Subjects = lazy(() => import('@/pages/Subjects'));
@@ -66,6 +69,7 @@ function AuthGate() {
 }
 
 function MainAppFlow() {
+  const [arrivedAfterUpdate] = useState<boolean>(() => localStorage.getItem('att_just_updated') === 'true');
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
     const justUpdated = localStorage.getItem('att_just_updated') === 'true';
     const hasSeenWelcome = localStorage.getItem(HAS_SEEN_WELCOME_KEY) === 'true';
@@ -100,11 +104,13 @@ function MainAppFlow() {
             await storageRemoveItem('att_pwa_update_ready');
             await storageRemoveItem('att_pwa_latest_version');
             await storageRemoveItem('att_pwa_update_summary');
+            if (arrivedAfterUpdate) void notifyUpdateCompleted(APP_VERSION);
             window.location.reload();
             return;
           }
           await storageSetItem(HAS_SEEN_WELCOME_KEY, 'true');
           await storageRemoveItem('att_just_updated');
+          if (arrivedAfterUpdate) void notifyUpdateCompleted(APP_VERSION);
           setShowWelcome(false);
         }}
       />
@@ -162,9 +168,11 @@ export default function App() {
       <AuthProvider>
       <CustomDataProvider>
         <AttendanceProvider>
-          <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
-            <MainAppFlow />
-          </WouterRouter>
+          <ReminderSyncProvider>
+            <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
+              <MainAppFlow />
+            </WouterRouter>
+          </ReminderSyncProvider>
         </AttendanceProvider>
       </CustomDataProvider>
       </AuthProvider>
