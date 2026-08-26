@@ -1,0 +1,16 @@
+name = "attendenz-direct-push-service"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["*/1 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "attendenz-reminders"
+database_id = "23f74491-b2f1-4c25-b09d-b6c452e52c08"
+
+[vars]
+ALLOWED_ORIGIN = "https://benz-attendance-tracker.pages.dev"
+VAPID_SUBJECT = "https://benz-attendance-tracker.pages.dev"
