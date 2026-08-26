@@ -3,13 +3,13 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "dev": "npm run dev --workspace=artifacts-public",
+    "dev": "npm run dev --workspace=artifacts",
     "build": "npm run typecheck && npm run build --workspaces --if-present",
     "typecheck:libs": "tsc --build",
     "typecheck": "npm run typecheck:libs && npm run typecheck --workspaces --if-present"
   },
   "workspaces": [
-    "artifacts-public"
+    "artifacts"
   ],
   "private": true,
   "devDependencies": {

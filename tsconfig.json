@@ -4,7 +4,7 @@
   "files": [],
   "references": [
     {
-      "path": "./artifacts-public"
+      "path": "./artifacts"
     }
   ]
 }
