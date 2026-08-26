@@ -138,7 +138,7 @@ export function WhatsNewPopup() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="whats-new-title"
-            className="modal-sheet-content flex h-[min(78dvh,42rem)] max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-[0_24px_80px_rgba(0,0,0,0.24)] dark:bg-card/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
+            className="modal-sheet-content flex h-auto max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-[0_24px_80px_rgba(0,0,0,0.24)] dark:bg-card/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
           >
             {/* Fixed header */}
             <div className="flex shrink-0 items-center justify-between border-b border-border/60 bg-card px-4 pb-3 pt-4">
@@ -165,11 +165,11 @@ export function WhatsNewPopup() {
             </div>
 
             {/* Soft top and bottom boundaries surround the only scrolling region. */}
-            <div className="relative min-h-0 flex-1 basis-0">
+            <div className="relative min-h-0 max-h-[calc(78dvh-9rem)] overflow-hidden">
               <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-card via-card/80 to-transparent dark:from-card/95 dark:via-card/55" />
               <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-card via-card/80 to-transparent dark:from-card/95 dark:via-card/55" />
               <div
-                className="h-full min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 pb-5 text-left [scrollbar-width:thin]"
+                className="max-h-[calc(78dvh-9rem)] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 pb-5 text-left [scrollbar-width:thin]"
                 style={{ WebkitOverflowScrolling: "touch" }}
               >
                 <div className="space-y-4">
