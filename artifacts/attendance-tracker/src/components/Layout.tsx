@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { path: '/account',   label: 'Settings',  description: 'Preferences, backups, and app settings', Icon: Hospital },
 ] as const;
 
-export const Layout = ({ children, headerRight, headerBottom }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode }) => {
+export const Layout = ({ children, headerRight, headerBottom, mainClassName, contentClassName }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode; mainClassName?: string; contentClassName?: string }) => {
   const [location, setLocation] = useLocation();
   const headerRef = useRef<HTMLElement>(null);
   const [headerHeight, setHeaderHeight] = useState(72);
@@ -48,8 +48,8 @@ export const Layout = ({ children, headerRight, headerBottom }: { children: Reac
         </div>
       </header>
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4" style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'var(--app-bottom-nav-height)' }}>
-        <div key={location}>
+      <main className={cn('flex-1 max-w-3xl mx-auto w-full px-4', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'var(--app-bottom-nav-height)' }}>
+        <div key={location} className={contentClassName}>
           {children}
         </div>
       </main>

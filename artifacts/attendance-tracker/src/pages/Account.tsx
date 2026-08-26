@@ -18,6 +18,27 @@ import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport, isStandalonePWA } from '@/lib/exportUtils';
+import {
+  disableDirectPush,
+  enableDirectPush,
+  getNotificationPermission,
+  getNotificationPreferences,
+  getSystemNotificationsEnabled,
+  NOTIFICATION_SETTINGS_CHANGED_EVENT,
+  setNotificationPreferences,
+  setSystemNotificationsEnabled,
+  showLocalTestNotification,
+  type NotificationLeadMinutes,
+  type NotificationPreferences,
+} from '@/lib/webPush';
+import {
+  getReminderRegistrationDiagnostics,
+  getReminderSyncStatus,
+  REMINDER_SYNC_STATUS_CHANGED_EVENT,
+  testRemoteNotification,
+  type ReminderRegistrationDiagnostics,
+  type ReminderSyncStatus,
+} from '@/lib/webPushSync';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
 import femaleStudentProfile from '@/assets/images/female_student_profile_1784286920737.jpg';
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
@@ -147,6 +168,13 @@ export default function Account() {
   }, [updatePhase]);
 
   const [busy, setBusy] = useState<string | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<ReturnType<typeof getNotificationPermission>>(() => getNotificationPermission());
+  const [systemNotificationsEnabled, setSystemNotificationsEnabledState] = useState(() => getSystemNotificationsEnabled());
+  const [notificationPreferences, setNotificationPreferencesState] = useState<NotificationPreferences>(() => getNotificationPreferences());
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [remoteTestBusy, setRemoteTestBusy] = useState(false);
+  const [registrationDiagnostics, setRegistrationDiagnostics] = useState<ReminderRegistrationDiagnostics | null>(null);
+  const [reminderSyncStatus, setReminderSyncStatus] = useState<ReminderSyncStatus>(() => getReminderSyncStatus());
   const [pendingPct, setPendingPct] = useState<number | null>(null);
   const [confirmMarkComplete, setConfirmMarkComplete] = useState(false);
   const [snapshotToRestore, setSnapshotToRestore] = useState<Snapshot | null>(null);
@@ -162,6 +190,79 @@ export default function Account() {
   const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
   const [editingCurriculumName, setEditingCurriculumName] = useState('');
   const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
+
+  const refreshNotificationState = async () => {
+    setNotificationPermission(getNotificationPermission());
+    setSystemNotificationsEnabledState(getSystemNotificationsEnabled());
+    setNotificationPreferencesState(getNotificationPreferences());
+    setReminderSyncStatus(getReminderSyncStatus());
+    try { setRegistrationDiagnostics(await getReminderRegistrationDiagnostics()); } catch {}
+  };
+
+  useEffect(() => {
+    void refreshNotificationState();
+    const refresh = () => { void refreshNotificationState(); };
+    window.addEventListener(NOTIFICATION_SETTINGS_CHANGED_EVENT, refresh);
+    window.addEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener(NOTIFICATION_SETTINGS_CHANGED_EVENT, refresh);
+      window.removeEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
+
+  const updateNotificationPreference = <K extends keyof NotificationPreferences>(key: K, value: NotificationPreferences[K]) => {
+    const next = { ...notificationPreferences, [key]: value };
+    setNotificationPreferencesState(next);
+    setNotificationPreferences(next);
+  };
+
+  const enableSystemNotifications = async () => {
+    if (notificationBusy) return;
+    setNotificationBusy(true);
+    try {
+      const result = await enableDirectPush();
+      if (result === 'enabled') notifySuccess('System Notifications are on for this device.');
+      else if (result === 'denied') import('sonner').then(({ toast }) => toast.error('Notifications are blocked on this device. Re-enable them in your device settings, then try again.'));
+      else if (result === 'not-configured') import('sonner').then(({ toast }) => toast.error('Notifications are temporarily unavailable. Please try again later.'));
+      else import('sonner').then(({ toast }) => toast.error('Notifications could not be enabled. Connect to the internet and try again.'));
+    } finally {
+      setNotificationBusy(false);
+      await refreshNotificationState();
+    }
+  };
+
+  const updateSystemNotificationsEnabled = async (enabled: boolean) => {
+    if (notificationBusy) return;
+    if (!enabled) {
+      setNotificationBusy(true);
+      try { await disableDirectPush(); }
+      finally { setNotificationBusy(false); await refreshNotificationState(); }
+      return;
+    }
+    await enableSystemNotifications();
+  };
+
+  const testNotificationFromSettings = async () => {
+    if (!systemNotificationsEnabled) return;
+    const shown = await showLocalTestNotification();
+    if (shown) notifySuccess('Test Notification sent.');
+    else import('sonner').then(({ toast }) => toast.error('The Test Notification could not be displayed.'));
+  };
+
+  const testRemoteNotificationFromSettings = async () => {
+    if (remoteTestBusy || !systemNotificationsEnabled) return;
+    setRemoteTestBusy(true);
+    try {
+      const result = await testRemoteNotification();
+      if (result.state === 'sent') notifySuccess('Test Notification sent to this device.');
+      else import('sonner').then(({ toast }) => toast.error(result.state === 'not-configured' ? 'Notifications are temporarily unavailable. Please try again later.' : result.state === 'permission-required' ? 'Allow Notifications first.' : result.state === 'subscription-missing' || result.state === 'not-registered' ? 'Notifications need to be reconnected. Turn the setting off, then on again while connected to the internet.' : 'The Test Notification could not be sent.'));
+    } finally {
+      setRemoteTestBusy(false);
+      await refreshNotificationState();
+    }
+  };
 
   const handleToggleCurriculumStatus = () => {
     const next = curriculumStatus === 'Active' ? 'Completed' : 'Active';
@@ -787,7 +888,7 @@ export default function Account() {
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden">
             <div className="divide-y divide-border/40">
               <SettingRow icon={<Vibrate className="w-4 h-4" />} title="Feedback & Sounds" description="Choose how Attendenz responds after you save or mark attendance" tone="violet" onClick={() => setActiveSettingModal('feedback')} />
-              <SettingRow icon={<Bell className="w-4 h-4" />} title="System Notifications" description="Coming Soon · Currently under Development" tone="blue" onClick={() => setActiveSettingModal('notifications')} />
+              <SettingRow icon={<Bell className="w-4 h-4" />} title="System Notifications" description={systemNotificationsEnabled ? 'On for this device' : 'Off · Tap to configure'} tone="blue" onClick={() => setActiveSettingModal('notifications')} />
               <SettingRow icon={<Info className="w-4 h-4" />} title="Theme" description={`${themePreference === 'system' ? 'System' : themePreference === 'dark' ? 'Dark' : 'Light'} appearance preference`} tone="primary" onClick={() => setActiveSettingModal('theme')} />
             </div>
             <div className="p-4 sm:p-5 space-y-4 bg-gradient-to-br from-primary/5 via-card to-card">
@@ -1003,7 +1104,7 @@ export default function Account() {
                           {activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}
                           {activeSettingModal === 'identity' && 'Profile, display name, and active curriculum'}
                           {activeSettingModal === 'feedback' && 'Choose what you hear after a confirmation'}
-                          {activeSettingModal === 'notifications' && 'Feature under development · coming soon'}
+                          {activeSettingModal === 'notifications' && 'Choose reminders, routine updates, and app update alerts'}
                           {activeSettingModal === 'theme' && 'Choose how Attendenz follows your device'}
                         </p>
                       </div>
@@ -1052,15 +1153,33 @@ export default function Account() {
                       </div>
                     )}
                     {activeSettingModal === 'notifications' && (
-                      <div className="space-y-4">
-                        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5 text-center space-y-3">
-                          <div className="mx-auto w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center border border-blue-500/20"><Bell className="w-6 h-6" /></div>
-                          <div>
-                            <p className="text-sm font-extrabold text-foreground">System Notifications are coming soon</p>
-                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">This feature is currently under development. Notification delivery and reminder controls will be available in a future update.</p>
+                      <div className="space-y-3">
+                        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5 space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0"><p className="text-xs font-bold text-foreground">System Notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Reminders, routine changes, and app updates for this device</p></div>
+                            <SettingToggle checked={systemNotificationsEnabled} onChange={updateSystemNotificationsEnabled} label="System Notifications" disabled={notificationBusy} />
                           </div>
-                          <span className="inline-flex rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-500">In development</span>
+                          {notificationPermission === 'denied' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">Notifications are blocked on this device. Re-enable them in your device settings, then return here.</p>}
+                          {notificationPermission === 'unsupported' && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are not available on this device or browser.</p>}
+                          {notificationPermission === 'insecure' && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are available only from the secure Attendenz app.</p>}
+                          {notificationPermission !== 'granted' && notificationPermission !== 'denied' && notificationPermission !== 'unsupported' && notificationPermission !== 'insecure' && <button type="button" onClick={enableSystemNotifications} disabled={notificationBusy} className="action-button action-button--update action-button--compact w-full disabled:opacity-50">{notificationBusy ? 'Setting Up…' : 'Allow Notifications'}</button>}
+                          {notificationPermission === 'granted' && !systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are allowed, but reminders are currently off. Turn on the switch to receive them again.</p>}
+                          {notificationPermission === 'granted' && systemNotificationsEnabled && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">On for this device</span><button type="button" onClick={testNotificationFromSettings} className="action-button action-button--neutral action-button--compact">Local test</button></div>}
                         </div>
+                        {systemNotificationsEnabled && notificationPermission === 'granted' && <>
+                          <div className="space-y-2.5">
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Need Attention Summary</span><span className="block text-[10px] text-muted-foreground mt-0.5">One grouped alert for today’s warning Subjects.</span></span><SettingToggle checked={notificationPreferences.midnightNeedAttention} onChange={value => updateNotificationPreference('midnightNeedAttention', value)} label="Need Attention Summary" /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Last Planned Class Today</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Tell me at midnight when a Subject’s last planned Class is today.</span></span><SettingToggle checked={notificationPreferences.finalClassToday} onChange={value => updateNotificationPreference('finalClassToday', value)} label="Last Planned Class Today" /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">First Class of the Day</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Tell me the first Subject and start time scheduled today.</span></span><SettingToggle checked={notificationPreferences.firstClassToday} onChange={value => updateNotificationPreference('firstClassToday', value)} label="First Class of the Day" /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Before-Class Warning</span><span className="block text-[10px] text-muted-foreground mt-0.5">One alert {notificationPreferences.leadMinutes} minutes before each warning Subject.</span></span><SettingToggle checked={notificationPreferences.preClassNeedAttention} onChange={value => updateNotificationPreference('preClassNeedAttention', value)} label="Before-Class Warning" /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">All Scheduled Classes</span><span className="block text-[10px] text-muted-foreground mt-0.5">Also remind me about normal Classes in one grouped message.</span></span><SettingToggle checked={notificationPreferences.allScheduledDigest} onChange={value => updateNotificationPreference('allScheduledDigest', value)} label="All Scheduled Classes" /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Changes Made in Manage</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me after a successful routine change.</span></span><SettingToggle checked={notificationPreferences.addNewChanges} onChange={value => updateNotificationPreference('addNewChanges', value)} label="Changes Made in Manage" /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update Available</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me when a new app version is ready.</span></span><SettingToggle checked={notificationPreferences.updateAvailable} onChange={value => updateNotificationPreference('updateAvailable', value)} label="Update Available" /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update Completed</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me after the app update finishes.</span></span><SettingToggle checked={notificationPreferences.updateCompleted} onChange={value => updateNotificationPreference('updateCompleted', value)} label="Update Completed" /></label>
+                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="text-xs font-semibold text-foreground">Warning Reminder Timing</span><select value={notificationPreferences.leadMinutes} onChange={e => updateNotificationPreference('leadMinutes', Number(e.target.value) as NotificationLeadMinutes)} className="ml-auto shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground"><option value={15}>15 minutes</option><option value={30}>30 minutes</option><option value={60}>60 minutes</option></select></label>
+                          </div>
+                          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2"><div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold text-foreground">Send Test Notification</p><p className="text-[10px] text-muted-foreground mt-0.5">Sends one Test Notification to this device.</p></div><button type="button" onClick={testRemoteNotificationFromSettings} disabled={remoteTestBusy || registrationDiagnostics?.subscription !== 'available'} className="action-button action-button--update action-button--compact shrink-0 disabled:opacity-50">{remoteTestBusy ? 'Sending…' : 'Send Test Notification'}</button></div><div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[10px]"><span className="text-muted-foreground">Permission</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.permission || notificationPermission}</span><span className="text-muted-foreground">Connection</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.subscription === 'available' ? 'Available' : 'Missing'}</span><span className="text-muted-foreground">Reminder Status</span><span className="text-right font-semibold text-foreground">{reminderSyncStatus.state === 'synced' ? `${reminderSyncStatus.occurrenceCount ?? 0} schedule items ready` : reminderSyncStatus.state === 'error' ? 'Could not connect' : reminderSyncStatus.state === 'offline' ? 'Waiting for internet' : reminderSyncStatus.state === 'waiting-for-permission' ? 'Waiting for connection' : 'Temporarily unavailable'}</span></div></div>
+                        </>}
                       </div>
                     )}
 
@@ -1068,20 +1187,20 @@ export default function Account() {
                     {activeSettingModal === 'notifications' && (
                       <div className="space-y-3">
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5 space-y-3">
-                          <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold text-foreground">System notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Choose the reminders you want on this device</p></div>{notificationPermission === 'granted' && <SettingToggle checked={systemNotificationsEnabled} onChange={updateSystemNotificationsEnabled} label="System notifications" disabled={notificationBusy} />}</div>
+                          <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold text-foreground">System Notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Choose the reminders you want on this device</p></div>{notificationPermission === 'granted' && <SettingToggle checked={systemNotificationsEnabled} onChange={updateSystemNotificationsEnabled} label="System Notifications" disabled={notificationBusy} />}</div>
                           {!oneSignalConfigured ? (
                             <div className="space-y-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
                               <p className="text-[10px] font-semibold leading-relaxed text-amber-700 dark:text-amber-300">Notifications can be enabled only from the published Attendenz app, not from a Cloudflare preview link.</p>
                               <button type="button" onClick={() => window.location.assign(ONE_SIGNAL_PRODUCTION_ORIGIN)} className="action-button action-button--update action-button--compact w-full">Open published app</button>
                             </div>
-                          ) : notificationPermission !== 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-muted-foreground">{notificationPermission === 'denied' ? 'Blocked in iPhone settings' : notificationPermission === 'insecure' ? 'Secure connection needed' : notificationPermission === 'unsupported' ? 'Not available on this device' : 'Permission needed'}</span><button type="button" onClick={enableSystemNotifications} disabled={notificationBusy || notificationPermission === 'denied' || notificationPermission === 'unsupported' || notificationPermission === 'insecure'} className="action-button action-button--update action-button--compact disabled:opacity-50">{notificationBusy ? 'Checking…' : 'Allow notifications'}</button></div>}
+                          ) : notificationPermission !== 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-muted-foreground">{notificationPermission === 'denied' ? 'Blocked in iPhone settings' : notificationPermission === 'insecure' ? 'Secure connection needed' : notificationPermission === 'unsupported' ? 'Not available on this device' : 'Permission needed'}</span><button type="button" onClick={enableSystemNotifications} disabled={notificationBusy || notificationPermission === 'denied' || notificationPermission === 'unsupported' || notificationPermission === 'insecure'} className="action-button action-button--update action-button--compact disabled:opacity-50">{notificationBusy ? 'Checking…' : 'Allow Notifications'}</button></div>}
                           {notificationPermission === 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">Permission granted</span><button type="button" onClick={testNotificationFromSettings} disabled={!systemNotificationsEnabled} className="action-button action-button--neutral action-button--compact disabled:opacity-50">Local test</button></div>}
                           {oneSignalConfigured && notificationPermission === 'granted' && <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
-                            <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold text-foreground">Remote delivery test</p><p className="text-[10px] text-muted-foreground mt-0.5">Checks this device → Worker → OneSignal.</p></div><button type="button" onClick={testRemoteNotificationFromSettings} disabled={remoteTestBusy || !systemNotificationsEnabled || registrationDiagnostics?.subscription !== 'available'} className="action-button action-button--update action-button--compact shrink-0 disabled:opacity-50">{remoteTestBusy ? 'Sending…' : 'Remote test'}</button></div>
-                            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[10px]"><span className="text-muted-foreground">Permission</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.permission || notificationPermission}</span><span className="text-muted-foreground">OneSignal subscription</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.subscription === 'available' ? 'Available' : registrationDiagnostics?.subscription === 'missing' ? 'Missing' : 'Not available on preview'}</span><span className="text-muted-foreground">Worker registration</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.sync.state === 'synced' ? `${registrationDiagnostics.sync.occurrenceCount ?? 0} schedule items synced` : registrationDiagnostics?.sync.state === 'error' ? `Failed${registrationDiagnostics.sync.details ? ` (${registrationDiagnostics.sync.details})` : ''}` : registrationDiagnostics?.sync.state === 'waiting-for-permission' ? 'Waiting for subscription' : registrationDiagnostics?.sync.state === 'offline' ? 'Waiting for internet' : 'Not configured'}</span></div>
-                            <p className="text-[10px] leading-relaxed text-muted-foreground">Local test only checks this browser’s service worker. Remote test sends one actual push through the reminder service.</p>
+                            <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold text-foreground">Send Test Notification</p><p className="text-[10px] text-muted-foreground mt-0.5">Checks whether this device can receive a Test Notification.</p></div><button type="button" onClick={testRemoteNotificationFromSettings} disabled={remoteTestBusy || !systemNotificationsEnabled || registrationDiagnostics?.subscription !== 'available'} className="action-button action-button--update action-button--compact shrink-0 disabled:opacity-50">{remoteTestBusy ? 'Sending…' : 'Send Test Notification'}</button></div>
+                            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[10px]"><span className="text-muted-foreground">Permission</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.permission || notificationPermission}</span><span className="text-muted-foreground">Connection</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.subscription === 'available' ? 'Available' : registrationDiagnostics?.subscription === 'missing' ? 'Missing' : 'Not available on preview'}</span><span className="text-muted-foreground">Worker registration</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.sync.state === 'synced' ? `${registrationDiagnostics.sync.occurrenceCount ?? 0} schedule items synced` : registrationDiagnostics?.sync.state === 'error' ? `Failed${registrationDiagnostics.sync.details ? ` (${registrationDiagnostics.sync.details})` : ''}` : registrationDiagnostics?.sync.state === 'waiting-for-permission' ? 'Waiting for subscription' : registrationDiagnostics?.sync.state === 'offline' ? 'Waiting for internet' : 'Not configured'}</span></div>
+                            <p className="text-[10px] leading-relaxed text-muted-foreground">Test Notification checks whether this device can receive an alert. Send Test Notification checks delivery while you are connected to the internet.</p>
                           </div>}
-                          {systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Reminder connection: {reminderSyncStatus.state === 'synced' ? `Synced ${new Date(reminderSyncStatus.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${reminderSyncStatus.occurrenceCount !== undefined ? ` · ${reminderSyncStatus.occurrenceCount} schedule items` : ''}` : reminderSyncStatus.state === 'waiting-for-permission' ? 'Waiting for this device to finish connecting.' : reminderSyncStatus.state === 'offline' ? 'Waiting for an internet connection.' : reminderSyncStatus.state === 'error' ? `Last connection attempt failed${reminderSyncStatus.details ? ` (${reminderSyncStatus.details})` : ''}. It will retry automatically.` : 'Not configured yet.'}</p>}
+                          {systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Reminder Status: {reminderSyncStatus.state === 'synced' ? `Synced ${new Date(reminderSyncStatus.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${reminderSyncStatus.occurrenceCount !== undefined ? ` · ${reminderSyncStatus.occurrenceCount} schedule items` : ''}` : reminderSyncStatus.state === 'waiting-for-permission' ? 'Waiting for this device to finish connecting.' : reminderSyncStatus.state === 'offline' ? 'Waiting for an internet connection.' : reminderSyncStatus.state === 'error' ? `Last connection attempt failed${reminderSyncStatus.details ? ` (${reminderSyncStatus.details})` : ''}. It will retry automatically.` : 'Temporarily unavailable.'}</p>}
                         </div>
                         <div className="space-y-2.5">
                           <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Midnight Need Attention summary</span><span className="block text-[10px] text-muted-foreground mt-0.5">One grouped alert for today’s warning subjects</span></span><SettingToggle checked={notificationPreferences.midnightNeedAttention} onChange={value => updateNotificationPreference('midnightNeedAttention', value)} label="Midnight Need Attention summary" disabled={notificationPreferencesDisabled} /></label>
@@ -1092,7 +1211,7 @@ export default function Account() {
                           <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">AddNew changes</span><span className="block text-[10px] text-muted-foreground mt-0.5">Extra alerts after you make changes in Manage</span></span><SettingToggle checked={notificationPreferences.addNewChanges} onChange={value => updateNotificationPreference('addNewChanges', value)} label="AddNew changes" disabled={notificationPreferencesDisabled} /></label>
                           <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update available</span><span className="block text-[10px] text-muted-foreground mt-0.5">Tell me once when a new version is ready</span></span><SettingToggle checked={notificationPreferences.updateAvailable} onChange={value => updateNotificationPreference('updateAvailable', value)} label="Update available" disabled={notificationPreferencesDisabled} /></label>
                           <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update completed</span><span className="block text-[10px] text-muted-foreground mt-0.5">Tell me once when the update finishes</span></span><SettingToggle checked={notificationPreferences.updateCompleted} onChange={value => updateNotificationPreference('updateCompleted', value)} label="Update completed" disabled={notificationPreferencesDisabled} /></label>
-                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="text-xs font-semibold text-foreground">Warning reminder lead time</span><select value={notificationPreferences.leadMinutes} onChange={e => updateNotificationPreference('leadMinutes', Number(e.target.value) as NotificationLeadMinutes)} className="ml-auto shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" disabled={notificationPreferencesDisabled}><option value={15}>15 minutes</option><option value={30}>30 minutes</option><option value={60}>60 minutes</option></select></label>
+                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="text-xs font-semibold text-foreground">Warning Reminder Timing</span><select value={notificationPreferences.leadMinutes} onChange={e => updateNotificationPreference('leadMinutes', Number(e.target.value) as NotificationLeadMinutes)} className="ml-auto shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" disabled={notificationPreferencesDisabled}><option value={15}>15 minutes</option><option value={30}>30 minutes</option><option value={60}>60 minutes</option></select></label>
                         </div>
                       </div>
                     )}
