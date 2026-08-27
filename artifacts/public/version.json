@@ -1,4 +1,6 @@
 {
-  "version": "1.6.4.1",
-  "summary": "Release v1.6.4.1: Bug Fixes and UI Improvements for a smoother app experience."
+  "version": "1.6.4.2",
+  "summary": "Release v1.6.4.2: Scheduled Notifications, Calendar reliability, and export improvements.",
+  "releaseType": "minor",
+  "updateMode": "manual"
 }

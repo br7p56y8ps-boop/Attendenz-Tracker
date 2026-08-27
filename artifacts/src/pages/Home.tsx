@@ -5,7 +5,7 @@ import { Layout } from '@/components/Layout';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useAttendance } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
-import { cn, rangeStartMinutes } from '@/lib/utils';
+import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSessionId, getCustomSubjectSessionId } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { PRESET_PARENTS } from '@/lib/constants';
 import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen } from 'lucide-react';
@@ -67,12 +67,8 @@ export default function Home() {
 
   /* ── Update notice ── */
   const [installedVersion] = useState<string>(() => {
-    const stored = localStorage.getItem('att_app_version') || APP_VERSION;
-    if (compareVersions(APP_VERSION, stored) > 0) {
-      localStorage.setItem('att_app_version', APP_VERSION);
-      return APP_VERSION;
-    }
-    return stored;
+    localStorage.setItem('att_app_version', APP_VERSION);
+    return APP_VERSION;
   });
 
   const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
@@ -92,9 +88,7 @@ export default function Home() {
       window.removeEventListener('attendenz:update-cleared', onCleared);
     };
   }, []);
-  const isUpdateAvailable =
-    compareVersions(serverVersion, installedVersion) > 0 ||
-    (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
+  const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0;
   const [updateNoticeDismissed, setUpdateNoticeDismissed] = useState<boolean>(() => sessionStorage.getItem('att_update_notice_dismissed') === 'true');
   const [updateInfoOpen, setUpdateInfoOpen] = useState(false);
   const showUpdatePill = isUpdateAvailable && !updateNoticeDismissed;
@@ -307,7 +301,7 @@ export default function Home() {
                 subject: currentWard,
                 time: effectiveTime,
                 isWard: true,
-                sessionId: String(idx),
+                sessionId: getPresetWardSessionId(idx),
               },
             });
           }
@@ -321,7 +315,7 @@ export default function Home() {
             card: {
               subject,
               time: slot.time,
-              sessionId: `${idx}-${subIdx}`,
+              sessionId: getPresetAcademicSessionId(idx, subIdx),
             },
           });
         });
@@ -388,9 +382,7 @@ export default function Home() {
         });
       }
       todayCustomSubjects.forEach(s => {
-        const sessionId = s.isSGT
-          ? `${s.sgtId}:${selectedTodayAbbr}:${s.time}`
-          : `custom-${s.id}`;
+        const sessionId = getCustomSubjectSessionId(s.id, selectedTodayAbbr, s.time, Boolean(s.isSGT), s.sgtId);
         entries.push({
           id: s.id,
           time: s.time || 'Time not set',

@@ -15,11 +15,14 @@ export interface Env {
 }
 
 export interface A1Preferences {
-  midnightNeedAttention: boolean;
-  finalClassToday: boolean;
-  firstClassToday: boolean;
-  preClassNeedAttention: boolean;
-  allScheduledDigest: boolean;
+  needAttentionSummary: boolean;
+  needAttentionSubjects: boolean;
+  safeToMiss: boolean;
+  lastPlannedClassToday: boolean;
+  firstClassOfDay: boolean;
+  beforeClassWarnings: boolean;
+  allScheduledClasses: boolean;
+  unmarkedAttendanceToday: boolean;
   leadMinutes: 15 | 30 | 60;
 }
 
@@ -27,14 +30,17 @@ export interface ReminderOccurrence {
   id: string;
   localDate: string;
   startMinute: number;
+  endMinute: number;
   subjectLabel: string;
   category: 'academic' | 'clinical' | 'sgt' | 'ward';
   needsAttention: boolean;
+  attentionLevel: 'mustAttend' | 'needAttention' | 'safeToMiss' | 'onTrack' | 'neutral';
+  attendanceMarked: boolean;
   isFinalForSubject: boolean;
 }
 
 export interface A1ReminderPayload {
-  version: 2;
+  version: 3;
   deviceId: string;
   deviceToken: string;
   subscription: WebPushSubscription;
@@ -59,6 +65,9 @@ type DeviceRow = {
   pre_class_need_attention: number;
   all_scheduled_digest: number;
   lead_minutes: number;
+  need_attention_subjects: number;
+  safe_to_miss: number;
+  unmarked_attendance_today: number;
 };
 
 type OccurrenceRow = ReminderOccurrence & { device_id: string };
@@ -130,12 +139,17 @@ function isValidOccurrence(value: unknown): value is ReminderOccurrence {
     Number.isInteger(item.startMinute) &&
     (item.startMinute as number) >= 0 &&
     (item.startMinute as number) <= 1439 &&
+    Number.isInteger(item.endMinute) &&
+    (item.endMinute as number) >= (item.startMinute as number) &&
+    (item.endMinute as number) <= 1440 &&
     typeof item.subjectLabel === 'string' &&
     item.subjectLabel.trim().length > 0 &&
     item.subjectLabel.length <= 120 &&
     typeof item.category === 'string' &&
     CATEGORY_VALUES.has(item.category) &&
     typeof item.needsAttention === 'boolean' &&
+    ['mustAttend', 'needAttention', 'safeToMiss', 'onTrack', 'neutral'].includes(item.attentionLevel as string) &&
+    typeof item.attendanceMarked === 'boolean' &&
     typeof item.isFinalForSubject === 'boolean'
   );
 }
@@ -154,11 +168,14 @@ function isValidPreferences(value: unknown): value is A1Preferences {
   if (!value || typeof value !== 'object') return false;
   const prefs = value as Partial<A1Preferences>;
   return (
-    typeof prefs.midnightNeedAttention === 'boolean' &&
-    typeof prefs.finalClassToday === 'boolean' &&
-    typeof prefs.firstClassToday === 'boolean' &&
-    typeof prefs.preClassNeedAttention === 'boolean' &&
-    typeof prefs.allScheduledDigest === 'boolean' &&
+    typeof prefs.needAttentionSummary === 'boolean' &&
+    typeof prefs.needAttentionSubjects === 'boolean' &&
+    typeof prefs.safeToMiss === 'boolean' &&
+    typeof prefs.lastPlannedClassToday === 'boolean' &&
+    typeof prefs.firstClassOfDay === 'boolean' &&
+    typeof prefs.beforeClassWarnings === 'boolean' &&
+    typeof prefs.allScheduledClasses === 'boolean' &&
+    typeof prefs.unmarkedAttendanceToday === 'boolean' &&
     (prefs.leadMinutes === 15 || prefs.leadMinutes === 30 || prefs.leadMinutes === 60)
   );
 }
@@ -167,7 +184,7 @@ function validatePayload(payload: unknown): payload is A1ReminderPayload {
   if (!payload || typeof payload !== 'object') return false;
   const item = payload as Partial<A1ReminderPayload>;
   return (
-    item.version === 2 &&
+    item.version === 3 &&
     isValidId(item.deviceId, 16, 96) &&
     isValidId(item.deviceToken, 32, 160) &&
     isValidSubscription(item.subscription) &&
@@ -237,8 +254,9 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       device_id, token_hash, subscription_json, timezone, notifications_enabled,
       midnight_need_attention, final_class_today, first_class_today,
       pre_class_need_attention, all_scheduled_digest,
-      lead_minutes, last_sync_at, expires_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+      lead_minutes, need_attention_subjects, safe_to_miss, unmarked_attendance_today,
+      last_sync_at, expires_at
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
     ON CONFLICT(device_id) DO UPDATE SET
       token_hash = excluded.token_hash,
       subscription_json = excluded.subscription_json,
@@ -250,6 +268,9 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       pre_class_need_attention = excluded.pre_class_need_attention,
       all_scheduled_digest = excluded.all_scheduled_digest,
       lead_minutes = excluded.lead_minutes,
+      need_attention_subjects = excluded.need_attention_subjects,
+      safe_to_miss = excluded.safe_to_miss,
+      unmarked_attendance_today = excluded.unmarked_attendance_today,
       last_sync_at = excluded.last_sync_at,
       expires_at = excluded.expires_at`,
     ).bind(
@@ -258,12 +279,15 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
     JSON.stringify(payload.subscription),
     payload.timezone,
     boolInt(payload.notificationsEnabled),
-    boolInt(payload.preferences.midnightNeedAttention),
-    boolInt(payload.preferences.finalClassToday),
-    boolInt(payload.preferences.firstClassToday),
-    boolInt(payload.preferences.preClassNeedAttention),
-    boolInt(payload.preferences.allScheduledDigest),
+    boolInt(payload.preferences.needAttentionSummary),
+    boolInt(payload.preferences.lastPlannedClassToday),
+    boolInt(payload.preferences.firstClassOfDay),
+    boolInt(payload.preferences.beforeClassWarnings),
+    boolInt(payload.preferences.allScheduledClasses),
     payload.preferences.leadMinutes,
+    boolInt(payload.preferences.needAttentionSubjects),
+    boolInt(payload.preferences.safeToMiss),
+    boolInt(payload.preferences.unmarkedAttendanceToday),
     now,
     expiryIso(),
   );
@@ -274,8 +298,8 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
     ...payload.occurrences.map(occurrence => env.DB.prepare(
       `INSERT INTO occurrences (
         occurrence_id, device_id, local_date, start_minute, subject_label,
-        category, needs_attention, is_final_for_subject, created_at
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+        category, needs_attention, attention_level, attendance_marked, end_minute, is_final_for_subject, created_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`,
     ).bind(
       occurrence.id,
       payload.deviceId,
@@ -284,6 +308,9 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       occurrence.subjectLabel.trim(),
       occurrence.category,
       boolInt(occurrence.needsAttention),
+      occurrence.attentionLevel,
+      boolInt(occurrence.attendanceMarked),
+      occurrence.endMinute,
       boolInt(occurrence.isFinalForSubject),
       now,
     )),
@@ -431,8 +458,9 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
   const clock = localClock(scheduledAt, device.timezone);
   const rows = await env.DB.prepare(
     `SELECT occurrence_id as id, device_id, local_date as localDate,
-      start_minute as startMinute, subject_label as subjectLabel,
-      category, needs_attention as needsAttention,
+      start_minute as startMinute, end_minute as endMinute, subject_label as subjectLabel,
+      category, needs_attention as needsAttention, attention_level as attentionLevel,
+      attendance_marked as attendanceMarked,
       is_final_for_subject as isFinalForSubject
      FROM occurrences WHERE device_id = ?1 AND local_date = ?2
      ORDER BY start_minute ASC`,
@@ -440,72 +468,54 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
   const occurrences = rows.results || [];
   const url = DEFAULT_ALLOWED_ORIGIN;
 
-  if (clock.hour === 0 && clock.minute < 5 && device.midnight_need_attention) {
-    const attention = occurrences.filter(item => Boolean(item.needsAttention));
-    if (attention.length > 0) {
-      await deliverIfNew(
-        env,
-        device,
-        `${device.device_id}:midnight:${clock.date}`,
-        'Attendenz · Attention Needed Today',
-        `${attention.length} Subject${attention.length === 1 ? '' : 's'} need attention today: ${listNames(attention)}.`,
-        url,
-      );
+  const currentMinute = clock.hour * 60 + clock.minute;
+  const midnightWindow = clock.hour === 0 && clock.minute < 5;
+
+  if (midnightWindow) {
+    const mustAttend = device.midnight_need_attention ? occurrences.filter(item => item.attentionLevel === 'mustAttend') : [];
+    const needAttention = device.need_attention_subjects ? occurrences.filter(item => item.attentionLevel === 'needAttention') : [];
+    const finalClasses = device.final_class_today ? occurrences.filter(item => item.isFinalForSubject) : [];
+    const first = device.first_class_today && occurrences.length > 0 ? occurrences[0] : null;
+    const digest = device.all_scheduled_digest && occurrences.length > 0 ? occurrences : [];
+
+    const hasUrgent = mustAttend.length > 0 || needAttention.length > 0 || finalClasses.length > 0;
+    const hasInfo = first || digest.length > 0;
+
+    if (hasUrgent) {
+      const parts: string[] = [];
+      if (mustAttend.length > 0) parts.push(`Must Attend: ${listNames(mustAttend)}`);
+      if (needAttention.length > 0) parts.push(`Need Attention: ${listNames(needAttention)}`);
+      if (finalClasses.length > 0) parts.push(`Last Planned: ${listNames(finalClasses)}`);
+      const body = parts.join('. ') + '.';
+      await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${clock.date}`, 'Attendenz · Urgent Schedule Alert', body, url);
+    } else if (hasInfo) {
+      const body = first ? `First Class: ${cleanLabel(first.subjectLabel)} at ${formatMinute(first.startMinute)}.` : `Today: ${listNames(digest)}.`;
+      await deliverIfNew(env, device, `${device.device_id}:info-midnight:${clock.date}`, 'Attendenz · Today’s Schedule', body, url);
     }
   }
 
-  if (clock.hour === 0 && clock.minute < 5 && device.final_class_today) {
-    const finalClasses = occurrences.filter(item => item.isFinalForSubject);
-    for (const item of finalClasses) {
-      await deliverIfNew(
-        env,
-        device,
-        `${device.device_id}:final:${item.localDate}:${item.id}`,
-        'Attendenz · Last Planned Class Today',
-        `${cleanLabel(item.subjectLabel)} has its last planned Class today at ${formatMinute(item.startMinute)}.`,
-        url,
-      );
+  const latestEndMinute = occurrences.reduce((latest, item) => Math.max(latest, item.endMinute), 0);
+  const unmarkedReminderMinute = latestEndMinute >= 21 * 60 ? 23 * 60 : 21 * 60 + 30;
+  if (device.unmarked_attendance_today && isWithinFiveMinuteWindow(currentMinute, unmarkedReminderMinute)) {
+    const unmarked = occurrences.filter(item => item.startMinute < currentMinute && !item.attendanceMarked);
+    if (unmarked.length > 0) {
+      await deliverIfNew(env, device, `${device.device_id}:unmarked:${clock.date}`, 'Attendenz · Attendance Still Unmarked', `${unmarked.length} Class${unmarked.length === 1 ? '' : 'es'} from today still need an attendance status: ${listNames(unmarked)}.`, url);
     }
-  }
-
-  if (clock.hour === 0 && clock.minute < 5 && device.first_class_today && occurrences.length > 0) {
-    const first = occurrences[0];
-    await deliverIfNew(
-      env,
-      device,
-      `${device.device_id}:first:${clock.date}`,
-      'Attendenz · First Class Today',
-      `Your first Class today is ${cleanLabel(first.subjectLabel)} at ${formatMinute(first.startMinute)}.`,
-      url,
-    );
-  }
-
-  if (clock.hour === 0 && clock.minute < 5 && device.all_scheduled_digest && occurrences.length > 0) {
-    await deliverIfNew(
-      env,
-      device,
-      `${device.device_id}:digest:${clock.date}`,
-      'Attendenz · Today’s Classes',
-      `You have ${occurrences.length} scheduled Class${occurrences.length === 1 ? '' : 'es'} today: ${listNames(occurrences)}.`,
-      url,
-    );
   }
 
   if (device.pre_class_need_attention) {
-    const due = occurrences.filter(item => {
-      if (!Boolean(item.needsAttention)) return false;
-      const currentMinute = clock.hour * 60 + clock.minute;
-      return isBeforeClassDue(currentMinute, item.startMinute, device.lead_minutes);
-    });
-    for (const item of due) {
-      await deliverIfNew(
-        env,
-        device,
-        `${device.device_id}:before:${item.localDate}:${item.id}:${device.lead_minutes}`,
-        'Attendenz · Class Reminder',
-        `${cleanLabel(item.subjectLabel)} starts in ${device.lead_minutes} minutes.`,
-        url,
-      );
+    const due = occurrences.filter(item => isBeforeClassDue(currentMinute, item.startMinute, device.lead_minutes));
+    const dueMust = device.midnight_need_attention ? due.filter(item => item.attentionLevel === 'mustAttend') : [];
+    const dueNeed = device.need_attention_subjects ? due.filter(item => item.attentionLevel === 'needAttention') : [];
+    const dueSafe = device.safe_to_miss ? due.filter(item => item.attentionLevel === 'safeToMiss') : [];
+    if (dueMust.length > 0) {
+      await deliverIfNew(env, device, `${device.device_id}:before-must:${clock.date}:${device.lead_minutes}`, 'Attendenz · Must Attend', `${listNames(dueMust)} start in ${device.lead_minutes} minutes. Attend these Classes to protect your attendance percentage.`, url);
+    }
+    if (dueNeed.length > 0) {
+      await deliverIfNew(env, device, `${device.device_id}:before-attention:${clock.date}:${device.lead_minutes}`, 'Attendenz · Need Attention', `${listNames(dueNeed)} start in ${device.lead_minutes} minutes. Your attendance is at the preferred percentage without the recommended safety margin.`, url);
+    }
+    if (dueSafe.length > 0) {
+      await deliverIfNew(env, device, `${device.device_id}:before-safe:${clock.date}:${device.lead_minutes}`, 'Attendenz · Safe to Miss a Class', `${listNames(dueSafe)} start in ${device.lead_minutes} minutes. Missing these Classes would keep you at or above the preferred percentage.`, url);
     }
   }
 }
@@ -513,9 +523,10 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
 async function runScheduled(env: Env, scheduledAt: number): Promise<void> {
   const devices = await env.DB.prepare(
     `SELECT device_id, subscription_json, timezone, notifications_enabled,
-      midnight_need_attention, final_class_today, first_class_today,
-      pre_class_need_attention, all_scheduled_digest, lead_minutes
-     FROM devices WHERE notifications_enabled = 1 AND expires_at > ?1`,
+            midnight_need_attention, final_class_today, first_class_today,
+      pre_class_need_attention, all_scheduled_digest, lead_minutes,
+      need_attention_subjects, safe_to_miss, unmarked_attendance_today
+      FROM devices WHERE notifications_enabled = 1 AND expires_at > ?1`,
   ).bind(new Date(scheduledAt).toISOString()).all<DeviceRow>();
   for (const device of devices.results || []) {
     try {
@@ -550,4 +561,4 @@ export default {
   },
 };
 
-export const __test = { localClock, validatePayload, isValidTimezone, isBeforeClassDue };
+export const __test = { localClock, validatePayload, isValidTimezone, isBeforeClassDue, formatMinute, isWithinFiveMinuteWindow };

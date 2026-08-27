@@ -17,11 +17,41 @@ export function parseDateStr(dateStr: string) {
   return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
 }
 
-// Shared percentage color logic (kept)
-export const pctColor = (pct: number, preferredPercentage: number) => {
-  const GREEN_OFFSET = 5;
-  if (pct >= preferredPercentage + GREEN_OFFSET) return 'var(--color-success)';
-  if (pct >= preferredPercentage) return 'var(--color-warning)';
+export type AttendanceStatus = 'green' | 'yellow' | 'red' | 'neutral';
+
+/** Stable Home session IDs shared by attendance marking and reminder synchronization. */
+export const getPresetAcademicSessionId = (slotIndex: number, subjectIndex: number): string => `${slotIndex}-${subjectIndex}`;
+export const getPresetWardSessionId = (slotIndex: number): string => String(slotIndex);
+export const getScheduleRowSessionId = (subjectId: string, day: string, time: string): string => `${subjectId}:${day}:${time}`;
+export const getCustomSubjectSessionId = (subjectId: string, day: string, time: string, isSGT = false, sgtId?: string): string =>
+  isSGT ? `${sgtId || ''}:${day}:${time}` : `custom-${subjectId}`;
+
+/**
+ * One attendance-status rule for UI and exports.
+ * Finished planned records use a two-color result; ongoing records use the
+ * preferred target plus a five-point safety margin.
+ */
+export const getAttendanceStatus = (
+  pct: number,
+  preferredPercentage: number,
+  options: { isFinished?: boolean; hasPlannedClasses?: boolean } = {},
+): AttendanceStatus => {
+  if (options.hasPlannedClasses === false) return 'neutral';
+  if (options.isFinished) return pct >= preferredPercentage ? 'green' : 'red';
+  if (pct >= preferredPercentage + 5) return 'green';
+  if (pct >= preferredPercentage) return 'yellow';
+  return 'red';
+};
+
+export const pctColor = (
+  pct: number,
+  preferredPercentage: number,
+  options: { isFinished?: boolean; hasPlannedClasses?: boolean } = {},
+) => {
+  const status = getAttendanceStatus(pct, preferredPercentage, options);
+  if (status === 'green') return 'var(--color-success)';
+  if (status === 'yellow') return 'var(--color-warning)';
+  if (status === 'neutral') return 'var(--color-muted-foreground)';
   return 'var(--color-destructive)';
 };
 

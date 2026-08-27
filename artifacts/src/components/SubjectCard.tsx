@@ -122,8 +122,11 @@ export const SubjectCard = ({
   const canStillMiss = Math.max(0, maxMissable - missedNum);
   const rawRequired = Math.max(0, Math.ceil(totalPlanned * (targetPct / 100)) - attendedNum);
   const requiredToAttend = rawRequired > remaining ? "Not possible" : rawRequired;
-  const percentageColor = pctColor(percentage, preferredPercentage);
   const isMaxReached = totalConducted >= totalPlanned;
+  const percentageColor = pctColor(percentage, preferredPercentage, {
+    isFinished: isMarkedFinished || isMaxReached,
+    hasPlannedClasses: totalPlanned > 0,
+  });
 
   const cardStyle = {
     backgroundColor: `${percentageColor}14`,

@@ -1,0 +1,7 @@
+ALTER TABLE devices ADD COLUMN need_attention_subjects INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE devices ADD COLUMN safe_to_miss INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE devices ADD COLUMN unmarked_attendance_today INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE occurrences ADD COLUMN end_minute INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE occurrences ADD COLUMN attention_level TEXT NOT NULL DEFAULT 'onTrack';
+ALTER TABLE occurrences ADD COLUMN attendance_marked INTEGER NOT NULL DEFAULT 0;

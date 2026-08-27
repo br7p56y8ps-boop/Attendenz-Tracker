@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey, type SelectionType } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { cn, getCurrentDateStr, getSubjectColor } from '@/lib/utils';
+import { cn, getCurrentDateStr, getSubjectColor, pctColor, getAttendanceStatus } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
@@ -19,7 +19,7 @@ const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.get
 
 const SeverityRing = ({ sev }: { sev: 'must' | 'can' | 'safe' }) => {
   const hex = sev === 'must' ? '#ef4444' : sev === 'can' ? '#f59e0b' : '#10b981';
-  const lines = sev === 'must' ? ['Must', 'Attend'] : sev === 'can' ? ['Can', 'Bunk'] : ['Safe to', 'Bunk'];
+  const lines = sev === 'must' ? ['Must', 'Attend'] : ['Safe to', 'Miss'];
   return (
     <div className="relative w-14 h-14 shrink-0">
       <svg width="56" height="56" viewBox="0 0 56 56">
@@ -209,54 +209,51 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const futureMsg = (() => {
     if (percentage < preferredPercentage) {
       const N = needToAttend;
-      if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this <span className="whitespace-nowrap">(+{N - k}) more {cls(N - k)}!!</span></span> };
-      if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this Class!!</span> };
-      return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
+      if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must Attend this Class <span className="whitespace-nowrap">({N - k} more {cls(N - k)} needed)</span></span> };
+      if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must Attend this Class</span> };
+      return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On Track</span> };
     }
     if (canMissCount > 0) {
       const M = canMissCount;
-      if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can bunk this <span className="whitespace-nowrap">(+{M - k}) {cls(M - k)}!!</span></span> };
-      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk this Class</span> };
-      return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
+      if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>Safe to Miss this Class <span className="whitespace-nowrap">({M - k} additional {cls(M - k)} may be missed)</span></span> };
+      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Safe to Miss this Class</span> };
+      return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On Track</span> };
     }
-    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this Class</span> };
-    return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this <span className="whitespace-nowrap">(+{k - 1}) {cls(k - 1)}</span></span> };
+    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Need Attention: Attend this Class</span> };
+    return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Need Attention: Attend this Class <span className="whitespace-nowrap">({k - 1} more {cls(k - 1)} needed)</span></span> };
   })();
 
   const getPercentageColor = (pct: number) => {
-    if (pct < preferredPercentage) return 'text-destructive';
-    if (pct <= preferredPercentage + 5) return 'text-warning';
-    return 'text-success';
+    const hasPlannedClasses = totalPlannedClasses !== undefined && totalPlannedClasses > 0;
+    const status = getAttendanceStatus(pct, preferredPercentage, { isFinished, hasPlannedClasses });
+    return status === 'green' ? 'text-success' : status === 'yellow' ? 'text-warning' : status === 'neutral' ? 'text-muted-foreground' : 'text-destructive';
   };
-  const ecgColor = percentage >= 80 ? '#10b981' : percentage >= 75 ? '#f59e0b' : '#ef4444';
+  const ecgColor = pctColor(percentage, preferredPercentage, {
+    isFinished,
+    hasPlannedClasses: totalPlannedClasses !== undefined && totalPlannedClasses > 0,
+  });
   const subjectColor = getSubjectColor(subject);
 
   const getFinishedMessage = () => {
     const targetNeeded = totalPlannedClasses !== undefined ? Math.ceil(totalPlannedClasses * (preferredPercentage / 100)) : Math.ceil(total * (preferredPercentage / 100));
-    if (attended >= targetNeeded) return `Congrats! Achieved Target`;
-    const classesShort = Math.max(1, targetNeeded - attended);
-    if (classesShort === 1) return `Ooops!! For 1 more class, you would have been a legend!`;
-    if (classesShort % 2 === 0) return `Ooops!! Just ${classesShort} classes short! Even a med student with no sleep could have done that!`;
-    return `Ooops!! ${classesShort} more classes and you could have flexed on your batchmates!`;
+    if (attended >= targetNeeded) return 'Completed — Meets Threshold';
+    return 'Completed — Below Threshold';
   };
 
   const renderTodayAdvisory = () => {
     if (isFinished) return <span className={cn('font-bold', getPercentageColor(percentage))}>{getFinishedMessage()}</span>;
     if (total === 0) return <span>No Classes conducted yet</span>;
-    if (percentage < preferredPercentage) {
+    const status = getAttendanceStatus(percentage, preferredPercentage, { isFinished: false, hasPlannedClasses: totalPlannedClasses !== undefined && totalPlannedClasses > 0 });
+    if (status === 'red') {
       if (remainingClasses !== undefined && needToAttend > remainingClasses) {
         const maxPct = Math.round(((attended + remainingClasses) / (total + remainingClasses)) * 100);
-        return (
-          <span className="font-semibold text-rose-500 text-[11px]">
-            Attendance advised unless contraindicated!!{' '}
-            <span className="whitespace-nowrap">Max. Possible (if Attended): {maxPct}%</span>
-          </span>
-        );
+        return <span className="font-semibold text-rose-500 text-[11px]">Must Attend remaining Classes. <span className="whitespace-nowrap">Maximum possible if all are attended: {maxPct}%.</span></span>;
       }
-      return <span className="text-rose-500 font-semibold text-[11px]">Must ATTEND this Class!!</span>;
+      return <span className="text-rose-500 font-semibold text-[11px]">Must Attend this Class.</span>;
     }
-    if (canMissCount > 0) return <span className="text-emerald-500 font-semibold text-[11px]">On track, CAN bunk this Class!!</span>;
-    return <span className="text-rose-500 font-semibold text-[11px]">At target limit, DO NOT bunk this Class!!</span>;
+    if (status === 'yellow') return <span className="text-amber-500 font-semibold text-[11px]">Need Attention: attend this Class to build a safety margin.</span>;
+    if (status === 'green' && canMissCount > 0) return <span className="text-emerald-500 font-semibold text-[11px]">Safe to Miss this Class.</span>;
+    return <span className="text-emerald-500 font-semibold text-[11px]">On Track.</span>;
   };
 
   const handleSelection = (sel: 'off' | 'missed' | 'attended') => {

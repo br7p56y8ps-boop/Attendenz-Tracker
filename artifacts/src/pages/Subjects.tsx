@@ -91,7 +91,10 @@ const CategoryCard = ({
   preferredPercentage,
   renderChildren,
 }: CategoryCardProps) => {
-  const overallColor = pctColor(summary.pct, preferredPercentage);
+  const overallColor = pctColor(summary.pct, preferredPercentage, {
+    isFinished: summary.planned > 0 && summary.remainingTotal === 0,
+    hasPlannedClasses: summary.planned > 0,
+  });
   const cardBgColor = 'bg-card/90 backdrop-blur-xl border-border/80';
   const cardStyle = isOpen
     ? {}
