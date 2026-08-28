@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS devices (
   pre_class_need_attention INTEGER NOT NULL DEFAULT 1,
   all_scheduled_digest INTEGER NOT NULL DEFAULT 0,
   lead_minutes INTEGER NOT NULL DEFAULT 30,
+  need_attention_subjects INTEGER NOT NULL DEFAULT 1,
+  safe_to_miss INTEGER NOT NULL DEFAULT 0,
+  unmarked_attendance_today INTEGER NOT NULL DEFAULT 1,
   last_sync_at TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
@@ -22,6 +25,9 @@ CREATE TABLE IF NOT EXISTS occurrences (
   subject_label TEXT NOT NULL,
   category TEXT NOT NULL,
   needs_attention INTEGER NOT NULL DEFAULT 0,
+  attention_level TEXT NOT NULL DEFAULT 'onTrack',
+  attendance_marked INTEGER NOT NULL DEFAULT 0,
+  end_minute INTEGER NOT NULL DEFAULT 0,
   is_final_for_subject INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   PRIMARY KEY (device_id, occurrence_id),

@@ -25,7 +25,13 @@ import {
   type DirectPushSubscription,
   type NotificationPreferences,
 } from '@/lib/webPush';
-import { parseRangeToMinutes } from '@/lib/utils';
+import {
+  parseRangeToMinutes,
+  getPresetAcademicSessionId,
+  getPresetWardSessionId,
+  getScheduleRowSessionId,
+  getCustomSubjectSessionId,
+} from '@/lib/utils';
 
 const { serviceUrl: SERVICE_URL, vapidPublicKey: VAPID_PUBLIC_KEY } = getPushServiceConfig();
 const HORIZON_DAYS = 21;
@@ -66,24 +72,29 @@ function setReminderSyncStatus(status: ReminderSyncStatus): void {
 
 type ReminderCategory = 'academic' | 'clinical' | 'sgt' | 'ward';
 
+export type ReminderAttentionLevel = 'mustAttend' | 'needAttention' | 'safeToMiss' | 'onTrack' | 'neutral';
+
 type ReminderOccurrence = {
   id: string;
   localDate: string;
   startMinute: number;
+  endMinute: number;
   subjectLabel: string;
   category: ReminderCategory;
   needsAttention: boolean;
+  attentionLevel: ReminderAttentionLevel;
+  attendanceMarked: boolean;
   isFinalForSubject: boolean;
 };
 
 type ReminderSyncPayload = {
-  version: 2;
+  version: 3;
   deviceId: string;
   deviceToken: string;
   subscription: DirectPushSubscription;
   timezone: string;
   notificationsEnabled: boolean;
-  preferences: Pick<NotificationPreferences, 'midnightNeedAttention' | 'finalClassToday' | 'firstClassToday' | 'preClassNeedAttention' | 'allScheduledDigest' | 'leadMinutes'>;
+  preferences: Pick<NotificationPreferences, 'needAttentionSummary' | 'needAttentionSubjects' | 'safeToMiss' | 'lastPlannedClassToday' | 'firstClassOfDay' | 'beforeClassWarnings' | 'allScheduledClasses' | 'unmarkedAttendanceToday' | 'leadMinutes'>;
   occurrences: ReminderOccurrence[];
 };
 
@@ -105,6 +116,10 @@ function parseTime(time: string): { startMinute: number; endMinute: number } | n
   const range = parseRangeToMinutes(time);
   if (!range) return null;
   return { startMinute: range.start, endMinute: range.end };
+}
+
+function safeOccurrenceId(prefix: string, ...parts: Array<string | number>): string {
+  return [prefix, ...parts].map(part => String(part).normalize('NFKD').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'item').join('-').slice(0, 120);
 }
 
 function isInVacation(date: string, periods?: Array<{ start: string; end: string }>): boolean {
@@ -163,17 +178,26 @@ function attentionFor(
   finished: boolean,
   planned: number,
   target: number,
-): boolean {
-  if (finished || planned <= 0) return false;
+): ReminderAttentionLevel {
+  if (planned <= 0) return 'neutral';
   const attended = attendance?.attended || 0;
   const missed = attendance?.missed || 0;
   const conducted = attended + missed;
-  if (conducted === 0) return false;
+  if (finished || conducted >= planned) return 'neutral';
+  if (conducted === 0) return 'mustAttend';
   const percentage = (attended / conducted) * 100;
-  const required = Math.max(0, Math.ceil(planned * (target / 100)) - attended);
-  const remaining = Math.max(0, planned - conducted);
-  const warningOrDanger = percentage <= target + 5;
-  return warningOrDanger || required > remaining;
+  if (percentage < target) return 'mustAttend';
+  if (percentage < target + 5) return 'needAttention';
+  const projectedAfterMiss = (attended / (conducted + 1)) * 100;
+  return projectedAfterMiss >= target ? 'safeToMiss' : 'onTrack';
+}
+
+function subjectAttendanceKey(reference: ReturnType<typeof useCustomData>['subjectRegistry'][number]): string {
+  return reference.kind === 'sgt'
+    ? getSGTKey(reference.id)
+    : reference.domain === 'clinical'
+      ? getWardAttendanceKey(reference.id)
+      : getAcademicAttendanceKey(reference.id);
 }
 
 function subjectAttention(
@@ -184,16 +208,60 @@ function subjectAttention(
   finishedMap: Record<string, boolean>,
   plannedFallback: number,
   target: number,
-): boolean {
+): ReminderAttentionLevel {
   const reference = subjectRegistry.find(item => item.name.trim().toLowerCase() === name.trim().toLowerCase());
-  if (!reference) return false;
-  const attendanceKey = reference.kind === 'sgt'
-    ? getSGTKey(reference.id)
-    : reference.domain === 'clinical'
-      ? getWardAttendanceKey(reference.id)
-      : getAcademicAttendanceKey(reference.id);
+  if (!reference) return 'neutral';
+  const attendanceKey = subjectAttendanceKey(reference);
   const attendanceStore = reference.kind === 'sgt' || reference.domain === 'academic' ? subjectAttendance : wardAttendance;
   return attentionFor(attendanceStore[attendanceKey], Boolean(finishedMap[attendanceKey]), reference.planned || plannedFallback, target);
+}
+
+function reminderFlags(level: ReminderAttentionLevel): { needsAttention: boolean; attentionLevel: ReminderAttentionLevel } {
+  return { needsAttention: level === 'mustAttend' || level === 'needAttention', attentionLevel: level };
+}
+
+function attendanceKeyForName(name: string, subjectRegistry: ReturnType<typeof useCustomData>['subjectRegistry']): string {
+  const reference = subjectRegistry.find(item => item.name.trim().toLowerCase() === name.trim().toLowerCase());
+  return reference ? subjectAttendanceKey(reference) : name;
+}
+
+function selectionIsMarked(selections: Record<string, string>, localDate: string, attendanceKey: string, sessionId?: string, label?: string): boolean {
+  const normalizedSession = sessionId ? String(sessionId).toLowerCase() : '';
+  const tokens = [attendanceKey, label].filter(Boolean).map(token => String(token).toLowerCase());
+  return Object.entries(selections).some(([key, value]) => {
+    if ((value !== 'attended' && value !== 'missed') || key.slice(0, 10) !== localDate) return false;
+    const rest = key.slice(11).toLowerCase();
+    if (normalizedSession && (rest === normalizedSession || rest.endsWith(`-${normalizedSession}`) || rest.endsWith(`_${normalizedSession}`))) return true;
+    if (normalizedSession) return false;
+    return tokens.some(token => rest === token || rest.startsWith(`${token}-`) || rest.startsWith(`${token}_`));
+  });
+}
+
+function subjectRowSessionId(subject: CustomSubject | UserAddedSubject, row: { day: string; time: string }): string {
+  const raw = subject.schedules?.find(item => item.day === row.day && ('time' in item ? item.time === row.time : `${item.start}–${item.end}` === row.time));
+  if (raw && 'start' in raw && raw.start && raw.end) {
+    const isSGT = subject.subjectType === 'allied' && subject.parentName === 'Small Group Teaching';
+    return isSGT ? `${subject.id}:${row.day}:${raw.start}:${raw.end}` : getScheduleRowSessionId(subject.id, row.day, `${raw.start}–${raw.end}`);
+  }
+  const isSGT = subject.subjectType === 'allied' && subject.parentName === 'Small Group Teaching';
+  return isSGT ? getCustomSubjectSessionId(subject.id, row.day, row.time, true, subject.id) : getCustomSubjectSessionId(subject.id, row.day, row.time);
+}
+
+function isFinalPlannedOccurrence(
+  name: string,
+  subjectRegistry: ReturnType<typeof useCustomData>['subjectRegistry'],
+  subjectAttendance: Record<string, AttendanceData>,
+  wardAttendance: Record<string, AttendanceData>,
+  finishedMap: Record<string, boolean>,
+  planned: number,
+): boolean {
+  if (planned <= 0) return false;
+  const reference = subjectRegistry.find(item => item.name.trim().toLowerCase() === name.trim().toLowerCase());
+  if (!reference) return false;
+  const key = subjectAttendanceKey(reference);
+  const store = reference.kind === 'sgt' || reference.domain === 'academic' ? subjectAttendance : wardAttendance;
+  const conducted = (store[key]?.attended || 0) + (store[key]?.missed || 0);
+  return !finishedMap[key] && conducted + 1 >= planned;
 }
 
 function buildOccurrences(input: {
@@ -207,6 +275,7 @@ function buildOccurrences(input: {
   subjects: Record<string, AttendanceData>;
   wards: Record<string, AttendanceData>;
   finishedMap: Record<string, boolean>;
+  homeSelections: Record<string, string>;
   preferredPercentage: number;
   getSubjectPlannedTotal: (name: string) => number;
   getPresetWardTotalPlanned: (name: string) => number;
@@ -244,13 +313,15 @@ function buildOccurrences(input: {
           const parsed = parseTime(row.time);
           if (!parsed) continue;
           add({
-            id: `custom-${subject.id}`,
+            id: safeOccurrenceId('custom', subject.id, localDate, parsed.startMinute),
             localDate,
             startMinute: parsed.startMinute,
+            endMinute: parsed.endMinute,
+            attendanceMarked: selectionIsMarked(input.homeSelections, localDate, attendanceKeyForName(subject.name, input.subjectRegistry), subjectRowSessionId(subject, row), subject.name),
             subjectLabel: subject.name,
             category,
-            needsAttention: subjectAttention(subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, planned, input.preferredPercentage),
-            isFinalForSubject: isFinalOccurrence(localDate, rowsForSubject(subject), subject.endDate, subject.vacationPeriods),
+            ...reminderFlags(subjectAttention(subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, planned, input.preferredPercentage)),
+            isFinalForSubject: isFinalOccurrence(localDate, rowsForSubject(subject), subject.endDate, subject.vacationPeriods) || isFinalPlannedOccurrence(subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, planned),
           });
         }
       }
@@ -261,13 +332,15 @@ function buildOccurrences(input: {
           const parsed = parseTime(time || '');
           if (!parsed) continue;
           add({
-            id: `custom-ward-${ward.id}-${slot}`,
+            id: safeOccurrenceId('custom-ward', ward.id, localDate, slot, parsed.startMinute),
             localDate,
             startMinute: parsed.startMinute,
+            endMinute: parsed.endMinute,
+            attendanceMarked: selectionIsMarked(input.homeSelections, localDate, attendanceKeyForName(ward.name, input.subjectRegistry), slot === 'morning' ? 'custom-ward-am' : 'custom-ward-pm', ward.name),
             subjectLabel: ward.name,
             category: 'ward',
-            needsAttention: subjectAttention(ward.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods), input.preferredPercentage),
-            isFinalForSubject: isFinalDailyOccurrence(localDate, ward.endDate, ward.vacationPeriods),
+            ...reminderFlags(subjectAttention(ward.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods), input.preferredPercentage)),
+            isFinalForSubject: isFinalDailyOccurrence(localDate, ward.endDate, ward.vacationPeriods) || isFinalPlannedOccurrence(ward.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods)),
           });
         }
       }
@@ -282,13 +355,15 @@ function buildOccurrences(input: {
           const registryItem = input.subjectRegistry.find(item => item.name.trim().toLowerCase() === name.trim().toLowerCase() && item.domain === 'academic');
           const category: ReminderCategory = registryItem?.kind === 'sgt' ? 'sgt' : registryItem?.domain === 'clinical' ? 'clinical' : 'academic';
           add({
-            id: `preset-${name}`,
+            id: safeOccurrenceId('preset', attendanceKeyForName(name, input.subjectRegistry), localDate, parsed.startMinute, name),
             localDate,
             startMinute: parsed.startMinute,
+            endMinute: parsed.endMinute,
+            attendanceMarked: selectionIsMarked(input.homeSelections, localDate, attendanceKeyForName(name, input.subjectRegistry), getPresetAcademicSessionId(input.presetTimetable[date.getDay()]?.indexOf(slot) ?? 0, slot.subjects?.indexOf(name) ?? 0), label),
             subjectLabel: label,
             category,
-            needsAttention: subjectAttention(label, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getSubjectPlannedTotal(name), input.preferredPercentage),
-            isFinalForSubject: false,
+            ...reminderFlags(subjectAttention(label, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getSubjectPlannedTotal(name), input.preferredPercentage)),
+            isFinalForSubject: isFinalPlannedOccurrence(name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getSubjectPlannedTotal(name)),
           });
         }
       }
@@ -300,13 +375,15 @@ function buildOccurrences(input: {
           const parsed = parseTime(row.time);
           if (!parsed) continue;
           add({
-            id: `preset-sgt-${subject.id}`,
+            id: safeOccurrenceId('preset-sgt', subject.id, localDate, parsed.startMinute),
             localDate,
             startMinute: parsed.startMinute,
+            endMinute: parsed.endMinute,
+            attendanceMarked: selectionIsMarked(input.homeSelections, localDate, getSGTKey(subject.id), subjectRowSessionId(subject, row), subject.name),
             subjectLabel: `${subject.name} (SGT)`,
             category: 'sgt',
-            needsAttention: subjectAttention(subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, subject.plannedClasses, input.preferredPercentage),
-            isFinalForSubject: isFinalOccurrence(localDate, rowsForSubject(subject), subject.endDate, subject.vacationPeriods),
+            ...reminderFlags(subjectAttention(subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, subject.plannedClasses, input.preferredPercentage)),
+            isFinalForSubject: isFinalOccurrence(localDate, rowsForSubject(subject), subject.endDate, subject.vacationPeriods) || isFinalPlannedOccurrence(subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, subject.plannedClasses),
           });
         }
       }
@@ -317,17 +394,35 @@ function buildOccurrences(input: {
           const parsed = parseTime(time || '');
           if (!parsed) continue;
           add({
-            id: `preset-ward-${ward.ward}-${ward.start}-${slot}`,
+            id: safeOccurrenceId('preset-ward', attendanceKeyForName(ward.ward, input.subjectRegistry), localDate, slot, parsed.startMinute),
             localDate,
             startMinute: parsed.startMinute,
+            endMinute: parsed.endMinute,
+            attendanceMarked: selectionIsMarked(input.homeSelections, localDate, attendanceKeyForName(ward.ward, input.subjectRegistry), getPresetWardSessionId((input.presetTimetable[date.getDay()] || []).findIndex(candidate => candidate.type === (slot === 'morning' ? 'ward' : 'ward_replacement'))), input.getPresetWardDisplayName(ward.ward)),
             subjectLabel: input.getPresetWardDisplayName(ward.ward),
             category: 'ward',
-            needsAttention: subjectAttention(ward.ward, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getPresetWardTotalPlanned(ward.ward), input.preferredPercentage),
-            isFinalForSubject: isFinalDailyOccurrence(localDate, ward.end, ward.vacationPeriods),
+            ...reminderFlags(subjectAttention(ward.ward, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getPresetWardTotalPlanned(ward.ward), input.preferredPercentage)),
+            isFinalForSubject: isFinalDailyOccurrence(localDate, ward.end, ward.vacationPeriods) || isFinalPlannedOccurrence(ward.ward, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getPresetWardTotalPlanned(ward.ward)),
           });
         }
       }
     }
+  }
+
+  const finalCandidates = new Map<string, ReminderOccurrence[]>();
+  for (const occurrence of occurrences) {
+    if (!occurrence.isFinalForSubject) continue;
+    const key = `${occurrence.category}|${occurrence.subjectLabel.trim().toLowerCase()}`;
+    const list = finalCandidates.get(key) || [];
+    list.push(occurrence);
+    finalCandidates.set(key, list);
+  }
+  for (const candidates of finalCandidates.values()) {
+    const dates = new Set(candidates.map(item => item.localDate));
+    const chosen = dates.size === 1
+      ? candidates.reduce((latest, item) => item.startMinute > latest.startMinute ? item : latest)
+      : candidates.reduce((earliest, item) => item.localDate < earliest.localDate || (item.localDate === earliest.localDate && item.startMinute < earliest.startMinute) ? item : earliest);
+    for (const item of candidates) item.isFinalForSubject = item.id === chosen.id;
   }
 
   return occurrences.sort((a, b) => a.localDate.localeCompare(b.localDate) || a.startMinute - b.startMinute || a.subjectLabel.localeCompare(b.subjectLabel));
@@ -415,7 +510,7 @@ export async function testRemoteNotification(): Promise<RemoteNotificationTestRe
   }
 }
 
-async function deleteRemoteDevice(): Promise<void> {
+export async function deleteRemoteDevice(): Promise<void> {
   if (!SERVICE_URL || !navigator.onLine) return;
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 8_000);
@@ -455,18 +550,21 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
       }
       const preferences = getNotificationPreferences();
       const payload: ReminderSyncPayload = {
-        version: 2,
+          version: 3,
         deviceId: getDeviceId(),
         deviceToken: getDeviceToken(),
         subscription,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
         notificationsEnabled: getSystemNotificationsEnabled(),
         preferences: {
-          midnightNeedAttention: preferences.midnightNeedAttention,
-          finalClassToday: preferences.finalClassToday,
-          firstClassToday: preferences.firstClassToday,
-          preClassNeedAttention: preferences.preClassNeedAttention,
-          allScheduledDigest: preferences.allScheduledDigest,
+          needAttentionSummary: preferences.needAttentionSummary && preferences.attendanceGroupEnabled,
+          needAttentionSubjects: preferences.needAttentionSubjects && preferences.attendanceGroupEnabled,
+          safeToMiss: preferences.safeToMiss && preferences.attendanceGroupEnabled,
+          lastPlannedClassToday: preferences.lastPlannedClassToday && preferences.dailyScheduleGroupEnabled,
+          firstClassOfDay: preferences.firstClassOfDay && preferences.dailyScheduleGroupEnabled,
+          beforeClassWarnings: preferences.beforeClassWarnings && preferences.attendanceGroupEnabled,
+          allScheduledClasses: preferences.allScheduledClasses && preferences.dailyScheduleGroupEnabled,
+          unmarkedAttendanceToday: preferences.unmarkedAttendanceToday && preferences.attendanceGroupEnabled,
           leadMinutes: preferences.leadMinutes,
         },
         occurrences: buildOccurrences({
@@ -480,6 +578,7 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
           subjects: attendance.subjects,
           wards: attendance.wards,
           finishedMap: attendance.finishedMap,
+          homeSelections: attendance.homeSelections,
           preferredPercentage: attendance.preferredPercentage,
           getSubjectPlannedTotal: custom.getSubjectPlannedTotal,
           getPresetWardTotalPlanned: custom.getPresetWardTotalPlanned,
@@ -516,4 +615,4 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
   return children;
 }
 
-export const __test = { attentionFor, buildOccurrences, parseTime };
+export const __test = { attentionFor, buildOccurrences, parseTime, selectionIsMarked, subjectRowSessionId };

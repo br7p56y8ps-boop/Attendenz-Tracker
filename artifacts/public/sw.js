@@ -49,13 +49,13 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // version.json: always live, never cached
-  if (url.pathname.endsWith('version.json')) {
+  // Version and build metadata: always live, never cached.
+  if (url.pathname.endsWith('version.json') || url.pathname.endsWith('build-revision.json')) {
     e.respondWith(fetch(req).catch(() => caches.match(req)));
     return;
   }
 
-  // Navigations: serve cached shell, updated by the app when user approves
+  // Navigations: serve the cached shell, refreshed by the app after a detected update.
   if (req.mode === 'navigate') {
     e.respondWith(
       caches.open(SHELL).then(async (cache) => {

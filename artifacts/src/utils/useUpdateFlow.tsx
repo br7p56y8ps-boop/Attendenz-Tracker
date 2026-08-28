@@ -17,9 +17,8 @@ function compareVersions(a: string, b: string): number {
 
 export function useUpdateFlow() {
   const [installedVersion] = useState<string>(() => {
-    const stored = localStorage.getItem('att_app_version') || APP_VERSION;
-    if (compareVersions(APP_VERSION, stored) > 0) { localStorage.setItem('att_app_version', APP_VERSION); return APP_VERSION; }
-    return stored;
+    localStorage.setItem('att_app_version', APP_VERSION);
+    return APP_VERSION;
   });
   const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
@@ -38,7 +37,7 @@ export function useUpdateFlow() {
       window.removeEventListener('attendenz:update-cleared', onCleared);
     };
   }, []);
-  const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0 || (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
+  const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0;
 
   useEffect(() => {
     if (!isUpdateAvailable || compareVersions(serverVersion, installedVersion) <= 0) return;
@@ -87,7 +86,17 @@ export function useUpdateFlow() {
     }
     setUpdatePhase('updating');
     const MIN = 6500; const start = Date.now();
-    try { const applyPwa = (window as any).attendenzApplyPwaUpdate; if (applyPwa) await applyPwa(); } catch {}
+    let applied = false;
+    try {
+      const applyPwa = (window as any).attendenzApplyPwaUpdate as (() => Promise<boolean>) | undefined;
+      applied = applyPwa ? (await applyPwa()) !== false : false;
+    } catch {
+      applied = false;
+    }
+    if (!applied) {
+      setUpdatePhase('none');
+      return;
+    }
     const elapsed = Date.now() - start;
     if (elapsed < MIN) await new Promise(r => setTimeout(r, MIN - elapsed));
     window.location.href = import.meta.env.BASE_URL || '/';

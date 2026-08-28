@@ -5,13 +5,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
 import { BookOpen, Pencil, ShieldCheck, ArrowRight, RefreshCw, Upload, Sparkles, AlertTriangle, Camera } from 'lucide-react';
 import { importDataFromJSON, getSnapshots } from '../utils/snapshotUtils';
+import { deleteRemoteDevice } from '@/lib/webPushSync';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
 import femaleStudentProfile from '@/assets/images/female_student_profile_1784286920737.jpg';
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
 
 export default function SetupScreen() {
   const { username, updateUsername, profileImage, updateProfileImage } = useAuth();
-  const { completeSetup, setWhatsNewOpen } = useCustomData();
+  const { completeSetup, startFresh, setWhatsNewOpen } = useCustomData();
   const [, setLocation] = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +111,14 @@ export default function SetupScreen() {
     });
   };
 
-  const handleConfirmStartFresh = () => {
+  const handleConfirmStartFresh = async () => {
+    await deleteRemoteDevice();
+    try {
+      const registration = await navigator.serviceWorker?.ready;
+      const subscription = await registration?.pushManager.getSubscription();
+      await subscription?.unsubscribe();
+    } catch {}
+    await startFresh();
     setShowDataDetectedView(false);
     setShowConfirmStartFresh(false);
   };

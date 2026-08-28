@@ -1,4 +1,6 @@
 
+import { getAttendanceStatus, type AttendanceStatus } from '@/lib/utils';
+
 export interface AttendanceReportItem {
   name: string;
   category?: string;
@@ -7,6 +9,8 @@ export interface AttendanceReportItem {
   plannedTotal: number;
   pct: number;
   neededForTarget: string;
+  isFinished?: boolean;
+  attendanceKey?: string;
 }
 
 export interface ExportReportOptions {
@@ -21,6 +25,67 @@ export interface ExportReportOptions {
   overallPct: number;
   pdfTargetWindow?: Window | null;
 }
+
+const EXPORT_FILENAME_BASE = 'AttendenzTracker Report';
+
+const isClinicalReportItem = (item: AttendanceReportItem): boolean => {
+  const category = (item.category || '').toLowerCase();
+  return Boolean(item.name.match(/ \((ward|sgt)\)$/i))
+    || category.includes('clinical')
+    || category.includes('ward')
+    || category.includes('sgt');
+};
+
+const getReportStatus = (item: AttendanceReportItem, targetPct: number): {
+  status: AttendanceStatus;
+  label: string;
+  guidance: string;
+  isFinished: boolean;
+} => {
+  const hasPlannedClasses = item.plannedTotal > 0;
+  const isFinished = hasPlannedClasses && (item.isFinished === true || item.total >= item.plannedTotal);
+  const status = getAttendanceStatus(item.pct, targetPct, { isFinished, hasPlannedClasses });
+  if (status === 'neutral') return { status, label: 'No Planned Classes', guidance: '', isFinished: false };
+  if (isFinished) {
+    return {
+      status,
+      label: status === 'green' ? 'Completed — Meets Threshold' : 'Completed — Below Threshold',
+      guidance: '',
+      isFinished: true,
+    };
+  }
+  if (status === 'green') return { status, label: 'On Track', guidance: 'No attendance action required.', isFinished: false };
+  if (status === 'yellow') return { status, label: 'Need Attention', guidance: 'Attend upcoming Classes to protect your attendance percentage.', isFinished: false };
+  const remaining = Math.max(0, item.plannedTotal - item.total);
+  const required = Math.max(0, Math.ceil((targetPct * item.plannedTotal) / 100) - item.attended);
+  const guidance = required > remaining && remaining > 0
+    ? 'Attend all remaining Classes; the preferred percentage cannot be restored.'
+    : remaining > 0
+      ? 'Attend upcoming Classes to protect your attendance percentage.'
+      : 'Below the preferred percentage.';
+  return { status, label: 'Must Attend', guidance, isFinished: false };
+};
+
+const reportItemsByKind = (items: AttendanceReportItem[]) => ({
+  academic: items.filter(item => !isClinicalReportItem(item)),
+  clinical: items.filter(isClinicalReportItem),
+});
+
+const getExportRow = (item: AttendanceReportItem, targetPct: number) => {
+  const status = getReportStatus(item, targetPct);
+  return {
+    conducted: item.total,
+    present: item.total > 0 ? item.attended : '',
+    status: status.label,
+    guidance: status.guidance || status.label,
+    percentage: item.total > 0 ? Number(item.pct.toFixed(1)) : '',
+  };
+};
+
+const getConductedDisplay = (row: ReturnType<typeof getExportRow>): string | number => {
+  if (row.status === 'No Planned Classes') return 'No Planned Classes';
+  return row.conducted === 0 ? 'Not Conducted Yet' : row.conducted;
+};
 
 // ── Shortened subject map ──
 const SHORTEN_MAP: Record<string, string> = {
@@ -94,6 +159,78 @@ function getImageDimensions(dataUrl: string): Promise<{ width: number; height: n
   });
 }
 
+/** Convert only edge-connected near-white pixels to transparency, preserving white details inside the icon. */
+async function prepareLogoForPdf(dataUrl: string): Promise<string> {
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth || img.width;
+  canvas.height = img.naturalHeight || img.height;
+  const context = canvas.getContext('2d');
+  if (!context) return dataUrl;
+  context.drawImage(img, 0, 0);
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  const { data, width, height } = image;
+  const visited = new Uint8Array(width * height);
+  const queue: number[] = [];
+  const nearWhite = (index: number) => data[index] > 238 && data[index + 1] > 238 && data[index + 2] > 238;
+  const add = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const pixel = y * width + x;
+    if (visited[pixel]) return;
+    const index = pixel * 4;
+    if (!nearWhite(index)) return;
+    visited[pixel] = 1;
+    queue.push(pixel);
+  };
+  for (let x = 0; x < width; x += 1) { add(x, 0); add(x, height - 1); }
+  for (let y = 0; y < height; y += 1) { add(0, y); add(width - 1, y); }
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const pixel = queue[cursor];
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    data[pixel * 4 + 3] = 0;
+    add(x - 1, y); add(x + 1, y); add(x, y - 1); add(x, y + 1);
+  }
+  context.putImageData(image, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+/** Crop a profile image to the passport-frame aspect ratio, covering the frame without letterbox bands. */
+async function preparePassportPhoto(dataUrl: string, targetAspect: number): Promise<string> {
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+  const sourceWidth = img.naturalWidth || img.width;
+  const sourceHeight = img.naturalHeight || img.height;
+  const sourceAspect = sourceWidth / Math.max(1, sourceHeight);
+  let cropWidth = sourceWidth;
+  let cropHeight = sourceHeight;
+  let cropX = 0;
+  let cropY = 0;
+  if (sourceAspect > targetAspect) {
+    cropWidth = Math.max(1, Math.round(sourceHeight * targetAspect));
+    cropX = Math.round((sourceWidth - cropWidth) / 2);
+  } else if (sourceAspect < targetAspect) {
+    cropHeight = Math.max(1, Math.round(sourceWidth / targetAspect));
+    cropY = Math.round((sourceHeight - cropHeight) / 2);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
+  const context = canvas.getContext('2d');
+  if (!context) return dataUrl;
+  context.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+  return canvas.toDataURL('image/jpeg', 0.92);
+}
+
 export function isStandalonePWA(): boolean {
   if (typeof navigator === 'undefined') return false;
   const nav = navigator as Navigator & { standalone?: boolean };
@@ -146,582 +283,387 @@ export async function generatePDFReport(options: ExportReportOptions) {
     overallPct,
   } = options;
 
-  const academicItems = items.filter(item => !item.name.includes('(Ward)') && !item.name.includes('(SGT)'));
-  const clinicalItems = items.filter(item => item.name.includes('(Ward)') || item.name.includes('(SGT)'));
-
-  const displayClinicalItems = clinicalItems.map(item => ({
+  const { academic: academicItems, clinical: clinicalItems } = reportItemsByKind(items);
+  const clinicalDisplayItems = clinicalItems.map(item => ({
     ...item,
-    name: item.name.replace(/ \(Ward\)$/, '')
+    name: item.name.replace(/ \(Ward\)$/i, ''),
   }));
-
-  const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
-  const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
-  const clinicalOverallPct = clinicalOverallTotal > 0 ? (clinicalOverallAttended / clinicalOverallTotal) * 100 : 0;
+  const academicAttended = academicItems.reduce((sum, item) => sum + item.attended, 0);
+  const academicTotal = academicItems.reduce((sum, item) => sum + item.total, 0);
+  const academicPct = academicTotal > 0 ? (academicAttended / academicTotal) * 100 : 0;
+  const clinicalAttended = clinicalItems.reduce((sum, item) => sum + item.attended, 0);
+  const clinicalTotal = clinicalItems.reduce((sum, item) => sum + item.total, 0);
+  const clinicalPct = clinicalTotal > 0 ? (clinicalAttended / clinicalTotal) * 100 : 0;
 
   let logoBase64 = '';
+  let logoFormat: 'PNG' | 'JPEG' = 'PNG';
   let logoDimensions = { width: 1, height: 1 };
   try {
-    logoBase64 = await loadImageAsBase64('/Logo.jpeg');
+    const sourceLogo = await loadImageAsBase64('/Logo.jpeg');
+    logoBase64 = await prepareLogoForPdf(sourceLogo);
     logoDimensions = await getImageDimensions(logoBase64);
   } catch {
     logoBase64 = '';
+    logoFormat = 'JPEG';
+  }
+
+  let photoBase64 = '';
+  let photoDimensions = { width: 1, height: 1 };
+  try {
+    if (options.profileImage) {
+      const sourcePhoto = options.profileImage.startsWith('data:') ? options.profileImage : await loadImageAsBase64(options.profileImage);
+      photoBase64 = await preparePassportPhoto(sourcePhoto, 25 / 34);
+      photoDimensions = await getImageDimensions(photoBase64);
+    }
+  } catch {
+    photoBase64 = '';
   }
 
   const { default: jsPDF } = await import('jspdf');
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
-  let y = 18;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 15;
+  const contentWidth = pageWidth - margin * 2;
+  const navy = [15, 23, 42] as const;
+  const teal = [13, 148, 136] as const;
+  const slate = [71, 85, 105] as const;
+  const muted = [100, 116, 139] as const;
+  const border = [203, 213, 225] as const;
+  const pale = [248, 250, 252] as const;
 
-  if (logoBase64) {
-    const logoHeight = 26;
-    const aspectRatio = logoDimensions.width / logoDimensions.height;
-    const logoWidth = logoHeight * aspectRatio;
-    const logoX = (pageWidth - logoWidth) / 2;
-    const logoY = y;
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(0.5);
-    doc.rect(logoX - 1, logoY - 1, logoWidth + 2, logoHeight + 2, 'S');
-    doc.addImage(logoBase64, 'JPEG', logoX, logoY, logoWidth, logoHeight);
-    y += logoHeight + 12;
-  } else {
-    y += 12;
-  }
-
-  doc.setTextColor(15, 23, 42);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.text('ATTENDANCE REPORT', pageWidth / 2, y, { align: 'center' });
-  y += 6;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(100, 100, 100);
-  doc.text('Attendenz Tracker • Local Device Academic Record', pageWidth / 2, y, { align: 'center' });
-  y += 12;
-
-  function getOrdinalSuffix(day: number): string {
-    if (day >= 11 && day <= 13) return 'th';
-    switch (day % 10) {
-      case 1: return 'st';
-      case 2: return 'nd';
-      case 3: return 'rd';
-      default: return 'th';
-    }
-  }
-
-  const pad = 4;
-  const rowH = 8;
-  const photoW = 32;
-  const gapPV = 5;
-  const gapLV = 4;
-  const now = new Date();
-  const day = now.getDate();
-  const suf = getOrdinalSuffix(day);
-  const timeStr = now.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase();
-  const rows: Array<[string, string]> = [
-    ['Name:', studentName || 'Medical Student'],
-    ['Routine Mode:', routineMode],
-    ['Exported:', `${day}${suf} ${now.toLocaleString('en-US', { month: 'short' })} ${now.getFullYear()} at ${timeStr}`],
-    ['Scope:', filterTitle],
-  ];
-  const maxPageW = pageWidth - 30;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-  let labelW = 0;
-  rows.forEach(([l]) => { labelW = Math.max(labelW, doc.getTextWidth(l)); });
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-  let valueW = 0;
-  rows.forEach(([, v]) => { valueW = Math.max(valueW, doc.getTextWidth(v)); });
-  const fixedW = 3 + photoW + gapPV + labelW + gapLV;
-  const availForValue = maxPageW - fixedW - pad;
-  let usedValueW = valueW;
-  let extraLines = 0;
-  if (valueW > availForValue) {
-    usedValueW = availForValue;
-    rows.forEach(([, v]) => { extraLines += doc.splitTextToSize(v, availForValue).length - 1; });
-  }
-  const cardH = Math.max(photoW + 6, (4 + extraLines) * rowH + pad * 2);
-  const cardW = Math.min(maxPageW, fixedW + usedValueW + pad);
-  const cardX = (pageWidth - cardW) / 2;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(cardX, y, cardW, cardH, 3, 3, 'FD');
-  let photoBase64 = '';
-  try {
-    const src = options.profileImage;
-    if (src) photoBase64 = src.startsWith('data:') ? src : await loadImageAsBase64(src);
-  } catch { photoBase64 = ''; }
-  const py = y + (cardH - photoW) / 2;
-  if (photoBase64) {
-    doc.setDrawColor(203, 213, 225);
-    doc.roundedRect(cardX + 3, py, photoW, photoW, 2, 2, 'S');
-    doc.addImage(photoBase64, 'JPEG', cardX + 3, py, photoW, photoW);
-  }
-  const labelX = cardX + 3 + photoW + gapPV;
-  const valueX = labelX + labelW + gapLV;
-  let ry = y + pad + 5;
-  rows.forEach(([label, value]) => {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(51, 65, 85);
-    doc.text(label, labelX, ry);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(71, 85, 105);
-    const lines = usedValueW < valueW ? doc.splitTextToSize(value, usedValueW) : [value];
-    doc.text(lines, valueX, ry);
-    ry += rowH * lines.length;
-  });
-  y += cardH + 6;
-
-  const drawTable = (
-    title: string,
-    tableItems: AttendanceReportItem[],
-    startY: number,
-    isClinical: boolean = false,
-    applySorting: boolean = false
-  ): number => {
-    let currentY = startY;
-    const legendMap = new Map<string, string>();
-
-    let sortedItems = tableItems;
-    if (applySorting) {
-      const computeMergeStatus = (item: AttendanceReportItem): 'split' | 'merged' | 'zero' => {
-        const conducted = item.total;
-        if (conducted === 0) return 'zero';
-        const plannedTotal = item.plannedTotal;
-        const attended = item.attended;
-        const target = targetPct;
-        if (plannedTotal <= 0) return 'split';
-        const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-        if (attended >= totalNeeded) {
-          const conductedPct = conducted > 0 ? (attended / conducted) * 100 : 0;
-          let remark1IsTarget = false;
-          if (conducted > 0 && conductedPct >= target) remark1IsTarget = true;
-          else {
-            const needed1 = Math.ceil((target * conducted) / 100) - attended;
-            remark1IsTarget = needed1 <= 0;
-          }
-          return remark1IsTarget ? 'merged' : 'split';
-        } else {
-          const remaining = plannedTotal - conducted;
-          const neededFromRemaining = totalNeeded - attended;
-          const canMiss = remaining - neededFromRemaining;
-          if (canMiss > 0) return 'split';
-          else return 'merged';
-        }
-      };
-      const splitGroup: AttendanceReportItem[] = [];
-      const mergedGroup: AttendanceReportItem[] = [];
-      const zeroGroup: AttendanceReportItem[] = [];
-      for (const item of tableItems) {
-        const status = computeMergeStatus(item);
-        if (status === 'zero') zeroGroup.push(item);
-        else if (status === 'split') splitGroup.push(item);
-        else mergedGroup.push(item);
-      }
-      splitGroup.sort((a, b) => b.pct - a.pct);
-      mergedGroup.sort((a, b) => b.pct - a.pct);
-      sortedItems = [...splitGroup, ...mergedGroup, ...zeroGroup];
-    }
-
-    if (isClinical) {
-      doc.setFillColor(239, 246, 255);
-      doc.setDrawColor(191, 219, 254);
-    } else {
-      doc.setFillColor(240, 253, 244);
-      doc.setDrawColor(187, 247, 208);
-    }
-    doc.roundedRect(15, currentY, pageWidth - 30, 9, 3, 3, 'FD');
-    doc.setTextColor(15, 23, 42);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text(title, pageWidth / 2, currentY + 6, { align: 'center' });
-    currentY += 9;
-
-    const colWidth = (pageWidth - 30) / 6;
-    const colX = [15, 15 + colWidth, 15 + colWidth * 2, 15 + colWidth * 3, 15 + colWidth * 4, 15 + colWidth * 5, 15 + colWidth * 6];
-    const headerRowHeight = 9;
-    const subHeaderRowHeight = 7;
-    const totalHeaderHeight = headerRowHeight + subHeaderRowHeight;
-
-    doc.setFillColor(isClinical ? 30 : 30, isClinical ? 58 : 41, isClinical ? 138 : 59);
-    doc.rect(15, currentY, pageWidth - 30, totalHeaderHeight, 'F');
-    const headerBlockCenterY = currentY + totalHeaderHeight / 2;
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    const headerLabel1 = isClinical ? 'Rotation / SGT' : 'Subject';
-    doc.text(headerLabel1, (colX[0] + colX[1]) / 2, headerBlockCenterY, { align: 'center' });
-    doc.text('Class Conducted', (colX[1] + colX[2]) / 2, headerBlockCenterY, { align: 'center' });
-    doc.text('Present', (colX[2] + colX[3]) / 2, headerBlockCenterY, { align: 'center' });
-    doc.text('Current %', (colX[5] + colX[6]) / 2, headerBlockCenterY, { align: 'center' });
-    const topRowCenterY = currentY + headerRowHeight / 2;
-    doc.text('Remarks', (colX[3] + colX[5]) / 2, topRowCenterY, { align: 'center' });
-    const subRowCenterY = currentY + headerRowHeight + subHeaderRowHeight / 2;
-    doc.setFontSize(6.5);
-    doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subRowCenterY, { align: 'center' });
-    doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subRowCenterY, { align: 'center' });
-
-    doc.setDrawColor(85, 85, 85);
-    doc.setLineWidth(0.4);
-    doc.line(15, currentY, pageWidth - 15, currentY);
-    doc.line(15, currentY + totalHeaderHeight, pageWidth - 15, currentY + totalHeaderHeight);
-    doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
-    for (let i = 0; i <= 6; i++) {
-      if (i === 4) continue;
-      doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
-    }
-    doc.line(colX[4], currentY + headerRowHeight, colX[4], currentY + totalHeaderHeight);
-    currentY += totalHeaderHeight;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setLineWidth(0.2);
-
-    for (let idx = 0; idx < sortedItems.length; idx++) {
-      const item = sortedItems[idx];
-      if (currentY > 260) {
-        doc.addPage();
-        currentY = 20;
-        doc.setFillColor(isClinical ? 30 : 30, isClinical ? 58 : 41, isClinical ? 138 : 59);
-        doc.rect(15, currentY, pageWidth - 30, totalHeaderHeight, 'F');
-        const hbCenter = currentY + totalHeaderHeight / 2;
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        const h1 = isClinical ? 'Rotation / SGT' : 'Subject';
-        doc.text(h1, (colX[0] + colX[1]) / 2, hbCenter, { align: 'center' });
-        doc.text('Class Conducted', (colX[1] + colX[2]) / 2, hbCenter, { align: 'center' });
-        doc.text('Present', (colX[2] + colX[3]) / 2, hbCenter, { align: 'center' });
-        doc.text('Current %', (colX[5] + colX[6]) / 2, hbCenter, { align: 'center' });
-        const topCenter = currentY + headerRowHeight / 2;
-        doc.text('Remarks', (colX[3] + colX[5]) / 2, topCenter, { align: 'center' });
-        doc.setFontSize(6.5);
-        const subCenter = currentY + headerRowHeight + subHeaderRowHeight / 2;
-        doc.text('To Reach Preferred %', (colX[3] + colX[4]) / 2, subCenter, { align: 'center' });
-        doc.text('Based on Planned Classes', (colX[4] + colX[5]) / 2, subCenter, { align: 'center' });
-        doc.setDrawColor(85, 85, 85);
-        doc.setLineWidth(0.4);
-        doc.line(15, currentY, pageWidth - 15, currentY);
-        doc.line(15, currentY + totalHeaderHeight, pageWidth - 15, currentY + totalHeaderHeight);
-        doc.line(colX[3], currentY + headerRowHeight, colX[5], currentY + headerRowHeight);
-        for (let i = 0; i <= 6; i++) {
-          if (i === 4) continue;
-          doc.line(colX[i], currentY, colX[i], currentY + totalHeaderHeight);
-        }
-        doc.line(colX[4], currentY + headerRowHeight, colX[4], currentY + totalHeaderHeight);
-        currentY += totalHeaderHeight;
-        doc.setLineWidth(0.2);
-      }
-
-      const isEven = idx % 2 === 0;
-      if (isEven) {
-        doc.setFillColor(241, 245, 249);
-        doc.rect(15, currentY, pageWidth - 30, 8, 'F');
-      }
-
-      // SMART SHORTENING LOGIC
-      const displayName = item.name;
-      const shortened = shortenSubject(displayName);
-      let subName = shortened.display;
-
-      if (shortened.wasShortened) {
-        if (!legendMap.has(shortened.shortForm)) {
-          legendMap.set(shortened.shortForm, shortened.fullForm);
-        }
-      }
-
-      if (subName.length > 20) {
-        subName = subName.substring(0, 18) + '..';
-      }
-
-      const target = targetPct;
-      const conducted = item.total;
-      const attended = item.attended;
-      const plannedTotal = item.plannedTotal;
-
-      let remark1Text = '';
-      let remark1Color = [15, 23, 42];
-      if (conducted === 0) {
-        remark1Text = 'Yet to be Conducted';
-        remark1Color = [148, 163, 184];
-      } else {
-        const pct = (attended / conducted) * 100;
-        if (pct >= target) {
-          remark1Text = 'Target Achieved';
-          remark1Color = [16, 185, 129];
-        } else {
-          const needed = Math.ceil((target * conducted) / 100) - attended;
-          if (needed > 0) {
-            const classText = needed === 1 ? 'Class' : 'Classes';
-            remark1Text = `Attend next ${needed} ${classText}`;
-            remark1Color = [255, 165, 0];
-          } else {
-            remark1Text = 'Target Achieved';
-            remark1Color = [16, 185, 129];
-          }
-        }
-      }
-
-      let remark2Text = '';
-      let remark2Color = [15, 23, 42];
-      let mergeRemarks = false;
-      if (conducted === 0) {
-        remark2Text = 'Yet to be Conducted';
-        remark2Color = [148, 163, 184];
-      } else if (plannedTotal > 0) {
-        const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-        if (attended >= totalNeeded) {
-          remark2Text = 'Target Achieved';
-          remark2Color = [16, 185, 129];
-          if (remark1Text === 'Target Achieved') mergeRemarks = true;
-        } else {
-          const remaining = plannedTotal - conducted;
-          const neededFromRemaining = totalNeeded - attended;
-          const canMiss = remaining - neededFromRemaining;
-          if (canMiss > 0) {
-            remark2Text = `Can miss ${canMiss}`;
-            remark2Color = [255, 165, 0];
-            mergeRemarks = false;
-          } else if (canMiss === 0) {
-            const classText = remaining === 1 ? 'Class' : 'Classes';
-            remark2Text = `Must Attend remaining ${remaining} ${classText}`;
-            remark2Color = [139, 0, 0];
-            mergeRemarks = true;
-          } else {
-            remark2Text = 'Better Luck Next Life';
-            remark2Color = [128, 0, 128];
-            mergeRemarks = true;
-          }
-        }
-      } else {
-        remark2Text = 'No Planned Classes';
-        remark2Color = [148, 163, 184];
-        mergeRemarks = false;
-      }
-
-      const isYetToBeConducted = conducted === 0;
-
-      doc.setDrawColor(85, 85, 85);
-      doc.setLineWidth(0.3);
-      doc.line(15, currentY, pageWidth - 15, currentY);
-      doc.line(15, currentY + 8, pageWidth - 15, currentY + 8);
-
-      if (isYetToBeConducted) {
-        doc.line(colX[0], currentY, colX[0], currentY + 8);
-        doc.line(colX[1], currentY, colX[1], currentY + 8);
-        doc.line(colX[6], currentY, colX[6], currentY + 8);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(15, 23, 42);
-        doc.text(subName, (colX[0] + colX[1]) / 2, currentY + 4, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-        const mergedText = 'Yet to be Conducted';
-        const centerX = (colX[1] + colX[6]) / 2;
-        doc.setTextColor(148, 163, 184);
-        doc.setFont('helvetica', 'italic');
-        doc.text(mergedText, centerX, currentY + 4, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-        currentY += 8;
-        continue;
-      }
-
-      for (let i = 0; i <= 6; i++) {
-        if (mergeRemarks && i >= 3 && i <= 5) continue;
-        doc.line(colX[i], currentY, colX[i], currentY + 8);
-      }
-      if (mergeRemarks) {
-        doc.line(colX[3], currentY, colX[3], currentY + 8);
-        doc.line(colX[5], currentY, colX[5], currentY + 8);
-      }
-
-      const cellCenterY = currentY + 4;
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text(subName, (colX[0] + colX[1]) / 2, cellCenterY, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
-
-      doc.text(String(conducted), (colX[1] + colX[2]) / 2, cellCenterY, { align: 'center' });
-      doc.text(String(attended), (colX[2] + colX[3]) / 2, cellCenterY, { align: 'center' });
-
-      if (mergeRemarks) {
-        const startX = colX[3];
-        const endX = colX[5];
-        const centerX = (startX + endX) / 2;
-        const displayText = remark2Text;
-        doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
-        if (displayText === 'Better Luck Next Life' || displayText.includes('Must Attend')) {
-          doc.setFont('helvetica', 'bold');
-        }
-        doc.text(displayText, centerX, cellCenterY, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-      } else {
-        doc.setTextColor(remark1Color[0], remark1Color[1], remark1Color[2]);
-        if (remark1Text.includes('Attend')) {
-          doc.setFont('helvetica', 'bold');
-        }
-        doc.text(remark1Text, (colX[3] + colX[4]) / 2, cellCenterY, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(remark2Color[0], remark2Color[1], remark2Color[2]);
-        if (remark2Text.includes('Can miss') || remark2Text === 'Target Achieved') {
-          doc.setFont('helvetica', 'bold');
-        }
-        doc.text(remark2Text, (colX[4] + colX[5]) / 2, cellCenterY, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-      }
-
-      if (item.pct >= targetPct) {
-        doc.setTextColor(16, 185, 129);
-      } else {
-        doc.setTextColor(225, 29, 72);
-      }
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${item.pct.toFixed(1)}%`, (colX[5] + colX[6]) / 2, cellCenterY, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
-
-      currentY += 8;
-    }
-
-    currentY += 2;
-
-    if (tableItems.some(i => i.name.includes('(SGT)'))) {
-      legendMap.set('SGT', 'Small Group Teaching');
-    }
-
-    if (legendMap.size > 0) {
-      currentY += 4;
-      if (currentY > 270) { doc.addPage(); currentY = 20; }
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(100, 116, 139);
-      doc.text('Abbreviations used:', 17, currentY);
-      currentY += 4;
-
-      const leftMargin = 17;
-      const colWidth = 60;
-      const bullet = '• ';
-      const eq = ' = ';
-
-      let col = 0;
-      legendMap.forEach((full, short) => {
-        if (col === 0 && currentY > 275) {
-          doc.addPage();
-          currentY = 20;
-        }
-
-        const x = leftMargin + (col * colWidth);
-
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(148, 163, 184);
-        doc.text(bullet, x, currentY);
-
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(51, 65, 85);
-        const bulletWidth = doc.getTextWidth(bullet);
-        const shortWidth = doc.getTextWidth(short);
-        doc.text(short, x + bulletWidth, currentY);
-
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(148, 163, 184);
-        const eqWidth = doc.getTextWidth(eq);
-        doc.text(eq, x + bulletWidth + shortWidth, currentY);
-
-        doc.setFont('helvetica', 'italic');
-        doc.setTextColor(100, 116, 139);
-        doc.text(full, x + bulletWidth + shortWidth + eqWidth, currentY, { maxWidth: colWidth - 10 });
-
-        col++;
-        if (col >= 3) {
-          col = 0;
-          currentY += 4;
-        }
-      });
-
-      if (col !== 0) currentY += 4;
-      doc.setFont('helvetica', 'normal');
-    }
-
-    currentY += 2;
-    return currentY;
+  const statusColor = (status: AttendanceStatus): readonly [number, number, number] => {
+    if (status === 'green') return [5, 150, 105];
+    if (status === 'yellow') return [217, 119, 6];
+    if (status === 'red') return [190, 24, 93];
+    return [100, 116, 139];
   };
 
-  if (academicItems.length > 0) {
-    y = drawTable('Academic Subjects', academicItems, y, false, true);
-    y += 12;
-  }
-
-  if (displayClinicalItems.length > 0) {
-    if (y > 235) {
-      doc.addPage();
-      y = 20;
-    }
-    y = drawTable('Clinical Rotations & SGT', displayClinicalItems, y, true, false);
-    y += 8;
-  }
-
-  if (y > 235) {
-    doc.addPage();
-    y = 20;
-  }
-
-  const combinedAttended = overallAttended + clinicalOverallAttended;
-  const combinedTotal = overallTotal + clinicalOverallTotal;
-  const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
-
-  let academicRemark = `On Track (Target: ${targetPct}%)`;
-  if (overallPct >= 85) academicRemark = `Excellent Performance (Above ${targetPct}% Target)`;
-  else if (overallPct >= targetPct) academicRemark = `Satisfactory Attendance (Meets ${targetPct}% Target)`;
-  else academicRemark = `Attention Required (Below ${targetPct}% Required Threshold)`;
-
-  let clinicalRemark = `On Track (Target: ${targetPct}%)`;
-  if (clinicalOverallPct >= 85) clinicalRemark = `Excellent Performance (Above ${targetPct}% Target)`;
-  else if (clinicalOverallPct >= targetPct) clinicalRemark = `Satisfactory Attendance (Meets ${targetPct}% Target)`;
-  else if (clinicalItems.length > 0 && clinicalOverallTotal > 0)
-    clinicalRemark = `Attention Required (Below ${targetPct}% Required Threshold)`;
-  else clinicalRemark = 'No Clinical Data Available';
-
-  const boxHeight = clinicalItems.length > 0 ? 44 : 26;
-  doc.setFillColor(240, 253, 244);
-  doc.setDrawColor(187, 247, 208);
-  doc.roundedRect(15, y, pageWidth - 30, boxHeight, 3, 3, 'FD');
-  doc.setTextColor(21, 128, 61);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text(`Overall Percentage: ${combinedPct.toFixed(1)}%`, pageWidth / 2, y + 8, { align: 'center' });
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(51, 65, 85);
-  let summaryY = y + 15;
-  doc.text(`Academic Overall Percentage: ${overallPct.toFixed(1)}%`, pageWidth / 2, summaryY, { align: 'center' });
-  summaryY += 7;
-  if (clinicalItems.length > 0) {
-    doc.text(`Clinical Overall Percentage: ${clinicalOverallPct.toFixed(1)}%`, pageWidth / 2, summaryY, { align: 'center' });
-    summaryY += 7;
-  }
-  doc.setTextColor(15, 23, 42);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Academic Remarks: `, 21, summaryY + 2);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(21, 128, 61);
-  doc.text(academicRemark, 55, summaryY + 2);
-  summaryY += 7;
-  if (clinicalItems.length > 0) {
-    doc.setTextColor(15, 23, 42);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Clinical Remarks: `, 21, summaryY + 2);
+  const drawFooter = (pageNumber: number, totalPages: number) => {
+    doc.setDrawColor(...border);
+    doc.setLineWidth(0.3);
+    doc.line(margin, pageHeight - 16, pageWidth - margin, pageHeight - 16);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(21, 128, 61);
-    doc.text(clinicalRemark, 50, summaryY + 2);
+    doc.setFontSize(7.5);
+    doc.setTextColor(...muted);
+    doc.text('Attendenz Tracker  |  Attendance Record', margin, pageHeight - 10);
+    doc.text(`Page ${pageNumber} of ${totalPages}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+  };
+
+  const drawHeader = (firstPage: boolean) => {
+    doc.setFillColor(...navy);
+    doc.rect(0, 0, pageWidth, 34, 'F');
+    if (logoBase64) {
+      const logoH = 19;
+      const logoW = Math.max(12, logoH * (logoDimensions.width / Math.max(1, logoDimensions.height)));
+      doc.addImage(logoBase64, logoFormat, margin, 7, Math.min(24, logoW), logoH);
+    } else {
+      doc.setFillColor(30, 64, 175);
+      doc.roundedRect(margin, 8, 18, 18, 3, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(255, 255, 255);
+      doc.text('AT', margin + 9, 19.5, { align: 'center' });
+    }
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(firstPage ? 18 : 13);
+    doc.text('ATTENDANCE RECORD', margin + 28, firstPage ? 15 : 14);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(226, 232, 240);
+    doc.text(firstPage ? 'Official Academic & Clinical attendance Summary' : 'Attendenz Tracker  |  Continued', margin + 28, firstPage ? 22 : 21);
+  };
+
+  const addPageWithHeader = () => {
+    doc.addPage();
+    drawHeader(false);
+    return 45;
+  };
+
+  drawHeader(true);
+  let y = 43;
+
+  const now = new Date();
+  const exportedAt = `${String(now.getDate()).padStart(2, '0')}-${now.toLocaleString('en-US', { month: 'short' })}-${String(now.getFullYear()).slice(-2)} at ${now.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+  const infoX = margin;
+  const infoY = y;
+  const infoH = 42;
+  doc.setFillColor(...pale);
+  doc.setDrawColor(...border);
+  doc.setLineWidth(0.25);
+  doc.roundedRect(infoX, infoY, contentWidth, infoH, 3, 3, 'FD');
+
+  const infoTextX = infoX + (photoBase64 ? 37 : 6);
+  const metaRight = infoX + contentWidth - 6;
+  const infoAvailableW = metaRight - infoTextX;
+  if (photoBase64) {
+    // Passport-style portrait: the image and its border are the visual focus, without a dead panel around it.
+    const photoBoxW = 25;
+    const photoBoxH = 34;
+    const photoX = infoX + 6;
+    const photoY = infoY + (infoH - photoBoxH) / 2;
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(1.2);
+    doc.roundedRect(photoX, photoY, photoBoxW, photoBoxH, 1.8, 1.8, 'FD');
+    const ratio = photoDimensions.width / Math.max(1, photoDimensions.height);
+    const photoW = ratio >= photoBoxW / photoBoxH ? photoBoxW : photoBoxH * ratio;
+    const photoH = ratio >= photoBoxW / photoBoxH ? photoBoxW / ratio : photoBoxH;
+    doc.addImage(photoBase64, photoBase64.startsWith('data:image/png') ? 'PNG' : 'JPEG', photoX + (photoBoxW - photoW) / 2, photoY + (photoBoxH - photoH) / 2, photoW, photoH);
+    doc.setDrawColor(...navy);
+    doc.setLineWidth(0.55);
+    doc.roundedRect(photoX, photoY, photoBoxW, photoBoxH, 1.8, 1.8, 'S');
   }
-  y += boxHeight + 6;
 
-  doc.setDrawColor(203, 213, 225);
-  doc.line(15, 280, pageWidth - 15, 280);
-  doc.setFontSize(8);
-  doc.setTextColor(148, 163, 184);
-  doc.text('Generated by Attendance Tracker • 100% Local Device Privacy', pageWidth / 2, 285, { align: 'center' });
+  const identityWidth = Math.max(48, infoAvailableW - 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.2);
+  doc.setTextColor(...teal);
+  doc.text('STUDENT IDENTITY', infoTextX, infoY + 5);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(...navy);
+  doc.text(doc.splitTextToSize(studentName || 'Name Not Provided', identityWidth).slice(0, 1), infoTextX, infoY + 12.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  doc.setTextColor(...muted);
+  doc.text(`Attendance Summary  |  ${filterTitle}`, infoTextX, infoY + 18);
 
-  const filename = `Attendance_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.2);
+  doc.setTextColor(...slate);
+  const generatedLabel = 'Generated Date & Time:';
+  const generatedX = metaRight - 72;
+  doc.text(generatedLabel, generatedX, infoY + 7);
+  const generatedLabelWidth = doc.getTextWidth(generatedLabel) + 3;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(...navy);
+  doc.text(exportedAt, generatedX + generatedLabelWidth, infoY + 7);
+
+  doc.setDrawColor(...border);
+  doc.setLineWidth(0.2);
+  doc.line(infoTextX, infoY + 20.5, metaRight, infoY + 20.5);
+  const recordType = clinicalItems.length > 0 ? 'Academic + Clinical' : 'Academic';
+  const fields: Array<[string, string]> = [
+    ['Programme', routineMode],
+    ['Report Scope', filterTitle],
+    ['Attendance Target', `${targetPct}%`],
+    ['Record Type', recordType],
+  ];
+  const fieldW = (infoAvailableW - 10) / 2;
+  fields.forEach(([label, value], index) => {
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    const fieldX = infoTextX + column * (fieldW + 10);
+    const rowY = infoY + 25.5 + row * 9;
+    const labelText = `${label.toUpperCase()}:`;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.4);
+    doc.setTextColor(...teal);
+    doc.text(labelText, fieldX, rowY);
+    const labelWidth = doc.getTextWidth(labelText) + 2.5;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.6);
+    doc.setTextColor(...navy);
+    doc.text(doc.splitTextToSize(value, Math.max(18, fieldW - labelWidth - 2)).slice(0, 1), fieldX + labelWidth, rowY);
+  });
+  y += infoH + 8;
+
+  const statusLabel = (item: AttendanceReportItem) => getReportStatus(item, targetPct);
+  const drawSection = (title: string, sectionItems: AttendanceReportItem[], clinical: boolean): void => {
+    if (sectionItems.length === 0) return;
+    const sectionAccent = clinical ? [30, 64, 175] as const : [4, 120, 87] as const;
+    const sectionTitle = clinical ? 'Clinical Rotations and Small Group Teaching' : title;
+    const itemColumn = clinical ? 'Rotation / SGT' : 'Subject';
+    const cols = [
+      { label: itemColumn, width: 53 },
+      { label: 'Conducted', width: 20 },
+      { label: 'Present', width: 18 },
+      { label: 'Planned', width: 18 },
+      { label: 'Current %', width: 22 },
+      { label: 'Status / Remarks', width: contentWidth - 131 },
+    ];
+    const drawTableHeader = () => {
+      doc.setFillColor(...sectionAccent);
+      doc.rect(margin, y, contentWidth, 10, 'F');
+      let x = margin;
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.2);
+      cols.forEach(col => {
+        doc.text(col.label, x + col.width / 2, y + 6.5, { align: 'center' });
+        x += col.width;
+      });
+      y += 10;
+    };
+
+    if (y > pageHeight - 78) y = addPageWithHeader();
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13.5);
+    doc.setTextColor(...navy);
+    doc.text(sectionTitle, margin, y);
+    y += 5;
+    drawTableHeader();
+
+    sectionItems.forEach((item, idx) => {
+      const reportStatus = statusLabel(item);
+      const guidance = reportStatus.guidance || reportStatus.label;
+      const guidanceLines = doc.splitTextToSize(guidance, cols[5].width - 5).slice(0, 2);
+      const rowH = Math.max(10, guidanceLines.length * 4.1 + 4);
+      if (y + rowH > pageHeight - 23) {
+        y = addPageWithHeader();
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(...navy);
+        doc.text(`${sectionTitle} (continued)`, margin, y);
+        y += 5;
+        drawTableHeader();
+      }
+      if (idx % 2 === 0) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(margin, y, contentWidth, rowH, 'F');
+      }
+      doc.setDrawColor(...border);
+      doc.setLineWidth(0.25);
+      doc.rect(margin, y, contentWidth, rowH, 'S');
+      let x = margin;
+      cols.slice(0, -1).forEach(col => {
+        x += col.width;
+        doc.line(x, y, x, y + rowH);
+      });
+      const centerY = y + rowH / 2 + 1.5;
+      const displayName = shortenSubject(item.name).display;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.6);
+      doc.setTextColor(...navy);
+      doc.text(doc.splitTextToSize(displayName, cols[0].width - 4).slice(0, 2), margin + cols[0].width / 2, centerY, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.6);
+      doc.setTextColor(...slate);
+      const values = [item.total === 0 ? '—' : String(item.total), item.total === 0 ? '—' : String(item.attended), item.plannedTotal > 0 ? String(item.plannedTotal) : '—', item.total > 0 ? `${item.pct.toFixed(1)}%` : '—'];
+      let valueX = margin + cols[0].width;
+      values.forEach((value, valueIndex) => {
+        const width = cols[valueIndex + 1].width;
+        if (valueIndex === 3) doc.setTextColor(...statusColor(reportStatus.status));
+        doc.text(value, valueX + width / 2, centerY, { align: 'center' });
+        valueX += width;
+      });
+      const statusX = margin + contentWidth - cols[5].width + 3;
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...statusColor(reportStatus.status));
+      doc.text(reportStatus.label, statusX, y + 4.4);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.4);
+      doc.setTextColor(...slate);
+      doc.text(guidanceLines, statusX, y + 8.1);
+      y += rowH;
+    });
+    y += 8;
+  };
+
+  drawSection('Academic Subjects', academicItems, false);
+  drawSection('Clinical Rotations and Small Group Teaching', clinicalDisplayItems, true);
+
+  if (y > pageHeight - 93) y = addPageWithHeader();
+  const overallReportItem: AttendanceReportItem = {
+    name: 'Overall Attendance',
+    attended: overallAttended,
+    total: overallTotal,
+    plannedTotal: items.reduce((sum, item) => sum + item.plannedTotal, 0),
+    pct: overallPct,
+    neededForTarget: '',
+  };
+  const overallStatus = getReportStatus(overallReportItem, targetPct);
+  const summaryH = clinicalItems.length > 0 ? 55 : 43;
+  doc.setFillColor(239, 246, 255);
+  doc.setDrawColor(147, 197, 253);
+  doc.roundedRect(margin, y, contentWidth, summaryH, 3, 3, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...navy);
+  doc.setFontSize(11);
+  doc.text('Attendance Summary', margin + 6, y + 9);
+  doc.setFontSize(18);
+  doc.setTextColor(...statusColor(overallStatus.status));
+  doc.text(`${overallPct.toFixed(1)}%`, pageWidth - margin - 6, y + 10, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...muted);
+  doc.text(`Overall attendance  |  Preferred threshold: ${targetPct}%`, pageWidth - margin - 6, y + 15, { align: 'right' });
+  doc.setDrawColor(191, 219, 254);
+  doc.line(margin + 6, y + 20, pageWidth - margin - 6, y + 20);
+
+  const summaryRows: Array<[string, string, string]> = [
+    ['Academic', `${academicAttended}/${academicTotal || 0}`, `${academicPct.toFixed(1)}%`],
+  ];
+  if (clinicalItems.length > 0) summaryRows.push(['Clinical and SGT', `${clinicalAttended}/${clinicalTotal || 0}`, `${clinicalPct.toFixed(1)}%`]);
+  summaryRows.push(['Overall status', overallStatus.label, overallStatus.guidance || '']);
+  let summaryY = y + 28;
+  summaryRows.forEach(([label, value, note]) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(...slate);
+    doc.text(label, margin + 7, summaryY);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...navy);
+    doc.text(value, margin + 48, summaryY);
+    if (note) {
+      doc.setFontSize(7.2);
+      doc.setTextColor(...muted);
+      doc.text(doc.splitTextToSize(note, contentWidth - 75).slice(0, 1), margin + 79, summaryY);
+    }
+    summaryY += 8;
+  });
+  y += summaryH + 5;
+
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7.2);
+  doc.setTextColor(...muted);
+  doc.text('This report is generated from the attendance records currently stored in Attendenz.', margin, Math.min(y, pageHeight - 25));
+
+  const totalPages = doc.getNumberOfPages();
+  for (let page = 1; page <= totalPages; page += 1) {
+    doc.setPage(page);
+    drawFooter(page, totalPages);
+  }
+
+  const filename = `${EXPORT_FILENAME_BASE}.pdf`;
   if (isStandalonePWA()) await handoffPDFForIOSPWA(doc, filename, options.pdfTargetWindow);
   else doc.save(filename);
 }
+function applyExcelStatusStyles(XLSX: any, worksheet: any, statusColumnIndex: number, rowCount: number): void {
+  const palette: Record<string, { fill: string; text: string }> = {
+    'Must Attend': { fill: 'FCE7F3', text: '9F1239' },
+    'Need Attention': { fill: 'FEF3C7', text: '92400E' },
+    'Safe to Miss': { fill: 'DCFCE7', text: '166534' },
+    'On Track': { fill: 'DCFCE7', text: '166534' },
+    'Target Achieved': { fill: 'DCFCE7', text: '166534' },
+    'Completed — Meets Threshold': { fill: 'DCFCE7', text: '166534' },
+    'Completed — Below Threshold': { fill: 'FEE2E2', text: '991B1B' },
+    'No Attendance Planned': { fill: 'F1F5F9', text: '475569' },
+    'No Planned Classes': { fill: 'F1F5F9', text: '475569' },
+  };
+  for (let rowIndex = 1; rowIndex <= rowCount; rowIndex += 1) {
+    const cell = worksheet[XLSX.utils.encode_cell({ r: rowIndex, c: statusColumnIndex })];
+    if (!cell || typeof cell.v !== 'string') continue;
+    const colors = palette[cell.v] || { fill: 'F1F5F9', text: '475569' };
+    cell.s = {
+      fill: { patternType: 'solid', fgColor: { rgb: colors.fill } },
+      font: { bold: true, color: { rgb: colors.text } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: {
+        top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      },
+    };
+  }
+}
 
 export async function generateExcelReport(options: ExportReportOptions) {
-  const XLSX = await import('xlsx');
+  const XLSX = await import('xlsx-js-style');
   const {
     studentName,
     routineMode,
@@ -733,13 +675,15 @@ export async function generateExcelReport(options: ExportReportOptions) {
     targetPct,
   } = options;
 
-  const academicItems = items.filter(item => !item.name.includes('(Ward)') && !item.name.includes('(SGT)'));
-  const clinicalItems = items.filter(item => item.name.includes('(Ward)') || item.name.includes('(SGT)'));
+  const { academic: academicItems, clinical: clinicalItems } = reportItemsByKind(items);
   const displayClinicalItems = clinicalItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/, '')
   }));
 
+  const academicOverallAttended = academicItems.reduce((acc, curr) => acc + curr.attended, 0);
+  const academicOverallTotal = academicItems.reduce((acc, curr) => acc + curr.total, 0);
+  const academicOverallPct = academicOverallTotal > 0 ? (academicOverallAttended / academicOverallTotal) * 100 : 0;
   const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
   const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
   const clinicalOverallPct = clinicalOverallTotal > 0 ? (clinicalOverallAttended / clinicalOverallTotal) * 100 : 0;
@@ -748,118 +692,58 @@ export async function generateExcelReport(options: ExportReportOptions) {
 
   if (academicItems.length > 0) {
     const rows = academicItems.map(item => {
-      const conducted = item.total;
-      const attended = item.attended;
-      const plannedTotal = item.plannedTotal;
-      const target = targetPct;
-      let remark1 = '';
-      let remark2 = '';
-      if (conducted === 0) {
-        remark1 = 'Yet to be Conducted';
-        remark2 = 'Yet to be Conducted';
-      } else {
-        const pct = (attended / conducted) * 100;
-        if (pct >= target) remark1 = 'Target Achieved';
-        else {
-          const needed = Math.ceil((target * conducted) / 100) - attended;
-          remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
-        }
-        if (plannedTotal > 0) {
-          const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-          if (attended >= totalNeeded) remark2 = 'Target Achieved';
-          else {
-            const remaining = plannedTotal - conducted;
-            const neededFromRemaining = totalNeeded - attended;
-            const canMiss = remaining - neededFromRemaining;
-            if (canMiss > 0) remark2 = `Can miss ${canMiss}`;
-            else if (canMiss === 0) {
-              const classText = remaining === 1 ? 'Class' : 'Classes';
-              remark2 = `Must Attend remaining ${remaining} ${classText}`;
-            } else remark2 = 'Better Luck Next Life';
-          }
-        } else remark2 = 'No Planned Classes';
-        if (remark1 === remark2) remark2 = '';
-      }
+      const row = getExportRow(item, targetPct);
       return {
         Subject: item.name,
-        'Class Conducted': conducted === 0 ? 'Yet to be Conducted' : conducted,
-        Present: conducted === 0 ? '' : attended,
-        'To Reach Preferred %': remark1,
-        'Based on Planned Classes': remark2,
-        'Current %': conducted === 0 ? '' : Number(item.pct.toFixed(1)),
+        'Class Conducted': getConductedDisplay(row),
+        Present: row.present,
+        'Attendance Status': row.status,
+        'Recommended Action': row.guidance,
+        'Current %': row.percentage,
       };
     });
     rows.push({
       Subject: 'ACADEMIC SUMMARY',
-      'Class Conducted': overallTotal,
-      Present: overallAttended,
-      'To Reach Preferred %': overallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
-      'Based on Planned Classes': overallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
-      'Current %': Number(overallPct.toFixed(1)),
+      'Class Conducted': academicOverallTotal,
+      Present: academicOverallAttended,
+      'Attendance Status': getReportStatus({ name: 'Academic Summary', attended: academicOverallAttended, total: academicOverallTotal, plannedTotal: academicItems.reduce((sum, item) => sum + item.plannedTotal, 0), pct: academicOverallPct, neededForTarget: '' }, targetPct).label,
+      'Recommended Action': 'See the detailed Subject rows above.',
+      'Current %': Number(academicOverallPct.toFixed(1)),
     });
     const ws = XLSX.utils.json_to_sheet(rows);
+    applyExcelStatusStyles(XLSX, ws, 3, rows.length);
     ws['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 15 }, { wch: 22 }, { wch: 28 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(workbook, ws, 'Academic Subjects');
   }
 
   if (displayClinicalItems.length > 0) {
     const rows = displayClinicalItems.map(item => {
-      const conducted = item.total;
-      const attended = item.attended;
-      const plannedTotal = item.plannedTotal;
-      const target = targetPct;
-      let remark1 = '';
-      let remark2 = '';
-      if (conducted === 0) {
-        remark1 = 'Yet to be Conducted';
-        remark2 = 'Yet to be Conducted';
-      } else {
-        const pct = (attended / conducted) * 100;
-        if (pct >= target) remark1 = 'Target Achieved';
-        else {
-          const needed = Math.ceil((target * conducted) / 100) - attended;
-          remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
-        }
-        if (plannedTotal > 0) {
-          const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-          if (attended >= totalNeeded) remark2 = 'Target Achieved';
-          else {
-            const remaining = plannedTotal - conducted;
-            const neededFromRemaining = totalNeeded - attended;
-            const canMiss = remaining - neededFromRemaining;
-            if (canMiss > 0) remark2 = `Can miss ${canMiss}`;
-            else if (canMiss === 0) {
-              const classText = remaining === 1 ? 'Class' : 'Classes';
-              remark2 = `Must Attend remaining ${remaining} ${classText}`;
-            } else remark2 = 'Better Luck Next Life';
-          }
-        } else remark2 = 'No Planned Classes';
-        if (remark1 === remark2) remark2 = '';
-      }
+      const row = getExportRow(item, targetPct);
       return {
         'Rotation / SGT': item.name,
-        'Class Conducted': conducted === 0 ? 'Yet to be Conducted' : conducted,
-        Present: conducted === 0 ? '' : attended,
-        'To Reach Preferred %': remark1,
-        'Based on Planned Classes': remark2,
-        'Current %': conducted === 0 ? '' : Number(item.pct.toFixed(1)),
+        'Class Conducted': getConductedDisplay(row),
+        Present: row.present,
+        'Attendance Status': row.status,
+        'Recommended Action': row.guidance,
+        'Current %': row.percentage,
       };
     });
     rows.push({
       'Rotation / SGT': 'CLINICAL SUMMARY',
       'Class Conducted': clinicalOverallTotal,
       Present: clinicalOverallAttended,
-      'To Reach Preferred %': clinicalOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
-      'Based on Planned Classes': clinicalOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed',
+      'Attendance Status': getReportStatus({ name: 'Clinical Summary', attended: clinicalOverallAttended, total: clinicalOverallTotal, plannedTotal: clinicalItems.reduce((sum, item) => sum + item.plannedTotal, 0), pct: clinicalOverallPct, neededForTarget: '' }, targetPct).label,
+      'Recommended Action': 'See the detailed Clinical rows above.',
       'Current %': Number(clinicalOverallPct.toFixed(1)),
     });
     const ws = XLSX.utils.json_to_sheet(rows);
+    applyExcelStatusStyles(XLSX, ws, 3, rows.length);
     ws['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 15 }, { wch: 22 }, { wch: 28 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(workbook, ws, 'Clinical Rotations');
   }
 
-  const combinedAttended = overallAttended + clinicalOverallAttended;
-  const combinedTotal = overallTotal + clinicalOverallTotal;
+  const combinedAttended = overallAttended;
+  const combinedTotal = overallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
   const meta = [
     { Property: 'Student Name', Value: studentName || 'Medical Student' },
@@ -876,14 +760,13 @@ export async function generateExcelReport(options: ExportReportOptions) {
   const metaSheet = XLSX.utils.json_to_sheet(meta);
   metaSheet['!cols'] = [{ wch: 24 }, { wch: 40 }];
   XLSX.utils.book_append_sheet(workbook, metaSheet, 'Report Metadata');
-  XLSX.writeFile(workbook, `Attendance_Report_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(workbook, `${EXPORT_FILENAME_BASE}.xlsx`);
 }
 
 export function generateCSVReport(options: ExportReportOptions) {
   const { items, overallAttended, overallTotal } = options;
 
-  const academicItems = items.filter(item => !item.name.includes('(Ward)') && !item.name.includes('(SGT)'));
-  const clinicalItems = items.filter(item => item.name.includes('(Ward)') || item.name.includes('(SGT)'));
+  const { academic: academicItems, clinical: clinicalItems } = reportItemsByKind(items);
   const displayClinicalItems = clinicalItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/, '')
@@ -891,100 +774,36 @@ export function generateCSVReport(options: ExportReportOptions) {
 
   const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
   const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
-  const combinedAttended = overallAttended + clinicalOverallAttended;
-  const combinedTotal = overallTotal + clinicalOverallTotal;
+  const combinedAttended = overallAttended;
+  const combinedTotal = overallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
 
-  const headers = ['Type', 'Subject/Rotation', 'Class Conducted', 'Present', 'To Reach Preferred %', 'Based on Planned Classes', 'Current %'];
+  const headers = ['Type', 'Subject/Rotation', 'Class Conducted', 'Present', 'Attendance Status', 'Recommended Action', 'Current %'];
   const rows: any[] = [];
 
   academicItems.forEach(i => {
-    const conducted = i.total;
-    const attended = i.attended;
-    const plannedTotal = i.plannedTotal;
-    const target = options.targetPct;
-    let remark1 = '';
-    let remark2 = '';
-    if (conducted === 0) {
-      remark1 = 'Yet to be Conducted';
-      remark2 = 'Yet to be Conducted';
-    } else {
-      const pct = (attended / conducted) * 100;
-      if (pct >= target) remark1 = 'Target Achieved';
-      else {
-        const needed = Math.ceil((target * conducted) / 100) - attended;
-        remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
-      }
-      if (plannedTotal > 0) {
-        const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-        if (attended >= totalNeeded) remark2 = 'Target Achieved';
-        else {
-          const remaining = plannedTotal - conducted;
-          const neededFromRemaining = totalNeeded - attended;
-          const canMiss = remaining - neededFromRemaining;
-          if (canMiss > 0) remark2 = `Can miss ${canMiss}`;
-          else if (canMiss === 0) {
-            const classText = remaining === 1 ? 'Class' : 'Classes';
-            remark2 = `Must Attend remaining ${remaining} ${classText}`;
-          } else remark2 = 'Better Luck Next Life';
-        }
-      } else remark2 = 'No Planned Classes';
-      if (remark1 === remark2) remark2 = '';
-    }
-
+    const row = getExportRow(i, options.targetPct);
     rows.push([
       'Academic',
       `"${i.name.replace(/"/g, '""')}"`,
-      conducted === 0 ? 'Yet to be Conducted' : conducted,
-      conducted === 0 ? '' : attended,
-      `"${remark1}"`,
-      `"${remark2}"`,
-      conducted === 0 ? '' : i.pct.toFixed(1),
+      getConductedDisplay(row),
+      row.present,
+      `"${row.status}"`,
+      `"${row.guidance}"`,
+      row.percentage === '' ? '' : Number(row.percentage).toFixed(1),
     ]);
   });
 
   displayClinicalItems.forEach(i => {
-    const conducted = i.total;
-    const attended = i.attended;
-    const plannedTotal = i.plannedTotal;
-    const target = options.targetPct;
-    let remark1 = '';
-    let remark2 = '';
-    if (conducted === 0) {
-      remark1 = 'Yet to be Conducted';
-      remark2 = 'Yet to be Conducted';
-    } else {
-      const pct = (attended / conducted) * 100;
-      if (pct >= target) remark1 = 'Target Achieved';
-      else {
-        const needed = Math.ceil((target * conducted) / 100) - attended;
-        remark1 = needed > 0 ? `Attend next ${needed} ${needed === 1 ? 'Class' : 'Classes'}` : 'Target Achieved';
-      }
-      if (plannedTotal > 0) {
-        const totalNeeded = Math.ceil((target * plannedTotal) / 100);
-        if (attended >= totalNeeded) remark2 = 'Target Achieved';
-        else {
-          const remaining = plannedTotal - conducted;
-          const neededFromRemaining = totalNeeded - attended;
-          const canMiss = remaining - neededFromRemaining;
-          if (canMiss > 0) remark2 = `Can miss ${canMiss}`;
-          else if (canMiss === 0) {
-            const classText = remaining === 1 ? 'Class' : 'Classes';
-            remark2 = `Must Attend remaining ${remaining} ${classText}`;
-          } else remark2 = 'Better Luck Next Life';
-        }
-      } else remark2 = 'No Planned Classes';
-      if (remark1 === remark2) remark2 = '';
-    }
-
+    const row = getExportRow(i, options.targetPct);
     rows.push([
       'Clinical',
       `"${i.name.replace(/"/g, '""')}"`,
-      conducted === 0 ? 'Yet to be Conducted' : conducted,
-      conducted === 0 ? '' : attended,
-      `"${remark1}"`,
-      `"${remark2}"`,
-      conducted === 0 ? '' : i.pct.toFixed(1),
+      getConductedDisplay(row),
+      row.present,
+      `"${row.status}"`,
+      `"${row.guidance}"`,
+      row.percentage === '' ? '' : Number(row.percentage).toFixed(1),
     ]);
   });
 
@@ -994,7 +813,7 @@ export function generateCSVReport(options: ExportReportOptions) {
     combinedTotal,
     combinedAttended,
     '"Combined Summary"',
-    '"Combined Summary"',
+    '"See the detailed rows above"',
     combinedPct.toFixed(1),
   ]);
 
@@ -1003,7 +822,7 @@ export function generateCSVReport(options: ExportReportOptions) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `${EXPORT_FILENAME_BASE}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

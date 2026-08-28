@@ -437,3 +437,122 @@ input[type="time"] {
 .soft-entry-boundary--inner {
   --entry-surface: var(--card);
 }
+
+/* Responsive layout constitution: fluid sizing between compact phones and desktop. */
+:root {
+  --ui-gutter: clamp(0.75rem, 3.8vw, 1rem);
+  --ui-modal-padding: clamp(0.875rem, 4vw, 1.5rem);
+  --ui-title-size: clamp(1rem, 3.8vw, 1.25rem);
+  --ui-body-size: clamp(0.75rem, 2.8vw, 0.875rem);
+  --ui-caption-size: clamp(0.625rem, 2.2vw, 0.75rem);
+  --ui-control-size: clamp(0.6875rem, 2.5vw, 0.8125rem);
+}
+
+.app-shell main {
+  padding-inline: var(--ui-gutter);
+}
+
+.app-shell header h1 {
+  font-size: clamp(1.375rem, 5.6vw, 1.875rem);
+  line-height: 1.1;
+}
+
+.app-shell .modal-sheet-content {
+  padding: var(--ui-modal-padding);
+}
+
+.app-shell .modal-sheet-content h3 {
+  font-size: var(--ui-title-size);
+  line-height: 1.2;
+}
+
+.app-shell .modal-sheet-content p,
+.app-shell .modal-sheet-content label,
+.app-shell .modal-sheet-content input,
+.app-shell .modal-sheet-content select,
+.app-shell .modal-sheet-content textarea {
+  font-size: var(--ui-body-size);
+  line-height: 1.4;
+}
+
+.action-button {
+  min-height: clamp(2.125rem, 7.5vw, 2.5rem);
+  padding-inline: clamp(0.625rem, 3vw, 0.9rem);
+  font-size: var(--ui-control-size);
+}
+
+.action-button--compact {
+  min-height: clamp(1.75rem, 6vw, 1.95rem);
+  padding-inline: clamp(0.45rem, 2.5vw, 0.65rem);
+  font-size: var(--ui-caption-size);
+}
+
+.app-shell input,
+.app-shell select,
+.app-shell textarea {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.bottom-nav-surface button span {
+  font-size: clamp(0.5625rem, 2.2vw, 0.625rem);
+}
+
+.app-shell table {
+  max-width: 100%;
+}
+
+@media (max-width: 374px) {
+  .app-shell .modal-sheet-content {
+    border-radius: 1.25rem;
+  }
+
+  .app-shell .modal-sheet-content .flex.items-start.justify-between {
+    gap: 0.5rem;
+  }
+
+  .app-shell .modal-sheet-content .action-button--close,
+  .app-shell .modal-sheet-content .action-button--cancel {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --ui-gutter: 1rem;
+    --ui-modal-padding: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .action-button,
+  .modal-sheet-content,
+  .bottom-nav-surface {
+    forced-color-adjust: auto;
+  }
+}
+
+/* Fluid utility typography used by shared cards and page content. */
+.app-shell .text-xs { font-size: clamp(0.6875rem, 2.6vw, 0.75rem); }
+.app-shell .text-sm { font-size: clamp(0.8125rem, 3vw, 0.875rem); }
+.app-shell .text-base { font-size: clamp(0.9375rem, 3.4vw, 1rem); }
+.app-shell .text-lg { font-size: clamp(1.0625rem, 4vw, 1.125rem); }
+.app-shell .text-xl { font-size: clamp(1.1875rem, 4.5vw, 1.25rem); }
+.app-shell .text-2xl { font-size: clamp(1.3125rem, 5vw, 1.5rem); }
+.app-shell .text-3xl { font-size: clamp(1.5rem, 5.8vw, 1.875rem); }
+
+.app-shell .leading-tight { line-height: 1.2; }
+.app-shell .leading-relaxed { line-height: 1.5; }
+
+@media (max-width: 374px) {
+  .app-shell .gap-3 { gap: 0.625rem; }
+  .app-shell .p-4 { padding: 0.875rem; }
+  .app-shell .px-4 { padding-inline: 0.875rem; }
+}

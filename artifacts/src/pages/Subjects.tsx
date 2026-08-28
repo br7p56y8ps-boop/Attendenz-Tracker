@@ -91,7 +91,10 @@ const CategoryCard = ({
   preferredPercentage,
   renderChildren,
 }: CategoryCardProps) => {
-  const overallColor = pctColor(summary.pct, preferredPercentage);
+  const overallColor = pctColor(summary.pct, preferredPercentage, {
+    isFinished: summary.planned > 0 && summary.remainingTotal === 0,
+    hasPlannedClasses: summary.planned > 0,
+  });
   const cardBgColor = 'bg-card/90 backdrop-blur-xl border-border/80';
   const cardStyle = isOpen
     ? {}
@@ -624,7 +627,7 @@ export default function Subjects() {
                 ...WARD_SUBJECTS.map(w => ({ name: w.name, id: getSubjectIdByName(w.name, 'clinical') })),
                 ...extraWardNames.map(n => ({ name: n, id: getSubjectIdByName(n, 'clinical') })),
               ]
-            : customWards.map(w => ({ name: w.name, id: w.id, total: getCustomWardTotalPlanned(w.startDate, w.endDate) }));
+            : customWards.map(w => ({ name: w.name, id: w.id, total: getCustomWardTotalPlanned(w.startDate, w.endDate, w.vacationPeriods) }));
           const wardSummary = calcSummary(wardList, true);
           return (
             <CategoryCard
@@ -661,7 +664,7 @@ export default function Subjects() {
                     <SubjectCard
                       key={w.id}
                       subject={w.name}
-                      totalPlanned={getCustomWardTotalPlanned(w.startDate, w.endDate)}
+                      totalPlanned={getCustomWardTotalPlanned(w.startDate, w.endDate, w.vacationPeriods)}
                       isWard={true}
                       isNested={true}
                       isActiveWard={activeWard === w.name}

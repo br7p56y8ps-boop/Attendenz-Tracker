@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey, type SelectionType } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { cn, getCurrentDateStr, getSubjectColor } from '@/lib/utils';
+import { cn, getCurrentDateStr, getSubjectColor, pctColor, getAttendanceStatus } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
@@ -19,7 +19,7 @@ const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.get
 
 const SeverityRing = ({ sev }: { sev: 'must' | 'can' | 'safe' }) => {
   const hex = sev === 'must' ? '#ef4444' : sev === 'can' ? '#f59e0b' : '#10b981';
-  const lines = sev === 'must' ? ['Must', 'Attend'] : sev === 'can' ? ['Can', 'Bunk'] : ['Safe to', 'Bunk'];
+  const lines = sev === 'must' ? ['Must', 'Attend'] : sev === 'can' ? ['Can', 'Bunk'] : ['Safe', 'Bunk'];
   return (
     <div className="relative w-14 h-14 shrink-0">
       <svg width="56" height="56" viewBox="0 0 56 56">
@@ -224,11 +224,14 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   })();
 
   const getPercentageColor = (pct: number) => {
-    if (pct < preferredPercentage) return 'text-destructive';
-    if (pct <= preferredPercentage + 5) return 'text-warning';
-    return 'text-success';
+    const hasPlannedClasses = totalPlannedClasses !== undefined && totalPlannedClasses > 0;
+    const status = getAttendanceStatus(pct, preferredPercentage, { isFinished, hasPlannedClasses });
+    return status === 'green' ? 'text-success' : status === 'yellow' ? 'text-warning' : status === 'neutral' ? 'text-muted-foreground' : 'text-destructive';
   };
-  const ecgColor = percentage >= 80 ? '#10b981' : percentage >= 75 ? '#f59e0b' : '#ef4444';
+  const ecgColor = pctColor(percentage, preferredPercentage, {
+    isFinished,
+    hasPlannedClasses: totalPlannedClasses !== undefined && totalPlannedClasses > 0,
+  });
   const subjectColor = getSubjectColor(subject);
 
   const getFinishedMessage = () => {

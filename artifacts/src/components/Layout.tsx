@@ -32,11 +32,11 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
 
   return (
     <div
-      className="min-h-[100dvh] pb-0 pt-safe bg-background flex flex-col text-foreground transition-colors duration-300"
+      className="app-shell min-h-[100dvh] pb-0 bg-background flex flex-col text-foreground transition-colors duration-300"
       style={{ '--app-header-height': `${headerHeight}px`, '--app-bottom-nav-height': '4.5rem', '--app-bottom-nav-offset': '0px' } as React.CSSProperties}
     >
       <header ref={headerRef} className="fixed inset-x-0 top-0 z-50 border-b border-border/80 bg-card/75 backdrop-blur-2xl rounded-b-[28px] shadow-[0_12px_32px_rgba(0,0,0,0.18)] supports-[backdrop-filter]:bg-card/65">
-        <div className="max-w-3xl mx-auto w-full px-4 pt-safe py-3">
+        <div className="max-w-3xl mx-auto w-full px-4 pt-[env(safe-area-inset-top)] py-3">
           <div className="flex items-center justify-between gap-3 min-h-[4.5rem]">
             <div className="min-w-0">
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{currentItem.label}</h1>
@@ -48,7 +48,7 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
         </div>
       </header>
 
-      <main className={cn('flex-1 max-w-3xl mx-auto w-full px-4', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'var(--app-bottom-nav-height)' }}>
+      <main className={cn('flex-1 max-w-3xl mx-auto w-full px-4', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom))' }}>
         <div key={location} className={contentClassName}>
           {children}
         </div>
@@ -60,15 +60,15 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
         style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
         className={cn(
           'fixed bottom-0 left-0 right-0 md:left-0 md:right-0 md:w-full',
-          'bottom-nav-surface bg-card/75 backdrop-blur-2xl border-x-0 border-b-0 border-t border-border/80 rounded-t-[28px] rounded-b-none py-2 px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40 before:pointer-events-none before:absolute before:inset-x-0 before:-top-5 before:h-5 before:rounded-t-[28px] before:bg-gradient-to-t before:from-card/20 before:to-transparent',
+          'bottom-nav-surface bg-card/75 backdrop-blur-2xl border-x-0 border-b-0 border-t border-border/80 rounded-t-[28px] rounded-b-none pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40 before:pointer-events-none before:absolute before:inset-x-0 before:-top-5 before:h-5 before:rounded-t-[28px] before:bg-gradient-to-t before:from-card/20 before:to-transparent',
           'transition-all duration-300'
         )}
       >
-        <div className="flex justify-around items-center h-14">
+        <nav aria-label="Primary navigation" className="flex justify-around items-center h-14">
           {NAV_ITEMS.map(({ path, label, Icon }) => {
             const active = location === path;
             return (
-              <button key={path} onClick={() => setLocation(path)} className={cn(
+              <button type="button" key={path} onClick={() => setLocation(path)} className={cn(
                 'flex flex-col items-center justify-center flex-1 h-full space-y-1 transition-all duration-300 relative rounded-2xl active:scale-90',
                 active ? 'text-primary filter drop-shadow-[0_0_8px_rgba(10,132,255,0.4)]' : 'text-muted-foreground/60 hover:text-foreground'
               )}>
@@ -77,7 +77,7 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
               </button>
             );
           })}
-        </div>
+        </nav>
       </motion.div>
     </div>
   );

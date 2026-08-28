@@ -2,8 +2,8 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
-import { useCustomData } from '@/contexts/CustomDataContext';
-import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, canonicalizeTimeRange } from '@/lib/utils';
+import { useCustomData, parseDayList } from '@/contexts/CustomDataContext';
+import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, canonicalizeTimeRange, pctColor, getAttendanceStatus } from '@/lib/utils';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 
 const DEFAULT_DAYS_ORDER = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -195,7 +195,7 @@ export default function Timetable() {
     const pct = conducted === 0 ? 0 : (att / conducted) * 100;
     const maxMissable = Math.floor(planned * (1 - target / 100));
     const canMiss = Math.max(0, maxMissable - mis);
-    return { att, mis, off, planned, pct, canMiss };
+    return { att, mis, off, planned, pct, conducted, canMiss };
   }, [allEntities, subjects, wards, homeSelections, target]);
 
   const attention = useMemo(() => {
@@ -399,7 +399,10 @@ export default function Timetable() {
     const days: any[][] = Array.from({ length: 7 }, () => []);
     customSubjects.forEach(s => {
       if (s.parentName === 'Small Group Teaching' || s.subjectType === 'allied-parent') return;
-      (s.schedules || []).forEach((sch: any) => {
+      const schedules = s.schedules?.length
+        ? s.schedules
+        : parseDayList(s.days || '').map((day: string) => ({ day, time: s.time || '' }));
+      schedules.forEach((sch: any) => {
         const dayIndex = DAY_INDEX_MAP[sch.day] ?? -1;
         if (dayIndex < 0) return;
         const time = sch.time || (sch.start && sch.end ? `${sch.start}–${sch.end}` : '');
@@ -505,7 +508,15 @@ export default function Timetable() {
   }, [activeTimetable, subjectMode, columns, sgtEntries, displayDaysOrder]);
 
   const dense = columns.length >= 6;
-  const overallColor = overall.pct >= target ? 'text-emerald-500' : overall.pct >= target - 10 ? 'text-amber-500' : 'text-rose-500';
+  const overallStatus = getAttendanceStatus(overall.pct, target, {
+    isFinished: overall.planned > 0 && overall.conducted >= overall.planned,
+    hasPlannedClasses: overall.planned > 0,
+  });
+  const overallColor = overallStatus === 'green' ? 'text-success' : overallStatus === 'yellow' ? 'text-warning' : overallStatus === 'neutral' ? 'text-muted-foreground' : 'text-destructive';
+  const overallHex = pctColor(overall.pct, target, {
+    isFinished: overall.planned > 0 && overall.conducted >= overall.planned,
+    hasPlannedClasses: overall.planned > 0,
+  });
   const rotationStatus = (r: { start: string; end: string }) => {
     const s = new Date(r.start + 'T12:00:00');
     const e = new Date(r.end + 'T12:00:00');
@@ -631,7 +642,7 @@ export default function Timetable() {
                 <div className="relative w-11 h-11 shrink-0">
                   <svg width="44" height="44" className="transform -rotate-90">
                     <circle cx="22" cy="22" r="18" strokeWidth="4" className="text-muted/20" stroke="currentColor" fill="transparent" />
-                    <circle cx="22" cy="22" r="18" strokeWidth="4" stroke={overall.pct >= target ? '#10b981' : overall.pct >= target - 10 ? '#f59e0b' : '#f43f5e'} strokeDasharray={2 * Math.PI * 18} strokeDashoffset={(2 * Math.PI * 18) * (1 - Math.min(100, overall.pct) / 100)} strokeLinecap="round" fill="transparent" />
+                    <circle cx="22" cy="22" r="18" strokeWidth="4" stroke={overallHex} strokeDasharray={2 * Math.PI * 18} strokeDashoffset={(2 * Math.PI * 18) * (1 - Math.min(100, overall.pct) / 100)} strokeLinecap="round" fill="transparent" />
                   </svg>
                   <span className={cn('absolute inset-0 flex items-center justify-center text-[9px] font-extrabold', overallColor)}>{overall.pct.toFixed(0)}%</span>
                 </div>
@@ -660,12 +671,15 @@ export default function Timetable() {
             <div className="border-t border-border/40 pt-3">
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Last 6 Months</p>
               <div className="flex items-end justify-between gap-1.5 h-14">
-                {months.map((m, i) => (
-                  <button key={m.key} type="button" onClick={() => setMonthSel(prev => prev === i ? null : i)} className="flex-1 flex flex-col items-center gap-1 cursor-pointer">
-                    <div className={cn('w-full rounded-t-md transition-all', monthSel === i ? 'bg-primary' : m.pct === null ? 'bg-muted/30' : m.pct >= target ? 'bg-emerald-500/70' : m.pct >= target - 10 ? 'bg-amber-500/70' : 'bg-rose-500/70')} style={{ height: m.pct === null ? 4 : `${Math.max(8, m.pct * 0.4)}px` }} />
-                    <span className="text-[8px] font-bold text-muted-foreground">{m.label}</span>
-                  </button>
-                ))}
+                {months.map((m, i) => {
+                  const monthColor = m.pct === null ? undefined : pctColor(m.pct, target, { isFinished: true, hasPlannedClasses: true });
+                  return (
+                    <button key={m.key} type="button" onClick={() => setMonthSel(prev => prev === i ? null : i)} className="flex-1 flex flex-col items-center gap-1 cursor-pointer">
+                      <div className={cn('w-full rounded-t-md transition-all', monthSel === i ? 'bg-primary' : m.pct === null ? 'bg-muted/30' : '')} style={{ height: m.pct === null ? 4 : `${Math.max(8, m.pct * 0.4)}px`, ...(monthSel === i || !monthColor ? {} : { backgroundColor: monthColor }) }} />
+                      <span className="text-[8px] font-bold text-muted-foreground">{m.label}</span>
+                    </button>
+                  );
+                })}
               </div>
               {monthSel !== null && months[monthSel] && (
                 <p className="text-[10px] text-foreground font-semibold text-center mt-2">
@@ -708,7 +722,8 @@ export default function Timetable() {
               ) : (
                 <div className="space-y-1.5">
                   {predictionItems.map(item => {
-                    const maxColor = item.maxPossiblePct >= target ? 'text-emerald-500' : item.maxPossiblePct >= target - 10 ? 'text-amber-500' : 'text-rose-500';
+                    const maxStatus = getAttendanceStatus(item.maxPossiblePct, target, { hasPlannedClasses: item.planned > 0 });
+                    const maxColor = maxStatus === 'green' ? 'text-success' : maxStatus === 'yellow' ? 'text-warning' : maxStatus === 'neutral' ? 'text-muted-foreground' : 'text-destructive';
                     return (
                       <div key={item.name} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 bg-muted/20 rounded-lg px-3 py-1.5">
                         <span className="min-w-0 text-xs font-bold text-foreground truncate" style={{ color: getSubjectColor(item.name) }}>{shortenSubject(item.name)} <span className={cn('ml-1 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider align-middle', categoryBadgeClass(item.category))}>{item.category}</span></span>

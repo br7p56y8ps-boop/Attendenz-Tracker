@@ -122,8 +122,11 @@ export const SubjectCard = ({
   const canStillMiss = Math.max(0, maxMissable - missedNum);
   const rawRequired = Math.max(0, Math.ceil(totalPlanned * (targetPct / 100)) - attendedNum);
   const requiredToAttend = rawRequired > remaining ? "Not possible" : rawRequired;
-  const percentageColor = pctColor(percentage, preferredPercentage);
   const isMaxReached = totalConducted >= totalPlanned;
+  const percentageColor = pctColor(percentage, preferredPercentage, {
+    isFinished: isMarkedFinished || isMaxReached,
+    hasPlannedClasses: totalPlanned > 0,
+  });
 
   const cardStyle = {
     backgroundColor: `${percentageColor}14`,
@@ -211,6 +214,8 @@ export const SubjectCard = ({
       {/* Metrics Row */}
       <div className="grid grid-cols-4 gap-2 pt-3 border-t border-border/30">
         <div
+          role="button" tabIndex={0} aria-expanded={activeStatInfo === 'remaining'}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setActiveStatInfo(prev => prev === 'remaining' ? null : 'remaining'); } }}
           onClick={(e) => { e.stopPropagation(); setActiveStatInfo(prev => prev === 'remaining' ? null : 'remaining'); }}
           className={cn(
             "flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer",
@@ -221,6 +226,8 @@ export const SubjectCard = ({
           <span className="text-sm font-bold text-foreground">{remaining}</span>
         </div>
         <div
+          role="button" tabIndex={0} aria-expanded={activeStatInfo === 'missable'}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setActiveStatInfo(prev => prev === 'missable' ? null : 'missable'); } }}
           onClick={(e) => { e.stopPropagation(); setActiveStatInfo(prev => prev === 'missable' ? null : 'missable'); }}
           className={cn(
             "flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer",
@@ -231,6 +238,8 @@ export const SubjectCard = ({
           <span className="text-sm font-bold text-foreground">{maxMissable}</span>
         </div>
         <div
+          role="button" tabIndex={0} aria-expanded={activeStatInfo === 'canMiss'}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setActiveStatInfo(prev => prev === 'canMiss' ? null : 'canMiss'); } }}
           onClick={(e) => { e.stopPropagation(); setActiveStatInfo(prev => prev === 'canMiss' ? null : 'canMiss'); }}
           className={cn(
             "flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer",
@@ -241,6 +250,8 @@ export const SubjectCard = ({
           <span className="text-sm font-bold text-success">{canStillMiss}</span>
         </div>
         <div
+          role="button" tabIndex={0} aria-expanded={activeStatInfo === 'required'}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setActiveStatInfo(prev => prev === 'required' ? null : 'required'); } }}
           onClick={(e) => { e.stopPropagation(); setActiveStatInfo(prev => prev === 'required' ? null : 'required'); }}
           className={cn(
             "flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer",

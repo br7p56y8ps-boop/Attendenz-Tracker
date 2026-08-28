@@ -18,6 +18,7 @@ import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport, isStandalonePWA } from '@/lib/exportUtils';
+import { deleteRemoteDevice } from '@/lib/webPushSync';
 import {
   disableDirectPush,
   enableDirectPush,
@@ -27,6 +28,8 @@ import {
   NOTIFICATION_SETTINGS_CHANGED_EVENT,
   setNotificationPreferences,
   setSystemNotificationsEnabled,
+  notifyCurriculumChange,
+  notifyDataTransfer,
   type NotificationLeadMinutes,
   type NotificationPreferences,
 } from '@/lib/webPush';
@@ -54,6 +57,93 @@ function SettingRow({ icon, title, description, onClick, tone = 'primary' }: { i
       <span className="min-w-0 flex-1"><span className="block font-semibold text-xs text-foreground">{title}</span>{description && <span className="block text-[10px] text-muted-foreground mt-0.5">{description}</span>}</span>
       <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
     </button>
+  );
+}
+
+type NotificationChildKey = 'needAttentionSummary' | 'needAttentionSubjects' | 'safeToMiss' | 'beforeClassWarnings' | 'unmarkedAttendanceToday' | 'lastPlannedClassToday' | 'firstClassOfDay' | 'allScheduledClasses' | 'manageChanges' | 'curriculumChanges' | 'dataTransfer' | 'updateAvailable' | 'updateCompleted';
+
+type NotificationChild = { key: NotificationChildKey; title: string; description: string };
+
+const ATTENDANCE_REMINDER_CHILDREN: NotificationChild[] = [
+  { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'A grouped summary for Subjects that need attendance protection today.' },
+  { key: 'needAttentionSubjects', title: 'Need Attention Subjects', description: 'Reminders for Subjects at the target but without the recommended safety margin.' },
+  { key: 'safeToMiss', title: 'Safe to Miss a Class', description: 'A lead-time alert when missing the upcoming Class would keep you at or above the preferred percentage.' },
+  { key: 'beforeClassWarnings', title: 'Before-Class Warnings', description: 'Controls reminders sent before an upcoming Class.' },
+  { key: 'unmarkedAttendanceToday', title: 'Unmarked Attendance Today', description: 'A late-evening reminder for today’s Classes that still have no attendance status.' },
+];
+
+const DAILY_SCHEDULE_CHILDREN: NotificationChild[] = [
+  { key: 'lastPlannedClassToday', title: 'Last Planned Class Today', description: 'A reminder when a Subject has its last planned Class today.' },
+  { key: 'firstClassOfDay', title: 'First Class of the Day', description: 'A reminder showing the first Subject and start time scheduled today.' },
+  { key: 'allScheduledClasses', title: 'All Scheduled Classes', description: 'One grouped reminder listing all Classes scheduled today.' },
+];
+
+const ACTIVITY_CHILDREN: NotificationChild[] = [
+  { key: 'manageChanges', title: 'Changes Made in Manage', description: 'A confirmation after a routine change is saved successfully.' },
+  { key: 'curriculumChanges', title: 'Curriculum Changes', description: 'A confirmation after switching, completing, or restoring a curriculum.' },
+  { key: 'dataTransfer', title: 'Routine or App Data Transfer', description: 'A confirmation after a routine, settings, backup, or app-data transfer succeeds.' },
+];
+
+const UPDATE_CHILDREN: NotificationChild[] = [
+  { key: 'updateAvailable', title: 'Update Available', description: 'A notice when a new Attendenz version is ready.' },
+  { key: 'updateCompleted', title: 'Update Completed', description: 'A confirmation after the new version becomes active.' },
+];
+
+function NotificationGroupCard({
+  title,
+  description,
+  expanded,
+  onExpand,
+  enabled,
+  onMasterChange,
+  children,
+  disabled,
+  leadMinutes,
+  onLeadMinutesChange,
+  getChildChecked,
+  onChildChange,
+}: {
+  title: string;
+  description: string;
+  expanded: boolean;
+  onExpand: () => void;
+  enabled: boolean;
+  onMasterChange: (enabled: boolean) => void;
+  children: NotificationChild[];
+  disabled: boolean;
+  leadMinutes?: NotificationLeadMinutes;
+  onLeadMinutesChange?: (value: NotificationLeadMinutes) => void;
+  getChildChecked: (key: NotificationChildKey) => boolean;
+  onChildChange: (key: NotificationChildKey, enabled: boolean) => void;
+}) {
+  return (
+    <section className={cn('rounded-2xl border transition-colors', disabled ? 'border-border/40 bg-muted/10 opacity-60' : enabled ? 'border-primary/25 bg-primary/[0.03]' : 'border-border/60 bg-muted/10')}>
+      <div className="flex items-center gap-2.5 p-3">
+        <button type="button" onClick={onExpand} className="min-w-0 flex-1 text-left cursor-pointer" aria-expanded={expanded}>
+          <span className="block text-xs font-bold text-foreground">{title}</span>
+          <span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">{description}</span>
+        </button>
+        <SettingToggle checked={enabled} onChange={onMasterChange} label={`${title} master switch`} disabled={disabled} />
+      </div>
+      {expanded && (
+        <div className="border-t border-border/40 px-3 pb-3 pt-2 space-y-2">
+          {children.map(child => (
+            <div key={child.key} className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', (!enabled || disabled) && 'opacity-50')}>
+              <span className="min-w-0"><span className="block text-[11px] font-semibold text-foreground">{child.title}</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">{child.description}</span></span>
+              <SettingToggle checked={getChildChecked(child.key)} onChange={value => onChildChange(child.key, value)} label={child.title} disabled={disabled || !enabled} />
+            </div>
+          ))}
+          {leadMinutes !== undefined && onLeadMinutesChange && (
+            <label className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', (!enabled || disabled) && 'opacity-50')}>
+              <span><span className="block text-[11px] font-semibold text-foreground">Warning Reminder Timing</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Choose how early before a Class a lead-time reminder can arrive.</span></span>
+              <select value={leadMinutes} onChange={event => onLeadMinutesChange(Number(event.target.value) as NotificationLeadMinutes)} disabled={!enabled || disabled} className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground">
+                <option value={15}>15 Minutes</option><option value={30}>30 Minutes</option><option value={60}>60 Minutes</option>
+              </select>
+            </label>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -102,7 +192,7 @@ export default function Settings() {
     };
   }, [isEditingName]);
   const handleSaveName = () => { if (nameInput.trim()) updateUsername(nameInput.trim()); setIsEditingName(false); };
-  const { subjects, wards, homeSelections, preferredPercentage, setPreferredPercentage } = useAttendance();
+  const { subjects, wards, homeSelections, finishedMap, preferredPercentage, setPreferredPercentage } = useAttendance();
   const quarantineUnresolvedAttendance = (type: 'subject' | 'ward', name: string, data: unknown) => {
     try {
       const existing = JSON.parse(localStorage.getItem(ORPHANED_RECORDS_KEY) || '[]');
@@ -124,12 +214,8 @@ export default function Settings() {
   const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
   const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
   const [installedVersion] = useState<string>(() => {
-    const stored = localStorage.getItem('att_app_version') || APP_VERSION;
-    if (compareVersions(APP_VERSION, stored) > 0) {
-      localStorage.setItem('att_app_version', APP_VERSION);
-      return APP_VERSION;
-    }
-    return stored;
+    localStorage.setItem('att_app_version', APP_VERSION);
+    return APP_VERSION;
   });
 
   const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
@@ -147,9 +233,7 @@ export default function Settings() {
       window.removeEventListener('attendenz:update-cleared', onCleared);
     };
   }, []);
-  const isUpdateAvailable =
-    compareVersions(serverVersion, installedVersion) > 0 ||
-    (pwaReady && compareVersions(serverVersion, installedVersion) >= 0);
+  const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0;
   const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
   const [dots, setDots] = useState(1);
   useEffect(() => {
@@ -163,6 +247,7 @@ export default function Settings() {
   const [systemNotificationsEnabled, setSystemNotificationsEnabledState] = useState(() => getSystemNotificationsEnabled());
   const [notificationPreferences, setNotificationPreferencesState] = useState<NotificationPreferences>(() => getNotificationPreferences());
   const [notificationBusy, setNotificationBusy] = useState(false);
+  const [expandedNotificationGroups, setExpandedNotificationGroups] = useState<Record<string, boolean>>({ attendance: false, dailySchedule: false, activity: false, updates: false });
   const [pendingPct, setPendingPct] = useState<number | null>(null);
   const [confirmMarkComplete, setConfirmMarkComplete] = useState(false);
   const [snapshotToRestore, setSnapshotToRestore] = useState<Snapshot | null>(null);
@@ -202,6 +287,12 @@ export default function Settings() {
     setNotificationPreferences(next);
   };
 
+  const notificationControlsDisabled = !systemNotificationsEnabled || notificationPermission !== 'granted';
+  const setNotificationGroupEnabled = (group: 'attendance' | 'dailySchedule' | 'activity' | 'updates', enabled: boolean) => {
+    const key = `${group}GroupEnabled` as keyof NotificationPreferences;
+    updateNotificationPreference(key, enabled as NotificationPreferences[typeof key]);
+  };
+
   const enableSystemNotifications = async () => {
     if (notificationBusy) return;
     setNotificationBusy(true);
@@ -235,6 +326,7 @@ export default function Settings() {
     setCurriculumStatus('Active');
     localStorage.setItem('att_curriculum_status', 'Active');
     if (activeCurriculumId) setCurricula(persistCurriculumStatus(activeCurriculumId, 'active'));
+    void notifyCurriculumChange(`The ${getActiveCurriculumName() || 'current'} curriculum is active again.`);
     import('sonner').then(({ toast }) => toast.info('Curriculum marked as Active.'));
   };
   const applyMarkComplete = async () => {
@@ -242,6 +334,7 @@ export default function Settings() {
     setCurriculumStatus('Completed');
     localStorage.setItem('att_curriculum_status', 'Completed');
     if (activeCurriculumId) setCurricula(persistCurriculumStatus(activeCurriculumId, 'archived'));
+    void notifyCurriculumChange(`The ${getActiveCurriculumName() || 'current'} curriculum was completed and archived.`);
     const snapshotSaved = await createSnapshot('Curriculum Completed');
     setSnapshots(getSnapshots());
     if (snapshotSaved) notifySuccess('Curriculum marked as Completed! Auto-snapshot saved.');
@@ -398,7 +491,7 @@ export default function Settings() {
       for (const cw of customWards) pushEntity(cw.name, 'Custom Wards', true, getCustomWardTotalPlanned(cw.startDate, cw.endDate), false, undefined, cw.id);
     }
 
-    const agg = new Map<string, { name: string; category: string; attended: number; missed: number; plannedTotal: number; isSGT?: boolean }>();
+    const agg = new Map<string, { name: string; category: string; attended: number; missed: number; plannedTotal: number; isSGT?: boolean; finished?: boolean }>();
     for (const [key, sel] of Object.entries(homeSelections)) {
       const date = key.slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
@@ -406,14 +499,20 @@ export default function Settings() {
       if (sel !== 'attended' && sel !== 'missed') continue;
       const rest = key.slice(11);
       for (const e of entities) {
-        const norm = (s: string) => s.toLowerCase().replace(/[-\s]+/g, '_');
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
         const normRest = norm(rest);
         if (!e.attendanceKey) continue;
-        const canonical = norm(e.attendanceKey);
-        const matched = normRest === canonical || normRest.startsWith(canonical + '-') || normRest.startsWith(canonical + '_');
+        const aliases = [
+          e.attendanceKey,
+          e.isWard ? `ward-${e.name}` : e.name,
+          e.name,
+          e.isSGT && e.sgtId ? `sgt:${e.sgtId}` : '',
+          e.isSGT && e.sgtId ? `sgt-${e.sgtId}` : '',
+        ].filter(Boolean).map(norm);
+        const matched = aliases.some(alias => normRest === alias || normRest.startsWith(alias + '_'));
         if (matched) {
           const id = `${e.isWard ? 'w' : 's'}_${e.name.toLowerCase()}${e.isSGT ? '_sgt' : ''}`;
-          const cur = agg.get(id) || { name: e.name, category: e.category, attended: 0, missed: 0, plannedTotal: e.plannedTotal, isSGT: e.isSGT };
+          const cur = agg.get(id) || { name: e.name, category: e.category, attended: 0, missed: 0, plannedTotal: e.plannedTotal, isSGT: e.isSGT, finished: Boolean(finishedMap[e.attendanceKey]) };
           if (sel === 'attended') cur.attended += 1; else cur.missed += 1;
           agg.set(id, cur);
           break;
@@ -429,43 +528,45 @@ export default function Settings() {
 
   const handleExecuteExport = async () => {
     setExportMsg('');
-    const rawItems: Array<{ name: string; category?: string; attended: number; total: number; plannedTotal: number; sgtId?: string; isWard?: boolean }> = [];
+    const rawItems: Array<{ name: string; category?: string; attended: number; total: number; plannedTotal: number; sgtId?: string; isWard?: boolean; attendanceKey?: string; finished?: boolean }> = [];
     if (subjectMode === 'preloaded') {
       for (const cat of CATEGORIES) for (const sub of cat.subjects) {
         const id = getSubjectIdByName(sub.name, 'academic');
         if (!id) quarantineUnresolvedAttendance('subject', sub.name, null);
-        const data = id ? subjects[getAcademicAttendanceKey(id)] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-        rawItems.push({ name: sub.name, category: cat.name, attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(sub.name) || 0 });
+        const attendanceKey = id ? getAcademicAttendanceKey(id) : '';
+        const data = attendanceKey ? subjects[attendanceKey] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
+        rawItems.push({ name: sub.name, category: cat.name, attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(sub.name) || 0, attendanceKey, finished: Boolean(finishedMap[attendanceKey]) });
       }
       for (const s of INTEGRATED_SUBJECTS) {
         const id = getSubjectIdByName(s.name, 'academic');
         if (!id) quarantineUnresolvedAttendance('subject', s.name, null);
-        const data = id ? subjects[getAcademicAttendanceKey(id)] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-        rawItems.push({ name: s.name, category: 'Academic', attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(s.name) || 0 });
+        const attendanceKey = id ? getAcademicAttendanceKey(id) : '';
+        const data = attendanceKey ? subjects[attendanceKey] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
+        rawItems.push({ name: s.name, category: 'Academic', attended: data.attended, total: data.attended + data.missed, plannedTotal: getSubjectPlannedTotal(s.name) || 0, attendanceKey, finished: Boolean(finishedMap[attendanceKey]) });
       }
       for (const ua of userAddedSubjects) {
         if (ua.subjectType === 'allied' && ua.parentName === 'Small Group Teaching') {
           const sgtKey = getSGTKey(ua.id);
           const data = subjects[sgtKey] || { attended: 0, missed: 0 };
-          rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses ?? 0, sgtId: ua.id });
+          rawItems.push({ name: `${ua.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses ?? 0, sgtId: ua.id, attendanceKey: sgtKey, finished: Boolean(finishedMap[sgtKey]) });
         } else {
           const key = canonicalAttendanceKey('subject', ua.id || getSubjectIdByName(ua.name, 'academic'), ua.name);
           const data = key ? subjects[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-          rawItems.push({ name: ua.name, category: 'Added by you', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses ?? getSubjectPlannedTotal(ua.name) ?? 0 });
+          rawItems.push({ name: ua.name, category: 'Added by you', attended: data.attended, total: data.attended + data.missed, plannedTotal: ua.plannedClasses ?? getSubjectPlannedTotal(ua.name) ?? 0, attendanceKey: key, finished: Boolean(finishedMap[key]) });
         }
       }
       const addedWards = new Set<string>();
       for (const w of WARD_SUBJECTS) {
         const key = canonicalAttendanceKey('ward', getSubjectIdByName(w.name, 'clinical'), w.name);
         const data = key ? wards[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-        rawItems.push({ name: `${w.name} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(w.name) || 0, isWard: true });
+        rawItems.push({ name: `${w.name} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(w.name) || 0, isWard: true, attendanceKey: key, finished: Boolean(finishedMap[key]) });
         addedWards.add(w.name.toLowerCase());
       }
       for (const e of presetWardSchedule) {
         if (!addedWards.has(e.ward.toLowerCase())) {
           const key = canonicalAttendanceKey('ward', getSubjectIdByName(e.ward, 'clinical'), e.ward);
           const data = key ? wards[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-          rawItems.push({ name: `${e.ward} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(e.ward) || 0, isWard: true });
+          rawItems.push({ name: `${e.ward} (Ward)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getPresetWardTotalPlanned(e.ward) || 0, isWard: true, attendanceKey: key, finished: Boolean(finishedMap[key]) });
           addedWards.add(e.ward.toLowerCase());
         }
       }
@@ -474,17 +575,17 @@ export default function Settings() {
         if (cs.subjectType === 'allied' && cs.parentName === 'Small Group Teaching') {
           const sgtKey = getSGTKey(cs.id);
           const data = subjects[sgtKey] || { attended: 0, missed: 0 };
-          rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses ?? 0, sgtId: cs.id });
+          rawItems.push({ name: `${cs.name} (SGT)`, category: 'Clinical Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses ?? 0, sgtId: cs.id, attendanceKey: sgtKey, finished: Boolean(finishedMap[sgtKey]) });
         } else {
           const key = canonicalAttendanceKey('subject', cs.id || getSubjectIdByName(cs.name, 'academic'), cs.name);
           const data = key ? subjects[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-          rawItems.push({ name: cs.name, category: cs.category || 'Custom Subject', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses ?? 0 });
+          rawItems.push({ name: cs.name, category: cs.category || 'Custom Subject', attended: data.attended, total: data.attended + data.missed, plannedTotal: cs.plannedClasses ?? 0, attendanceKey: key, finished: Boolean(finishedMap[key]) });
         }
       }
       for (const cw of customWards) {
         const key = canonicalAttendanceKey('ward', cw.id || getSubjectIdByName(cw.name, 'clinical'), cw.name);
         const data = key ? wards[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-        rawItems.push({ name: `${cw.name} (Ward)`, category: 'Custom Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getCustomWardTotalPlanned(cw.startDate, cw.endDate, cw.vacationPeriods) ?? 0, isWard: true });
+        rawItems.push({ name: `${cw.name} (Ward)`, category: 'Custom Wards', attended: data.attended, total: data.attended + data.missed, plannedTotal: getCustomWardTotalPlanned(cw.startDate, cw.endDate, cw.vacationPeriods) ?? 0, isWard: true, attendanceKey: key, finished: Boolean(finishedMap[key]) });
       }
     }
 
@@ -542,7 +643,7 @@ export default function Settings() {
           neededText = `${total - attended} more attendances needed`;
         }
       } else if (total > 0) neededText = 'Target Achieved';
-      return { name: item.name, category: item.category, attended, total, plannedTotal, pct, neededForTarget: neededText };
+      return { name: item.name, category: item.category, attended, total, plannedTotal, pct, neededForTarget: neededText, isFinished: Boolean(item.finished), attendanceKey: item.attendanceKey };
     });
     const overallAttended = reportItems.reduce((acc, c) => acc + c.attended, 0);
     const overallTotal = reportItems.reduce((acc, c) => acc + c.total, 0);
@@ -567,7 +668,8 @@ export default function Settings() {
       notifySuccess('Report exported.');
     } catch (error) {
       if (pdfTargetWindow && !pdfTargetWindow.closed) pdfTargetWindow.close();
-      throw error;
+      console.error('Attendance report export failed', error);
+      setExportMsg('Export failed. Please try again.');
     } finally { setBusy(null); }
   };
 
@@ -577,7 +679,7 @@ export default function Settings() {
 
   const handleShareData = async () => {
     const success = await shareDataAsJSON();
-    if (success) notifySuccess('Transfer file ready!');
+    if (success) { void notifyDataTransfer('Your app data transfer file is ready.'); notifySuccess('Transfer file ready!'); }
     else import('sonner').then(({ toast }) => toast.error('Failed to prepare transfer file.'));
   };
   const handleTransferFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -679,6 +781,12 @@ export default function Settings() {
     setTimeout(() => setSnapshotMsg(''), 4000);
   };
   const handleDeleteAllData = async () => {
+    await deleteRemoteDevice();
+    try {
+      const registration = await navigator.serviceWorker?.ready;
+      const subscription = await registration?.pushManager.getSubscription();
+      await subscription?.unsubscribe();
+    } catch {}
     await storageClear();
     try { localStorage.clear(); } catch {}
     localStorage.setItem('att_idb_migrated_v1', 'true');
@@ -721,6 +829,7 @@ export default function Settings() {
       await activateCurriculum(id);
       await flushStorageWrites();
       setShowSwitchDialog(false);
+      void notifyCurriculumChange(`Switched to ${getActiveCurriculumName() || 'the selected curriculum'}.`);
       notifySuccess('Curriculum switched.');
       setLocation('/');
       window.location.reload();
@@ -909,6 +1018,7 @@ export default function Settings() {
                           setTimeout(() => {
                             exportDataAsJSON();
                             setBusy(null);
+                            void notifyDataTransfer('Your app data backup was downloaded.');
                             notifySuccess('Backup downloaded.');
                           }, 400);
                         }}
@@ -954,6 +1064,7 @@ export default function Settings() {
                             importDataFromJSON(file, (success) => {
                               if (success) {
                                 triggerConfirmationFeedback('success');
+                                void notifyDataTransfer('Your app data backup was restored successfully.');
                                 import('sonner').then(({ toast }) => toast.info('Backup restored successfully! Reloading app...'));
                                 setLocation('/');
                                 window.location.reload();
@@ -1037,9 +1148,9 @@ export default function Settings() {
           <AnimatePresence>
             {activeSettingModal && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden" onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
-                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-h-[min(70dvh,48rem)] shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                                      <div className="flex items-center justify-between border-b border-border/50 pb-3 shrink-0">
-                      <div className="flex items-center gap-3">
+                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} role="dialog" aria-modal="true" aria-label="Settings dialog" className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-h-[min(70dvh,48rem)] shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                      <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3 shrink-0">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
                         {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
                       {activeSettingModal === 'curriculum' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><GraduationCap className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'snapshot' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><SnapshotIcon className="w-5 h-5" /></div>)}
@@ -1049,8 +1160,8 @@ export default function Settings() {
                       {activeSettingModal === 'feedback' && (<div className="w-9 h-9 rounded-xl bg-violet-500/10 text-violet-500 flex items-center justify-center shrink-0 border border-violet-500/20"><Vibrate className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'notifications' && (<div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 border border-blue-500/20"><Bell className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'theme' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><Info className="w-5 h-5" /></div>)}
-                      <div>
-                        <h3 className="font-bold text-base text-foreground">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="break-words text-sm font-bold text-foreground sm:text-base">
                           {activeSettingModal === 'preferredPc' && 'Curriculum Percentage'}
                           {activeSettingModal === 'curriculum' && 'Curriculum Management'}
                           {activeSettingModal === 'snapshot' && 'Snapshots & Storage'}
@@ -1061,7 +1172,7 @@ export default function Settings() {
                           {activeSettingModal === 'notifications' && 'System Notifications'}
                           {activeSettingModal === 'theme' && 'Theme'}
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">
                           {activeSettingModal === 'preferredPc' && 'Target attendance threshold percentage'}
                           {activeSettingModal === 'curriculum' && 'Academic progress, status & routine mode'}
                           {activeSettingModal === 'snapshot' && 'Manage local state backups & cache'}
@@ -1074,7 +1185,7 @@ export default function Settings() {
                         </p>
                       </div>
                     </div>
-                    <button type="button" onClick={() => { setActiveSettingModal(null); setPendingPct(null); }} className="action-button action-button--close action-button--icon shrink-0" title="Close">
+                    <button type="button" onClick={() => { setActiveSettingModal(null); setPendingPct(null); }} className="action-button action-button--close action-button--icon mt-0.5 shrink-0" title="Close">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -1121,66 +1232,25 @@ export default function Settings() {
                       <div className="space-y-3">
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5 space-y-3">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0"><p className="text-xs font-bold text-foreground">System Notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Reminders, Routine Changes, and App Updates for this device</p></div>
+                            <div className="min-w-0"><p className="text-xs font-bold text-foreground">System Notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Choose the reminders and app updates you want on this device.</p></div>
                             <SettingToggle checked={systemNotificationsEnabled && notificationPermission === 'granted'} onChange={updateSystemNotificationsEnabled} label="System Notifications" disabled={notificationBusy} />
                           </div>
-                          {notificationPermission === 'denied' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">Notifications are blocked on this device. Re-enable them in your device settings, then return here.</p>}
+                          {notificationPermission === 'denied' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">Notifications are blocked on this device. Re-enable them in device settings, then return here.</p>}
                           {notificationPermission === 'unsupported' && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are not available on this device or browser.</p>}
                           {notificationPermission === 'insecure' && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are available only from the secure Attendenz app.</p>}
-                          {notificationPermission === 'default' && <p className="text-[10px] leading-relaxed text-muted-foreground">Allow Notifications to receive your selected Reminders and App Updates.</p>}
+                          {notificationPermission === 'default' && <p className="text-[10px] leading-relaxed text-muted-foreground">Allow Notifications to use the reminder choices below.</p>}
                           {notificationPermission !== 'granted' && notificationPermission !== 'denied' && notificationPermission !== 'unsupported' && notificationPermission !== 'insecure' && <button type="button" onClick={enableSystemNotifications} disabled={notificationBusy} className="action-button action-button--update action-button--compact w-full disabled:opacity-50">{notificationBusy ? 'Setting Up…' : 'Allow Notifications'}</button>}
-                          {notificationPermission === 'granted' && !systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are allowed, but Reminders are currently off. Turn on the switch to receive them again.</p>}
+                          {notificationPermission === 'granted' && !systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Permission is allowed, but System Notifications are off. Turn on the switch to use reminders.</p>}
                           {notificationPermission === 'granted' && systemNotificationsEnabled && <p className="text-[10px] font-bold text-emerald-500">On for this device</p>}
                         </div>
-                        <>
-                          <div className="space-y-2.5">
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Need Attention Summary</span><span className="block text-[10px] text-muted-foreground mt-0.5">One grouped alert for today’s warning Subjects.</span></span><SettingToggle checked={notificationPreferences.midnightNeedAttention} onChange={value => updateNotificationPreference('midnightNeedAttention', value)} label="Need Attention Summary" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Last Planned Class Today</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Tell me at midnight when a Subject’s last planned Class is today.</span></span><SettingToggle checked={notificationPreferences.finalClassToday} onChange={value => updateNotificationPreference('finalClassToday', value)} label="Last Planned Class Today" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">First Class of the Day</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Tell me the first Subject and start time scheduled today.</span></span><SettingToggle checked={notificationPreferences.firstClassToday} onChange={value => updateNotificationPreference('firstClassToday', value)} label="First Class of the Day" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Before-Class Warning</span><span className="block text-[10px] text-muted-foreground mt-0.5">One alert {notificationPreferences.leadMinutes} minutes before each warning Subject.</span></span><SettingToggle checked={notificationPreferences.preClassNeedAttention} onChange={value => updateNotificationPreference('preClassNeedAttention', value)} label="Before-Class Warning" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">All Scheduled Classes</span><span className="block text-[10px] text-muted-foreground mt-0.5">Also remind me about normal Classes in one grouped message.</span></span><SettingToggle checked={notificationPreferences.allScheduledDigest} onChange={value => updateNotificationPreference('allScheduledDigest', value)} label="All Scheduled Classes" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Changes Made in Manage</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me after a successful Routine change.</span></span><SettingToggle checked={notificationPreferences.addNewChanges} onChange={value => updateNotificationPreference('addNewChanges', value)} label="Changes Made in Manage" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update Available</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me when a new app version is ready.</span></span><SettingToggle checked={notificationPreferences.updateAvailable} onChange={value => updateNotificationPreference('updateAvailable', value)} label="Update Available" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update Completed</span><span className="block text-[10px] text-muted-foreground mt-0.5">Notify me after the app update finishes.</span></span><SettingToggle checked={notificationPreferences.updateCompleted} onChange={value => updateNotificationPreference('updateCompleted', value)} label="Update Completed" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} /></label>
-                            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="text-xs font-semibold text-foreground">Warning Reminder Timing</span><select value={notificationPreferences.leadMinutes} onChange={e => updateNotificationPreference('leadMinutes', Number(e.target.value) as NotificationLeadMinutes)} className="ml-auto shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'}><option value={15}>15 Minutes</option><option value={30}>30 Minutes</option><option value={60}>60 Minutes</option></select></label>
-                          </div>
-                        </>
+                        <NotificationGroupCard title="Attendance & Risk Reminders" description="Choose which attendance-related reminders are useful to you." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, attendance: !prev.attendance }))} enabled={notificationPreferences.attendanceGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('attendance', value)} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
+                        <NotificationGroupCard title="Daily Schedule Reminders" description="Choose reminders about the Classes scheduled for your day." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, dailySchedule: !prev.dailySchedule }))} enabled={notificationPreferences.dailyScheduleGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('dailySchedule', value)} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
+                        <NotificationGroupCard title="Activity & Data Changes" description="Choose confirmations for routine, curriculum, and data changes." expanded={Boolean(expandedNotificationGroups.activity)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, activity: !prev.activity }))} enabled={notificationPreferences.activityGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('activity', value)} children={ACTIVITY_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
+                        <NotificationGroupCard title="App Updates" description="Choose notices when an Attendenz update is available or completed." expanded={Boolean(expandedNotificationGroups.updates)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, updates: !prev.updates }))} enabled={notificationPreferences.updatesGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('updates', value)} children={UPDATE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
                       </div>
                     )}
 
-                    {/* FUTURE REFERENCE ONLY: previous System Notifications implementation. Keep for later re-enablement.
-                    {activeSettingModal === 'notifications' && (
-                      <div className="space-y-3">
-                        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5 space-y-3">
-                          <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold text-foreground">System Notifications</p><p className="text-[10px] text-muted-foreground mt-0.5">Choose the reminders you want on this device</p></div>{notificationPermission === 'granted' && <SettingToggle checked={systemNotificationsEnabled} onChange={updateSystemNotificationsEnabled} label="System Notifications" disabled={notificationBusy} />}</div>
-                          {!oneSignalConfigured ? (
-                            <div className="space-y-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
-                              <p className="text-[10px] font-semibold leading-relaxed text-amber-700 dark:text-amber-300">Notifications can be enabled only from the published Attendenz app, not from a Cloudflare preview link.</p>
-                              <button type="button" onClick={() => window.location.assign(ONE_SIGNAL_PRODUCTION_ORIGIN)} className="action-button action-button--update action-button--compact w-full">Open published app</button>
-                            </div>
-                          ) : notificationPermission !== 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-muted-foreground">{notificationPermission === 'denied' ? 'Blocked in iPhone settings' : notificationPermission === 'insecure' ? 'Secure connection needed' : notificationPermission === 'unsupported' ? 'Not available on this device' : 'Permission needed'}</span><button type="button" onClick={enableSystemNotifications} disabled={notificationBusy || notificationPermission === 'denied' || notificationPermission === 'unsupported' || notificationPermission === 'insecure'} className="action-button action-button--update action-button--compact disabled:opacity-50">{notificationBusy ? 'Checking…' : 'Allow Notifications'}</button></div>}
-                          {notificationPermission === 'granted' && <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-emerald-500">Permission granted</span><button type="button" onClick={testNotificationFromSettings} disabled={!systemNotificationsEnabled || notificationPermission !== 'granted'} className="action-button action-button--neutral action-button--compact disabled:opacity-50">Local test</button></div>}
-                          {oneSignalConfigured && notificationPermission === 'granted' && <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
-                            <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold text-foreground">Send Test Notification</p><p className="text-[10px] text-muted-foreground mt-0.5">Checks whether this device can receive a Test Notification.</p></div><button type="button" onClick={testRemoteNotificationFromSettings} disabled={remoteTestBusy || !systemNotificationsEnabled || registrationDiagnostics?.subscription !== 'available'} className="action-button action-button--update action-button--compact shrink-0 disabled:opacity-50">{remoteTestBusy ? 'Sending…' : 'Send Test Notification'}</button></div>
-                            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[10px]"><span className="text-muted-foreground">Permission</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.permission || notificationPermission}</span><span className="text-muted-foreground">Connection</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.subscription === 'available' ? 'Available' : registrationDiagnostics?.subscription === 'missing' ? 'Missing' : 'Not available on preview'}</span><span className="text-muted-foreground">Worker registration</span><span className="text-right font-semibold text-foreground">{registrationDiagnostics?.sync.state === 'synced' ? `${registrationDiagnostics.sync.occurrenceCount ?? 0} schedule items synced` : registrationDiagnostics?.sync.state === 'error' ? `Failed${registrationDiagnostics.sync.details ? ` (${registrationDiagnostics.sync.details})` : ''}` : registrationDiagnostics?.sync.state === 'waiting-for-permission' ? 'Waiting for subscription' : registrationDiagnostics?.sync.state === 'offline' ? 'Waiting for internet' : 'Not configured'}</span></div>
-                            <p className="text-[10px] leading-relaxed text-muted-foreground">Test Notification checks whether this device can receive an alert. Send Test Notification checks delivery while you are connected to the internet.</p>
-                          </div>}
-                          {systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Reminder Status: {reminderSyncStatus.state === 'synced' ? `Synced ${new Date(reminderSyncStatus.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${reminderSyncStatus.occurrenceCount !== undefined ? ` · ${reminderSyncStatus.occurrenceCount} schedule items` : ''}` : reminderSyncStatus.state === 'waiting-for-permission' ? 'Waiting for this device to finish connecting.' : reminderSyncStatus.state === 'offline' ? 'Waiting for an internet connection.' : reminderSyncStatus.state === 'error' ? `Last connection attempt failed${reminderSyncStatus.details ? ` (${reminderSyncStatus.details})` : ''}. It will retry automatically.` : 'Temporarily unavailable.'}</p>}
-                        </div>
-                        <div className="space-y-2.5">
-                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Midnight Need Attention summary</span><span className="block text-[10px] text-muted-foreground mt-0.5">One grouped alert for today’s warning subjects</span></span><SettingToggle checked={notificationPreferences.midnightNeedAttention} onChange={value => updateNotificationPreference('midnightNeedAttention', value)} label="Midnight Need Attention summary" disabled={notificationPreferencesDisabled} /></label>
-                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Final scheduled class today</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Tell me at midnight when a subject’s final planned class is today</span></span><SettingToggle checked={notificationPreferences.finalClassToday} onChange={value => updateNotificationPreference('finalClassToday', value)} label="Final scheduled class today" disabled={notificationPreferencesDisabled} /></label>
-                           <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">First class of the day</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Tell me the first subject and time scheduled today</span></span><SettingToggle checked={notificationPreferences.firstClassToday} onChange={value => updateNotificationPreference('firstClassToday', value)} label="First class of the day" disabled={notificationPreferencesDisabled} /></label>
-                           <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Before-class warning reminder</span><span className="block text-[10px] mt-0.5 text-muted-foreground">One alert {notificationPreferences.leadMinutes} minutes before each warning subject</span></span><SettingToggle checked={notificationPreferences.preClassNeedAttention} onChange={value => updateNotificationPreference('preClassNeedAttention', value)} label="Before-class warning reminder" disabled={notificationPreferencesDisabled} /></label>
-                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">All scheduled subjects</span><span className="block text-[10px] text-muted-foreground mt-0.5">Also remind me about normal classes in one grouped message</span></span><SettingToggle checked={notificationPreferences.allScheduledDigest} onChange={value => updateNotificationPreference('allScheduledDigest', value)} label="All scheduled subjects" disabled={notificationPreferencesDisabled} /></label>
-                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">AddNew changes</span><span className="block text-[10px] text-muted-foreground mt-0.5">Extra alerts after you make changes in Manage</span></span><SettingToggle checked={notificationPreferences.addNewChanges} onChange={value => updateNotificationPreference('addNewChanges', value)} label="AddNew changes" disabled={notificationPreferencesDisabled} /></label>
-                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update available</span><span className="block text-[10px] text-muted-foreground mt-0.5">Tell me once when a new version is ready</span></span><SettingToggle checked={notificationPreferences.updateAvailable} onChange={value => updateNotificationPreference('updateAvailable', value)} label="Update available" disabled={notificationPreferencesDisabled} /></label>
-                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="min-w-0"><span className="block text-xs font-semibold text-foreground">Update completed</span><span className="block text-[10px] text-muted-foreground mt-0.5">Tell me once when the update finishes</span></span><SettingToggle checked={notificationPreferences.updateCompleted} onChange={value => updateNotificationPreference('updateCompleted', value)} label="Update completed" disabled={notificationPreferencesDisabled} /></label>
-                          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 p-3"><span className="text-xs font-semibold text-foreground">Warning Reminder Timing</span><select value={notificationPreferences.leadMinutes} onChange={e => updateNotificationPreference('leadMinutes', Number(e.target.value) as NotificationLeadMinutes)} className="ml-auto shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" disabled={notificationPreferencesDisabled}><option value={15}>15 minutes</option><option value={30}>30 minutes</option><option value={60}>60 minutes</option></select></label>
-                        </div>
-                      </div>
-                    )}
-                    */}
+
                     {activeSettingModal === 'theme' && (
                       <div className="space-y-2">
                         {(['system', 'light', 'dark'] as ThemePreference[]).map(option => <button key={option} type="button" onClick={() => { setThemePreference(option); localStorage.setItem('theme', option); applyThemePreference(option); }} className={cn('w-full flex items-center justify-between rounded-xl border p-3 text-left transition-colors', themePreference === option ? 'border-primary bg-primary/10' : 'border-border/60 bg-muted/20 hover:bg-muted/40')}><span><span className="block text-xs font-bold text-foreground">{option === 'system' ? 'System' : option === 'light' ? 'Light' : 'Dark'}</span><span className="block text-[10px] text-muted-foreground mt-0.5">{option === 'system' ? 'Follow iPhone appearance' : `Always use ${option} appearance`}</span></span><span className={cn('text-[10px] font-extrabold uppercase', themePreference === option ? 'text-primary' : 'text-muted-foreground')}>{themePreference === option ? 'Selected' : 'Choose'}</span></button>)}
@@ -1514,12 +1584,12 @@ export default function Settings() {
         {showSwitchDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
             <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="w-5 h-5 text-primary" /></div>
-                  <div className="text-left"><h3 className="text-base font-bold text-foreground">Curriculum Management</h3><p className="text-[11px] text-muted-foreground">Switch between saved routines. Each keeps its own subjects, SGTs, wards, schedules, and attendance.</p></div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <div className="h-10 w-10 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="h-5 w-5 shrink-0 text-primary" /></div>
+                  <div className="min-w-0 flex-1 text-left"><h3 className="break-words text-sm font-bold text-foreground sm:text-base">Curriculum Management</h3><p className="text-[10px] leading-relaxed text-muted-foreground sm:text-[11px]">Switch between saved routines. Each keeps its own Subjects, SGTs, wards, schedules, and attendance.</p></div>
                 </div>
-                <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); }} className="action-button action-button--close shrink-0">Close</button>
+                <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); }} className="action-button action-button--close mt-0.5 shrink-0 px-2.5 text-xs sm:px-3">Close</button>
               </div>
               {confirmMarkComplete ? (
                 <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left space-y-3">

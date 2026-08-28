@@ -22,6 +22,7 @@ interface AttendanceContextType {
   updateSubject: (subjectKey: string, attended: number, missed: number) => void;
   updateWard: (wardKey: string, attended: number, missed: number) => void;
   toggleFinished: (key: string) => void;
+  reopenFinishedIfPlanIncreased: (key: string, plannedTotal: number, isWard: boolean) => void;
   updateHomeSelection: (homeKey: string, subjectKey: string, selection: SelectionType, isWard: boolean, totalCardsOnScreen?: number) => void;
   resetAllData: () => void;
   renameSubjectData: (oldName: string, newName: string) => void;
@@ -225,6 +226,20 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     snapshotBeforeEdit(`Toggle Finished ${key}`);
     setFinishedMap(prev => {
       const updated = { ...prev, [key]: !prev[key] };
+      persistFinishedMapForMode(subjectMode, updated);
+      return updated;
+    });
+  };
+
+  const reopenFinishedIfPlanIncreased = (key: string, plannedTotal: number, isWard: boolean) => {
+    if (!key || !Number.isFinite(plannedTotal) || plannedTotal < 0 || !finishedMap[key]) return;
+    const record = (isWard ? wards : subjects)[key];
+    const conducted = (record?.attended || 0) + (record?.missed || 0);
+    if (plannedTotal <= conducted) return;
+    snapshotBeforeEdit(`Reopen ${key} After Planned Total Increase`);
+    setFinishedMap(prev => {
+      if (!prev[key]) return prev;
+      const updated = { ...prev, [key]: false };
       persistFinishedMapForMode(subjectMode, updated);
       return updated;
     });
@@ -674,8 +689,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       setPreferredPercentage: savePreferredPercentage,
       updateSubject,
       updateWard,
-      toggleFinished,
-      updateHomeSelection,
+    toggleFinished,
+    reopenFinishedIfPlanIncreased,
+    updateHomeSelection,
       resetAllData,
       renameSubjectData,
       renameWardData,

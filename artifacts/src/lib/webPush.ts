@@ -1,17 +1,37 @@
 export type NotificationSupport = 'supported' | 'unsupported' | 'insecure';
+import { storageSetItem } from './idb';
+
 export type NotificationPermissionState = NotificationPermission | NotificationSupport;
 export type NotificationLeadMinutes = 15 | 30 | 60;
 
+export type NotificationGroup = 'attendance' | 'dailySchedule' | 'activity' | 'updates';
+
 export interface NotificationPreferences {
+  attendanceGroupEnabled: boolean;
+  dailyScheduleGroupEnabled: boolean;
+  activityGroupEnabled: boolean;
+  updatesGroupEnabled: boolean;
+  needAttentionSummary: boolean;
+  needAttentionSubjects: boolean;
+  safeToMiss: boolean;
+  lastPlannedClassToday: boolean;
+  firstClassOfDay: boolean;
+  beforeClassWarnings: boolean;
+  allScheduledClasses: boolean;
+  manageChanges: boolean;
+  updateAvailable: boolean;
+  updateCompleted: boolean;
+  curriculumChanges: boolean;
+  dataTransfer: boolean;
+  unmarkedAttendanceToday: boolean;
+  leadMinutes: NotificationLeadMinutes;
+  /** Legacy aliases retained for stored-data compatibility. */
   midnightNeedAttention: boolean;
   finalClassToday: boolean;
   firstClassToday: boolean;
   preClassNeedAttention: boolean;
   allScheduledDigest: boolean;
   addNewChanges: boolean;
-  updateAvailable: boolean;
-  updateCompleted: boolean;
-  leadMinutes: NotificationLeadMinutes;
 }
 
 export type DirectPushSubscription = {
@@ -29,19 +49,35 @@ const DEVICE_TOKEN_KEY = 'att_a1_reminder_device_token_v1';
 export const NOTIFICATION_SETTINGS_CHANGED_EVENT = 'attendenz:notification-settings-changed';
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
+  attendanceGroupEnabled: true,
+  dailyScheduleGroupEnabled: true,
+  activityGroupEnabled: true,
+  updatesGroupEnabled: true,
+  needAttentionSummary: true,
+  needAttentionSubjects: true,
+  safeToMiss: false,
+  lastPlannedClassToday: true,
+  firstClassOfDay: false,
+  beforeClassWarnings: true,
+  allScheduledClasses: false,
+  manageChanges: true,
+  updateAvailable: true,
+  updateCompleted: true,
+  curriculumChanges: false,
+  dataTransfer: false,
+  unmarkedAttendanceToday: true,
+  leadMinutes: 30,
   midnightNeedAttention: true,
   finalClassToday: true,
   firstClassToday: false,
   preClassNeedAttention: true,
   allScheduledDigest: false,
-  addNewChanges: false,
-  updateAvailable: true,
-  updateCompleted: true,
-  leadMinutes: 30,
+  addNewChanges: true,
 };
 
-const SERVICE_URL = String(import.meta.env.VITE_PUSH_SERVICE_URL || '').replace(/\/$/, '');
-const VAPID_PUBLIC_KEY = String(import.meta.env.VITE_WEB_PUSH_PUBLIC_KEY || '');
+const runtimeEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env || {};
+const SERVICE_URL = String(runtimeEnv.VITE_PUSH_SERVICE_URL || '').replace(/\/$/, '');
+const VAPID_PUBLIC_KEY = String(runtimeEnv.VITE_WEB_PUSH_PUBLIC_KEY || '');
 
 function notifySettingsChanged(): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(NOTIFICATION_SETTINGS_CHANGED_EVENT));
@@ -70,7 +106,7 @@ export function getSystemNotificationsEnabled(): boolean {
 }
 
 export function setSystemNotificationsEnabled(enabled: boolean): void {
-  localStorage.setItem(ENABLED_KEY, String(enabled));
+  void storageSetItem(ENABLED_KEY, String(enabled));
   notifySettingsChanged();
 }
 
@@ -79,16 +115,39 @@ export function getNotificationPreferences(): NotificationPreferences {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(PREFS_KEY) || '{}') as Partial<NotificationPreferences>;
     const leadMinutes = parsed.leadMinutes === 15 || parsed.leadMinutes === 60 ? parsed.leadMinutes : 30;
+    const needAttentionSummary = parsed.needAttentionSummary ?? parsed.midnightNeedAttention !== false;
+    const lastPlannedClassToday = parsed.lastPlannedClassToday ?? parsed.finalClassToday !== false;
+    const firstClassOfDay = parsed.firstClassOfDay ?? parsed.firstClassToday === true;
+    const beforeClassWarnings = parsed.beforeClassWarnings ?? parsed.preClassNeedAttention !== false;
+    const allScheduledClasses = parsed.allScheduledClasses ?? parsed.allScheduledDigest === true;
+    const manageChanges = parsed.manageChanges ?? parsed.addNewChanges ?? true;
     return {
-      midnightNeedAttention: parsed.midnightNeedAttention !== false,
-      finalClassToday: parsed.finalClassToday !== false,
-      firstClassToday: parsed.firstClassToday === true,
-      preClassNeedAttention: parsed.preClassNeedAttention !== false,
-      allScheduledDigest: parsed.allScheduledDigest === true,
-      addNewChanges: parsed.addNewChanges === true,
+      ...DEFAULT_PREFERENCES,
+      ...parsed,
+      attendanceGroupEnabled: parsed.attendanceGroupEnabled !== false,
+      dailyScheduleGroupEnabled: parsed.dailyScheduleGroupEnabled !== false,
+      activityGroupEnabled: parsed.activityGroupEnabled !== false,
+      updatesGroupEnabled: parsed.updatesGroupEnabled !== false,
+      needAttentionSummary,
+      needAttentionSubjects: parsed.needAttentionSubjects ?? needAttentionSummary,
+      safeToMiss: parsed.safeToMiss === true,
+      lastPlannedClassToday,
+      firstClassOfDay,
+      beforeClassWarnings,
+      allScheduledClasses,
+      manageChanges,
       updateAvailable: parsed.updateAvailable !== false,
       updateCompleted: parsed.updateCompleted !== false,
+      curriculumChanges: parsed.curriculumChanges === true,
+      dataTransfer: parsed.dataTransfer === true,
+      unmarkedAttendanceToday: parsed.unmarkedAttendanceToday !== false,
       leadMinutes,
+      midnightNeedAttention: needAttentionSummary,
+      finalClassToday: lastPlannedClassToday,
+      firstClassToday: firstClassOfDay,
+      preClassNeedAttention: beforeClassWarnings,
+      allScheduledDigest: allScheduledClasses,
+      addNewChanges: manageChanges,
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
@@ -96,8 +155,35 @@ export function getNotificationPreferences(): NotificationPreferences {
 }
 
 export function setNotificationPreferences(preferences: NotificationPreferences): void {
-  localStorage.setItem(PREFS_KEY, JSON.stringify(preferences));
+  const next = {
+    ...preferences,
+    midnightNeedAttention: preferences.needAttentionSummary,
+    finalClassToday: preferences.lastPlannedClassToday,
+    firstClassToday: preferences.firstClassOfDay,
+    preClassNeedAttention: preferences.beforeClassWarnings,
+    allScheduledDigest: preferences.allScheduledClasses,
+    addNewChanges: preferences.manageChanges,
+  };
+  void storageSetItem(PREFS_KEY, JSON.stringify(next));
   notifySettingsChanged();
+}
+
+const GROUP_FOR_PREFERENCE: Partial<Record<keyof NotificationPreferences, NotificationGroup>> = {
+  needAttentionSummary: 'attendance', needAttentionSubjects: 'attendance', safeToMiss: 'attendance', beforeClassWarnings: 'attendance', unmarkedAttendanceToday: 'attendance',
+  lastPlannedClassToday: 'dailySchedule', firstClassOfDay: 'dailySchedule', allScheduledClasses: 'dailySchedule',
+  manageChanges: 'activity', curriculumChanges: 'activity', dataTransfer: 'activity',
+  updateAvailable: 'updates', updateCompleted: 'updates',
+};
+
+export function isNotificationPreferenceEnabled(preference: keyof NotificationPreferences, preferences = getNotificationPreferences()): boolean {
+  if (!Boolean(preferences[preference])) return false;
+  const group = GROUP_FOR_PREFERENCE[preference];
+  if (!group) return true;
+  const groupEnabled = group === 'attendance' ? preferences.attendanceGroupEnabled
+    : group === 'dailySchedule' ? preferences.dailyScheduleGroupEnabled
+      : group === 'activity' ? preferences.activityGroupEnabled
+        : preferences.updatesGroupEnabled;
+  return groupEnabled;
 }
 
 export async function requestNotificationPermission(): Promise<NotificationPermissionState> {
@@ -142,7 +228,7 @@ export function getDeviceId(): string {
   const existing = localStorage.getItem(DEVICE_ID_KEY);
   if (existing) return existing;
   const created = crypto.randomUUID?.().replace(/-/g, '') || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
-  localStorage.setItem(DEVICE_ID_KEY, created);
+  void storageSetItem(DEVICE_ID_KEY, created);
   return created;
 }
 
@@ -152,7 +238,7 @@ export function getDeviceToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   const created = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-  localStorage.setItem(DEVICE_TOKEN_KEY, created);
+  void storageSetItem(DEVICE_TOKEN_KEY, created);
   return created;
 }
 
@@ -197,7 +283,7 @@ export async function showNotificationIfEnabled(
   body: string,
   tag: string,
 ): Promise<boolean> {
-  if (!getSystemNotificationsEnabled() || !getNotificationPreferences()[preference] || getNotificationPermission() !== 'granted') return false;
+  if (!getSystemNotificationsEnabled() || !isNotificationPreferenceEnabled(preference) || getNotificationPermission() !== 'granted') return false;
   try {
     const registration = await navigator.serviceWorker.ready;
     await registration.showNotification(title, { body, tag, data: { url: '/' } });
@@ -208,7 +294,7 @@ export async function showNotificationIfEnabled(
 }
 
 export function notifyManageChange(body: string): Promise<boolean> {
-  return showNotificationIfEnabled('addNewChanges', 'Attendenz · Routine Updated', body, 'attendenz-manage-change');
+  return showNotificationIfEnabled('manageChanges', 'Attendenz · Routine Updated', body, 'attendenz-manage-change');
 }
 
 export function notifyUpdateAvailable(version: string): Promise<boolean> {
@@ -217,6 +303,14 @@ export function notifyUpdateAvailable(version: string): Promise<boolean> {
 
 export function notifyUpdateCompleted(version: string): Promise<boolean> {
   return showNotificationIfEnabled('updateCompleted', 'Attendenz · Update Complete', `Attendenz is now updated to version ${version}.`, `attendenz-update-completed-${version}`);
+}
+
+export function notifyCurriculumChange(body: string): Promise<boolean> {
+  return showNotificationIfEnabled('curriculumChanges', 'Attendenz · Curriculum Updated', body, `attendenz-curriculum-change-${Date.now()}`);
+}
+
+export function notifyDataTransfer(body: string): Promise<boolean> {
+  return showNotificationIfEnabled('dataTransfer', 'Attendenz · Data Transfer Complete', body, `attendenz-data-transfer-${Date.now()}`);
 }
 
 export async function showLocalTestNotification(): Promise<boolean> {
