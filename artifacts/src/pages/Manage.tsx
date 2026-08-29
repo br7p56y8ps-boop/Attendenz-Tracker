@@ -2112,13 +2112,16 @@ export default function Manage() {
                 </div>
               </div>
 
-              <div className="relative z-0 min-h-0 flex-1 flex flex-col overflow-y-auto overscroll-contain space-y-1.5 px-0.5 pt-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-0.5 pt-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
+                <div className="flex min-h-full flex-col rounded-xl bg-background/40 border border-dashed border-border px-4 py-3">
               {groupedAcademicSlots.length === 0 ? (
-                <div className="flex w-full min-h-[12rem] flex-1 items-center justify-center bg-background/40 border border-dashed border-border rounded-xl px-4 text-center">
+                <div className="flex w-full min-h-[12rem] flex-1 items-center justify-center text-center">
                   <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
                 </div>
               ) : (
-                groupedAcademicSlots.map((group) => (
+                <>
+                <div className="space-y-1.5">
+                {groupedAcademicSlots.map((group) => (
                   <React.Fragment key={group.time}>
                     <span className="mb-1.5 flex min-h-7 w-full items-center justify-center border-y border-border/60 bg-card px-2 py-1 text-center text-xs font-bold text-primary">
                       {group.time}
@@ -2164,8 +2167,14 @@ export default function Manage() {
                       })}
                     </div>
                   </React.Fragment>
-                ))
+                ))}
+                </div>
+                <div className="flex min-h-[8rem] flex-1 items-center justify-center py-4 text-center">
+                  <p className="text-sm font-semibold text-muted-foreground">No more lecture planned classes for today!</p>
+                </div>
+                </>
               )}
+                </div>
               </div>
               <div className="shrink-0 -mx-3 -mb-3 bg-card px-3 pb-1 pt-0.5">
                 <button
