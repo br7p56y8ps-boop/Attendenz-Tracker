@@ -2038,6 +2038,12 @@ export default function Manage() {
     return Object.entries(groups).map(([time, items]) => ({ time, items }));
   }, [academicSlotsForDay]);
 
+  const selectedDayIsToday = selDay === new Date().getDay();
+  const selectedDayIsHoliday = subjectMode === 'preloaded' && DAY_ABBRS[selDay] === 'Fri';
+  const noMoreAcademicMessage = selectedDayIsToday
+    ? 'No more planned Class for today!!'
+    : `No more planned Classes for ${DAY_ABBRS[selDay]}`;
+
   const manageSectionSwitcher = (
     <div className="pt-1 pb-1">
       <div className="date-wheel-surface relative z-[3] bg-background border border-border rounded-3xl shadow-md select-none overflow-hidden p-1.5">
@@ -2112,11 +2118,16 @@ export default function Manage() {
                 </div>
               </div>
 
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-0.5 pt-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
-                <div className="flex min-h-full flex-col rounded-xl bg-background/40 border border-dashed border-border px-4 py-3">
+              <div className="relative z-0 min-h-0 flex-1 overflow-hidden bg-card">
+                <div className="flex h-full min-h-0 flex-col rounded-xl bg-background/40 border border-dashed border-border px-4 py-3">
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ overscrollBehaviorY: 'contain' }}>
               {groupedAcademicSlots.length === 0 ? (
-                <div className="flex w-full min-h-[12rem] flex-1 items-center justify-center text-center">
-                  <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
+                <div className="flex w-full min-h-full flex-1 items-center justify-center text-center">
+                  <p className="text-sm font-semibold text-muted-foreground">
+                    {selectedDayIsHoliday
+                      ? 'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
+                      : 'No planned Lecture Classes for today!'}
+                  </p>
                 </div>
               ) : (
                 <>
@@ -2170,10 +2181,11 @@ export default function Manage() {
                 ))}
                 </div>
                 <div className="flex min-h-[8rem] flex-1 items-center justify-center py-4 text-center">
-                  <p className="text-sm font-semibold text-muted-foreground">No more lecture planned classes for today!</p>
+                  <p className="text-sm font-semibold text-muted-foreground">{noMoreAcademicMessage}</p>
                 </div>
                 </>
               )}
+                  </div>
                 </div>
               </div>
               <div className="shrink-0 -mx-3 -mb-3 bg-card px-3 pb-1 pt-0.5">

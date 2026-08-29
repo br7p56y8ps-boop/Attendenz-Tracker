@@ -277,13 +277,11 @@ export async function generatePDFReport(options: ExportReportOptions) {
     routineMode,
     targetPct,
     filterTitle,
-    items,
-    overallAttended,
-    overallTotal,
-    overallPct,
+    items: rawItems,
   } = options;
 
-  const { academic: academicItems, clinical: clinicalItems } = reportItemsByKind(items);
+  const exportItems = rawItems.filter(item => item.name.trim().replace(/\s+\((ward|sgt)\)$/i, '').toLowerCase() !== 'holiday');
+  const { academic: academicItems, clinical: clinicalItems } = reportItemsByKind(exportItems);
   const clinicalDisplayItems = clinicalItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/i, ''),
@@ -294,6 +292,9 @@ export async function generatePDFReport(options: ExportReportOptions) {
   const clinicalAttended = clinicalItems.reduce((sum, item) => sum + item.attended, 0);
   const clinicalTotal = clinicalItems.reduce((sum, item) => sum + item.total, 0);
   const clinicalPct = clinicalTotal > 0 ? (clinicalAttended / clinicalTotal) * 100 : 0;
+  const overallAttended = academicAttended + clinicalAttended;
+  const overallTotal = academicTotal + clinicalTotal;
+  const overallPct = overallTotal > 0 ? (overallAttended / overallTotal) * 100 : 0;
 
   let logoBase64 = '';
   let logoFormat: 'PNG' | 'JPEG' = 'PNG';
@@ -571,7 +572,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
     name: 'Overall Attendance',
     attended: overallAttended,
     total: overallTotal,
-    plannedTotal: items.reduce((sum, item) => sum + item.plannedTotal, 0),
+    plannedTotal: exportItems.reduce((sum, item) => sum + item.plannedTotal, 0),
     pct: overallPct,
     neededForTarget: '',
   };
