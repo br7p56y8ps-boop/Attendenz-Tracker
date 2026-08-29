@@ -138,22 +138,22 @@ export const SubjectCard = ({
   ) : null;
 
   const headerContent = (
-    <div className="flex justify-between items-center gap-3">
-      <div className="min-w-0 flex-1">
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0 flex-1 pr-2">
         <div className="flex items-center gap-2 flex-wrap">
            <h4 className="font-semibold text-sm sm:text-base leading-tight truncate" style={{ color: subjectColor }}>
             {displayName}
           </h4>
           {ongoingBadge}
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px] sm:text-xs text-muted-foreground font-medium" aria-label="Subject attendance summary">
-          <span className="flex items-center justify-between gap-2"><span>Planned</span><strong className="text-foreground font-semibold">{totalPlanned}</strong></span>
-          <span className="flex items-center justify-between gap-2"><span>Conducted</span><strong className="text-foreground font-semibold">{totalConducted}</strong></span>
-          <span className="flex items-center justify-between gap-2"><span>Attended</span><strong className="text-foreground font-semibold">{attendedNum}</strong></span>
-          <span className="flex items-center justify-between gap-2"><span>Remaining</span><strong className="text-foreground font-semibold">{remaining}</strong></span>
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px] sm:text-xs text-muted-foreground font-medium" aria-label="Subject attendance summary">
+          <span className="min-w-0 truncate">Planned: <strong className="text-foreground font-semibold">{totalPlanned}</strong></span>
+          <span className="min-w-0 truncate">Conducted: <strong className="text-foreground font-semibold">{totalConducted}</strong></span>
+          <span className="min-w-0 truncate">Attended: <strong className="text-foreground font-semibold">{attendedNum}</strong></span>
+          <span className="min-w-0 truncate">Remaining: <strong className="text-foreground font-semibold">{remaining}</strong></span>
         </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex shrink-0 items-center border-l border-border/40 pl-4">
         <div className="text-base sm:text-lg font-extrabold tracking-tight" style={{ color: percentageColor }}>
           {`${percentage.toFixed(0)}%`}
         </div>
