@@ -2101,18 +2101,18 @@ export default function Manage() {
         )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 soft-entry-boundary relative flex flex-col overflow-hidden',
+            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 relative flex flex-col overflow-hidden',
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="shrink-0 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-card border-b border-border/60">
+              <div className="shrink-0 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-card">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold uppercase tracking-wide text-primary">{DAY_ABBRS[selDay]}'s Academic Schedule</h3>
                   <span className="text-xs text-muted-foreground font-semibold">{academicSlotsForDay.length} Slots</span>
                 </div>
               </div>
 
-              <div className="relative z-0 min-h-0 flex-1 flex flex-col overflow-y-auto overscroll-contain space-y-1.5 pr-1 pb-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
+              <div className="relative z-0 min-h-0 flex-1 flex flex-col overflow-y-auto overscroll-contain space-y-1.5 px-0.5 pt-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
               {groupedAcademicSlots.length === 0 ? (
                 <div className="flex w-full min-h-[12rem] flex-1 items-center justify-center bg-background/40 border border-dashed border-border rounded-xl px-4 text-center">
                   <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
@@ -2167,7 +2167,7 @@ export default function Manage() {
                 ))
               )}
               </div>
-              <div className="shrink-0 border-t border-border/60 bg-card pt-2">
+              <div className="shrink-0 -mx-3 -mb-3 bg-card px-3 pb-1 pt-0.5">
                 <button
                   type="button"
                   onClick={openAddSlot}
@@ -2181,7 +2181,7 @@ export default function Manage() {
 
           {section === 'clinical' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 pr-1 pb-2 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 px-0.5 pt-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
                 {allClinicalSubjects.map(name => {
                   const group = { rotation: getRotationForSubject(name), sgt: getSGTForSubject(name) };
                   return (
@@ -2208,7 +2208,6 @@ export default function Manage() {
               </div>
             </div>
           )}
-          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-px bg-border/80" />
         </section>
         {/* Add New Modal */}
         <OverlayModal
