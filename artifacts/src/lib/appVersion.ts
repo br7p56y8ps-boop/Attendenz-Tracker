@@ -1,7 +1,7 @@
 export type ReleaseType = 'major' | 'minor';
 export type UpdateMode = 'manual' | 'automatic';
 
-export const APP_VERSION = "1.6.4.2";
+export const APP_VERSION = "1.6.5";
 export const LATEST_VERSION = APP_VERSION;
 
 // Developer release reference: RELEASE_TYPE accepts only 'major' or 'minor'.
@@ -16,26 +16,21 @@ export interface WhatsNewItem {
   details: string;
 }
 export const WHATS_NEW_UPGRADES: WhatsNewItem[] = [
-  {
-    title: "Scheduled Notifications",
-    summary: "New reminders for your Classes and attendance risks.",
-    details:
-      "Receive grouped Must Attend and Need Attention reminders, configurable Before-Class Warnings, Last Planned Class Today notices, and reminders for newly added Subjects scheduled for the same day.",
-  },
+  { title: "Must Attend Summary Notifications", summary: "Receive summaries about Classes you should attend to stay on track.", details: "" },
+  { title: "Need Attention Subjects Notifications", summary: "Get notified when a Subject requires attention.", details: "" },
+  { title: "Safe to Miss a Class Notification", summary: "See when missing a Class remains safe for your attendance target.", details: "" },
+  { title: "Before-Class Warnings", summary: "Receive reminders before scheduled Classes begin.", details: "" },
+  { title: "Late Evening Unmarked Attendance Notifications", summary: "Get reminders when today’s scheduled Class attendance is still unmarked.", details: "" },
+  { title: "Feedback & Sound", summary: "Enjoy improved feedback and sound responses throughout Attendenz.", details: "" },
+  { title: "Curriculum Management", summary: "Manage active curricula and switching with clearer controls.", details: "" },
 ];
 export const WHATS_NEW_FIXES: WhatsNewItem[] = [
-  {
-    title: "Calendar and Export Reliability",
-    summary: "Calendar, attendance reports, and mobile layouts are more dependable.",
-    details:
-      "Fixed the Calendar blank-page issue, improved lifecycle-aware attendance statuses across the app and reports, included Clinical, Ward, and SGT records correctly, and refined the formal PDF and spreadsheet exports.",
-  },
-  {
-    title: "1.6 Series Improvements",
-    summary: "Safer local data and clearer everyday controls.",
-    details:
-      "The 1.6 series added active curriculum workspaces, responsive Manage controls, protected local backups, clearer Settings, Feedback & Sounds choices, and reversible System Notifications.",
-  },
+  { title: "Fixed Home Display Message", summary: "Home wording now better reflects selected dates.", details: "" },
+  { title: "Fixed Notification Delay", summary: "Improved reminder timing and delivery reliability.", details: "" },
+  { title: "Fixed Manage Tab", summary: "Improved schedule layout and empty-state presentation.", details: "" },
+  { title: "Fixed Backup / Restore", summary: "Improved backup and restore modal controls.", details: "" },
+  { title: "Fixed Export PDF", summary: "Improved attendance report presentation and reliability.", details: "" },
+  { title: "Fixed Theme", summary: "Improved theme-consistent colours and text presentation.", details: "" },
 ];
 export const FEATURES_UPDATED = [
   {
@@ -56,5 +51,5 @@ export const FEATURES_UPDATED = [
 ];
 export const RELEASE_NOTES = {
   version: APP_VERSION,
-  summary: "Release v1.6.4.2: Scheduled Notifications, Calendar reliability, and export improvements.",
+  summary: "Release v1.6.5: UI consistency, clearer controls, and notification refinements.",
 };

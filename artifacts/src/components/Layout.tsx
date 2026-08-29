@@ -6,7 +6,7 @@ import { Heart, Stethoscope, Syringe, Calendar, Hospital } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const NAV_ITEMS = [
-  { path: '/',          label: 'Home',      description: 'Today’s classes and attendance', Icon: Heart },
+  { path: '/',          label: 'Home',      description: 'Classes and attendance by date', Icon: Heart },
   { path: '/subjects',  label: 'Subjects',  description: 'Progress, targets, and subject groups', Icon: Stethoscope },
   { path: '/add-new',   label: 'Manage',    description: 'Build your academic and clinical routine', Icon: Syringe },
   { path: '/calendar',  label: 'Timetable', description: 'Weekly routine, rotations, and statistics', Icon: Calendar },

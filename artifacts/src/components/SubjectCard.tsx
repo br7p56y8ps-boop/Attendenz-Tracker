@@ -4,7 +4,8 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, pctColor, getSubjectColor } from '@/lib/utils';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
-import { ChevronRight, Info, Plus, Minus, X } from 'lucide-react';
+import { CountStepper } from '@/components/CountStepper';
+import { Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SubjectCardProps {
@@ -107,11 +108,6 @@ export const SubjectCard = ({
     return true;
   };
 
-  const handleTap = (e: React.MouseEvent, field: 'attended' | 'missed', change: number) => {
-    e.stopPropagation();
-    handleStep(field, change);
-  };
-
   const attendedNum = data.attended;
   const missedNum = data.missed;
   const totalConducted = attendedNum + missedNum;
@@ -150,54 +146,31 @@ export const SubjectCard = ({
           </h4>
           {ongoingBadge}
         </div>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-1 font-medium">
-          <span>Planned: <strong className="text-foreground font-semibold">{totalPlanned}</strong></span>
-          <span className="opacity-40">·</span>
-          <span>Attended: <strong className="text-foreground font-semibold">{attendedNum}</strong></span>
-          <span className="opacity-40">·</span>
-          <span>Missed: <strong className="text-foreground font-semibold">{missedNum}</strong></span>
-          <span className="opacity-40">·</span>
-          <span>Remaining: <strong className="text-foreground font-semibold">{remaining}</strong></span>
+        <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px] sm:text-xs text-muted-foreground font-medium" aria-label="Subject attendance summary">
+          <span className="flex items-center justify-between gap-2"><span>Planned</span><strong className="text-foreground font-semibold">{totalPlanned}</strong></span>
+          <span className="flex items-center justify-between gap-2"><span>Conducted</span><strong className="text-foreground font-semibold">{totalConducted}</strong></span>
+          <span className="flex items-center justify-between gap-2"><span>Attended</span><strong className="text-foreground font-semibold">{attendedNum}</strong></span>
+          <span className="flex items-center justify-between gap-2"><span>Remaining</span><strong className="text-foreground font-semibold">{remaining}</strong></span>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <div className="text-base sm:text-lg font-extrabold tracking-tight" style={{ color: percentageColor }}>
           {`${percentage.toFixed(0)}%`}
         </div>
-        <div className="text-muted-foreground hover:text-foreground p-0.5">
-          <ChevronRight className="w-4 h-4" />
-        </div>
       </div>
     </div>
   );
 
   const Stepper = ({ field, value }: { field: 'attended' | 'missed', value: number }) => (
-    <div className="flex items-center justify-between bg-muted/30 border border-border/50 rounded-xl p-1.5 shadow-sm">
-      <span className="text-[11px] font-semibold text-muted-foreground pl-2 uppercase tracking-wide">
-        {field}
-      </span>
-      <div className="flex items-center gap-2 pr-0.5">
-        <button
-          type="button"
-          onClick={(e) => handleTap(e, field, -1)}
-          disabled={value <= 0}
-          className="w-8 h-8 rounded-lg bg-background border border-border flex items-center justify-center text-foreground hover:bg-muted active:scale-95 disabled:opacity-50 disabled:active:scale-100 transition-all select-none cursor-pointer"
-        >
-          <Minus className="w-4 h-4" />
-        </button>
-        <span className="w-6 text-center font-bold text-sm select-none">
-          {value}
-        </span>
-        <button
-          type="button"
-          onClick={(e) => handleTap(e, field, 1)}
-          disabled={isMaxReached}
-          className="w-8 h-8 rounded-lg bg-background border border-border flex items-center justify-center text-foreground hover:bg-muted active:scale-95 disabled:opacity-50 disabled:active:scale-100 transition-all select-none cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-      </div>
-    </div>
+    <CountStepper
+      label={field}
+      value={value}
+      onDecrement={() => { handleStep(field, -1); }}
+      onIncrement={() => { handleStep(field, 1); }}
+      decrementDisabled={value <= 0}
+      incrementDisabled={isMaxReached}
+      ariaLabel={field}
+    />
   );
 
   const modalDetailsContent = (

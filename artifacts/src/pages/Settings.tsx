@@ -27,7 +27,6 @@ import {
   getSystemNotificationsEnabled,
   NOTIFICATION_SETTINGS_CHANGED_EVENT,
   setNotificationPreferences,
-  setSystemNotificationsEnabled,
   notifyCurriculumChange,
   notifyDataTransfer,
   type NotificationLeadMinutes,
@@ -218,7 +217,7 @@ export default function Settings() {
     return APP_VERSION;
   });
 
-  const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
+  const [, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
   useEffect(() => {
     const onReady = () => setPwaReady(true);
@@ -992,11 +991,14 @@ export default function Settings() {
                   className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-lg max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex items-center justify-between border-b border-border/50 pb-3">
+                  <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3">
                     <div>
                       <h3 className="text-sm font-bold text-foreground">Backup / Transfer</h3>
                       <p className="text-[10px] text-muted-foreground">Complete app backup keeps both Preset and Custom workspaces. Routine bundles use the active mode only.</p>
                     </div>
+                    <button type="button" onClick={() => setBackupTransferOpen(false)} className="action-button action-button--close action-button--icon shrink-0" aria-label="Close Backup / Transfer">
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
 
                   {busy && <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{busy}</p>}
@@ -1131,15 +1133,6 @@ export default function Settings() {
                     </div>
                   )}
 
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setBackupTransferOpen(false)}
-                      className="action-button action-button--close"
-                    >
-                      Close
-                    </button>
-                  </div>
                 </motion.div>
               </motion.div>
             )}

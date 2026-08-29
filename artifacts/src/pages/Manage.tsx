@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
+import { CountStepper } from '@/components/CountStepper';
 import {
   useCustomData,
   DAY_ABBRS,
@@ -2111,9 +2112,9 @@ export default function Manage() {
                 </div>
               </div>
 
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-1.5 pr-1 pb-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
+              <div className="relative z-0 min-h-0 flex-1 flex flex-col overflow-y-auto overscroll-contain space-y-1.5 pr-1 pb-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
               {groupedAcademicSlots.length === 0 ? (
-                <div className="flex items-center justify-center min-h-[160px] bg-background/40 border border-dashed border-border rounded-xl">
+                <div className="flex w-full min-h-[12rem] flex-1 items-center justify-center bg-background/40 border border-dashed border-border rounded-xl px-4 text-center">
                   <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
                 </div>
               ) : (
@@ -2518,16 +2519,14 @@ export default function Manage() {
                         </div>
                         {isExpanded && !isAuto && (
                           <div className="p-2.5 border-t border-border/40 bg-muted/10 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <label className="w-1/2 text-[10px] font-semibold text-muted-foreground uppercase">Total Planned Classes</label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={draftPlanned ?? item.planned}
-                                onChange={e => setDraftPlanned(parseInt(e.target.value, 10) || 0)}
-                                className={cn(inputCls, 'w-1/2')}
-                              />
-                            </div>
+                            <CountStepper
+                              label="Total Planned Classes"
+                              value={draftPlanned ?? item.planned}
+                              onDecrement={() => setDraftPlanned(Math.max(0, (draftPlanned ?? item.planned) - 1))}
+                              onIncrement={() => setDraftPlanned((draftPlanned ?? item.planned) + 1)}
+                              decrementDisabled={(draftPlanned ?? item.planned) <= 0}
+                              ariaLabel="Total Planned Classes"
+                            />
                             <div className="flex gap-2">
                               <button
                                 type="button"
@@ -2595,16 +2594,14 @@ export default function Manage() {
                         </div>
                         {isExpanded && !isAuto && (
                           <div className="p-2.5 border-t border-border/40 bg-muted/10 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <label className="w-1/2 text-[10px] font-semibold text-muted-foreground uppercase">Total Planned Classes</label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={draftPlanned ?? item.planned}
-                                onChange={e => setDraftPlanned(parseInt(e.target.value, 10) || 0)}
-                                className={cn(inputCls, 'w-1/2')}
-                              />
-                            </div>
+                            <CountStepper
+                              label="Total Planned Classes"
+                              value={draftPlanned ?? item.planned}
+                              onDecrement={() => setDraftPlanned(Math.max(0, (draftPlanned ?? item.planned) - 1))}
+                              onIncrement={() => setDraftPlanned((draftPlanned ?? item.planned) + 1)}
+                              decrementDisabled={(draftPlanned ?? item.planned) <= 0}
+                              ariaLabel="Total Planned Classes"
+                            />
                             <div className="flex gap-2">
                               <button
                                 type="button"

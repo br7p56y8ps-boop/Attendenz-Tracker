@@ -348,7 +348,7 @@ async function testDevice(request: Request, env: Env): Promise<Response> {
   const messageId = await sendPush(
     env,
     subscription,
-    'Attendenz · Test Notification',
+    'Test Notification',
     'System Notifications are enabled on this device.',
     DEFAULT_ALLOWED_ORIGIN,
     `${existing.device_id}:remote-test:${Date.now()}`,
@@ -487,10 +487,10 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
       if (needAttention.length > 0) parts.push(`Need Attention: ${listNames(needAttention)}`);
       if (finalClasses.length > 0) parts.push(`Last Planned: ${listNames(finalClasses)}`);
       const body = parts.join('. ') + '.';
-      await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${clock.date}`, 'Attendenz · Urgent Schedule Alert', body, url);
+      await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${clock.date}`, 'Urgent Schedule Alert', body, url);
     } else if (hasInfo) {
       const body = first ? `First Class: ${cleanLabel(first.subjectLabel)} at ${formatMinute(first.startMinute)}.` : `Today: ${listNames(digest)}.`;
-      await deliverIfNew(env, device, `${device.device_id}:info-midnight:${clock.date}`, 'Attendenz · Today’s Schedule', body, url);
+      await deliverIfNew(env, device, `${device.device_id}:info-midnight:${clock.date}`, 'Today’s Schedule', body, url);
     }
   }
 
@@ -499,7 +499,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
   if (device.unmarked_attendance_today && isWithinFiveMinuteWindow(currentMinute, unmarkedReminderMinute)) {
     const unmarked = occurrences.filter(item => item.startMinute < currentMinute && !item.attendanceMarked);
     if (unmarked.length > 0) {
-      await deliverIfNew(env, device, `${device.device_id}:unmarked:${clock.date}`, 'Attendenz · Attendance Still Unmarked', `${unmarked.length} Class${unmarked.length === 1 ? '' : 'es'} from today still need an attendance status: ${listNames(unmarked)}.`, url);
+      await deliverIfNew(env, device, `${device.device_id}:unmarked:${clock.date}`, 'Attendance Still Unmarked', `${unmarked.length} Class${unmarked.length === 1 ? '' : 'es'} from today still need an attendance status: ${listNames(unmarked)}.`, url);
     }
   }
 
@@ -509,13 +509,13 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
     const dueNeed = device.need_attention_subjects ? due.filter(item => item.attentionLevel === 'needAttention') : [];
     const dueSafe = device.safe_to_miss ? due.filter(item => item.attentionLevel === 'safeToMiss') : [];
     if (dueMust.length > 0) {
-      await deliverIfNew(env, device, `${device.device_id}:before-must:${clock.date}:${device.lead_minutes}`, 'Attendenz · Must Attend', `${listNames(dueMust)} start in ${device.lead_minutes} minutes. Attend these Classes to protect your attendance percentage.`, url);
+      await deliverIfNew(env, device, `${device.device_id}:before-must:${clock.date}:${device.lead_minutes}`, 'Must Attend', `${listNames(dueMust)} start in ${device.lead_minutes} minutes. Attend these Classes to protect your attendance percentage.`, url);
     }
     if (dueNeed.length > 0) {
-      await deliverIfNew(env, device, `${device.device_id}:before-attention:${clock.date}:${device.lead_minutes}`, 'Attendenz · Need Attention', `${listNames(dueNeed)} start in ${device.lead_minutes} minutes. Your attendance is at the preferred percentage without the recommended safety margin.`, url);
+      await deliverIfNew(env, device, `${device.device_id}:before-attention:${clock.date}:${device.lead_minutes}`, 'Need Attention', `${listNames(dueNeed)} start in ${device.lead_minutes} minutes. Your attendance is at the preferred percentage without the recommended safety margin.`, url);
     }
     if (dueSafe.length > 0) {
-      await deliverIfNew(env, device, `${device.device_id}:before-safe:${clock.date}:${device.lead_minutes}`, 'Attendenz · Safe to Miss a Class', `${listNames(dueSafe)} start in ${device.lead_minutes} minutes. Missing these Classes would keep you at or above the preferred percentage.`, url);
+      await deliverIfNew(env, device, `${device.device_id}:before-safe:${clock.date}:${device.lead_minutes}`, 'Safe to Miss a Class', `${listNames(dueSafe)} start in ${device.lead_minutes} minutes. Missing these Classes would keep you at or above the preferred percentage.`, url);
     }
   }
 }

@@ -255,7 +255,7 @@ export async function enableDirectPush(): Promise<EnableNotificationsResult> {
     if (!subscription) {
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY),
+        applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY) as unknown as BufferSource,
       });
     }
     if (!serializeSubscription(subscription)) return 'failed';
@@ -294,30 +294,30 @@ export async function showNotificationIfEnabled(
 }
 
 export function notifyManageChange(body: string): Promise<boolean> {
-  return showNotificationIfEnabled('manageChanges', 'Attendenz · Routine Updated', body, 'attendenz-manage-change');
+  return showNotificationIfEnabled('manageChanges', 'Routine Updated', body, 'attendenz-manage-change');
 }
 
 export function notifyUpdateAvailable(version: string): Promise<boolean> {
-  return showNotificationIfEnabled('updateAvailable', 'Attendenz · Update Available', `A new Attendenz version ${version} is ready. Open the app to review and update.`, `attendenz-update-available-${version}`);
+  return showNotificationIfEnabled('updateAvailable', 'Update Available', `A new Attendenz version ${version} is ready. Open the app to review and update.`, `attendenz-update-available-${version}`);
 }
 
 export function notifyUpdateCompleted(version: string): Promise<boolean> {
-  return showNotificationIfEnabled('updateCompleted', 'Attendenz · Update Complete', `Attendenz is now updated to version ${version}.`, `attendenz-update-completed-${version}`);
+  return showNotificationIfEnabled('updateCompleted', 'Update Complete', `Attendenz is now updated to version ${version}.`, `attendenz-update-completed-${version}`);
 }
 
 export function notifyCurriculumChange(body: string): Promise<boolean> {
-  return showNotificationIfEnabled('curriculumChanges', 'Attendenz · Curriculum Updated', body, `attendenz-curriculum-change-${Date.now()}`);
+  return showNotificationIfEnabled('curriculumChanges', 'Curriculum Updated', body, `attendenz-curriculum-change-${Date.now()}`);
 }
 
 export function notifyDataTransfer(body: string): Promise<boolean> {
-  return showNotificationIfEnabled('dataTransfer', 'Attendenz · Data Transfer Complete', body, `attendenz-data-transfer-${Date.now()}`);
+  return showNotificationIfEnabled('dataTransfer', 'Data Transfer Complete', body, `attendenz-data-transfer-${Date.now()}`);
 }
 
 export async function showLocalTestNotification(): Promise<boolean> {
   if (!getSystemNotificationsEnabled() || getNotificationPermission() !== 'granted') return false;
   try {
     const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification('Attendenz · Test Notification', {
+    await registration.showNotification('Test Notification', {
       body: 'System Notifications are enabled on this device.',
       tag: 'attendenz-test-notification',
       data: { url: '/' },

@@ -108,7 +108,7 @@ const CategoryCard = ({
       className={cn(
         'border rounded-2xl shadow-sm transition-all overflow-hidden p-4 sm:p-5 space-y-3.5',
         cardBgColor,
-        isOpen ? 'hover:shadow-md' : 'hover:shadow-md'
+        isOpen ? 'border-border/90 ring-1 ring-border/40 shadow-md' : 'hover:shadow-md'
       )}
       initial={false}
       animate={{
@@ -143,7 +143,7 @@ const CategoryCard = ({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="overflow-hidden bg-background/40 rounded-xl p-2 space-y-1.5"
+            className="overflow-hidden bg-background/40 rounded-xl border border-border/50 p-2 space-y-1.5"
           >
             {renderChildren()}
           </motion.div>

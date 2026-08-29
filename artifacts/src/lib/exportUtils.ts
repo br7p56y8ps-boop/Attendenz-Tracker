@@ -486,7 +486,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
       { label: 'Status / Remarks', width: contentWidth - 131 },
     ];
     const drawTableHeader = () => {
-      doc.setFillColor(...sectionAccent);
+      doc.setFillColor(sectionAccent[0], sectionAccent[1], sectionAccent[2]);
       doc.rect(margin, y, contentWidth, 10, 'F');
       let x = margin;
       doc.setTextColor(255, 255, 255);
@@ -772,8 +772,6 @@ export function generateCSVReport(options: ExportReportOptions) {
     name: item.name.replace(/ \(Ward\)$/, '')
   }));
 
-  const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
-  const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
   const combinedAttended = overallAttended;
   const combinedTotal = overallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
