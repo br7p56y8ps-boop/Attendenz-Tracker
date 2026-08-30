@@ -859,8 +859,7 @@ export default function Settings() {
     setPendingCurriculumAction(null);
     if (type === 'switch' || type === 'reopen') { await handleActivateCurriculum(curriculum.id); return; }
     if (type === 'complete') { await handleMarkCurriculumComplete(curriculum.id); return; }
-    setEditingCurriculumId(curriculum.id);
-    setEditingCurriculumName(curriculum.name);
+    handleRenameCurriculum(curriculum.id);
   };
   const handleRenameCurriculum = (id: string) => {
     try {
@@ -1640,7 +1639,7 @@ export default function Settings() {
                 <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} className="action-button action-button--close action-button--icon mt-0.5 shrink-0" aria-label="Close Curriculum Management"><X className="w-4 h-4" /></button>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => { setShowArchiveFolder(!showArchiveFolder); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} className="action-button action-button--neutral w-full min-h-10">{showArchiveFolder ? 'Back to Active' : 'Archive Folder'}</button>
+                <button type="button" onClick={() => { setShowArchiveFolder(!showArchiveFolder); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} className="action-button action-button--neutral border-amber-500/60 text-amber-600 dark:text-amber-400 w-full min-h-10">{showArchiveFolder ? 'Back to Active' : 'Archive Folder'}</button>
                 <button type="button" onClick={() => { setShowCreateCurriculumForm(true); setCreationRestriction(false); }} className="action-button action-button--edit w-full min-h-10">Create New Curricula</button>
               </div>
               <div className="space-y-2">
@@ -1650,18 +1649,17 @@ export default function Settings() {
                   const canDelete = c.kind === 'custom' && c.id !== 'curriculum_custom_routine';
                   return (
                     <div key={c.id} className={cn('rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60')}>
-                      <button type="button" onClick={() => { setCreationRestriction(false); setExpandedCurriculumIds(prev => ({ ...prev, [c.id]: !expanded })); }} className="w-full flex items-center justify-between gap-2 text-left">
+                      <button type="button" onClick={() => { setCreationRestriction(false); setExpandedCurriculumIds(expanded ? {} : { [c.id]: true }); }} className="w-full flex items-center justify-between gap-2 text-left">
                         <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-foreground truncate">{c.name}</span><span className="block text-[10px] text-muted-foreground">{c.status === 'active' ? 'Active' : 'Completed / Archived'} · {c.kind === 'preset' ? 'Preset' : 'New Curriculum'}</span></span>
 
                       </button>
-                      {expanded && <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-border/40 pt-3">
+                      {expanded && <AnimatePresence initial={false}><motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="overflow-hidden"><div className={cn('mt-3 grid gap-2 border-t border-border/40 pt-3', c.status === 'active' ? (c.id === activeCurriculumId ? 'grid-cols-3' : 'grid-cols-3') : 'grid-cols-2')}>
                         {c.status === 'active' && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'complete', curriculum: c })} className="action-button action-button--save w-full min-h-10">Mark as Complete</button>}
                         {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'switch', curriculum: c })} className="action-button action-button--edit w-full min-h-10">Switch to this Curriculum</button>}
                         {c.status === 'archived' && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'reopen', curriculum: c })} className="action-button action-button--edit w-full min-h-10">Reopen</button>}
-                        <button type="button" onClick={() => setPendingCurriculumAction({ type: 'rename', curriculum: c })} className="action-button action-button--edit w-full min-h-10">Rename</button>
-                        <button type="button" disabled={!canDelete} onClick={() => canDelete && setCurriculumToDelete(c)} className="action-button action-button--danger w-full min-h-10 disabled:cursor-not-allowed disabled:opacity-40">Delete</button>
-                        {editingCurriculumId === c.id && <button type="button" onClick={() => handleRenameCurriculum(c.id)} className="action-button action-button--save w-full min-h-10">Save</button>}
-                      </div>}
+                        <button type="button" onClick={() => { setEditingCurriculumName(c.name); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button action-button--edit w-full min-h-10">Rename</button>
+                        {c.status === 'archived' && <button type="button" disabled={!canDelete} onClick={() => canDelete && setCurriculumToDelete(c)} className="action-button action-button--danger w-full min-h-10 disabled:cursor-not-allowed disabled:opacity-40">Delete</button>}
+                      </div></motion.div></AnimatePresence>}
                       {editingCurriculumId === c.id && <input autoFocus value={editingCurriculumName} onChange={e => setEditingCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRenameCurriculum(c.id); }} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary" />}
                     </div>
                   );
@@ -1669,7 +1667,7 @@ export default function Settings() {
                 {((showArchiveFolder && !curricula.some(c => c.status === 'archived')) || (!showArchiveFolder && !curricula.some(c => c.status === 'active'))) && <p className="rounded-xl border border-border/50 px-3 py-3 text-[11px] text-muted-foreground">{showArchiveFolder ? 'No completed or archived curricula.' : 'No active curricula.'}</p>}
               </div>
               {showCreateCurriculumForm && <div className="border-t border-border/50 pt-4 space-y-2">
-                {creationRestriction && <p className="text-[10px] text-muted-foreground text-left leading-relaxed">You already have the maximum number of Active Curricula. Mark Complete, or Delete one before creating a New Curriculum.</p>}
+
                 {activeCurriculumReadyForNewRoutine && <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. 2nd Year / Second Phase" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit shrink-0">Create</button></div>}
               </div>}
             </motion.div>
@@ -1678,9 +1676,20 @@ export default function Settings() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {creationRestriction && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/55 backdrop-blur-sm z-[155] flex items-end justify-center px-4 pb-[calc(0.5rem+env(safe-area-inset-bottom))]" onClick={() => setCreationRestriction(false)}>
+            <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content !min-h-0 bg-card/90 backdrop-blur-2xl border border-amber-500/30 rounded-3xl p-4 w-full max-w-md shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-bold text-foreground">New Curriculum Restricted</h3>
+              <p className="text-xs leading-relaxed text-muted-foreground">You already have the maximum number of Active Curricula. Mark Complete, or Delete one before creating a New Curriculum.</p>
+              <button type="button" onClick={() => setCreationRestriction(false)} className="action-button action-button--cancel w-full min-h-10">Close</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
         {pendingCurriculumAction && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[145] flex items-end justify-center p-4" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }} onClick={() => { setPendingCurriculumAction(null); setCreationRestriction(false); }}>
-            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content !min-h-0 bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-4 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
               <h3 className="text-base font-bold text-foreground">{pendingCurriculumAction.type === 'switch' ? 'Switch curriculum?' : pendingCurriculumAction.type === 'reopen' ? 'Reopen curriculum?' : pendingCurriculumAction.type === 'complete' ? 'Mark as Complete?' : 'Rename curriculum?'}</h3>
               <p className="text-xs leading-relaxed text-muted-foreground">{pendingCurriculumAction.type === 'switch' ? 'This curriculum will become your active workspace.' : pendingCurriculumAction.type === 'reopen' ? 'This curriculum will return to Active Curricula.' : pendingCurriculumAction.type === 'complete' ? 'This curriculum will move to the Archive Folder.' : 'You can update the curriculum name next.'}</p>
               {pendingCurriculumAction.type === 'rename' && <input autoFocus value={editingCurriculumName || pendingCurriculumAction.curriculum.name} onChange={e => setEditingCurriculumName(e.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary" />}
@@ -1692,7 +1701,7 @@ export default function Settings() {
       <AnimatePresence>
         {curriculumToDelete && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/65 backdrop-blur-md z-[150] flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setCurriculumToDelete(null); }}>
-            <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-destructive/30 rounded-3xl p-6 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
+            <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} className="modal-sheet-content !min-h-0 bg-card/90 backdrop-blur-2xl border border-destructive/30 rounded-3xl p-4 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
               <h3 className="text-base font-bold text-foreground">Delete this curriculum?</h3>
               <p className="text-xs leading-relaxed text-muted-foreground">All data associated with this curriculum will be permanently deleted and cannot be recovered.</p>
               <div className="flex gap-2"><button type="button" onClick={() => setCurriculumToDelete(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteCurriculum} className="action-button action-button--danger flex-1">Delete Permanently</button></div>
@@ -1703,7 +1712,7 @@ export default function Settings() {
       <AnimatePresence>
         {isEditingName && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-end justify-center p-4" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }} onClick={() => setIsEditingName(false)}>
-            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="modal-sheet-content !min-h-0 bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-4 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
               <div>
                 <h3 className="text-base font-bold text-foreground">Edit Name</h3>
                 <p className="text-[11px] text-muted-foreground">Update your display name.</p>
