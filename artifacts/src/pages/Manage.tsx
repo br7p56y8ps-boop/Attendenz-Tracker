@@ -2130,7 +2130,7 @@ export default function Manage() {
                     {subjectMode === 'custom' && customAcademicCount === 0 ? (
                       <>
                         No Lecture Subject added yet. Tap{' '}
-                        <button type="button" onClick={() => setMoreMenuOpen(true)} className="font-extrabold text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer">More</button>{' '}
+                        <button type="button" onClick={() => setMoreMenuOpen(true)} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button>{' '}
                         to add a new Subject.
                       </>
                     ) : selectedDayIsHoliday ? (
@@ -2218,7 +2218,7 @@ export default function Manage() {
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
                     <p className="text-sm font-semibold text-muted-foreground">
                       No Clinical Subject added yet. Tap{' '}
-                      <button type="button" onClick={() => setMoreMenuOpen(true)} className="font-extrabold text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer">More</button>{' '}
+                      <button type="button" onClick={() => setMoreMenuOpen(true)} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button>{' '}
                       to add a new Subject.
                     </p>
                   </div>
