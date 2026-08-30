@@ -2110,7 +2110,7 @@ export default function Manage() {
         )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card dark:bg-black border border-border dark:border-white rounded-2xl p-3 shadow-sm space-y-2.5 relative flex flex-col overflow-hidden',
+            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card dark:bg-black border border-dashed border-border/80 rounded-2xl p-3 shadow-sm space-y-2.5 relative flex flex-col overflow-hidden',
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
@@ -2122,7 +2122,7 @@ export default function Manage() {
               </div>
 
               <div className="relative z-0 min-h-0 flex-1 overflow-hidden bg-card">
-                <div className="flex h-full min-h-0 flex-col rounded-xl bg-black/5 dark:bg-black border border-dashed border-border dark:border-white/45 px-4 py-3">
+                <div className="flex h-full min-h-0 flex-col rounded-xl bg-black/5 dark:bg-black border border-dashed border-border/80 px-4 py-3">
                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ overscrollBehaviorY: 'contain' }}>
               {groupedAcademicSlots.length === 0 ? (
                 <div className="flex w-full min-h-full flex-1 items-center justify-center text-center">
@@ -2879,14 +2879,18 @@ export default function Manage() {
           onClose={() => { setEditWard(null); setEditError(null); }}
           maxW="max-w-lg"
           header={
-            <>
-              <div><h3 className="text-sm font-bold text-foreground">Edit Rotation</h3></div>
-              <p className="text-[10px] text-muted-foreground mt-1">Change dates, session times, or vacations. Rename is disabled.</p>
-            </>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
+                <p className="text-[10px] text-muted-foreground mt-1">Change dates, session times, or vacations. Rename is disabled.</p>
+              </div>
+              <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="action-button action-button--close action-button--icon shrink-0" aria-label="Close Edit Rotation">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           }
           footer={
             <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className={btnCancel}>Cancel</button>
               <button type="button" onClick={saveEditWard} className={btnPrimary}>Save Changes</button>
             </div>
           }

@@ -67,7 +67,8 @@
   --card: rgba(28, 28, 30, 0.65);
   --card-foreground: #FFFFFF;
   
-  --border: rgba(255, 255, 255, 0.16);
+  /* Neutral UI borders: visible light grey in black theme; explicit colored borders override this token. */
+  --border: rgba(255, 255, 255, 0.28);
   
   --primary: #0A84FF; /* iOS Dark Blue */
   --primary-foreground: #FFFFFF;
@@ -93,7 +94,7 @@
 
 .dark .glass-panel {
   background: rgba(20, 20, 25, 0.58);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--border);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
@@ -107,7 +108,7 @@
 
 .dark .glass-card {
   background: rgba(30, 30, 35, 0.58);
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  border: 1px solid var(--border);
   box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.3);
 }
 
@@ -122,7 +123,7 @@
 }
 .dark .glass-card-hover:hover {
   background: rgba(40, 40, 48, 0.5);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--border);
   box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
 }
 
@@ -135,7 +136,7 @@
 }
 .dark .glass-button {
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
 }
 
 .glass-button:hover {
