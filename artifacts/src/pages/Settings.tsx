@@ -172,7 +172,8 @@ export default function Settings() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setNameInput(username); }, [username]);
   useEffect(() => {
-    if (!isEditingName) {
+    const curriculumRenameOpen = pendingCurriculumAction?.type === 'rename';
+    if (!isEditingName && !curriculumRenameOpen) {
       setIdentityKeyboardInset(0);
       return;
     }
@@ -266,6 +267,7 @@ export default function Settings() {
   const [curriculumToDelete, setCurriculumToDelete] = useState<CurriculumRecord | null>(null);
   const [pendingCurriculumAction, setPendingCurriculumAction] = useState<{ type: 'complete' | 'switch' | 'reopen' | 'rename'; curriculum: CurriculumRecord } | null>(null);
   const [creationRestriction, setCreationRestriction] = useState(false);
+  const [showCreateCurriculumForm, setShowCreateCurriculumForm] = useState(false);
   const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
   const activeCurriculumCount = curricula.filter(c => c.status === 'active').length;
   const activeCurriculumReadyForNewRoutine = activeCurriculumCount < 2;
@@ -805,6 +807,8 @@ export default function Settings() {
   const openCurriculumManager = () => {
     setConfirmMarkComplete(false);
     setShowArchiveFolder(false);
+    setShowCreateCurriculumForm(false);
+    setCreationRestriction(false);
     setExpandedCurriculumIds({});
     setCurricula(getCurricula());
     setActiveCurriculumIdState(getActiveCurriculumId() || '');
@@ -812,6 +816,7 @@ export default function Settings() {
   };
   const handleCreateCurriculum = () => {
     if (!activeCurriculumReadyForNewRoutine) {
+      setShowCreateCurriculumForm(true);
       setCreationRestriction(true);
       return;
     }
@@ -1620,15 +1625,16 @@ export default function Settings() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <div className="h-10 w-10 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="h-5 w-5 shrink-0 text-primary" /></div>
-                  <div className="min-w-0 flex-1 text-left"><h3 className="break-words text-sm font-bold text-foreground sm:text-base">Curriculum Management</h3><p className="text-[10px] leading-relaxed text-muted-foreground sm:text-[11px]">Switch between saved routines. Each keeps its own Subjects, SGTs, wards, schedules, and attendance.</p></div>
+                  <div className="min-w-0 flex-1 text-left"><h3 className="break-words text-sm font-bold text-foreground sm:text-base">Curriculum Management</h3><p className="text-[10px] leading-relaxed text-muted-foreground sm:text-[11px]">Manage your active and archived curricula.</p></div>
                 </div>
                 <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); }} className="action-button action-button--close action-button--icon mt-0.5 shrink-0" aria-label="Close Curriculum Management"><X className="w-4 h-4" /></button>
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setShowArchiveFolder(!showArchiveFolder)} className="action-button action-button--neutral w-full min-h-10">{showArchiveFolder ? 'Back to Active' : 'Archive Folder'}</button>
+                <button type="button" onClick={() => { setShowCreateCurriculumForm(true); setCreationRestriction(false); }} className="action-button action-button--edit w-full min-h-10">Create New Curricula</button>
+              </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">{showArchiveFolder ? 'Archive Folder' : 'Active Curricula'}</p>
-                  {showArchiveFolder && <button type="button" onClick={() => setShowArchiveFolder(false)} className="text-[10px] font-bold text-primary">Back to Active</button>}
-                </div>
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">{showArchiveFolder ? 'Archive Folder' : 'Active Curricula'}</p>
                 {(showArchiveFolder ? curricula.filter(c => c.status === 'archived') : curricula.filter(c => c.status === 'active').sort((a, b) => Number(b.id === activeCurriculumId) - Number(a.id === activeCurriculumId))).map(c => {
                   const expanded = Boolean(expandedCurriculumIds[c.id]);
                   const canDelete = c.kind === 'custom' && c.id !== 'curriculum_custom_routine';
@@ -1652,14 +1658,10 @@ export default function Settings() {
                 })}
                 {((showArchiveFolder && !curricula.some(c => c.status === 'archived')) || (!showArchiveFolder && !curricula.some(c => c.status === 'active'))) && <p className="rounded-xl border border-border/50 px-3 py-3 text-[11px] text-muted-foreground">{showArchiveFolder ? 'No completed or archived curricula.' : 'No active curricula.'}</p>}
               </div>
-              <div className="border-t border-border/50 pt-4 space-y-2">
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setShowArchiveFolder(true)} className="action-button action-button--neutral flex-1">Archive Folder</button>
-                  <button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit flex-1">Create New Curricula</button>
-                </div>
+              {showCreateCurriculumForm && <div className="border-t border-border/50 pt-4 space-y-2">
                 {creationRestriction && <p className="text-[10px] text-muted-foreground text-left leading-relaxed">You already have the maximum number of Active Curricula. Mark Complete, or Delete one before creating a New Curriculum.</p>}
                 {activeCurriculumReadyForNewRoutine && <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. 2nd Year / Second Phase" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit shrink-0">Create</button></div>}
-              </div>
+              </div>}
             </motion.div>
           </motion.div>
         )}
