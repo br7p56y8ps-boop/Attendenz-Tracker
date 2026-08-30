@@ -262,6 +262,7 @@ export default function Settings() {
   const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
   const [editingCurriculumName, setEditingCurriculumName] = useState('');
   const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
+  const activeCurriculumReadyForNewRoutine = curriculumStatus === 'Completed' || activeCurriculum?.status === 'archived';
 
   const refreshNotificationState = async () => {
     setNotificationPermission(getNotificationPermission());
@@ -813,6 +814,10 @@ export default function Settings() {
     setShowSwitchDialog(true);
   };
   const handleCreateCurriculum = () => {
+    if (!activeCurriculumReadyForNewRoutine) {
+      import('sonner').then(({ toast }) => toast.info('Finish or archive the active curriculum before creating a new Custom routine. You can still switch to an existing routine now.'));
+      return;
+    }
     try {
       const created = createCurriculum(newCurriculumName);
       setNewCurriculumName('');
@@ -1617,8 +1622,8 @@ export default function Settings() {
               {curricula.some(c => c.status === 'archived') && <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Archived Curricula</p>{curricula.filter(c => c.status === 'archived').map(c => <div key={c.id} className="rounded-2xl border border-border/60 p-3 flex items-center gap-2"><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="flex-1 min-w-0 text-left cursor-pointer"><p className="text-sm font-bold text-foreground truncate">{c.name} <span className="text-[9px] font-extrabold uppercase tracking-wider text-primary">{c.kind === 'preset' ? 'Preset' : 'Custom'}</span></p><p className="text-[10px] text-muted-foreground">Reopen this curriculum with all its saved data</p></button><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="action-button action-button--edit shrink-0">Reopen</button></div>)}</div>}
               <div className="border-t border-border/50 pt-4 space-y-2">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Create Another Custom Routine</p>
-                <p className="text-[10px] text-muted-foreground text-left leading-relaxed">Create a separate routine for another year or phase. It starts empty and will not change your other routines.</p>
-                <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. 2nd Year / Second Phase" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit shrink-0">Create Custom Routine</button></div>
+                <p className="text-[10px] text-muted-foreground text-left leading-relaxed">{activeCurriculumReadyForNewRoutine ? 'Create a separate routine for another year or phase. It starts empty and will not change your other routines.' : 'Finish or archive the currently active curriculum before creating a completely new routine. Existing saved routines can still be opened above.'}</p>
+                <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. 2nd Year / Second Phase" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} disabled={!activeCurriculumReadyForNewRoutine} title={activeCurriculumReadyForNewRoutine ? 'Create a new Custom routine' : 'Finish or archive the active curriculum first'} className="action-button action-button--edit shrink-0">Create Custom Routine</button></div>
               </div>
               </>
               )}
