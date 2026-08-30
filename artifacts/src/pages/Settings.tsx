@@ -268,16 +268,15 @@ export default function Settings() {
   const [pendingCurriculumAction, setPendingCurriculumAction] = useState<{ type: 'complete' | 'switch' | 'reopen' | 'rename'; curriculum: CurriculumRecord } | null>(null);
   const [creationRestriction, setCreationRestriction] = useState(false);
   const [showCreateCurriculumForm, setShowCreateCurriculumForm] = useState(false);
-  const [newCurriculumDescription, setNewCurriculumDescription] = useState('');
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
   const curriculumSheetRef = useRef<HTMLDivElement>(null);
-  const [activeCurriculumSheetHeight, setActiveCurriculumSheetHeight] = useState<number | null>(null);
+  const [curriculumSheetMaxHeight, setCurriculumSheetMaxHeight] = useState<number | null>(null);
   const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
   const activeCurriculumCount = curricula.filter(c => c.status === 'active').length;
   const activeCurriculumReadyForNewRoutine = activeCurriculumCount < 2;
   useEffect(() => {
-    if (showSwitchDialog && !showArchiveFolder && curriculumSheetRef.current) {
-      const measure = () => setActiveCurriculumSheetHeight(curriculumSheetRef.current?.scrollHeight ?? null);
+    if (showSwitchDialog && curriculumSheetRef.current) {
+      const measure = () => setCurriculumSheetMaxHeight(previous => Math.max(previous ?? 0, curriculumSheetRef.current?.scrollHeight ?? 0));
       const frame = window.requestAnimationFrame(measure);
       const observer = new ResizeObserver(measure);
       observer.observe(curriculumSheetRef.current);
@@ -847,7 +846,6 @@ export default function Settings() {
     try {
       const created = createCurriculum(newCurriculumName);
       setNewCurriculumName('');
-      setNewCurriculumDescription('');
       setShowCreateCurriculumForm(false);
       setCreationRestriction(false);
       setCurricula(getCurricula());
@@ -1647,7 +1645,7 @@ export default function Settings() {
       <AnimatePresence>
         {showSwitchDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} ref={curriculumSheetRef} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} style={activeCurriculumSheetHeight ? { minHeight: `${activeCurriculumSheetHeight}px` } : undefined} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
+            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} ref={curriculumSheetRef} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} style={curriculumSheetMaxHeight ? { minHeight: `${curriculumSheetMaxHeight}px` } : undefined} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <div className="h-10 w-10 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="h-5 w-5 shrink-0 text-primary" /></div>
@@ -1688,11 +1686,11 @@ export default function Settings() {
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[155] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }} onClick={() => { setShowCreateCurriculumForm(false); setCreationRestriction(false); }}>
                     <motion.div initial={{ scale: 0.96, y: 18, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.96, y: 18, opacity: 0 }} transition={{ type: 'spring', damping: 28, stiffness: 300 }} className="modal-sheet-content !min-h-0 w-full max-w-sm rounded-3xl bg-card/90 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
                       <h3 className="text-base font-bold text-foreground">Create New Curriculum</h3>
-                      <p className="mt-1 text-xs text-muted-foreground">Add a name and a short description for this curriculum.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Create a curriculum for your academic, clinical, and SGT planning.</p>
                       <div className="mt-4 space-y-3">
                         <input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} onFocus={() => window.setTimeout(() => setIdentityKeyboardInset(Math.max(0, Math.round(window.innerHeight - (window.visualViewport?.height ?? window.innerHeight) - (window.visualViewport?.offsetTop ?? 0)))), 80)} placeholder="Curriculum name" className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary" />
-                        <textarea value={newCurriculumDescription} onChange={e => setNewCurriculumDescription(e.target.value)} placeholder="Short description (optional)" rows={3} className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary" />
-                        <div className="grid grid-cols-2 gap-2 pt-1"><button type="button" onClick={() => { setShowCreateCurriculumForm(false); setNewCurriculumDescription(''); }} className="action-button action-button--cancel w-full min-h-10">Cancel</button><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--save w-full min-h-10">Save</button></div>
+
+                        <div className="grid grid-cols-2 gap-2 pt-1"><button type="button" onClick={() => setShowCreateCurriculumForm(false)} className="action-button action-button--cancel w-full min-h-10">Cancel</button><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--save w-full min-h-10">Save</button></div>
                       </div>
                     </motion.div>
                   </motion.div>

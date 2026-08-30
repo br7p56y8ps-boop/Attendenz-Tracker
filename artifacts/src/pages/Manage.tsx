@@ -2101,7 +2101,7 @@ export default function Manage() {
       mainClassName="h-[100dvh] min-h-0 overflow-hidden"
       contentClassName="h-full min-h-0"
       headerRight={
-        <button type="button" onClick={() => setMoreMenuOpen(true)} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
+        <button type="button" onClick={() => getCurricula().some(curriculum => curriculum.status === 'active') ? setMoreMenuOpen(true) : setNoActiveCurriculumMessage(true)} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
           <SendToBack className="w-4 h-4" />
           <span className="text-[9px] font-extrabold leading-none">More</span>
         </button>
@@ -2111,7 +2111,7 @@ export default function Manage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-end justify-center bg-black/55 backdrop-blur-sm" onClick={() => setNoActiveCurriculumMessage(false)}>
           <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} className="modal-sheet-content !min-h-0 w-full max-w-md rounded-t-3xl bg-card/90 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-foreground">No Active Curricula</h3>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">There are no active curricula available. Reopen or create an active curriculum before adding Academic, Clinical, or SGT data.</p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">There are no Active Curricula. Reopen or Create a new Active Curricula from <button type="button" onClick={() => { setNoActiveCurriculumMessage(false); setLocation('/account'); }} className="font-semibold text-blue-500 hover:text-blue-400">Setting&apos;s</button> Curriculum Management to Add/Edit a Subject data or Import/Export Routine.</p>
             <button type="button" onClick={() => setNoActiveCurriculumMessage(false)} className="action-button action-button--cancel mt-3 w-full min-h-10">Close</button>
           </motion.div>
         </motion.div>, document.body
