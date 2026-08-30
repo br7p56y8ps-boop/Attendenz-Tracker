@@ -394,8 +394,19 @@ function localClock(timestamp: number, timezone: string): { date: string; hour: 
   };
 }
 
-function cleanLabel(value: string): string {
-  return value.replace(/\s+/g, ' ').trim().slice(0, 120);
+function cleanLabel(value: string, category: OccurrenceRow['category']): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  const suffixMatch = normalized.match(/\s+\((Lecture\/Integrated|Lecture|Integrated|Clinical|SGT)\)$/i);
+  const base = (suffixMatch ? normalized.slice(0, suffixMatch.index) : normalized).trim().slice(0, 120);
+  const existingKind = suffixMatch?.[1].toLowerCase();
+  const kind = category === 'sgt'
+    ? 'SGT'
+    : category === 'clinical' || category === 'ward'
+      ? 'Clinical'
+      : existingKind === 'integrated'
+        ? 'Integrated'
+        : 'Lecture/Integrated';
+  return `${base} (${kind})`;
 }
 
 function formatMinute(totalMinutes: number): string {
@@ -454,18 +465,19 @@ async function deliverIfNew(env: Env, device: DeviceRow, deliveryKey: string, he
 }
 
 function listNames(rows: OccurrenceRow[], limit = 6): string {
-  const names = [...new Set(rows.map(row => cleanLabel(row.subjectLabel)))];
+  const names = [...new Set(rows.map(row => cleanLabel(row.subjectLabel, row.category)))];
   const visible = names.slice(0, limit);
   const suffix = names.length > limit ? ` and ${names.length - limit} more` : '';
   return `${visible.join(', ')}${suffix}`;
 }
 
 function listLeadNames(rows: OccurrenceRow[], limit = 6): string {
-  const names = [...new Set(rows.map(row => cleanLabel(row.subjectLabel)))];
+  const names = [...new Set(rows.map(row => cleanLabel(row.subjectLabel, row.category)))];
   const clinicalCounts = new Map<string, number>();
   for (const row of rows) {
     if (row.category !== 'clinical') continue;
-    clinicalCounts.set(row.subjectLabel, (clinicalCounts.get(row.subjectLabel) || 0) + 1);
+    const label = cleanLabel(row.subjectLabel, row.category);
+    clinicalCounts.set(label, (clinicalCounts.get(label) || 0) + 1);
   }
   const visible = names.slice(0, limit).map(name => {
     const count = clinicalCounts.get(name) || 0;
