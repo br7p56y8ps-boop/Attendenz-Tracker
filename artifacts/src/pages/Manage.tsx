@@ -26,6 +26,7 @@ import { storageSetItem } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
+import { getCurricula } from '@/lib/curriculumStore';
 import {
   Plus, Trash2, X, AlertTriangle,
   GraduationCap, Stethoscope, Download, Upload, Copy, Share2,
@@ -517,6 +518,7 @@ export default function Manage() {
   const [addSlotPlanned, setAddSlotPlanned] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [noActiveCurriculumMessage, setNoActiveCurriculumMessage] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
   const [historyClearEntry, setHistoryClearEntry] = useState<any | null>(null);
   const [editDataOpen, setEditDataOpen] = useState(false);
@@ -721,6 +723,10 @@ export default function Manage() {
 
   const openAddSlot = () => { setAddSlotSubject(''); setAddSlotStart('09:00 AM'); setAddSlotEnd('10:00 AM'); setAddSlotPlanned(0); setFormError(null); setAddSlotOpen(true); setAddSuccess(false); };
   const openAddFromMore = () => {
+    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
+      setNoActiveCurriculumMessage(true);
+      return;
+    }
     setMoreMenuOpen(false);
     setReturnToMoreAfterAdd(true);
     setFormError(null);
@@ -2101,6 +2107,15 @@ export default function Manage() {
         </button>
       }
     >
+      {noActiveCurriculumMessage && createPortal(
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-end justify-center bg-black/55 backdrop-blur-sm" onClick={() => setNoActiveCurriculumMessage(false)}>
+          <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} className="modal-sheet-content !min-h-0 w-full max-w-md rounded-t-3xl bg-card/90 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-foreground">No Active Curricula</h3>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">There are no active curricula available. Reopen or create an active curriculum before adding Academic, Clinical, or SGT data.</p>
+            <button type="button" onClick={() => setNoActiveCurriculumMessage(false)} className="action-button action-button--cancel mt-3 w-full min-h-10">Close</button>
+          </motion.div>
+        </motion.div>, document.body
+      )}
       <div className="flex h-full min-h-0 flex-col gap-1 scroll-reachability">
         <div className="shrink-0">{manageSectionSwitcher}</div>
         {manageDaySelector && (
