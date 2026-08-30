@@ -1,4 +1,4 @@
-import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, ChevronDown, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
+import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import { assertBackupSize, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
 import React, { useRef, useState, useEffect } from 'react';
@@ -264,6 +264,8 @@ export default function Settings() {
   const [expandedCurriculumIds, setExpandedCurriculumIds] = useState<Record<string, boolean>>({});
   const [showArchiveFolder, setShowArchiveFolder] = useState(false);
   const [curriculumToDelete, setCurriculumToDelete] = useState<CurriculumRecord | null>(null);
+  const [pendingCurriculumAction, setPendingCurriculumAction] = useState<{ type: 'complete' | 'switch' | 'reopen' | 'rename'; curriculum: CurriculumRecord } | null>(null);
+  const [creationRestriction, setCreationRestriction] = useState(false);
   const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
   const activeCurriculumCount = curricula.filter(c => c.status === 'active').length;
   const activeCurriculumReadyForNewRoutine = activeCurriculumCount < 2;
@@ -810,7 +812,7 @@ export default function Settings() {
   };
   const handleCreateCurriculum = () => {
     if (!activeCurriculumReadyForNewRoutine) {
-      import('sonner').then(({ toast }) => toast.info('Finish or archive the active curriculum before creating a new Custom routine. You can still switch to an existing routine now.'));
+      setCreationRestriction(true);
       return;
     }
     try {
@@ -835,6 +837,15 @@ export default function Settings() {
     } catch {
       import('sonner').then(({ toast }) => toast.error('Could not switch curriculum.'));
     }
+  };
+  const confirmCurriculumAction = async () => {
+    if (!pendingCurriculumAction) return;
+    const { type, curriculum } = pendingCurriculumAction;
+    setPendingCurriculumAction(null);
+    if (type === 'switch' || type === 'reopen') { await handleActivateCurriculum(curriculum.id); return; }
+    if (type === 'complete') { await handleMarkCurriculumComplete(curriculum.id); return; }
+    setEditingCurriculumId(curriculum.id);
+    setEditingCurriculumName(curriculum.name);
   };
   const handleRenameCurriculum = (id: string) => {
     try {
@@ -1625,14 +1636,15 @@ export default function Settings() {
                     <div key={c.id} className={cn('rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60')}>
                       <button type="button" onClick={() => setExpandedCurriculumIds(prev => ({ ...prev, [c.id]: !expanded }))} className="w-full flex items-center justify-between gap-2 text-left">
                         <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-foreground truncate">{c.name}</span><span className="block text-[10px] text-muted-foreground">{c.status === 'active' ? 'Active' : 'Completed / Archived'} · {c.kind === 'preset' ? 'Preset' : 'New Curriculum'}</span></span>
-                        {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+
                       </button>
-                      {expanded && <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/40 pt-3">
-                        {c.status === 'active' && <button type="button" onClick={() => handleMarkCurriculumComplete(c.id)} className="action-button action-button--save shrink-0">Mark as Complete</button>}
-                        {c.status === 'archived' && <button type="button" onClick={() => handleActivateCurriculum(c.id)} className="action-button action-button--edit shrink-0">Reopen</button>}
-                        <button type="button" onClick={() => { setEditingCurriculumId(c.id); setEditingCurriculumName(c.name); }} className="action-button action-button--edit shrink-0">Rename</button>
-                        <button type="button" disabled={!canDelete} onClick={() => canDelete && setCurriculumToDelete(c)} className="action-button action-button--danger shrink-0 disabled:cursor-not-allowed disabled:opacity-40">Delete</button>
-                        {editingCurriculumId === c.id && <button type="button" onClick={() => handleRenameCurriculum(c.id)} className="action-button action-button--save shrink-0">Save</button>}
+                      {expanded && <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-border/40 pt-3">
+                        {c.status === 'active' && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'complete', curriculum: c })} className="action-button action-button--save w-full min-h-10">Mark as Complete</button>}
+                        {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'switch', curriculum: c })} className="action-button action-button--edit w-full min-h-10">Switch to this Curriculum</button>}
+                        {c.status === 'archived' && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'reopen', curriculum: c })} className="action-button action-button--edit w-full min-h-10">Reopen</button>}
+                        <button type="button" onClick={() => setPendingCurriculumAction({ type: 'rename', curriculum: c })} className="action-button action-button--edit w-full min-h-10">Rename</button>
+                        <button type="button" disabled={!canDelete} onClick={() => canDelete && setCurriculumToDelete(c)} className="action-button action-button--danger w-full min-h-10 disabled:cursor-not-allowed disabled:opacity-40">Delete</button>
+                        {editingCurriculumId === c.id && <button type="button" onClick={() => handleRenameCurriculum(c.id)} className="action-button action-button--save w-full min-h-10">Save</button>}
                       </div>}
                       {editingCurriculumId === c.id && <input autoFocus value={editingCurriculumName} onChange={e => setEditingCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRenameCurriculum(c.id); }} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary" />}
                     </div>
@@ -1643,9 +1655,9 @@ export default function Settings() {
               <div className="border-t border-border/50 pt-4 space-y-2">
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setShowArchiveFolder(true)} className="action-button action-button--neutral flex-1">Archive Folder</button>
-                  <button type="button" onClick={() => setShowArchiveFolder(false)} disabled={!activeCurriculumReadyForNewRoutine} className="action-button action-button--edit flex-1 disabled:cursor-not-allowed disabled:opacity-40">Create New Curricula</button>
+                  <button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit flex-1">Create New Curricula</button>
                 </div>
-                {!activeCurriculumReadyForNewRoutine && <p className="text-[10px] text-muted-foreground text-left leading-relaxed">You already have the maximum number of Active Curricula. Mark Complete, or Delete one before creating a New Curriculum.</p>}
+                {creationRestriction && <p className="text-[10px] text-muted-foreground text-left leading-relaxed">You already have the maximum number of Active Curricula. Mark Complete, or Delete one before creating a New Curriculum.</p>}
                 {activeCurriculumReadyForNewRoutine && <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. 2nd Year / Second Phase" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit shrink-0">Create</button></div>}
               </div>
             </motion.div>
@@ -1653,6 +1665,18 @@ export default function Settings() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {pendingCurriculumAction && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[145] flex items-end justify-center p-4" onClick={() => setPendingCurriculumAction(null)}>
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content bg-card/90 border border-border/80 rounded-3xl p-5 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-bold text-foreground">{pendingCurriculumAction.type === 'switch' ? 'Switch curriculum?' : pendingCurriculumAction.type === 'reopen' ? 'Reopen curriculum?' : pendingCurriculumAction.type === 'complete' ? 'Mark as Complete?' : 'Rename curriculum?'}</h3>
+              <p className="text-xs leading-relaxed text-muted-foreground">{pendingCurriculumAction.type === 'switch' ? 'This curriculum will become your active workspace.' : pendingCurriculumAction.type === 'reopen' ? 'This curriculum will return to Active Curricula.' : pendingCurriculumAction.type === 'complete' ? 'This curriculum will move to the Archive Folder.' : 'You can update the curriculum name next.'}</p>
+              {pendingCurriculumAction.type === 'rename' && <input autoFocus value={editingCurriculumName || pendingCurriculumAction.curriculum.name} onChange={e => setEditingCurriculumName(e.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary" />}
+              <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setPendingCurriculumAction(null)} className="action-button action-button--cancel w-full min-h-10">Cancel</button><button type="button" onClick={confirmCurriculumAction} className="action-button action-button--save w-full min-h-10">Confirm</button></div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {curriculumToDelete && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/65 backdrop-blur-md z-[150] flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setCurriculumToDelete(null); }}>
