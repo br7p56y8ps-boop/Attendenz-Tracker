@@ -269,9 +269,23 @@ export default function Settings() {
   const [creationRestriction, setCreationRestriction] = useState(false);
   const [showCreateCurriculumForm, setShowCreateCurriculumForm] = useState(false);
   const [newCurriculumDescription, setNewCurriculumDescription] = useState('');
+  const [showSwitchDialog, setShowSwitchDialog] = useState(false);
+  const curriculumSheetRef = useRef<HTMLDivElement>(null);
+  const [activeCurriculumSheetHeight, setActiveCurriculumSheetHeight] = useState<number | null>(null);
   const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
   const activeCurriculumCount = curricula.filter(c => c.status === 'active').length;
   const activeCurriculumReadyForNewRoutine = activeCurriculumCount < 2;
+  useEffect(() => {
+    if (showSwitchDialog && !showArchiveFolder && curriculumSheetRef.current) {
+      const measure = () => setActiveCurriculumSheetHeight(curriculumSheetRef.current?.scrollHeight ?? null);
+      const frame = window.requestAnimationFrame(measure);
+      const observer = new ResizeObserver(measure);
+      observer.observe(curriculumSheetRef.current);
+      return () => { window.cancelAnimationFrame(frame); observer.disconnect(); };
+    }
+    return undefined;
+  }, [showSwitchDialog, showArchiveFolder, curricula.length, expandedCurriculumIds, showCreateCurriculumForm]);
+
   useEffect(() => {
     if (pendingCurriculumAction?.type !== 'rename' && !showCreateCurriculumForm) return;
     const viewport = window.visualViewport;
@@ -802,7 +816,6 @@ export default function Settings() {
     window.location.reload();
   };
 
-  const [showSwitchDialog, setShowSwitchDialog] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference());
   const [vibrationEnabled, setVibrationEnabledState] = useState(() => getVibrationEnabled());
   const [vibrationStyle, setVibrationStyleState] = useState<VibrationStyle>(() => getVibrationStyle());
@@ -1634,7 +1647,7 @@ export default function Settings() {
       <AnimatePresence>
         {showSwitchDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md min-h-[28rem] max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5 transition-[height,min-height] duration-300 ease-out">
+            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} ref={curriculumSheetRef} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} style={activeCurriculumSheetHeight ? { minHeight: `${activeCurriculumSheetHeight}px` } : undefined} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <div className="h-10 w-10 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="h-5 w-5 shrink-0 text-primary" /></div>
