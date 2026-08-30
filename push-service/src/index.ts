@@ -406,6 +406,12 @@ function formatMinute(totalMinutes: number): string {
   return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`;
 }
 
+function nextLocalDate(date: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day + 1));
+  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`;
+}
+
 function isWithinFiveMinuteWindow(currentMinute: number, dueMinute: number): boolean {
   return currentMinute >= dueMinute && currentMinute < dueMinute + 5;
 }
@@ -448,14 +454,31 @@ async function deliverIfNew(env: Env, device: DeviceRow, deliveryKey: string, he
 }
 
 function listNames(rows: OccurrenceRow[], limit = 6): string {
-  const names = rows.map(row => cleanLabel(row.subjectLabel));
+  const names = [...new Set(rows.map(row => cleanLabel(row.subjectLabel)))];
   const visible = names.slice(0, limit);
+  const suffix = names.length > limit ? ` and ${names.length - limit} more` : '';
+  return `${visible.join(', ')}${suffix}`;
+}
+
+function listLeadNames(rows: OccurrenceRow[], limit = 6): string {
+  const names = [...new Set(rows.map(row => cleanLabel(row.subjectLabel)))];
+  const clinicalCounts = new Map<string, number>();
+  for (const row of rows) {
+    if (row.category !== 'clinical') continue;
+    clinicalCounts.set(row.subjectLabel, (clinicalCounts.get(row.subjectLabel) || 0) + 1);
+  }
+  const visible = names.slice(0, limit).map(name => {
+    const count = clinicalCounts.get(name) || 0;
+    return count >= 2 ? `${name} — Attend BOTH` : count === 1 ? `${name} — Attend ONE of them` : name;
+  });
   const suffix = names.length > limit ? ` and ${names.length - limit} more` : '';
   return `${visible.join(', ')}${suffix}`;
 }
 
 async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): Promise<void> {
   const clock = localClock(scheduledAt, device.timezone);
+  const midnightWindow = (clock.hour === 23 && clock.minute >= 30) || (clock.hour === 0 && clock.minute < 5);
+  const scheduleDate = clock.hour === 23 && clock.minute >= 30 ? nextLocalDate(clock.date) : clock.date;
   const rows = await env.DB.prepare(
     `SELECT occurrence_id as id, device_id, local_date as localDate,
       start_minute as startMinute, end_minute as endMinute, subject_label as subjectLabel,
@@ -464,12 +487,11 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
       is_final_for_subject as isFinalForSubject
      FROM occurrences WHERE device_id = ?1 AND local_date = ?2
      ORDER BY start_minute ASC`,
-  ).bind(device.device_id, clock.date).all<OccurrenceRow>();
+  ).bind(device.device_id, scheduleDate).all<OccurrenceRow>();
   const occurrences = rows.results || [];
   const url = DEFAULT_ALLOWED_ORIGIN;
 
   const currentMinute = clock.hour * 60 + clock.minute;
-  const midnightWindow = clock.hour === 0 && clock.minute < 5;
 
   if (midnightWindow) {
     const mustAttend = device.midnight_need_attention ? occurrences.filter(item => item.attentionLevel === 'mustAttend') : [];
@@ -487,17 +509,17 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
       if (needAttention.length > 0) parts.push(`Need Attention: ${listNames(needAttention)}`);
       if (finalClasses.length > 0) parts.push(`Last Planned: ${listNames(finalClasses)}`);
       const body = parts.join('. ') + '.';
-      await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${clock.date}`, 'Urgent Schedule Alert', body, url);
+      await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${scheduleDate}`, 'Urgent Schedule Alert', body, url);
     } else if (hasInfo) {
       const body = first ? `First Class: ${cleanLabel(first.subjectLabel)} at ${formatMinute(first.startMinute)}.` : `Today: ${listNames(digest)}.`;
-      await deliverIfNew(env, device, `${device.device_id}:info-midnight:${clock.date}`, 'Today’s Schedule', body, url);
+      await deliverIfNew(env, device, `${device.device_id}:info-midnight:${scheduleDate}`, 'Today’s Schedule', body, url);
     }
   }
 
   const latestEndMinute = occurrences.reduce((latest, item) => Math.max(latest, item.endMinute), 0);
   const unmarkedReminderMinute = latestEndMinute >= 21 * 60 ? 23 * 60 : 21 * 60 + 30;
-  if (device.unmarked_attendance_today && isWithinFiveMinuteWindow(currentMinute, unmarkedReminderMinute)) {
-    const unmarked = occurrences.filter(item => item.startMinute < currentMinute && !item.attendanceMarked);
+  if (scheduleDate === clock.date && device.unmarked_attendance_today && isWithinFiveMinuteWindow(currentMinute, unmarkedReminderMinute)) {
+    const unmarked = occurrences.filter(item => item.startMinute < currentMinute && !item.attendanceMarked && !item.isFinalForSubject);
     if (unmarked.length > 0) {
       await deliverIfNew(env, device, `${device.device_id}:unmarked:${clock.date}`, 'Attendance Still Unmarked', `${unmarked.length} Class${unmarked.length === 1 ? '' : 'es'} from today still need an attendance status: ${listNames(unmarked)}.`, url);
     }
@@ -508,14 +530,14 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
     const dueMust = due.filter(item => item.attentionLevel === 'mustAttend');
     const dueNeed = device.need_attention_subjects ? due.filter(item => item.attentionLevel === 'needAttention') : [];
     const dueSafe = device.safe_to_miss ? due.filter(item => item.attentionLevel === 'safeToMiss') : [];
-    if (dueMust.length > 0) {
-      await deliverIfNew(env, device, `${device.device_id}:before-must:${clock.date}:${device.lead_minutes}`, 'Must Attend', `${listNames(dueMust)} start in ${device.lead_minutes} minutes. Attend these Classes to protect your attendance percentage.`, url);
+    for (const item of dueMust) {
+      await deliverIfNew(env, device, `${device.device_id}:before-must:${clock.date}:${item.id}:${device.lead_minutes}`, 'Must Attend', `${listLeadNames([item])} start in ${device.lead_minutes} minutes. Attend these Classes to protect your attendance percentage.`, url);
     }
-    if (dueNeed.length > 0) {
-      await deliverIfNew(env, device, `${device.device_id}:before-attention:${clock.date}:${device.lead_minutes}`, 'Need Attention', `${listNames(dueNeed)} start in ${device.lead_minutes} minutes. Your attendance is at the preferred percentage without the recommended safety margin.`, url);
+    for (const item of dueNeed) {
+      await deliverIfNew(env, device, `${device.device_id}:before-attention:${clock.date}:${item.id}:${device.lead_minutes}`, 'Need Attention', `${listLeadNames([item])} start in ${device.lead_minutes} minutes. Your attendance is at the preferred percentage without the recommended safety margin.`, url);
     }
-    if (dueSafe.length > 0) {
-      await deliverIfNew(env, device, `${device.device_id}:before-safe:${clock.date}:${device.lead_minutes}`, 'Safe to Miss a Class', `${listNames(dueSafe)} start in ${device.lead_minutes} minutes. Missing these Classes would keep you at or above the preferred percentage.`, url);
+    for (const item of dueSafe) {
+      await deliverIfNew(env, device, `${device.device_id}:before-safe:${clock.date}:${item.id}:${device.lead_minutes}`, 'Safe to Miss a Class', `${listLeadNames([item])} start in ${device.lead_minutes} minutes. Missing these Classes would keep you at or above the preferred percentage.`, url);
     }
   }
 }

@@ -376,10 +376,10 @@ export default function Subjects() {
               Add your own subjects and ward rotations from the Manage tab.
             </p>
             <button
-              onClick={() => setLocation('/add-new')}
+              onClick={() => setLocation('/manage')}
               className="action-button action-button--edit"
             >
-              Go to Add New
+              Go to Manage Tab
             </button>
           </div>
         )}

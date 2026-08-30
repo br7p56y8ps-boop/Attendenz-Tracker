@@ -578,6 +578,8 @@ export default function Manage() {
     return Array.from(new Set([...customNames, ...customSgtParents])).sort();
   }, [subjectMode, customWards, userAddedSubjects, customSubjects]);
 
+  const customAcademicCount = customSubjects.filter(s => !isSGTRecord(s)).length;
+  const customClinicalCount = customWards.length + customSubjects.filter(s => isSGTRecord(s)).length;
   const clinicalSubjectOptions = useMemo(() => {
     const opts = allClinicalSubjects.map(name => ({
       value: name,
@@ -2093,8 +2095,9 @@ export default function Manage() {
       mainClassName="h-[100dvh] min-h-0 overflow-hidden"
       contentClassName="h-full min-h-0"
       headerRight={
-        <button type="button" onClick={() => setMoreMenuOpen(true)} className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
+        <button type="button" onClick={() => setMoreMenuOpen(true)} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
           <SendToBack className="w-4 h-4" />
+          <span className="text-[9px] font-extrabold leading-none">+More</span>
         </button>
       }
     >
@@ -2107,7 +2110,7 @@ export default function Manage() {
         )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 relative flex flex-col overflow-hidden',
+            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card dark:bg-black border border-border dark:border-white rounded-2xl p-3 shadow-sm space-y-2.5 relative flex flex-col overflow-hidden',
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
@@ -2119,14 +2122,16 @@ export default function Manage() {
               </div>
 
               <div className="relative z-0 min-h-0 flex-1 overflow-hidden bg-card">
-                <div className="flex h-full min-h-0 flex-col rounded-xl bg-background/40 border border-dashed border-border px-4 py-3">
+                <div className="flex h-full min-h-0 flex-col rounded-xl bg-black/5 dark:bg-black border border-dashed border-border dark:border-white/45 px-4 py-3">
                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ overscrollBehaviorY: 'contain' }}>
               {groupedAcademicSlots.length === 0 ? (
                 <div className="flex w-full min-h-full flex-1 items-center justify-center text-center">
                   <p className="text-sm font-semibold text-muted-foreground">
-                    {selectedDayIsHoliday
-                      ? 'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
-                      : 'No planned Lecture Classes for today!'}
+                    {subjectMode === 'custom' && customAcademicCount === 0
+                      ? 'No Lecture Subject added yet. Tap +More to add a new Subject.'
+                      : selectedDayIsHoliday
+                        ? 'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
+                        : 'No planned Lecture Classes for today!'}
                   </p>
                 </div>
               ) : (
@@ -2203,7 +2208,11 @@ export default function Manage() {
           {section === 'clinical' && (
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 px-0.5 pt-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
-                {allClinicalSubjects.map(name => {
+                {subjectMode === 'custom' && customClinicalCount === 0 ? (
+                  <div className="flex min-h-full items-center justify-center px-6 text-center">
+                    <p className="text-sm font-semibold text-muted-foreground">No Clinical Subject added yet. Tap +More to add a new Subject.</p>
+                  </div>
+                ) : allClinicalSubjects.map(name => {
                   const group = { rotation: getRotationForSubject(name), sgt: getSGTForSubject(name) };
                   return (
                     <ClinicalGroupCard
@@ -2223,8 +2232,10 @@ export default function Manage() {
                     />
                   );
                 })}
-                {allClinicalSubjects.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-5">No Clinical Subjects found. Add a Rotation or SGT to get started.</p>
+                {subjectMode !== 'custom' && allClinicalSubjects.length === 0 && (
+                  <div className="flex min-h-full items-center justify-center px-6 text-center">
+                    <p className="text-sm font-semibold text-muted-foreground">No Clinical Subjects found. Add a Rotation or SGT to get started.</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -2798,7 +2809,7 @@ export default function Manage() {
           }
           footer={
             <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={btnCancel}>Cancel</button>
+              <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={cn(btnCancel, editSubject?.subjectType === 'allied' && 'text-destructive hover:text-destructive')}>Cancel</button>
               <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save Changes</button>
             </div>
           }
