@@ -1645,7 +1645,7 @@ export default function Settings() {
       <AnimatePresence>
         {showSwitchDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} ref={curriculumSheetRef} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} style={curriculumSheetMaxHeight ? { minHeight: `${curriculumSheetMaxHeight}px` } : undefined} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
+            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} ref={curriculumSheetRef} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} style={curriculumSheetMaxHeight ? { minHeight: `${curriculumSheetMaxHeight}px`, height: 'auto' } : { height: 'auto' }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <div className="h-10 w-10 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="h-5 w-5 shrink-0 text-primary" /></div>
@@ -1654,7 +1654,7 @@ export default function Settings() {
                 <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} className="action-button action-button--close action-button--icon mt-0.5 shrink-0" aria-label="Close Curriculum Management"><X className="w-4 h-4" /></button>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => { setShowArchiveFolder(!showArchiveFolder); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} className="action-button action-button--neutral border-amber-500/60 text-amber-600 dark:text-amber-400 w-full min-h-10">{showArchiveFolder ? 'Back to Active' : 'Archive Folder'}</button>
+                <button type="button" onClick={() => { setShowArchiveFolder(!showArchiveFolder); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} style={{ borderColor: '#d97706', color: '#d97706', backgroundColor: 'rgba(217, 119, 6, 0.10)' }} className="action-button action-button--neutral w-full min-h-10">{showArchiveFolder ? 'Back to Active' : 'Archive Folder'}</button>
                 <button type="button" onClick={() => activeCurriculumReadyForNewRoutine ? (setShowCreateCurriculumForm(true), setCreationRestriction(false)) : setCreationRestriction(true)} className="action-button action-button--edit w-full min-h-10">Create New Curricula</button>
               </div>
               <div className="space-y-2">
