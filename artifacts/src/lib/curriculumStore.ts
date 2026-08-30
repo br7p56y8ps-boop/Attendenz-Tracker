@@ -253,6 +253,24 @@ export function setCurriculumStatus(id: string, status: CurriculumStatus): Curri
   return updated;
 }
 
+export async function deleteCurriculum(id: string): Promise<CurriculumRecord[]> {
+  const target = getCurricula().find(c => c.id === id);
+  if (!target) throw new Error('Curriculum not found.');
+  if (target.kind === 'preset' || id === defaultCurriculumId('preset') || id === defaultCurriculumId('custom')) {
+    throw new Error('Preset curricula cannot be deleted.');
+  }
+  const remaining = getCurricula().filter(c => c.id !== id);
+  saveCurricula(remaining);
+  await storageRemoveItem(`att_curriculum_bundle_${id}`);
+  if (getActiveCurriculumId() === id) {
+    const replacement = remaining.find(c => c.status === 'active') || remaining[0];
+    if (replacement) setActiveCurriculumId(replacement.id);
+    else await storageRemoveItem(ACTIVE_CURRICULUM_KEY);
+  }
+  await flushStorageWrites();
+  return remaining;
+}
+
 export async function activateCurriculum(id: string): Promise<void> {
   const target = getCurricula().find(c => c.id === id);
   if (!target) throw new Error('Curriculum not found.');
