@@ -2097,7 +2097,7 @@ export default function Manage() {
       headerRight={
         <button type="button" onClick={() => setMoreMenuOpen(true)} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
           <SendToBack className="w-4 h-4" />
-          <span className="text-[9px] font-extrabold leading-none">+More</span>
+          <span className="text-[9px] font-extrabold leading-none">More</span>
         </button>
       }
     >
@@ -2127,11 +2127,17 @@ export default function Manage() {
               {groupedAcademicSlots.length === 0 ? (
                 <div className="flex w-full min-h-full flex-1 items-center justify-center text-center">
                   <p className="text-sm font-semibold text-muted-foreground">
-                    {subjectMode === 'custom' && customAcademicCount === 0
-                      ? 'No Lecture Subject added yet. Tap +More to add a new Subject.'
-                      : selectedDayIsHoliday
-                        ? 'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
-                        : 'No planned Lecture Classes for today!'}
+                    {subjectMode === 'custom' && customAcademicCount === 0 ? (
+                      <>
+                        No Lecture Subject added yet. Tap{' '}
+                        <button type="button" onClick={() => setMoreMenuOpen(true)} className="font-extrabold text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer">More</button>{' '}
+                        to add a new Subject.
+                      </>
+                    ) : selectedDayIsHoliday ? (
+                      'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
+                    ) : (
+                      'No planned Lecture Classes for today!'
+                    )}
                   </p>
                 </div>
               ) : (
@@ -2210,7 +2216,11 @@ export default function Manage() {
               <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 px-0.5 pt-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
                 {subjectMode === 'custom' && customClinicalCount === 0 ? (
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
-                    <p className="text-sm font-semibold text-muted-foreground">No Clinical Subject added yet. Tap +More to add a new Subject.</p>
+                    <p className="text-sm font-semibold text-muted-foreground">
+                      No Clinical Subject added yet. Tap{' '}
+                      <button type="button" onClick={() => setMoreMenuOpen(true)} className="font-extrabold text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer">More</button>{' '}
+                      to add a new Subject.
+                    </p>
                   </div>
                 ) : allClinicalSubjects.map(name => {
                   const group = { rotation: getRotationForSubject(name), sgt: getSGTForSubject(name) };
