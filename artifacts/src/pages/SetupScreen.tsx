@@ -6,6 +6,7 @@ import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
 import { BookOpen, Pencil, ShieldCheck, ArrowRight, RefreshCw, Upload, Sparkles, AlertTriangle, Camera } from 'lucide-react';
 import { importDataFromJSON, getSnapshots } from '../utils/snapshotUtils';
 import { deleteRemoteDevice } from '@/lib/webPushSync';
+import { disableDirectPush } from '@/lib/webPush';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
 import femaleStudentProfile from '@/assets/images/female_student_profile_1784286920737.jpg';
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
@@ -90,21 +91,25 @@ export default function SetupScreen() {
   };
 
   /* ── Finish → always land on Home ── */
-  const finishSetup = (mode: SubjectMode) => {
-    if (localIdentityName.trim()) updateUsername(localIdentityName.trim());
-    localStorage.removeItem('att_just_updated');
-    completeSetup(mode, mode === 'custom' ? customRoutineName : undefined);
-    setLocation('/');
-    setWhatsNewOpen(true);
+  const finishSetup = async (mode: SubjectMode) => {
+    try {
+      if (localIdentityName.trim()) updateUsername(localIdentityName.trim());
+      localStorage.removeItem('att_just_updated');
+      await completeSetup(mode, mode === 'custom' ? customRoutineName : undefined);
+      setLocation('/');
+      setWhatsNewOpen(true);
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not finish setup without risking existing data.'));
+    }
   };
 
-  const handleRestorePreviousData = () => finishSetup(detectedMode);
+  const handleRestorePreviousData = () => { void finishSetup(detectedMode); };
 
   const handleRestoreBackupFile = (file: File) => {
     importDataFromJSON(file, (success: boolean) => {
       if (success) {
         const updatedMode = (localStorage.getItem('att_subject_mode') as SubjectMode) || 'preloaded';
-        finishSetup(updatedMode);
+        void finishSetup(updatedMode);
       } else {
         import("sonner").then(({ toast }) => toast.info('Failed to restore backup file. Please ensure it is a valid Attendenz JSON backup.'));
       }
@@ -112,15 +117,23 @@ export default function SetupScreen() {
   };
 
   const handleConfirmStartFresh = async () => {
-    await deleteRemoteDevice();
+    const remoteRemoved = await deleteRemoteDevice();
+    if (!remoteRemoved) {
+      import('sonner').then(({ toast }) => toast.error(navigator.onLine ? 'Could not remove this device from reminders. Try again before starting fresh.' : 'Connect to the internet before starting fresh so remote reminders can be removed too.'));
+      return;
+    }
+    const unsubscribed = await disableDirectPush();
+    if (!unsubscribed) {
+      import('sonner').then(({ toast }) => toast.error('Could not unregister browser notifications. Try again before starting fresh.'));
+      return;
+    }
     try {
-      const registration = await navigator.serviceWorker?.ready;
-      const subscription = await registration?.pushManager.getSubscription();
-      await subscription?.unsubscribe();
-    } catch {}
-    await startFresh();
-    setShowDataDetectedView(false);
-    setShowConfirmStartFresh(false);
+      await startFresh();
+      setShowDataDetectedView(false);
+      setShowConfirmStartFresh(false);
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not delete local data. Nothing was reported as complete.'));
+    }
   };
 
   return (

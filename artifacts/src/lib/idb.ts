@@ -155,6 +155,18 @@ export async function idbSetMany(entries: Array<[string, string]>): Promise<void
   }
 }
 
+export async function idbCommit(entries: Array<[string, string]>, keysToRemove: string[] = []): Promise<void> {
+  try {
+    await withStore('readwrite', store => {
+      entries.forEach(([key, value]) => store.put({ key, value }));
+      keysToRemove.forEach(key => store.delete(key));
+    });
+  } catch (err) {
+    notifyStorageError(err, 'commit');
+    throw err;
+  }
+}
+
 export async function idbRemove(key: string): Promise<void> {
   try {
     await withStore('readwrite', store => store.delete(key));
@@ -175,20 +187,26 @@ export async function idbRemoveMany(keys: string[]): Promise<void> {
   }
 }
 
-export async function idbGetAll(): Promise<Record<string, string>> {
+export async function idbGetAllChecked(): Promise<Record<string, string>> {
   try {
     const items = await withStore<Array<{ key: string; value: string }>>('readonly', store => store.getAll());
     const result: Record<string, string> = {};
     if (items) {
       items.forEach(item => {
-        if (item && item.key) {
-          result[item.key] = item.value;
-        }
+        if (item && item.key) result[item.key] = item.value;
       });
     }
     return result;
   } catch (err) {
     notifyStorageError(err, 'get-all');
+    throw err;
+  }
+}
+
+export async function idbGetAll(): Promise<Record<string, string>> {
+  try {
+    return await idbGetAllChecked();
+  } catch {
     return {};
   }
 }
@@ -251,30 +269,79 @@ function queueStorageWrite(operation: () => Promise<void>): Promise<void> {
   return next;
 }
 
-export function storageSetItem(key: string, value: string): Promise<void> {
+function setLocalStorageValue(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch (err) {
     notifyStorageError(err, 'local-cache-set', key);
   }
-  return queueStorageWrite(() => idbSet(key, value)).catch(() => undefined);
 }
 
-export function storageRemoveItem(key: string): Promise<void> {
+function removeLocalStorageValue(key: string): void {
   try {
     localStorage.removeItem(key);
   } catch (err) {
     notifyStorageError(err, 'local-cache-remove', key);
   }
-  return queueStorageWrite(() => idbRemove(key)).catch(() => undefined);
 }
 
-export function storageClear(): Promise<void> {
+function clearLocalStorage(): void {
   try {
     localStorage.clear();
   } catch (err) {
     notifyStorageError(err, 'local-cache-clear');
   }
+}
+
+/**
+ * Queue a write and preserve its rejection for callers that need to gate a
+ * success message on the durable IndexedDB operation.
+ */
+export function storageSetItemChecked(key: string, value: string): Promise<void> {
+  return queueStorageWrite(async () => {
+    await idbSet(key, value);
+    setLocalStorageValue(key, value);
+  });
+}
+
+export function storageCommitChecked(entries: Array<[string, string]>, keysToRemove: string[] = []): Promise<void> {
+  return queueStorageWrite(async () => {
+    await idbCommit(entries, keysToRemove);
+    entries.forEach(([key, value]) => setLocalStorageValue(key, value));
+    keysToRemove.forEach(removeLocalStorageValue);
+  });
+}
+
+export function storageRemoveItemChecked(key: string): Promise<void> {
+  return queueStorageWrite(async () => {
+    await idbRemove(key);
+    removeLocalStorageValue(key);
+  });
+}
+
+export function storageClearChecked(): Promise<void> {
+  return queueStorageWrite(async () => {
+    await idbClear();
+    clearLocalStorage();
+  });
+}
+
+/**
+ * Best-effort helpers retain their existing non-blocking behavior for routine
+ * UI updates. Safety-critical flows should use the checked variants above.
+ */
+export function storageSetItem(key: string, value: string): Promise<void> {
+  setLocalStorageValue(key, value);
+  return queueStorageWrite(() => idbSet(key, value)).catch(() => undefined);
+}
+
+export function storageRemoveItem(key: string): Promise<void> {
+  removeLocalStorageValue(key);
+  return queueStorageWrite(() => idbRemove(key)).catch(() => undefined);
+}
+
+export function storageClear(): Promise<void> {
+  clearLocalStorage();
   return queueStorageWrite(() => idbClear()).catch(() => undefined);
 }
 

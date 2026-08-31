@@ -638,7 +638,20 @@ export default function Manage() {
     return Array.from(set).sort();
   }, [subjectMode, userAddedSubjects, customSubjects]);
 
+  const openMoreMenu = () => {
+    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
+      setNoActiveCurriculumMessage(true);
+      return;
+    }
+    setMoreMenuOpen(true);
+  };
+
   const openEditDataFromMore = () => {
+    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
+      setMoreMenuOpen(false);
+      setNoActiveCurriculumMessage(true);
+      return;
+    }
     setMoreMenuOpen(false);
     setReturnToMoreAfterEditData(true);
     setEditDataOpen(true);
@@ -2101,7 +2114,7 @@ export default function Manage() {
       mainClassName="h-[100dvh] min-h-0 overflow-hidden"
       contentClassName="h-full min-h-0"
       headerRight={
-        <button type="button" onClick={() => getCurricula().some(curriculum => curriculum.status === 'active') ? setMoreMenuOpen(true) : setNoActiveCurriculumMessage(true)} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
+        <button type="button" onClick={openMoreMenu} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
           <SendToBack className="w-4 h-4" />
           <span className="text-[9px] font-extrabold leading-none">More</span>
         </button>
@@ -2145,7 +2158,7 @@ export default function Manage() {
                     {subjectMode === 'custom' && customAcademicCount === 0 ? (
                       <>
                         No Lecture Subject added yet. Tap{' '}
-                        <button type="button" onClick={() => setMoreMenuOpen(true)} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button>{' '}
+                        <button type="button" onClick={openMoreMenu} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button>{' '}
                         to add a new Subject.
                       </>
                     ) : selectedDayIsHoliday ? (
@@ -2233,7 +2246,7 @@ export default function Manage() {
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
                     <p className="text-sm font-semibold text-muted-foreground">
                       No Clinical Subject added yet. Tap{' '}
-                      <button type="button" onClick={() => setMoreMenuOpen(true)} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button>{' '}
+                      <button type="button" onClick={openMoreMenu} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button>{' '}
                       to add a new Subject.
                     </p>
                   </div>

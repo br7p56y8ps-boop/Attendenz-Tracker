@@ -266,14 +266,27 @@ export async function enableDirectPush(): Promise<EnableNotificationsResult> {
   }
 }
 
-export async function disableDirectPush(): Promise<void> {
+/**
+ * Recreate a missing browser subscription only after permission has already
+ * been granted. This is safe to call during reminder-sync recovery because it
+ * never opens a permission prompt.
+ */
+export async function recoverDirectPushSubscription(): Promise<EnableNotificationsResult> {
+  if (getNotificationPermission() !== 'granted') return 'failed';
+  return enableDirectPush();
+}
+
+export async function disableDirectPush(): Promise<boolean> {
   setSystemNotificationsEnabled(false);
   try {
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
-    await subscription?.unsubscribe();
+    if (!subscription) return true;
+    return await subscription.unsubscribe();
   } catch {
-    // Disabling must never interrupt normal offline attendance use.
+    // Disabling local notifications remains safe for offline attendance use,
+    // but callers can now explain that browser cleanup was incomplete.
+    return false;
   }
 }
 

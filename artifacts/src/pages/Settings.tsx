@@ -1,15 +1,15 @@
 import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import { assertBackupSize, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
-import { activateCurriculum, createCurriculum, deleteCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculum, setCurriculumStatus as persistCurriculumStatus, CurriculumRecord } from '@/lib/curriculumStore';
-import { idbRemoveMany, idbSetMany, storageClear, storageSetItem, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
+import { activateCurriculum, completeCurriculum, createCurriculumChecked, deleteCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculumChecked, setCurriculumStatusChecked, CurriculumRecord } from '@/lib/curriculumStore';
+import { idbRemoveMany, idbSetMany, storageClearChecked, storageSetItem, storageSetItemChecked, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
@@ -18,7 +18,7 @@ import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport, isStandalonePWA } from '@/lib/exportUtils';
-import { deleteRemoteDevice } from '@/lib/webPushSync';
+import { deleteRemoteDevice, getReminderRegistrationDiagnostics, getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, testRemoteNotification, type ReminderSyncStatus } from '@/lib/webPushSync';
 import {
   disableDirectPush,
   enableDirectPush,
@@ -247,6 +247,9 @@ export default function Settings() {
   const [systemNotificationsEnabled, setSystemNotificationsEnabledState] = useState(() => getSystemNotificationsEnabled());
   const [notificationPreferences, setNotificationPreferencesState] = useState<NotificationPreferences>(() => getNotificationPreferences());
   const [notificationBusy, setNotificationBusy] = useState(false);
+  const [reminderSyncStatus, setReminderSyncStatus] = useState<ReminderSyncStatus>(() => getReminderSyncStatus());
+  const [reminderServiceConfigured, setReminderServiceConfigured] = useState(() => getReminderSyncStatus().state !== 'not-configured');
+  const [notificationRecovery, setNotificationRecovery] = useState<{ title: string; message: string; action?: 'enable' | 'test' | 'settings' } | null>(null);
   const [expandedNotificationGroups, setExpandedNotificationGroups] = useState<Record<string, boolean>>({ attendance: false, dailySchedule: false, activity: false, updates: false });
   const [pendingPct, setPendingPct] = useState<number | null>(null);
   const [confirmMarkComplete, setConfirmMarkComplete] = useState(false);
@@ -274,16 +277,27 @@ export default function Settings() {
   const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
   const activeCurriculumCount = curricula.filter(c => c.status === 'active').length;
   const activeCurriculumReadyForNewRoutine = activeCurriculumCount < 2;
-  useEffect(() => {
-    if (showSwitchDialog && curriculumSheetRef.current) {
-      const measure = () => setCurriculumSheetMaxHeight(previous => Math.max(previous ?? 0, curriculumSheetRef.current?.scrollHeight ?? 0));
-      const frame = window.requestAnimationFrame(measure);
-      const observer = new ResizeObserver(measure);
-      observer.observe(curriculumSheetRef.current);
-      return () => { window.cancelAnimationFrame(frame); observer.disconnect(); };
+  useLayoutEffect(() => {
+    if (!showSwitchDialog) {
+      setCurriculumSheetMaxHeight(null);
+      return undefined;
     }
-    return undefined;
-  }, [showSwitchDialog, showArchiveFolder, curricula.length, expandedCurriculumIds, showCreateCurriculumForm]);
+    const sheet = curriculumSheetRef.current;
+    if (!sheet) return undefined;
+    const measure = () => {
+      const renderedHeight = sheet.scrollHeight;
+      if (renderedHeight > 0) {
+        setCurriculumSheetMaxHeight(previous => Math.max(previous ?? 0, renderedHeight));
+      }
+    };
+    const frame = window.requestAnimationFrame(measure);
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(sheet);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [showSwitchDialog, showArchiveFolder, curricula, expandedCurriculumIds, showCreateCurriculumForm]);
 
   useEffect(() => {
     if (pendingCurriculumAction?.type !== 'rename' && !showCreateCurriculumForm) return;
@@ -300,15 +314,20 @@ export default function Settings() {
     setNotificationPermission(getNotificationPermission());
     setSystemNotificationsEnabledState(getSystemNotificationsEnabled());
     setNotificationPreferencesState(getNotificationPreferences());
+    const diagnostics = await getReminderRegistrationDiagnostics();
+    setReminderServiceConfigured(diagnostics.serviceConfigured);
+    setReminderSyncStatus(getReminderSyncStatus());
   };
 
   useEffect(() => {
     void refreshNotificationState();
     const refresh = () => { void refreshNotificationState(); };
     window.addEventListener(NOTIFICATION_SETTINGS_CHANGED_EVENT, refresh);
+    window.addEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, refresh);
     window.addEventListener('focus', refresh);
     return () => {
       window.removeEventListener(NOTIFICATION_SETTINGS_CHANGED_EVENT, refresh);
+      window.removeEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, refresh);
       window.removeEventListener('focus', refresh);
     };
   }, []);
@@ -319,7 +338,7 @@ export default function Settings() {
     setNotificationPreferences(next);
   };
 
-  const notificationControlsDisabled = !systemNotificationsEnabled || notificationPermission !== 'granted';
+  const notificationControlsDisabled = !reminderServiceConfigured || !systemNotificationsEnabled || notificationPermission !== 'granted';
   const setNotificationGroupEnabled = (group: 'attendance' | 'dailySchedule' | 'activity' | 'updates', enabled: boolean) => {
     const key = `${group}GroupEnabled` as keyof NotificationPreferences;
     updateNotificationPreference(key, enabled as NotificationPreferences[typeof key]);
@@ -330,10 +349,42 @@ export default function Settings() {
     setNotificationBusy(true);
     try {
       const result = await enableDirectPush();
-      if (result === 'enabled') notifySuccess('System Notifications are on for this device.');
-      else if (result === 'denied') import('sonner').then(({ toast }) => toast.error('Notifications are blocked on this device. Re-enable them in your device settings, then try again.'));
-      else if (result === 'not-configured') import('sonner').then(({ toast }) => toast.error('Notifications are temporarily unavailable. Please try again later.'));
-      else import('sonner').then(({ toast }) => toast.error('Notifications could not be enabled. Connect to the internet and try again.'));
+      if (result === 'enabled') {
+        setNotificationRecovery(null);
+        notifySuccess('System Notifications are on for this device.');
+      } else if (result === 'denied') {
+        setNotificationRecovery({ title: 'Notifications are blocked', message: 'Allow Notifications for Attendenz in your device or browser settings, then return here and try again.', action: 'settings' });
+      } else if (result === 'not-configured') {
+        setNotificationRecovery({ title: 'Reminders are unavailable', message: 'The reminder service is not configured for this app build. Attendance tracking remains available, but reminders cannot be enabled here.' });
+      } else if (result === 'unavailable') {
+        setNotificationRecovery({ title: 'Notifications are unavailable', message: 'Use the secure Attendenz app in a browser that supports Notifications and Service Workers.' });
+      } else {
+        setNotificationRecovery({ title: 'Notifications could not be enabled', message: 'The browser could not complete push registration. Check your connection and try again.', action: 'enable' });
+      }
+    } finally {
+      setNotificationBusy(false);
+      await refreshNotificationState();
+    }
+  };
+
+  const testSystemNotifications = async () => {
+    if (notificationBusy) return;
+    setNotificationBusy(true);
+    try {
+      const result = await testRemoteNotification();
+      if (result.state === 'sent') {
+        notifySuccess('Test notification sent.');
+      } else if (result.state === 'permission-required') {
+        setNotificationRecovery({ title: 'Allow Notifications first', message: 'Turn on System Notifications before sending a test reminder.', action: 'enable' });
+      } else if (result.state === 'subscription-missing') {
+        setNotificationRecovery({ title: 'Push subscription missing', message: 'Attendenz will try to repair this automatically. If repair fails, turn notifications off and on again, then retry.', action: 'enable' });
+      } else if (result.state === 'not-registered') {
+        setNotificationRecovery({ title: 'Reminder registration expired', message: 'Your device registration was lost. Re-enable System Notifications to register this device again.', action: 'enable' });
+      } else if (result.state === 'not-configured') {
+        setNotificationRecovery({ title: 'Reminders are unavailable', message: 'The reminder service is not configured for this app build.' });
+      } else {
+        setNotificationRecovery({ title: 'Test notification failed', message: 'The reminder service could not deliver the test. Check your connection and try again.', action: 'test' });
+      }
     } finally {
       setNotificationBusy(false);
       await refreshNotificationState();
@@ -344,22 +395,36 @@ export default function Settings() {
     if (notificationBusy) return;
     if (!enabled) {
       setNotificationBusy(true);
-      try { await disableDirectPush(); }
-      finally { setNotificationBusy(false); await refreshNotificationState(); }
+      try {
+        await disableDirectPush();
+        setNotificationRecovery(null);
+      } finally {
+        setNotificationBusy(false);
+        await refreshNotificationState();
+      }
       return;
     }
     await enableSystemNotifications();
   };
 
 
-  const handleToggleCurriculumStatus = () => {
+  const handleToggleCurriculumStatus = async () => {
     const next = curriculumStatus === 'Active' ? 'Completed' : 'Active';
     if (next === 'Completed') { if (activeCurriculumId) void handleMarkCurriculumComplete(activeCurriculumId); return; }
-    setCurriculumStatus('Active');
-    localStorage.setItem('att_curriculum_status', 'Active');
-    if (activeCurriculumId) setCurricula(persistCurriculumStatus(activeCurriculumId, 'active'));
-    void notifyCurriculumChange(`The ${getActiveCurriculumName() || 'current'} curriculum is active again.`);
-    import('sonner').then(({ toast }) => toast.info('Curriculum marked as Active.'));
+    if (!activeCurriculumId) {
+      import('sonner').then(({ toast }) => toast.error('There is no active curriculum to reactivate. Use Curriculum Management to reopen or create one.'));
+      return;
+    }
+    try {
+      const updated = await setCurriculumStatusChecked(activeCurriculumId, 'active');
+      setCurriculumStatus('Active');
+      localStorage.setItem('att_curriculum_status', 'Active');
+      setCurricula(updated);
+      void notifyCurriculumChange(`The ${getActiveCurriculumName() || 'current'} curriculum is active again.`);
+      import('sonner').then(({ toast }) => toast.info('Curriculum marked as Active.'));
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not reactivate curriculum.'));
+    }
   };
 
   const handleApplyUpdate = async (withBackup: boolean) => {
@@ -727,37 +792,38 @@ export default function Settings() {
       return;
     }
 
-    // Clear mode-specific attendance keys BEFORE writing backup data
-    const MODE_SPECIFIC_ATTENDANCE_KEYS = [
-      'attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'attendance_tracker_finished_map',
-      'attendance_tracker_subjects_preset', 'attendance_tracker_ward_preset', 'attendance_tracker_home_selections_preset', 'attendance_tracker_finished_map_preset',
-      'attendance_tracker_subjects_custom', 'attendance_tracker_ward_custom', 'attendance_tracker_home_selections_custom', 'attendance_tracker_finished_map_custom',
-      'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom',
-      'att_mode_separation_done_v1',
-    ];
-    await idbRemoveMany(MODE_SPECIFIC_ATTENDANCE_KEYS);
-    MODE_SPECIFIC_ATTENDANCE_KEYS.forEach(k => localStorage.removeItem(k));
+    try {
+      const modeSpecificAttendanceKeys = [
+        'attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'attendance_tracker_finished_map',
+        'attendance_tracker_subjects_preset', 'attendance_tracker_ward_preset', 'attendance_tracker_home_selections_preset', 'attendance_tracker_finished_map_preset',
+        'attendance_tracker_subjects_custom', 'attendance_tracker_ward_custom', 'attendance_tracker_home_selections_custom', 'attendance_tracker_finished_map_custom',
+        'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom',
+        'att_mode_separation_done_v1',
+      ];
+      await idbRemoveMany(modeSpecificAttendanceKeys);
+      modeSpecificAttendanceKeys.forEach(key => localStorage.removeItem(key));
 
-    // Commit the validated backup atomically in IndexedDB, then mirror the cache.
-    const entries = Object.entries(transferImportData).map(([key, value]) => [
-      key,
-      typeof value === 'string' ? value : JSON.stringify(value),
-    ] as [string, string]);
-    await idbSetMany(entries);
-    entries.forEach(([key, stringVal]) => localStorage.setItem(key, stringVal));
+      const entries = Object.entries(transferImportData).map(([key, value]) => [
+        key,
+        typeof value === 'string' ? value : JSON.stringify(value),
+      ] as [string, string]);
+      await idbSetMany(entries);
+      entries.forEach(([key, stringVal]) => localStorage.setItem(key, stringVal));
 
-    // Remove migration flags so migration can run on next load
-    const migrationFlags = [
-      'att_mode_separation_done_v1',
-      'att_attendance_id_migration_v2_done_preloaded',
-      'att_attendance_id_migration_v2_done_custom',
-    ];
-    await idbRemoveMany(migrationFlags);
-    migrationFlags.forEach(flag => localStorage.removeItem(flag));
+      const migrationFlags = [
+        'att_mode_separation_done_v1',
+        'att_attendance_id_migration_v2_done_preloaded',
+        'att_attendance_id_migration_v2_done_custom',
+      ];
+      await idbRemoveMany(migrationFlags);
+      migrationFlags.forEach(flag => localStorage.removeItem(flag));
 
-    notifySuccess('Data transferred successfully! Reloading...');
-    setLocation('/');
-    setTimeout(() => window.location.reload(), 1500);
+      notifySuccess('Data transferred successfully! Reloading...');
+      setLocation('/');
+      setTimeout(() => window.location.reload(), 1500);
+    } catch {
+      import('sonner').then(({ toast }) => toast.error('Transfer failed. Your safety snapshot is still available; no success was reported.'));
+    }
   };
   useEffect(() => { autoSnapshotOnLoad(); setSnapshots(getSnapshots()); }, []);
   const handleTakeSnapshot = async () => {
@@ -783,17 +849,21 @@ export default function Settings() {
       setTimeout(() => setSnapshotMsg(''), 3000);
     }
   };
-  const handleDeleteSnapshot = () => {
+  const handleDeleteSnapshot = async () => {
     if (!snapshotToDelete) return;
     const remaining = getSnapshots().filter(s => s.id !== snapshotToDelete.id);
     const json = JSON.stringify(remaining);
-    localStorage.setItem(SNAPSHOTS_KEY, json);
-    storageSetItem(SNAPSHOTS_KEY, json);
-    setSnapshots(remaining);
-    triggerConfirmationFeedback('danger');
-    setSnapshotToDelete(null);
-    setSnapshotMsg('✓ Snapshot deleted.');
-    setTimeout(() => setSnapshotMsg(''), 3000);
+    try {
+      await storageSetItemChecked(SNAPSHOTS_KEY, json);
+      setSnapshots(remaining);
+      triggerConfirmationFeedback('danger');
+      setSnapshotToDelete(null);
+      setSnapshotMsg('✓ Snapshot deleted.');
+      setTimeout(() => setSnapshotMsg(''), 3000);
+    } catch {
+      setSnapshotMsg('✗ Snapshot could not be deleted.');
+      setTimeout(() => setSnapshotMsg(''), 3000);
+    }
   };
   const handleClearCache = () => {
     const cleared = clearLocalCache();
@@ -802,17 +872,20 @@ export default function Settings() {
     setTimeout(() => setSnapshotMsg(''), 4000);
   };
   const handleDeleteAllData = async () => {
-    await deleteRemoteDevice();
     try {
-      const registration = await navigator.serviceWorker?.ready;
-      const subscription = await registration?.pushManager.getSubscription();
-      await subscription?.unsubscribe();
-    } catch {}
-    await storageClear();
-    try { localStorage.clear(); } catch {}
-    localStorage.setItem('att_idb_migrated_v1', 'true');
-    storageSetItem('att_idb_migrated_v1', 'true');
-    window.location.reload();
+      const remoteRemoved = await deleteRemoteDevice();
+      if (!remoteRemoved) throw new Error(navigator.onLine ? 'Could not remove this device from the reminder service. Try again before deleting app data.' : 'Connect to the internet before deleting app data so remote reminders can be removed too.');
+      const unsubscribed = await disableDirectPush();
+      if (!unsubscribed) throw new Error('Could not unregister browser notifications. Try again before deleting app data.');
+      await storageClearChecked();
+      await storageSetItemChecked('att_idb_migrated_v1', 'true');
+      try { localStorage.clear(); } catch {}
+      localStorage.setItem('att_idb_migrated_v1', 'true');
+      setShowDeleteDataDialog(false);
+      window.location.reload();
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not delete all app data. Nothing was cleared.'));
+    }
   };
 
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference());
@@ -833,21 +906,25 @@ export default function Settings() {
     setShowCreateCurriculumForm(false);
     setCreationRestriction(false);
     setExpandedCurriculumIds({});
+    setCurriculumSheetMaxHeight(null);
     setCurricula(getCurricula());
     setActiveCurriculumIdState(getActiveCurriculumId() || '');
     setShowSwitchDialog(true);
   };
-  const handleCreateCurriculum = () => {
+  const handleCreateCurriculum = async () => {
     if (!activeCurriculumReadyForNewRoutine) {
-      setShowCreateCurriculumForm(true);
+      setShowCreateCurriculumForm(false);
       setCreationRestriction(true);
       return;
     }
     try {
-      const created = createCurriculum(newCurriculumName);
+      const created = await createCurriculumChecked(newCurriculumName);
       setNewCurriculumName('');
       setShowCreateCurriculumForm(false);
       setCreationRestriction(false);
+      const currentActiveId = getActiveCurriculumId();
+      setActiveCurriculumIdState(currentActiveId || '');
+      if (currentActiveId === created.id) setCurriculumStatus('Active');
       setCurricula(getCurricula());
       notifySuccess(`${created.name} created empty. Use Manage Import if you want to bring in a routine structure.`);
     } catch (error) {
@@ -864,8 +941,8 @@ export default function Settings() {
       notifySuccess('Curriculum switched.');
       setLocation('/');
       window.location.reload();
-    } catch {
-      import('sonner').then(({ toast }) => toast.error('Could not switch curriculum.'));
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not switch curriculum.'));
     }
   };
   const confirmCurriculumAction = async () => {
@@ -876,9 +953,9 @@ export default function Settings() {
     if (type === 'complete') { await handleMarkCurriculumComplete(curriculum.id); return; }
     handleRenameCurriculum(curriculum.id);
   };
-  const handleRenameCurriculum = (id: string) => {
+  const handleRenameCurriculum = async (id: string) => {
     try {
-      setCurricula(renameCurriculum(id, editingCurriculumName));
+      setCurricula(await renameCurriculumChecked(id, editingCurriculumName));
       setEditingCurriculumId(null);
       setEditingCurriculumName('');
     } catch (error) {
@@ -888,24 +965,26 @@ export default function Settings() {
   const handleMarkCurriculumComplete = async (id: string) => {
     try {
       const completingActive = id === activeCurriculumId;
-      if (completingActive) await createSnapshot('Curriculum Completed');
-      const updated = persistCurriculumStatus(id, 'archived');
-      setCurricula(updated);
+      if (completingActive && !await createSnapshot('Curriculum Completed')) {
+        throw new Error('Could not create a safety snapshot. The curriculum was not archived.');
+      }
+      const targetName = curricula.find(c => c.id === id)?.name || 'curriculum';
+      const result = await completeCurriculum(id);
+      setCurricula(result.curricula);
       if (completingActive) {
-        const replacement = updated.find(c => c.status === 'active');
-        if (replacement) {
-          await activateCurriculum(replacement.id);
-          setActiveCurriculumIdState(replacement.id);
+        if (result.replacement) {
+          setActiveCurriculumIdState(result.replacement.id);
           setCurriculumStatus('Active');
         } else {
+          setActiveCurriculumIdState('');
           setCurriculumStatus('Completed');
         }
       }
-      void notifyCurriculumChange(`The ${curricula.find(c => c.id === id)?.name || 'curriculum'} was completed and archived.`);
+      void notifyCurriculumChange(`The ${targetName} was completed and archived.`);
       notifySuccess('Curriculum marked as complete.');
       if (completingActive) window.location.reload();
-    } catch {
-      import('sonner').then(({ toast }) => toast.error('Could not complete curriculum.'));
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not complete curriculum.'));
     }
   };
   const handleDeleteCurriculum = async () => {
@@ -1084,15 +1163,17 @@ export default function Settings() {
                         <Send className="w-4 h-4" /> Send to Another Device
                       </button>
                       <button
-                        onClick={() => {
-                          setBusy('Backing up…');
-                          setTimeout(() => {
-                            exportDataAsJSON();
+                          onClick={async () => {
+                            setBusy('Backing up…');
+                            const exported = await exportDataAsJSON();
                             setBusy(null);
-                            void notifyDataTransfer('Your app data backup was downloaded.');
-                            notifySuccess('Backup downloaded.');
-                          }, 400);
-                        }}
+                            if (exported === true) {
+                              void notifyDataTransfer('Your app data backup was downloaded.');
+                              notifySuccess('Backup downloaded.');
+                            } else {
+                              import('sonner').then(({ toast }) => toast.error('Backup failed. No download was completed.'));
+                            }
+                          }}
                         className="action-button action-button--save w-full"
                       >
                         <Upload className="w-4 h-4" /> Export Backup (.json)
@@ -1303,7 +1384,18 @@ export default function Settings() {
                           {notificationPermission === 'default' && <p className="text-[10px] leading-relaxed text-muted-foreground">Allow Notifications to use the reminder choices below.</p>}
                           {notificationPermission !== 'granted' && notificationPermission !== 'denied' && notificationPermission !== 'unsupported' && notificationPermission !== 'insecure' && <button type="button" onClick={enableSystemNotifications} disabled={notificationBusy} className="action-button action-button--update action-button--compact w-full disabled:opacity-50">{notificationBusy ? 'Setting Up…' : 'Allow Notifications'}</button>}
                           {notificationPermission === 'granted' && !systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Permission is allowed, but System Notifications are off. Turn on the switch to use reminders.</p>}
-                          {notificationPermission === 'granted' && systemNotificationsEnabled && <p className="text-[10px] font-bold text-emerald-500">On for this device</p>}
+                          {notificationPermission === 'granted' && systemNotificationsEnabled && reminderServiceConfigured && <p className="text-[10px] font-bold text-emerald-500">On for this device</p>}
+                          {!reminderServiceConfigured && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">The reminder service is not configured for this app build, so reminder choices are disabled.</p>}
+                          {reminderServiceConfigured && notificationControlsDisabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Reminder choices are disabled until Notifications are supported, allowed, and turned on for this device.</p>}
+                          {systemNotificationsEnabled && notificationPermission === 'granted' && (
+                            <>
+                              {reminderServiceConfigured && reminderSyncStatus.state === 'synced' && <p className="text-[10px] font-bold text-emerald-500">Reminders synced for this device.</p>}
+                              {reminderSyncStatus.state === 'offline' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">You are offline. Reminders will sync automatically when the connection returns.</p>}
+                              {reminderSyncStatus.state === 'subscription-missing' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">The browser push subscription is missing. Attendenz will try to repair it automatically.</p>}
+                              {reminderSyncStatus.state === 'error' && <p className="text-[10px] leading-relaxed text-destructive">Reminder sync failed. Check your connection and use Test Notifications to retry.</p>}
+                              <button type="button" onClick={testSystemNotifications} disabled={notificationBusy} className="action-button action-button--neutral action-button--compact w-full disabled:opacity-50">{notificationBusy ? 'Testing…' : 'Test Notifications'}</button>
+                            </>
+                          )}
                         </div>
                         <NotificationGroupCard title="Attendance & Risk Reminders" description="Choose which attendance-related reminders are useful to you." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, attendance: !prev.attendance }))} enabled={notificationPreferences.attendanceGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('attendance', value)} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
                         <NotificationGroupCard title="Daily Schedule Reminders" description="Choose reminders about the Classes scheduled for your day." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, dailySchedule: !prev.dailySchedule }))} enabled={notificationPreferences.dailyScheduleGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('dailySchedule', value)} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
@@ -1569,6 +1661,20 @@ export default function Settings() {
                         )}
                       </div>
                     )}
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {notificationRecovery && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[170] flex items-end justify-center p-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} onClick={() => setNotificationRecovery(null)}>
+                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content !min-h-0 bg-card/90 backdrop-blur-2xl border border-blue-500/30 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-start gap-2"><AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><div><h3 className="text-sm font-bold text-foreground">{notificationRecovery.title}</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{notificationRecovery.message}</p></div></div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setNotificationRecovery(null)} className="action-button action-button--cancel flex-1 min-h-10">Close</button>
+                    {notificationRecovery.action && <button type="button" onClick={() => { const action = notificationRecovery.action; setNotificationRecovery(null); if (action === 'enable') void enableSystemNotifications(); else if (action === 'test') void testSystemNotifications(); }} className="action-button action-button--update flex-1 min-h-10">{notificationRecovery.action === 'settings' ? 'I’ll Check Settings' : 'Try Again'}</button>}
                   </div>
                 </motion.div>
               </motion.div>

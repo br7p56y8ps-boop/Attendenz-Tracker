@@ -1,4 +1,4 @@
-import { idbGetAll, idbRemove, idbRemoveMany, idbSetMany, storageRemoveItem } from '@/lib/idb';
+import { idbGetAllChecked, idbRemove, idbRemoveMany, idbSetMany, storageRemoveItem } from '@/lib/idb';
 import { CURRICULUM_KEYS, getActiveCurriculumName } from '@/lib/curriculumStore';
 import { assertBackupSize, filterStoredData, makeBackupEnvelope, validateBackupPayload, MAX_BACKUP_BYTES } from '@/utils/dataTransferSecurity';
 
@@ -34,7 +34,7 @@ async function collectUserData(includeSnapshots = false): Promise<Record<string,
     }
   }
 
-  const indexedData = await idbGetAll();
+  const indexedData = await idbGetAllChecked();
   const data = { ...filterStoredData(localData), ...filterStoredData(indexedData) };
   if (!includeSnapshots) delete data[SNAPSHOTS_KEY];
   return data;
@@ -268,47 +268,44 @@ export function autoSnapshotOnLoad(): void {
 /**
  * Export all localStorage & IndexedDB data as a downloadable JSON file
  */
-export async function exportDataAsJSON(returnData: boolean = false): Promise<string | void> {
+export async function exportDataAsJSON(returnData: boolean = false): Promise<string | boolean> {
   try {
     const backupData = await collectUserData(true);
     const jsonData = JSON.stringify(makeBackupEnvelope(backupData), null, 2);
-    if (returnData) {
-      return jsonData;
-    }
+    if (returnData) return jsonData;
 
     const dateStr = formatDateDDMMYY().replace(/\//g, '-');
-    const blob = new Blob([jsonData], { type: "application/json" });
+    const blob = new Blob([jsonData], { type: 'application/json' });
     const filename = `attendenz_backup_${dateStr}.json`;
-    const file = new File([blob], filename, { type: "application/json" });
+    const file = new File([blob], filename, { type: 'application/json' });
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      navigator.share({
+      await navigator.share({
         files: [file],
-        title: "Attendenz Backup",
-        text: "Backup file for Attendenz-Tracker",
-      }).catch(err => {
-        if (err.name !== "AbortError") console.error("Share failed:", err);
+        title: 'Attendenz Backup',
+        text: 'Backup file for Attendenz-Tracker',
       });
     } else {
       const url = URL.createObjectURL(blob);
-      const downloadAnchor = document.createElement("a");
-      downloadAnchor.setAttribute("href", url);
-      downloadAnchor.setAttribute("download", filename);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', url);
+      downloadAnchor.setAttribute('download', filename);
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
       URL.revokeObjectURL(url);
     }
+    return true;
   } catch (err) {
-     // console.error('Failed to export JSON backup:', err);
-    import("sonner").then(({ toast }) => toast.info('Failed to export data backup.'));
+    return false;
   }
 }
 
 export async function shareDataAsJSON(): Promise<boolean> {
   try {
-    const jsonData = await exportDataAsJSON(true) as string;
-    const blob = new Blob([jsonData], { type: 'application/json' });
+    const exported = await exportDataAsJSON(true);
+    if (typeof exported !== 'string') return false;
+    const blob = new Blob([exported], { type: 'application/json' });
     const dateStr = formatDateDDMMYY().replace(/\//g, '-');
     const file = new File([blob], `attendenz_backup_${dateStr}.json`, { type: 'application/json' });
 
@@ -320,8 +317,7 @@ export async function shareDataAsJSON(): Promise<boolean> {
       });
       return true;
     } else {
-      exportDataAsJSON();
-      return true;
+      return await exportDataAsJSON() === true;
     }
   } catch (err) {
      // console.error('Failed to share:', err);

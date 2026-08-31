@@ -19,6 +19,7 @@ import {
   getDeviceToken,
   getNotificationPermission,
   getNotificationPreferences,
+  recoverDirectPushSubscription,
   getPushServiceConfig,
   getSystemNotificationsEnabled,
   NOTIFICATION_SETTINGS_CHANGED_EVENT,
@@ -40,7 +41,7 @@ const SYNC_STATUS_KEY = 'att_a1_reminder_sync_status_v1';
 export const REMINDER_SYNC_STATUS_CHANGED_EVENT = 'attendenz:reminder-sync-status-changed';
 
 export type ReminderSyncStatus =
-  | { state: 'not-configured' | 'offline' | 'waiting-for-permission' | 'error'; at?: string; details?: string }
+  | { state: 'not-configured' | 'offline' | 'waiting-for-permission' | 'subscription-missing' | 'error'; at?: string; details?: string }
   | { state: 'synced'; at: string; occurrenceCount?: number };
 
 export type ReminderRegistrationDiagnostics = {
@@ -479,10 +480,17 @@ export async function getReminderRegistrationDiagnostics(): Promise<ReminderRegi
   const productionOrigin = typeof window !== 'undefined' && window.location.origin === 'https://benz-attendance-tracker.pages.dev';
   const permission = getNotificationPermission();
   const systemEnabled = getSystemNotificationsEnabled();
+  const serviceConfigured = Boolean(SERVICE_URL && VAPID_PUBLIC_KEY);
   const subscription = await getDirectPushSubscription() ? 'available' : 'missing';
+  const currentSync = getReminderSyncStatus();
+  if (!serviceConfigured && currentSync.state !== 'not-configured') {
+    setReminderSyncStatus({ state: 'not-configured' });
+  } else if (serviceConfigured && systemEnabled && permission === 'granted' && subscription === 'missing' && currentSync.state !== 'subscription-missing') {
+    setReminderSyncStatus({ state: 'subscription-missing', at: new Date().toISOString(), details: 'diagnostic_check' });
+  }
   return {
     productionOrigin,
-    serviceConfigured: Boolean(SERVICE_URL && VAPID_PUBLIC_KEY),
+    serviceConfigured,
     permission,
     systemEnabled,
     subscription,
@@ -522,18 +530,20 @@ export async function testRemoteNotification(): Promise<RemoteNotificationTestRe
   }
 }
 
-export async function deleteRemoteDevice(): Promise<void> {
-  if (!SERVICE_URL || !navigator.onLine) return;
+export async function deleteRemoteDevice(): Promise<boolean> {
+  if (!SERVICE_URL) return true;
+  if (!navigator.onLine) return false;
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 8_000);
   try {
-    await fetch(`${SERVICE_URL}/v1/device/reminder-state?deviceId=${encodeURIComponent(getDeviceId())}`, {
+    const response = await fetch(`${SERVICE_URL}/v1/device/reminder-state?deviceId=${encodeURIComponent(getDeviceId())}`, {
       method: 'DELETE',
       headers: { authorization: `Bearer ${getDeviceToken()}` },
       signal: controller.signal,
     });
+    return response.ok;
   } catch {
-    // Remote cleanup is best effort; disabling local notifications remains safe.
+    return false;
   } finally {
     window.clearTimeout(timeout);
   }
@@ -547,18 +557,31 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
     let alive = true;
     const sync = async () => {
       if (!alive || !custom.setupDone || !SERVICE_URL || !VAPID_PUBLIC_KEY) {
-        if (custom.setupDone && !SERVICE_URL) setReminderSyncStatus({ state: 'not-configured' });
+        if (custom.setupDone && (!SERVICE_URL || !VAPID_PUBLIC_KEY)) setReminderSyncStatus({ state: 'not-configured' });
         return;
       }
       if (!getSystemNotificationsEnabled()) {
-        await deleteRemoteDevice();
-        setReminderSyncStatus({ state: 'waiting-for-permission' });
+        const removed = await deleteRemoteDevice();
+        if (!removed && navigator.onLine) {
+          setReminderSyncStatus({ state: 'error', at: new Date().toISOString(), details: 'remote_cleanup_failed' });
+        } else {
+          setReminderSyncStatus({ state: 'waiting-for-permission' });
+        }
         return;
       }
-      const subscription = await getDirectPushSubscription();
-      if (!alive || !subscription) {
-        setReminderSyncStatus({ state: 'waiting-for-permission' });
-        return;
+      let subscription = await getDirectPushSubscription();
+      if (!alive) return;
+      if (!subscription) {
+        if (getNotificationPermission() !== 'granted') {
+          setReminderSyncStatus({ state: 'waiting-for-permission' });
+          return;
+        }
+        const recovery = await recoverDirectPushSubscription();
+        subscription = recovery === 'enabled' ? await getDirectPushSubscription() : null;
+        if (!alive || !subscription) {
+          setReminderSyncStatus({ state: 'subscription-missing', at: new Date().toISOString(), details: recovery });
+          return;
+        }
       }
       const preferences = getNotificationPreferences();
       const payload: ReminderSyncPayload = {

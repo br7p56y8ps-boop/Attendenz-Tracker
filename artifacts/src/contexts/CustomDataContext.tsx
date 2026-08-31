@@ -6,11 +6,11 @@ import {
   isCanonicalTimeRange,
   parseRangeToMinutes,
 } from '@/lib/utils';
-import { storageSetItem, storageRemoveItem } from '@/lib/idb';
+import { idbGetAllChecked, storageSetItem, storageRemoveItem, storageRemoveItemChecked, storageSetItemChecked } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import { APP_VERSION } from '@/lib/appVersion';
-import { activateCurriculum, ensureCurriculumMigration, getCurriculumForKind, renameCurriculum } from '@/lib/curriculumStore';
+import { activateCurriculum, ensureCurriculumMigration, getCurricula, getCurriculumForKind, renameCurriculumChecked, CURRICULUM_KEYS } from '@/lib/curriculumStore';
 
 export interface CustomSubject {
   id: string;
@@ -607,8 +607,8 @@ interface CustomDataContextType {
   setupDone: boolean;
   whatsNewOpen: boolean;
   setWhatsNewOpen: (b: boolean) => void;
-  completeSetup: (mode: SubjectMode, customRoutineName?: string) => void;
-  startFresh: () => void;
+  completeSetup: (mode: SubjectMode, customRoutineName?: string) => Promise<void>;
+  startFresh: () => Promise<void>;
   changeSubjectMode: (mode: SubjectMode) => void;
   clearRoutineData: (mode: SubjectMode) => void;
   getPresetSubjectDisplayName: (originalName: string) => string;
@@ -1479,28 +1479,25 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const getPresetWardDisplayName = (originalName: string): string =>
     subjectMode === 'preloaded' ? (renamedPresetWards[originalName] ?? originalName) : originalName;
 
-  const completeSetup = (mode: SubjectMode, customRoutineName?: string) => {
+  const completeSetup = async (mode: SubjectMode, customRoutineName?: string) => {
     ensureCurriculumMigration();
     const targetKind = mode === 'custom' ? 'custom' : 'preset';
     const target = getCurriculumForKind(targetKind);
     if (target) {
       if (targetKind === 'custom' && customRoutineName?.trim() && target.name !== customRoutineName.trim()) {
-        renameCurriculum(target.id, customRoutineName.trim());
+        await renameCurriculumChecked(target.id, customRoutineName.trim());
       }
-      void activateCurriculum(target.id);
-    } else {
-      localStorage.setItem(SUBJECT_MODE_KEY, mode);
-      storageSetItem(SUBJECT_MODE_KEY, mode);
+      await activateCurriculum(target.id);
     }
-    localStorage.setItem(SUBJECT_MODE_KEY, mode);
-    storageSetItem(SUBJECT_MODE_KEY, mode);
-    localStorage.setItem(SETUP_DONE_KEY, 'true');
-    storageSetItem(SETUP_DONE_KEY, 'true');
+    await storageSetItemChecked(SUBJECT_MODE_KEY, mode);
+    await storageSetItemChecked(SETUP_DONE_KEY, 'true');
     setSubjectMode(mode);
     setSetupDone(true);
   };
 
-  const clearAllStorage = () => {
+  const clearAllStorage = async () => {
+    const durableData = await idbGetAllChecked();
+    const durableCurriculumBundleKeys = Object.keys(durableData).filter(key => key.startsWith('att_curriculum_bundle_'));
     const keys = [
       CUSTOM_SUBJECTS_KEY,
       CUSTOM_WARDS_KEY,
@@ -1514,15 +1511,11 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       PRESET_RENAMES_KEY,
       PRESET_WARD_RENAMES_KEY,
       SGT_REPAIR_DONE_KEY,
-
-      // Attendance / selections / finished / history
       'attendance_tracker_subjects',
       'attendance_tracker_ward',
       'attendance_tracker_home_selections',
       'attendance_tracker_finished_map',
       'attendance_tracker_preferred_percentage',
-
-      // Mode-specific attendance buckets
       'attendance_tracker_subjects_preset',
       'attendance_tracker_ward_preset',
       'attendance_tracker_home_selections_preset',
@@ -1531,23 +1524,21 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       'attendance_tracker_ward_custom',
       'attendance_tracker_home_selections_custom',
       'attendance_tracker_finished_map_custom',
-
-      // Manage history
       'att_manage_history',
+      'attendenz_snapshots_v1',
+      CURRICULUM_KEYS.CURRICULA_KEY,
+      CURRICULUM_KEYS.ACTIVE_CURRICULUM_KEY,
+      CURRICULUM_KEYS.CURRICULUM_MIGRATION_KEY,
+      ...getCurricula().map(curriculum => `att_curriculum_bundle_${curriculum.id}`),
+      ...durableCurriculumBundleKeys,
     ];
-
-    for (const key of keys) {
-      localStorage.removeItem(key);
-      storageRemoveItem(key);
-    }
-
-    // Prevent migration from empty state on next boot.
-    localStorage.setItem('att_idb_migrated_v1', 'true');
-    storageSetItem('att_idb_migrated_v1', 'true');
+    const results = await Promise.allSettled([...new Set(keys)].map(key => storageRemoveItemChecked(key)));
+    if (results.some(result => result.status === 'rejected')) throw new Error('Some local data could not be deleted. Nothing was reported as complete.');
+    await storageSetItemChecked('att_idb_migrated_v1', 'true');
   };
 
-  const startFresh = () => {
-    clearAllStorage();
+  const startFresh = async () => {
+    await clearAllStorage();
     setCustomSubjects([]);
     setCustomWards([]);
     setUserAddedSubjects([]);
@@ -1557,7 +1548,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     setPresetTimetable(TIMETABLE);
     setPresetWardSchedule(defaultWardSchedule());
     setPresetSubjectTotals({});
-    completeSetup('custom');
+    await completeSetup('custom');
   };
 
   const changeSubjectMode = (mode: SubjectMode) => {
