@@ -523,8 +523,8 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
       const body = parts.join('. ') + '.';
       await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${scheduleDate}`, 'Urgent Schedule Alert', body, url);
     } else if (hasInfo) {
-      const body = first ? `First Class: ${cleanLabel(first.subjectLabel)} at ${formatMinute(first.startMinute)}.` : `Today: ${listNames(digest)}.`;
-      await deliverIfNew(env, device, `${device.device_id}:info-midnight:${scheduleDate}`, 'Today’s Schedule', body, url);
+      const body = first ? `First Class: ${cleanLabel(first.subjectLabel)} at ${formatMinute(first.startMinute)}.` : `Upcoming: ${listNames(digest)}.`;
+      await deliverIfNew(env, device, `${device.device_id}:info-midnight:${scheduleDate}`, 'Upcoming Schedule', body, url);
     }
   }
 

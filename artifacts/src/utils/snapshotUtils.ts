@@ -1,5 +1,5 @@
-import { idbGetAllChecked, idbRemove, idbRemoveMany, idbSetMany, storageRemoveItem } from '@/lib/idb';
-import { CURRICULUM_KEYS, getActiveCurriculumName } from '@/lib/curriculumStore';
+import { idbGetAllChecked, idbSetMany, idbCommit, idbRemoveMany, idbRemove, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
+import { getActiveCurriculumName } from '@/lib/curriculumStore';
 import { assertBackupSize, filterStoredData, makeBackupEnvelope, validateBackupPayload, MAX_BACKUP_BYTES } from '@/utils/dataTransferSecurity';
 
 export interface Snapshot {
@@ -34,6 +34,7 @@ async function collectUserData(includeSnapshots = false): Promise<Record<string,
     }
   }
 
+  await flushStorageWrites();
   const indexedData = await idbGetAllChecked();
   const data = { ...filterStoredData(localData), ...filterStoredData(indexedData) };
   if (!includeSnapshots) delete data[SNAPSHOTS_KEY];
@@ -177,26 +178,10 @@ export async function snapshotBeforeEdit(actionName: string): Promise<boolean> {
  * - Removes mode-separation flag so migration can run again on next load
  */
 async function prepareRestoreEnvironment(): Promise<boolean> {
-  const snapshotCreated = await createSnapshot('Pre-Restore Safety');
-  if (!snapshotCreated) return false;
-
   try {
-
-    const MODE_SPECIFIC_ATTENDANCE_KEYS = [
-      'attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'attendance_tracker_finished_map',
-      'attendance_tracker_subjects_preset', 'attendance_tracker_ward_preset', 'attendance_tracker_home_selections_preset', 'attendance_tracker_finished_map_preset',
-      'attendance_tracker_subjects_custom', 'attendance_tracker_ward_custom', 'attendance_tracker_home_selections_custom', 'attendance_tracker_finished_map_custom',
-      'att_attendance_id_migration_v2_done_preloaded',       'att_attendance_id_migration_v2_done_custom',
-      'att_mode_separation_done_v1',
-      CURRICULUM_KEYS.CURRICULA_KEY,
-      CURRICULUM_KEYS.ACTIVE_CURRICULUM_KEY,
-      CURRICULUM_KEYS.CURRICULUM_MIGRATION_KEY,
-    ];
-
-    await idbRemoveMany(MODE_SPECIFIC_ATTENDANCE_KEYS);
-    removeFromLocalStorage(MODE_SPECIFIC_ATTENDANCE_KEYS);
-    return true;
-  } catch (err) {
+    await flushStorageWrites();
+    return await createSnapshot('Pre-Restore Safety');
+  } catch {
     return false;
   }
 }
@@ -214,9 +199,14 @@ export async function restoreSnapshot(snapshotId: string): Promise<boolean> {
     if (!await prepareRestoreEnvironment()) return false;
 
     const entries = Object.entries(target.data);
-    await idbSetMany(entries);
+    const current = await idbGetAllChecked();
+    const keysToRemove = Object.keys(filterStoredData({ ...current, ...Object.fromEntries(Object.entries(localStorage).map(([k]) => [k, localStorage.getItem(k) || ''])) }))
+      .filter(key => key !== SNAPSHOTS_KEY && !(key in target.data));
+    await idbCommit(entries, keysToRemove);
     mirrorToLocalStorage(entries);
+    removeFromLocalStorage(keysToRemove);
 
+    await flushStorageWrites();
     // Force startup migration after any snapshot restore, including newer snapshots.
     const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];
     await idbRemoveMany(migrationFlags);
@@ -344,9 +334,14 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
         return;
       }
 
+      await flushStorageWrites();
       const entries = Object.entries(validatedData);
-      await idbSetMany(entries);
+      const current = await idbGetAllChecked();
+      const keysToRemove = Object.keys(filterStoredData({ ...current }))
+        .filter(key => key !== SNAPSHOTS_KEY && !(key in validatedData));
+      await idbCommit(entries, keysToRemove);
       mirrorToLocalStorage(entries);
+      removeFromLocalStorage(keysToRemove);
 
       // Force startup migration after any uploaded backup restore.
       const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];

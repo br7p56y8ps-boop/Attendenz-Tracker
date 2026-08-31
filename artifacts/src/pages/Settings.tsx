@@ -1,6 +1,6 @@
 import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
-import { assertBackupSize, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
+import { assertBackupSize, filterStoredData, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
 import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
@@ -9,7 +9,7 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
 import { activateCurriculum, completeCurriculum, createCurriculumChecked, deleteCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculumChecked, setCurriculumStatusChecked, CurriculumRecord } from '@/lib/curriculumStore';
-import { idbRemoveMany, idbSetMany, storageClearChecked, storageSetItem, storageSetItemChecked, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
+import { idbRemoveMany, idbGetAllChecked, idbCommit, storageClearChecked, storageSetItem, storageSetItemChecked, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
@@ -72,9 +72,9 @@ const ATTENDANCE_REMINDER_CHILDREN: NotificationChild[] = [
 ];
 
 const DAILY_SCHEDULE_CHILDREN: NotificationChild[] = [
-  { key: 'lastPlannedClassToday', title: 'Last Planned Class Today', description: 'A reminder when a Subject has its last planned Class today.' },
-  { key: 'firstClassOfDay', title: 'First Class of the Day', description: 'A reminder showing the first Subject and start time scheduled today.' },
-  { key: 'allScheduledClasses', title: 'All Scheduled Classes', description: 'One grouped reminder listing all Classes scheduled today.' },
+  { key: 'lastPlannedClassToday', title: 'Last Planned Class Upcoming', description: 'A reminder when a Subject has its last planned Class in the upcoming period.' },
+  { key: 'firstClassOfDay', title: 'First Upcoming Class', description: 'A reminder showing the first upcoming Subject and start time.' },
+  { key: 'allScheduledClasses', title: 'All Upcoming Classes', description: 'One grouped reminder listing all upcoming Classes.' },
 ];
 
 const ACTIVITY_CHILDREN: NotificationChild[] = [
@@ -243,6 +243,7 @@ export default function Settings() {
   }, [updatePhase]);
 
   const [busy, setBusy] = useState<string | null>(null);
+  const operationBusy = busy !== null;
   const [notificationPermission, setNotificationPermission] = useState<ReturnType<typeof getNotificationPermission>>(() => getNotificationPermission());
   const [systemNotificationsEnabled, setSystemNotificationsEnabledState] = useState(() => getSystemNotificationsEnabled());
   const [notificationPreferences, setNotificationPreferencesState] = useState<NotificationPreferences>(() => getNotificationPreferences());
@@ -786,29 +787,25 @@ export default function Settings() {
     reader.readAsText(file);
   };
   const executeTransferImport = async () => {
-    if (!transferImportData) return;
+    if (!transferImportData || operationBusy) return;
+    setBusy('restore');
     if (!await createSnapshot('Pre-Transfer Restore')) {
       import('sonner').then(({ toast }) => toast.error('Transfer stopped — the safety snapshot could not be created.'));
+      setBusy(null);
       return;
     }
 
     try {
-      const modeSpecificAttendanceKeys = [
-        'attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'attendance_tracker_finished_map',
-        'attendance_tracker_subjects_preset', 'attendance_tracker_ward_preset', 'attendance_tracker_home_selections_preset', 'attendance_tracker_finished_map_preset',
-        'attendance_tracker_subjects_custom', 'attendance_tracker_ward_custom', 'attendance_tracker_home_selections_custom', 'attendance_tracker_finished_map_custom',
-        'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom',
-        'att_mode_separation_done_v1',
-      ];
-      await idbRemoveMany(modeSpecificAttendanceKeys);
-      modeSpecificAttendanceKeys.forEach(key => localStorage.removeItem(key));
-
+      await flushStorageWrites();
       const entries = Object.entries(transferImportData).map(([key, value]) => [
         key,
         typeof value === 'string' ? value : JSON.stringify(value),
       ] as [string, string]);
-      await idbSetMany(entries);
+      const current = await idbGetAllChecked();
+      const keysToRemove = Object.keys(filterStoredData(current)).filter(key => key !== SNAPSHOTS_KEY && !(key in transferImportData));
+      await idbCommit(entries, keysToRemove);
       entries.forEach(([key, stringVal]) => localStorage.setItem(key, stringVal));
+      keysToRemove.forEach(key => localStorage.removeItem(key));
 
       const migrationFlags = [
         'att_mode_separation_done_v1',
@@ -823,6 +820,8 @@ export default function Settings() {
       setTimeout(() => window.location.reload(), 1500);
     } catch {
       import('sonner').then(({ toast }) => toast.error('Transfer failed. Your safety snapshot is still available; no success was reported.'));
+    } finally {
+      setBusy(null);
     }
   };
   useEffect(() => { autoSnapshotOnLoad(); setSnapshots(getSnapshots()); }, []);
@@ -839,6 +838,8 @@ export default function Settings() {
     setTimeout(() => setSnapshotMsg(''), 3000);
   };
   const handleRestoreSnapshot = async (id: string) => {
+    if (operationBusy) return;
+    setBusy('restore');
     if (await restoreSnapshot(id)) {
       triggerConfirmationFeedback('success');
       setSnapshotMsg('✓ Snapshot restored! Refreshing page...');
@@ -848,6 +849,7 @@ export default function Settings() {
       setSnapshotMsg('✗ Failed to restore snapshot.');
       setTimeout(() => setSnapshotMsg(''), 3000);
     }
+    setBusy(null);
   };
   const handleDeleteSnapshot = async () => {
     if (!snapshotToDelete) return;
@@ -932,6 +934,8 @@ export default function Settings() {
     }
   };
   const handleActivateCurriculum = async (id: string) => {
+    if (operationBusy) return;
+    setBusy('curriculum');
     if (id === activeCurriculumId) return;
     try {
       await activateCurriculum(id);
@@ -942,6 +946,7 @@ export default function Settings() {
       setLocation('/');
       window.location.reload();
     } catch (error) {
+      setBusy(null);
       import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not switch curriculum.'));
     }
   };
@@ -963,6 +968,8 @@ export default function Settings() {
     }
   };
   const handleMarkCurriculumComplete = async (id: string) => {
+    if (operationBusy) return;
+    setBusy('curriculum');
     try {
       const completingActive = id === activeCurriculumId;
       if (completingActive && !await createSnapshot('Curriculum Completed')) {
@@ -983,11 +990,15 @@ export default function Settings() {
       void notifyCurriculumChange(`The ${targetName} was completed and archived.`);
       notifySuccess('Curriculum marked as complete.');
       if (completingActive) window.location.reload();
+      setBusy(null);
     } catch (error) {
+      setBusy(null);
       import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not complete curriculum.'));
     }
   };
   const handleDeleteCurriculum = async () => {
+    if (operationBusy) return;
+    setBusy('curriculum');
     if (!curriculumToDelete || curriculumToDelete.kind === 'preset' || curriculumToDelete.id === 'curriculum_custom_routine') return;
     try {
       const deletingActive = curriculumToDelete.id === activeCurriculumId;
@@ -996,7 +1007,9 @@ export default function Settings() {
       setCurriculumToDelete(null);
       notifySuccess('Curriculum permanently deleted.');
       if (deletingActive) window.location.reload();
+      setBusy(null);
     } catch (error) {
+      setBusy(null);
       import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not delete curriculum.'));
     }
   };

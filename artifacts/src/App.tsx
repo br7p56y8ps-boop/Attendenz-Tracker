@@ -22,7 +22,7 @@ const Login = lazy(() => import('@/pages/Login'));
 const SetupScreen = lazy(() => import('@/pages/SetupScreen'));
 const NotFound = lazy(() => import('@/pages/not-found'));
 
-const PageFallback = () => <div className="min-h-[40vh] flex items-center justify-center text-sm text-muted-foreground">Loading…</div>;
+const PageFallback = () => <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Initialising…</div>;
 
 const HAS_SEEN_WELCOME_KEY = 'att_has_seen_welcome_v1';
 
@@ -124,6 +124,7 @@ function MainAppFlow() {
 export default function App() {
   const [storageReady, setStorageReady] = useState(false);
   const [storageError, setStorageError] = useState(false);
+  const [storageInitError, setStorageInitError] = useState<string | null>(null);
   useEffect(() => {
     const onStorageError = () => setStorageError(true);
     const flushOnHide = () => { if (document.visibilityState === 'hidden') void flushStorageWrites(); };
@@ -138,7 +139,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     let alive = true;
-    initStorageAndMigrate().then(() => ensureCurriculumMigration()).finally(() => { if (alive) setStorageReady(true); });
+    initStorageAndMigrate().then(() => { ensureCurriculumMigration(); if (alive) setStorageReady(true); }).catch((error) => { if (alive) setStorageInitError(error instanceof Error ? error.message : 'Storage could not be initialized.'); });
 
     const applyCurrentTheme = () => applyThemePreference(readThemePreference());
     applyCurrentTheme();
@@ -153,7 +154,7 @@ export default function App() {
     };
   }, []);
 
-  if (!storageReady) return null;
+  if (!storageReady) return <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground"><span>Initialising…</span>{storageInitError && <><span className="text-center px-6">{storageInitError}</span><button type="button" className="rounded-lg border border-primary px-3 py-2 text-foreground" onClick={() => window.location.reload()}>Retry</button></>}</div>;
 
   return (
     <>

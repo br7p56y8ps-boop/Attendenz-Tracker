@@ -1,6 +1,12 @@
 const DB_NAME = 'AttendenzDatabase';
 const STORE_NAME = 'key_value_store';
 const DB_VERSION = 1;
+const IDB_OPERATION_TIMEOUT_MS = 8000;
+export const INSTALLATION_METADATA_KEYS = new Set([
+  'att_pwa_build_revision', 'att_pwa_release_type', 'att_pwa_update_mode',
+  'att_pwa_update_ready', 'att_pwa_latest_version', 'att_pwa_update_summary',
+  'att_pending_update_restore', 'att_just_updated', 'att_app_version',
+]);
 
 let dbInstance: IDBDatabase | null = null;
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -48,8 +54,14 @@ function getDB(): Promise<IDBDatabase> {
         }
       };
 
+      const timeout = window.setTimeout(() => {
+        resetDB();
+        reject(new Error('IndexedDB initialization timed out.'));
+      }, IDB_OPERATION_TIMEOUT_MS);
+
       request.onsuccess = () => {
         const db = request.result;
+        window.clearTimeout(timeout);
         dbInstance = db;
 
         db.onclose = () => {
@@ -71,12 +83,15 @@ function getDB(): Promise<IDBDatabase> {
       };
 
       request.onerror = () => {
+        window.clearTimeout(timeout);
         resetDB();
         reject(request.error || new Error('Failed to open IndexedDB'));
       };
 
       request.onblocked = () => {
+        window.clearTimeout(timeout);
         resetDB();
+        reject(new Error('IndexedDB is blocked by another tab. Close the other tab and retry.'));
       };
     });
   }
@@ -102,8 +117,14 @@ async function withStore<T = void>(
           return;
         }
 
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+        const timeout = window.setTimeout(() => {
+          try { tx.abort(); } catch {}
+          reject(new Error('IndexedDB transaction timed out.'));
+        }, IDB_OPERATION_TIMEOUT_MS);
+        const finish = () => window.clearTimeout(timeout);
+        tx.onerror = () => { finish(); reject(tx.error); };
+        tx.onabort = () => { finish(); reject(tx.error || new Error('Transaction aborted')); };
+        tx.oncomplete = () => finish();
 
         const store = tx.objectStore(STORE_NAME);
         const req = callback(store);
@@ -246,7 +267,7 @@ export async function initStorageAndMigrate(): Promise<void> {
 
     const allIdbData = await idbGetAll();
     for (const [k, v] of Object.entries(allIdbData)) {
-      if (k !== 'att_idb_migrated_v1') {
+      if (k !== 'att_idb_migrated_v1' && !INSTALLATION_METADATA_KEYS.has(k)) {
         localStorage.setItem(k, v);
       }
     }
@@ -256,6 +277,7 @@ export async function initStorageAndMigrate(): Promise<void> {
     }
   } catch (err) {
     notifyStorageError(err, 'initialization');
+    throw err;
   }
 }
 

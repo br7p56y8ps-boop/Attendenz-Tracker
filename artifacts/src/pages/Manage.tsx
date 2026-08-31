@@ -2707,7 +2707,7 @@ export default function Manage() {
             </div>
           }
           footer={
-            <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}>
+            <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5 border-2 border-cyan-400/90')}>
               <Plus className="w-3.5 h-3.5" /> Add Slot
             </button>
           }
