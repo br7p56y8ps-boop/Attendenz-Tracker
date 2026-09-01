@@ -100,7 +100,7 @@ const TypedLine = ({ selection, conducted, planned, animate, onStatusTap }: {
   );
 };
 
-export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, tagColor, sessionId, dateStr, mode, isSGT = false, sgtId }: HomeCardProps) => {
+export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, tagColor, sessionId, dateStr, mode, isSGT = false, sgtId }: HomeCardProps) => {
   const { subjects, wards, homeSelections, finishedMap, updateHomeSelection, preferredPercentage, getHomeSelection } = useAttendance();
   const { subjectMode, customSubjects, customWards, userAddedSubjects, presetTimetable, getCurrentPresetWard, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned, getSubjectIdByName } = useCustomData();
   const activeDateStr = dateStr || getCurrentDateStr();
@@ -316,6 +316,12 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
   const selBg = (s: string) => s === 'attended' ? 'bg-emerald-500/25 border-emerald-500/60' : s === 'missed' ? 'bg-rose-500/25 border-rose-500/60' : 'bg-amber-500/25 border-amber-500/60';
   const selWord = (s: string) => s === 'attended' ? 'Attended' : s === 'missed' ? 'Bunked' : 'Holiday';
   const tagEl = tag ? <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{tag}</span> : null;
+  const pastSubjectTag = isWard ? 'Clinical' : tag;
+  const pastSubjectTagEl = pastSubjectTag ? <span className={cn('shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{pastSubjectTag}</span> : null;
+  const pastTimeTagEl = isWard && tag ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">{tag}</span> : null;
+  const pastStatus = currentSelection === 'attended' ? 'Attended' : currentSelection === 'missed' ? 'Bunked' : currentSelection === 'off' ? 'Holiday' : isFinished ? 'No Planned Class' : 'Not Marked';
+  const pastStatusClass = currentSelection === 'attended' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : currentSelection === 'missed' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : currentSelection === 'off' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-muted/30 text-muted-foreground border-border/50';
+  const pastIsMarked = currentSelection === 'attended' || currentSelection === 'missed';
 
   const todayBottom = ecgPhase ? (
     <div className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
@@ -347,33 +353,37 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-xl font-bold leading-tight truncate" style={{ color: subjectColor }}>{title || subject}</h3>
-                {tagEl}
+                <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{isWard ? (subtitle || subject) : subject}</h3>
+                {pastSubjectTagEl}
               </div>
-              <p className="text-sm text-muted-foreground leading-tight">({time})</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                {(() => {
-                  const sel = currentSelection;
-                  const t = sel === 'attended' ? 'Attended' : sel === 'missed' ? 'Bunked' : sel === 'off' ? 'Holiday' : isFinished ? 'No Planned Class' : 'Not Marked';
-                  const c = sel === 'attended' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : sel === 'missed' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : sel === 'off' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-muted/30 text-muted-foreground border-border/50';
-                  return <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border', c)}>{t}</span>;
-                })()}
-                {(currentSelection === 'attended' || currentSelection === 'missed') && (
-                  <span className="text-[11px] font-extrabold text-foreground">(Class - <span className={selColor(currentSelection)}>{total}</span>/{totalPlannedClasses ?? total})</span>
-                )}
+              <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
+                <span className="truncate">({time})</span>
+                {pastTimeTagEl}
               </div>
             </div>
-            <div className="w-14" aria-hidden="true" />
+            <div className="flex w-24 shrink-0 items-center justify-center">
+              {pastIsMarked ? (
+                <div className="flex h-14 w-24 flex-col items-center justify-center gap-0.5 rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
+                  <span className={cn('rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide', pastStatusClass)}>{pastStatus}</span>
+                  <span className="whitespace-nowrap text-[10px] font-extrabold text-foreground">(Class - <span className={selColor(currentSelection)}>{total}</span>/{totalPlannedClasses ?? total})</span>
+                </div>
+              ) : (
+                <span className={cn('rounded-full border px-2 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider', pastStatusClass)}>{pastStatus}</span>
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-xl font-bold leading-tight truncate" style={{ color: isWard ? undefined : subjectColor }}>{title || subject}</h3>
-                {effectiveMode !== 'future' && tagEl}
+                <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{isWard ? (subtitle || subject) : subject}</h3>
+                {isWard ? pastSubjectTagEl : tagEl}
               </div>
-              {isWard && subtitle && <p className="text-sm font-semibold leading-tight" style={{ color: subjectColor }}>{subtitle}</p>}
-              <p className="text-sm text-muted-foreground leading-tight">{time}</p>
+              <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
+                <span className="truncate">{time}</span>
+                {isWard && pastTimeTagEl}
+              </div>
+              {effectiveMode === 'future' && <div className="mt-1 flex items-center"><span className={cn('shrink-0 rounded-full border bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', isTomorrow ? futureTag.color : 'border-border/50 text-muted-foreground')}>{futureStatusText}</span></div>}
               {effectiveMode === 'today' && currentSelection && !ecgPhase && (
                 undoPending ? (
                   <button type="button" onClick={handleUndoTap} className="text-[11px] font-extrabold text-rose-500 leading-tight mt-1 animate-pulse cursor-pointer">Confirm Undo?</button>
@@ -384,12 +394,6 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
               {effectiveMode === 'today' && !currentSelection && (
                 <div className="leading-tight mt-1">
                   {isFinished ? <span className={cn('font-bold text-[11px]', finishedTargetMet ? 'text-emerald-500' : 'text-rose-500')}>{getFinishedMessage()}</span> : renderTodayAdvisory()}
-                </div>
-              )}
-              {effectiveMode === 'future' && (
-                <div className="mt-1 flex flex-wrap items-center gap-1">
-                  {tagEl}
-                  <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-muted/30 border-border/50', isTomorrow ? futureTag.color : 'text-muted-foreground')}>{futureStatusText}</span>
                 </div>
               )}
             </div>

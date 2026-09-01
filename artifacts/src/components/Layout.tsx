@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { path: '/account',   label: 'Settings',  description: 'Preferences, backups, and app settings', Icon: Hospital },
 ] as const;
 
-export const Layout = ({ children, headerRight, headerBottom, mainClassName, contentClassName }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode; mainClassName?: string; contentClassName?: string }) => {
+export const Layout = ({ children, headerRight, headerBottom, mainClassName, contentClassName, bottomNavClassName }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode; mainClassName?: string; contentClassName?: string; bottomNavClassName?: string }) => {
   const [location, setLocation] = useLocation();
   const headerRef = useRef<HTMLElement>(null);
   const [headerHeight, setHeaderHeight] = useState(72);
@@ -61,7 +61,7 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
         className={cn(
           'fixed bottom-0 left-0 right-0 md:left-0 md:right-0 md:w-full',
           'bottom-nav-surface bg-card/75 backdrop-blur-2xl border-x-0 border-b-0 border-t border-border/80 rounded-t-[28px] rounded-b-none pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40 before:pointer-events-none before:absolute before:inset-x-0 before:-top-5 before:h-5 before:rounded-t-[28px] before:bg-gradient-to-t before:from-card/20 before:to-transparent',
-          'transition-all duration-300'
+          'transition-all duration-300', bottomNavClassName
         )}
       >
         <nav aria-label="Primary navigation" className="flex justify-around items-center h-14">

@@ -1,4 +1,4 @@
-import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
+import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell, MoreHorizontal } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import { assertBackupSize, filterStoredData, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
 import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
@@ -268,6 +268,7 @@ export default function Settings() {
   const [showArchiveFolder, setShowArchiveFolder] = useState(false);
   const [curriculumToDelete, setCurriculumToDelete] = useState<CurriculumRecord | null>(null);
   const [pendingCurriculumAction, setPendingCurriculumAction] = useState<{ type: 'complete' | 'switch' | 'reopen' | 'rename'; curriculum: CurriculumRecord } | null>(null);
+  const [openCurriculumMenuId, setOpenCurriculumMenuId] = useState<string | null>(null);
   const [creationRestriction, setCreationRestriction] = useState(false);
   const [showCreateCurriculumForm, setShowCreateCurriculumForm] = useState(false);
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
@@ -1780,17 +1781,26 @@ export default function Settings() {
                   const expanded = true;
                   const canDelete = c.kind === 'custom' && c.id !== 'curriculum_custom_routine';
                   return (
-                    <div key={c.id} className={cn('rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60')}>
-                      <button type="button" onClick={() => setCreationRestriction(false)} className="w-full flex items-center justify-between gap-2 text-left">
-                        <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-foreground truncate">{c.name}</span><span className="block text-[10px] text-muted-foreground">{c.status === 'active' ? 'Active' : 'Completed / Archived'} · {c.kind === 'preset' ? 'Preset' : 'New Curriculum'}</span></span>
-
-                      </button>
-                      {expanded && <AnimatePresence initial={false}><motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="overflow-hidden"><div className="mt-3 flex flex-nowrap gap-2 pt-3">
-                        {c.status === 'active' && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'complete', curriculum: c })} className="action-button action-button--save flex-1 basis-0 min-w-0 min-h-10 px-2">Mark as Complete</button>}
-                        {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'switch', curriculum: c })} className="action-button action-button--edit flex-1 basis-0 min-w-0 min-h-10 px-2">Switch to this Curriculum</button>}
-                        {c.status === 'archived' && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'reopen', curriculum: c })} className="action-button action-button--edit flex-1 basis-0 min-w-0 min-h-10 px-2">Reopen</button>}
-                        <button type="button" onClick={() => { setEditingCurriculumName(c.name); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button action-button--edit flex-1 basis-0 min-w-0 min-h-10 px-2">Rename</button>
-                        {c.status === 'archived' && <button type="button" disabled={!canDelete} onClick={() => canDelete && setCurriculumToDelete(c)} className="action-button action-button--danger flex-1 basis-0 min-w-0 min-h-10 px-2 disabled:cursor-not-allowed disabled:opacity-40">Delete</button>}
+                    <div key={c.id} className={cn('relative rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60')}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate text-base font-extrabold text-foreground">{c.name}</span>
+                          <span className="block text-[10px] font-semibold text-muted-foreground">{c.status === 'active' ? (c.id === activeCurriculumId ? 'In Use' : 'Available') : 'Archived'} · {c.kind === 'preset' ? 'Preset' : 'New Curriculum'}</span>
+                        </div>
+                        <button type="button" onClick={() => setOpenCurriculumMenuId(openCurriculumMenuId === c.id ? null : c.id)} className="action-button action-button--icon shrink-0" aria-label={`More actions for ${c.name}`} aria-expanded={openCurriculumMenuId === c.id}><MoreHorizontal className="h-5 w-5" /></button>
+                      </div>
+                      {openCurriculumMenuId === c.id && (
+                        <div className="absolute right-3 top-12 z-20 min-w-44 rounded-xl border border-border bg-card p-1.5 shadow-xl">
+                          <button type="button" onClick={() => { setEditingCurriculumName(c.name); setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Rename</button>
+                          {c.status === 'active' && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'complete', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Mark as Complete</button>}
+                          {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'switch', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Switch to this Curriculum</button>}
+                          {canDelete && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setCurriculumToDelete(c); }} className="action-button action-button--danger w-full justify-start px-3 py-2 text-left text-xs">Delete</button>}
+                        </div>
+                      )}
+                      {expanded && <AnimatePresence initial={false}><motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="overflow-hidden"><div className="mt-3 pt-3">
+                        {c.status === 'active' && c.id === activeCurriculumId && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'complete', curriculum: c })} className="action-button action-button--save w-full min-h-11 px-3">Mark as Complete</button>}
+                        {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'switch', curriculum: c })} className="action-button action-button--edit w-full min-h-11 px-3">Switch to this Curriculum</button>}
+                        {c.status === 'archived' && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'reopen', curriculum: c })} className="action-button action-button--edit w-full min-h-11 px-3">Reopen Curriculum</button>}
                       </div></motion.div></AnimatePresence>}
                       {editingCurriculumId === c.id && <input autoFocus value={editingCurriculumName} onChange={e => setEditingCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRenameCurriculum(c.id); }} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary" />}
                     </div>

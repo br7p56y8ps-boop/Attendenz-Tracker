@@ -2113,6 +2113,7 @@ export default function Manage() {
     <Layout
       mainClassName="h-[100dvh] min-h-0 overflow-hidden"
       contentClassName="h-full min-h-0"
+      bottomNavClassName="border-t-0"
       headerRight={
         <button type="button" onClick={openMoreMenu} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
           <SendToBack className="w-4 h-4" />
