@@ -1775,7 +1775,6 @@ export default function Settings() {
                 <button type="button" onClick={() => { setShowArchiveFolder(!showArchiveFolder); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} style={{ borderColor: '#d97706', color: '#d97706', backgroundColor: 'rgba(217, 119, 6, 0.10)' }} className="action-button action-button--neutral w-full min-h-10">{showArchiveFolder ? 'Back to Active' : 'Archive Folder'}</button>
                 <button type="button" onClick={() => activeCurriculumReadyForNewRoutine ? (setShowCreateCurriculumForm(true), setCreationRestriction(false)) : setCreationRestriction(true)} className="action-button action-button--edit w-full min-h-10">Create New Curricula</button>
               </div>
-              {openCurriculumMenuId && <button type="button" aria-label="Close curriculum actions menu" className="absolute inset-0 z-10 cursor-default bg-black/10 backdrop-blur-sm" onClick={() => setOpenCurriculumMenuId(null)} />}
               <div className="relative z-20 space-y-2">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">{showArchiveFolder ? 'Archive Folder' : 'Active Curricula'}</p>
                 {(showArchiveFolder ? curricula.filter(c => c.status === 'archived') : curricula.filter(c => c.status === 'active').sort((a, b) => Number(b.id === activeCurriculumId) - Number(a.id === activeCurriculumId))).map(c => {
@@ -1791,10 +1790,13 @@ export default function Settings() {
                         <button type="button" onClick={() => setOpenCurriculumMenuId(openCurriculumMenuId === c.id ? null : c.id)} className="action-button action-button--icon shrink-0" aria-label={`More actions for ${c.name}`} aria-expanded={openCurriculumMenuId === c.id}><MoreHorizontal className="h-5 w-5" /></button>
                       </div>
                       {openCurriculumMenuId === c.id && (
-                        <div className="absolute bottom-[calc(100%+0.5rem)] right-3 z-40 min-w-44 rounded-xl border border-border bg-card p-1.5 opacity-100 shadow-xl backdrop-blur-none">
-                          <button type="button" onClick={() => { setEditingCurriculumName(c.name); setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Rename</button>
-                          {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'complete', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Mark as Complete</button>}
-                          {canDelete && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setCurriculumToDelete(c); }} className="action-button action-button--danger w-full justify-start px-3 py-2 text-left text-xs">Delete</button>}
+                        <div className="fixed inset-0 z-[70] bg-black/55 backdrop-blur-sm" onClick={() => setOpenCurriculumMenuId(null)}>
+                          <div className="absolute bottom-0 left-0 right-0 mx-auto w-full max-w-md rounded-t-3xl border border-border/80 bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
+                            <div className="mb-3 flex items-center justify-between"><p className="text-sm font-bold text-foreground">{c.name}</p><button type="button" onClick={() => setOpenCurriculumMenuId(null)} className="text-xl leading-none text-muted-foreground" aria-label="Close menu">×</button></div>
+                            <button type="button" onClick={() => { setEditingCurriculumName(c.name); setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Rename</button>
+                            {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'complete', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Mark as Complete</button>}
+                            {canDelete && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setCurriculumToDelete(c); }} className="action-button action-button--danger w-full justify-start px-3 py-2 text-left text-xs">Delete</button>}
+                          </div>
                         </div>
                       )}
                       {expanded && <AnimatePresence initial={false}><motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="overflow-hidden"><div className="mt-3 pt-3">

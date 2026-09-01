@@ -283,11 +283,8 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const selWord = (s: string) => s === 'attended' ? 'Attended' : s === 'missed' ? 'Bunked' : 'Holiday';
   const subjectName = isWard ? (subtitle || subject) : subject;
   const displaySubject = subjectName.length > 20 ? shortenSubject(subjectName) : subjectName;
-  const tagEl = tag ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">{tag}</span> : null;
-  const subjectTagFits = !isWard && !!tag && displaySubject.length + tag.length <= 24;
-  const pastTimeTagEl = isWard && tag
-    ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">Clinical ({tag})</span>
-    : subjectTagFits ? null : tagEl;
+  const displayTag = isWard && tag ? `Clinical (${tag})` : tag || (isSGT ? 'Small Group' : null);
+  const tagEl = displayTag ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">{displayTag}</span> : null;
   const pastStatus = currentSelection === 'attended' ? 'Attended' : currentSelection === 'missed' ? 'Bunked' : currentSelection === 'off' ? 'Holiday' : isFinished ? 'No Planned Class' : 'Not Marked';
   const pastStatusClass = currentSelection === 'attended' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : currentSelection === 'missed' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : currentSelection === 'off' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-muted/30 text-muted-foreground border-border/50';
   const pastIsMarked = currentSelection === 'attended' || currentSelection === 'missed';
@@ -321,7 +318,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
         {effectiveMode === 'past' ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
-              {pastTimeTagEl && <div className="flex items-center">{pastTimeTagEl}</div>}
+              {tagEl && <div className="flex items-center">{tagEl}</div>}
               <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
               <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
                 <span className="shrink-0 whitespace-nowrap">{time}</span>
@@ -337,7 +334,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
         ) : (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
-              {pastTimeTagEl && <div className="flex items-center">{pastTimeTagEl}</div>}
+              {tagEl && <div className="flex items-center">{tagEl}</div>}
               <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
               <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
                 <span className="shrink-0 whitespace-nowrap">{time}</span>
