@@ -153,7 +153,7 @@ export const SubjectCard = ({
           <span className="min-w-0 truncate">Remaining: <strong className="text-foreground font-semibold">{remaining}</strong></span>
         </div>
       </div>
-      <div className="flex shrink-0 items-center border-l border-border/40 pl-4">
+      <div className="flex shrink-0 items-center">
         <div className="flex h-14 w-20 items-center justify-center rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
           <div className="text-base sm:text-lg font-extrabold tracking-tight" style={{ color: percentageColor }}>
           {`${percentage.toFixed(0)}%`}

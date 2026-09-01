@@ -1763,7 +1763,7 @@ export default function Settings() {
       <AnimatePresence>
         {showSwitchDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} ref={curriculumSheetRef} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} style={curriculumSheetMaxHeight ? { minHeight: `${curriculumSheetMaxHeight}px`, height: 'auto' } : { height: 'auto' }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
+                <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} ref={curriculumSheetRef} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} style={curriculumSheetMaxHeight ? { minHeight: `${curriculumSheetMaxHeight}px`, height: 'auto' } : { height: 'auto' }} className="modal-sheet-content relative bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <div className="h-10 w-10 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="h-5 w-5 shrink-0 text-primary" /></div>
@@ -1775,13 +1775,14 @@ export default function Settings() {
                 <button type="button" onClick={() => { setShowArchiveFolder(!showArchiveFolder); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} style={{ borderColor: '#d97706', color: '#d97706', backgroundColor: 'rgba(217, 119, 6, 0.10)' }} className="action-button action-button--neutral w-full min-h-10">{showArchiveFolder ? 'Back to Active' : 'Archive Folder'}</button>
                 <button type="button" onClick={() => activeCurriculumReadyForNewRoutine ? (setShowCreateCurriculumForm(true), setCreationRestriction(false)) : setCreationRestriction(true)} className="action-button action-button--edit w-full min-h-10">Create New Curricula</button>
               </div>
-              <div className="space-y-2">
+              {openCurriculumMenuId && <button type="button" aria-label="Close curriculum actions menu" className="absolute inset-0 z-10 cursor-default bg-black/10 backdrop-blur-sm" onClick={() => setOpenCurriculumMenuId(null)} />}
+              <div className="relative z-20 space-y-2">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">{showArchiveFolder ? 'Archive Folder' : 'Active Curricula'}</p>
                 {(showArchiveFolder ? curricula.filter(c => c.status === 'archived') : curricula.filter(c => c.status === 'active').sort((a, b) => Number(b.id === activeCurriculumId) - Number(a.id === activeCurriculumId))).map(c => {
                   const expanded = true;
                   const canDelete = c.kind === 'custom' && c.id !== 'curriculum_custom_routine';
                   return (
-                    <div key={c.id} className={cn('relative rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60')}>
+                    <div key={c.id} className={cn('relative rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60', openCurriculumMenuId === c.id && 'z-30')}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <span className="block truncate text-base font-extrabold text-foreground">{c.name}</span>
@@ -1790,7 +1791,7 @@ export default function Settings() {
                         <button type="button" onClick={() => setOpenCurriculumMenuId(openCurriculumMenuId === c.id ? null : c.id)} className="action-button action-button--icon shrink-0" aria-label={`More actions for ${c.name}`} aria-expanded={openCurriculumMenuId === c.id}><MoreHorizontal className="h-5 w-5" /></button>
                       </div>
                       {openCurriculumMenuId === c.id && (
-                        <div className="absolute bottom-12 right-3 z-20 min-w-44 rounded-xl border border-border bg-card p-1.5 opacity-100 shadow-xl backdrop-blur-none">
+                        <div className="absolute bottom-[calc(100%+0.5rem)] right-3 z-40 min-w-44 rounded-xl border border-border bg-card p-1.5 opacity-100 shadow-xl backdrop-blur-none">
                           <button type="button" onClick={() => { setEditingCurriculumName(c.name); setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Rename</button>
                           {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'complete', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Mark as Complete</button>}
                           {canDelete && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setCurriculumToDelete(c); }} className="action-button action-button--danger w-full justify-start px-3 py-2 text-left text-xs">Delete</button>}

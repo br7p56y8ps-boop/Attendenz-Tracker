@@ -285,7 +285,6 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const displaySubject = subjectName.length > 20 ? shortenSubject(subjectName) : subjectName;
   const tagEl = tag ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">{tag}</span> : null;
   const subjectTagFits = !isWard && !!tag && displaySubject.length + tag.length <= 24;
-  const pastSubjectTagEl = subjectTagFits ? tagEl : null;
   const pastTimeTagEl = isWard && tag
     ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">Clinical ({tag})</span>
     : subjectTagFits ? null : tagEl;
@@ -322,13 +321,10 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
         {effectiveMode === 'past' ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
-                {pastSubjectTagEl}
-              </div>
+              {pastTimeTagEl && <div className="flex items-center">{pastTimeTagEl}</div>}
+              <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
               <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
-                <span className="shrink-0 whitespace-nowrap">({time})</span>
-                {pastTimeTagEl}
+                <span className="shrink-0 whitespace-nowrap">{time}</span>
               </div>
             </div>
             <div className="flex w-24 shrink-0 items-center justify-center">
@@ -341,13 +337,10 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
         ) : (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
-                {pastSubjectTagEl}
-              </div>
+              {pastTimeTagEl && <div className="flex items-center">{pastTimeTagEl}</div>}
+              <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
               <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
                 <span className="shrink-0 whitespace-nowrap">{time}</span>
-                {isWard && pastTimeTagEl}
               </div>
               {effectiveMode === 'future' && <div className="mt-1 flex items-center"><span className={cn('shrink-0 rounded-full border bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', isTomorrow ? futureTag.color : 'border-border/50 text-muted-foreground')}>{futureStatusText}</span></div>}
               {effectiveMode === 'today' && currentSelection && !ecgPhase && (
@@ -368,8 +361,10 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
                 isTomorrow ? <ThreeDContainer className="h-14 w-24 items-center justify-center px-1 text-center"><span className={cn('text-[10px] font-extrabold uppercase', futureMsg.sev === 'must' ? 'text-rose-500' : futureMsg.sev === 'can' ? 'text-amber-500' : 'text-emerald-500')}>{futureMsg.sev === 'must' ? 'Must Attend' : futureMsg.sev === 'can' ? 'Can Bunk' : 'Safe Bunk'}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
               ) : effectiveMode === 'future' && isFinished ? (
                 isTomorrow ? <ThreeDContainer className="h-14 w-24 items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(0)}%`}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
-              ) : effectiveMode === 'today' && (currentSelection || isFinished) ? (
+              ) : effectiveMode === 'today' && currentSelection ? (
                 <ThreeDContainer className="h-14 w-24 items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(0)}%`}</span></ThreeDContainer>
+              ) : effectiveMode === 'today' && isFinished ? (
+                <div className={cn('text-lg font-bold min-w-max', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(0)}%`}</div>
               ) : null}
             </div>
           </div>
