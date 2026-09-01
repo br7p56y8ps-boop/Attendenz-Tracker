@@ -16,6 +16,15 @@ const cls = (n: number) => (n === 1 ? 'Class' : 'Classes');
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const toStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+const shortenSubject = (name: string) => ({
+  'Surgery': 'Surg.', 'Obstetrics & Gynaecology': 'Obs & Gyn.', 'Pediatrics': 'Peds.',
+  'Orthopedics': 'Ortho.', 'Ophthalmology': 'Ophtha.', 'Otolaryngology': 'ENT',
+  'Dermatology': 'Derm.', 'Psychiatry': 'Psych.', 'Physical Medicine': 'PMR',
+  'Radiology': 'Radio.', 'Radiotherapy': 'RadioT.', 'Nuclear Medicine': 'Nuc Med.',
+  'Neurosurgery': 'NeuroS.', 'Pediatric Surgery': 'Peds Surg.', 'Burn & Plastic Surgery': 'Plastic S.',
+  'Internal Medicine': 'Medicine', 'Phase Integrated Teaching': 'Phase Integrated',
+  'Departmental Integrated Teaching': 'Dept. Integrated',
+} as Record<string, string>)[name] || name;
 
 const SeverityRing = ({ sev }: { sev: 'must' | 'can' | 'safe' }) => {
   const hex = sev === 'must' ? '#ef4444' : sev === 'can' ? '#f59e0b' : '#10b981';
@@ -100,7 +109,7 @@ const TypedLine = ({ selection, conducted, planned, animate, onStatusTap }: {
   );
 };
 
-export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, tagColor, sessionId, dateStr, mode, isSGT = false, sgtId }: HomeCardProps) => {
+export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, sessionId, dateStr, mode, isSGT = false, sgtId }: HomeCardProps) => {
   const { subjects, wards, homeSelections, finishedMap, updateHomeSelection, preferredPercentage, getHomeSelection } = useAttendance();
   const { subjectMode, customSubjects, customWards, userAddedSubjects, presetTimetable, getCurrentPresetWard, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned, getSubjectIdByName } = useCustomData();
   const activeDateStr = dateStr || getCurrentDateStr();
@@ -315,10 +324,12 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, tagColo
   const selColor = (s: string) => s === 'attended' ? 'text-emerald-500' : s === 'missed' ? 'text-rose-500' : 'text-amber-500';
   const selBg = (s: string) => s === 'attended' ? 'bg-emerald-500/25 border-emerald-500/60' : s === 'missed' ? 'bg-rose-500/25 border-rose-500/60' : 'bg-amber-500/25 border-amber-500/60';
   const selWord = (s: string) => s === 'attended' ? 'Attended' : s === 'missed' ? 'Bunked' : 'Holiday';
-  const tagEl = tag ? <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{tag}</span> : null;
-  const pastSubjectTag = isWard ? 'Clinical' : tag;
-  const pastSubjectTagEl = pastSubjectTag ? <span className={cn('shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', tagColor === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{pastSubjectTag}</span> : null;
-  const pastTimeTagEl = isWard && tag ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">{tag}</span> : null;
+  const displaySubject = isWard ? (subtitle || subject) : shortenSubject(subject);
+  const tagEl = tag ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">{tag}</span> : null;
+  const pastSubjectTagEl = null;
+  const pastTimeTagEl = isWard && tag
+    ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">Clinical ({tag})</span>
+    : tagEl;
   const pastStatus = currentSelection === 'attended' ? 'Attended' : currentSelection === 'missed' ? 'Bunked' : currentSelection === 'off' ? 'Holiday' : isFinished ? 'No Planned Class' : 'Not Marked';
   const pastStatusClass = currentSelection === 'attended' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : currentSelection === 'missed' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : currentSelection === 'off' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-muted/30 text-muted-foreground border-border/50';
   const pastIsMarked = currentSelection === 'attended' || currentSelection === 'missed';
@@ -353,7 +364,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, tagColo
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{isWard ? (subtitle || subject) : subject}</h3>
+                <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
                 {pastSubjectTagEl}
               </div>
               <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
@@ -362,22 +373,18 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, tagColo
               </div>
             </div>
             <div className="flex w-24 shrink-0 items-center justify-center">
-              {pastIsMarked ? (
-                <div className="flex h-14 w-24 flex-col items-center justify-center gap-0.5 rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
-                  <span className={cn('rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide', pastStatusClass)}>{pastStatus}</span>
-                  <span className="whitespace-nowrap text-[10px] font-extrabold text-foreground">(Class - <span className={selColor(currentSelection)}>{total}</span>/{totalPlannedClasses ?? total})</span>
-                </div>
-              ) : (
-                <span className={cn('rounded-full border px-2 py-0.5 text-center text-[10px] font-bold uppercase tracking-wider', pastStatusClass)}>{pastStatus}</span>
-              )}
+              <div className="flex h-14 w-24 flex-col items-center justify-center gap-0.5 rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
+                <span className={cn('max-w-full whitespace-nowrap rounded-full border px-1.5 py-0.5 text-center font-bold uppercase tracking-wide', pastStatusClass, pastIsMarked ? 'text-[9px]' : 'text-[8px]')}>{pastStatus}</span>
+                {pastIsMarked && <span className="whitespace-nowrap text-[10px] font-extrabold text-foreground">(Class - <span className={selColor(currentSelection)}>{total}</span>/{totalPlannedClasses ?? total})</span>}
+              </div>
             </div>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{isWard ? (subtitle || subject) : subject}</h3>
-                {isWard ? pastSubjectTagEl : tagEl}
+                <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
+                {pastSubjectTagEl}
               </div>
               <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
                 <span className="truncate">{time}</span>
