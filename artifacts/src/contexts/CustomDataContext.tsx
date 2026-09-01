@@ -1524,6 +1524,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       'attendance_tracker_ward_custom',
       'attendance_tracker_home_selections_custom',
       'attendance_tracker_finished_map_custom',
+      'attendance_tracker_orphaned_records',
+      'att_history',
       'att_manage_history',
       'attendenz_snapshots_v1',
       CURRICULUM_KEYS.CURRICULA_KEY,

@@ -2138,7 +2138,7 @@ export default function Manage() {
         )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card dark:bg-black border border-dashed border-border/80 rounded-2xl p-3 shadow-sm space-y-2.5 relative flex flex-col overflow-hidden',
+            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card border border-dashed border-border/80 rounded-2xl p-3 shadow-sm space-y-2.5 relative flex flex-col overflow-hidden',
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
@@ -2231,7 +2231,7 @@ export default function Manage() {
                 <button
                   type="button"
                   onClick={openAddSlot}
-                  className="w-full py-2 rounded-xl border border-dashed border-border text-xs font-semibold text-muted-foreground hover:bg-muted/20 hover:text-foreground transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  className="w-full py-2 rounded-xl border border-dashed border-cyan-400 text-xs font-semibold text-cyan-400 hover:bg-cyan-400/10 hover:text-cyan-300 transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Slot
                 </button>

@@ -64,23 +64,21 @@ type NotificationChildKey = 'needAttentionSummary' | 'needAttentionSubjects' | '
 type NotificationChild = { key: NotificationChildKey; title: string; description: string };
 
 const ATTENDANCE_REMINDER_CHILDREN: NotificationChild[] = [
-  { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'A grouped summary for Subjects that need attendance protection today.' },
+  { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'A grouped summary for Subjects that need attendance protection in upcoming Classes.' },
+  { key: 'beforeClassWarnings', title: 'Before-Class Warnings', description: 'Controls reminders sent before an upcoming Class.' },
   { key: 'needAttentionSubjects', title: 'Need Attention Subjects', description: 'Reminders for Subjects at the target but without the recommended safety margin.' },
   { key: 'safeToMiss', title: 'Safe to Miss a Class', description: 'A lead-time alert when missing the upcoming Class would keep you at or above the preferred percentage.' },
-  { key: 'beforeClassWarnings', title: 'Before-Class Warnings', description: 'Controls reminders sent before an upcoming Class.' },
   { key: 'unmarkedAttendanceToday', title: 'Unmarked Attendance Today', description: 'A late-evening reminder for today’s Classes that still have no attendance status.' },
 ];
-
 const DAILY_SCHEDULE_CHILDREN: NotificationChild[] = [
-  { key: 'lastPlannedClassToday', title: 'Last Planned Class Upcoming', description: 'A reminder when a Subject has its last planned Class in the upcoming period.' },
+  { key: 'lastPlannedClassToday', title: 'Last Planned Class Upcoming', description: 'A reminder when a Subject has its genuine final planned Class tomorrow.' },
   { key: 'firstClassOfDay', title: 'First Upcoming Class', description: 'A reminder showing the first upcoming Subject and start time.' },
   { key: 'allScheduledClasses', title: 'All Upcoming Classes', description: 'One grouped reminder listing all upcoming Classes.' },
 ];
-
 const ACTIVITY_CHILDREN: NotificationChild[] = [
   { key: 'manageChanges', title: 'Changes Made in Manage', description: 'A confirmation after a routine change is saved successfully.' },
-  { key: 'curriculumChanges', title: 'Curriculum Changes', description: 'A confirmation after switching, completing, or restoring a curriculum.' },
   { key: 'dataTransfer', title: 'Routine or App Data Transfer', description: 'A confirmation after a routine, settings, backup, or app-data transfer succeeds.' },
+  { key: 'curriculumChanges', title: 'Curriculum Changes', description: 'A confirmation after switching, completing, or restoring a curriculum.' },
 ];
 
 const UPDATE_CHILDREN: NotificationChild[] = [
@@ -1754,7 +1752,7 @@ export default function Settings() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/65 backdrop-blur-md z-[150] flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
             <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} transition={{ type: 'spring', damping: 26, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-destructive/30 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
               <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-destructive/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div><div><h3 className="text-base font-bold text-foreground">Delete All App Data?</h3><p className="text-[11px] text-destructive font-semibold">Irreversible Action</p></div></div>
-              <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases attendance records, routines, snapshots, profile data, target settings, and setup state. Export a backup first if you are unsure.</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases attendance records, routines, <strong className="text-foreground">all curriculum data</strong>, snapshots, profile data, target settings, and setup state. Export a backup first if you are unsure.</p>
               <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
             </motion.div>
           </motion.div>
@@ -1779,11 +1777,11 @@ export default function Settings() {
               <div className="space-y-2">
                 <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">{showArchiveFolder ? 'Archive Folder' : 'Active Curricula'}</p>
                 {(showArchiveFolder ? curricula.filter(c => c.status === 'archived') : curricula.filter(c => c.status === 'active').sort((a, b) => Number(b.id === activeCurriculumId) - Number(a.id === activeCurriculumId))).map(c => {
-                  const expanded = Boolean(expandedCurriculumIds[c.id]);
+                  const expanded = true;
                   const canDelete = c.kind === 'custom' && c.id !== 'curriculum_custom_routine';
                   return (
                     <div key={c.id} className={cn('rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60')}>
-                      <button type="button" onClick={() => { setCreationRestriction(false); setExpandedCurriculumIds(expanded ? {} : { [c.id]: true }); }} className="w-full flex items-center justify-between gap-2 text-left">
+                      <button type="button" onClick={() => setCreationRestriction(false)} className="w-full flex items-center justify-between gap-2 text-left">
                         <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-foreground truncate">{c.name}</span><span className="block text-[10px] text-muted-foreground">{c.status === 'active' ? 'Active' : 'Completed / Archived'} · {c.kind === 'preset' ? 'Preset' : 'New Curriculum'}</span></span>
 
                       </button>

@@ -490,7 +490,9 @@ function listLeadNames(rows: OccurrenceRow[], limit = 6): string {
 async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): Promise<void> {
   const clock = localClock(scheduledAt, device.timezone);
   const midnightWindow = (clock.hour === 23 && clock.minute >= 30) || (clock.hour === 0 && clock.minute < 5);
-  const scheduleDate = clock.hour === 23 && clock.minute >= 30 ? nextLocalDate(clock.date) : clock.date;
+  // Midnight reminders always describe tomorrow, including the first few
+  // minutes after midnight. Lead-time reminders are handled separately.
+  const scheduleDate = midnightWindow ? nextLocalDate(clock.date) : clock.date;
   const rows = await env.DB.prepare(
     `SELECT occurrence_id as id, device_id, local_date as localDate,
       start_minute as startMinute, end_minute as endMinute, subject_label as subjectLabel,
@@ -519,11 +521,11 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
       const parts: string[] = [];
       if (mustAttend.length > 0) parts.push(`Must Attend: ${listNames(mustAttend)}`);
       if (needAttention.length > 0) parts.push(`Need Attention: ${listNames(needAttention)}`);
-      if (finalClasses.length > 0) parts.push(`Last Planned: ${listNames(finalClasses)}`);
+      if (finalClasses.length > 0) parts.push(`Upcoming Last Planned Class: ${listNames(finalClasses)}`);
       const body = parts.join('. ') + '.';
       await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${scheduleDate}`, 'Urgent Schedule Alert', body, url);
     } else if (hasInfo) {
-      const body = first ? `First Class: ${cleanLabel(first.subjectLabel)} at ${formatMinute(first.startMinute)}.` : `Upcoming: ${listNames(digest)}.`;
+      const body = first ? `First Upcoming Class: ${cleanLabel(first.subjectLabel)} at ${formatMinute(first.startMinute)}.` : `Upcoming: ${listNames(digest)}.`;
       await deliverIfNew(env, device, `${device.device_id}:info-midnight:${scheduleDate}`, 'Upcoming Schedule', body, url);
     }
   }
@@ -537,7 +539,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
     }
   }
 
-  if (device.pre_class_need_attention) {
+  if (!midnightWindow && device.pre_class_need_attention) {
     const due = occurrences.filter(item => isBeforeClassDue(currentMinute, item.startMinute, device.lead_minutes));
     const dueMust = due.filter(item => item.attentionLevel === 'mustAttend');
     const dueNeed = device.need_attention_subjects ? due.filter(item => item.attentionLevel === 'needAttention') : [];

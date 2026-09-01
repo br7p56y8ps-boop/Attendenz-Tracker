@@ -163,6 +163,47 @@ function isFinalDailyOccurrence(localDate: string, endDate: string, periods?: Ar
   return true;
 }
 
+function finalPlannedDate(
+  planned: number,
+  conducted: number,
+  scheduledCount: (date: Date, localDate: string) => number,
+): string | null {
+  let remaining = planned - conducted;
+  if (remaining <= 0) return null;
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  // Walk the complete planned sequence, rather than only the notification
+  // horizon. The generous bound prevents malformed schedules looping forever.
+  for (let offset = 0; offset < 3660; offset += 1) {
+    const localDate = localDateString(date);
+    const count = scheduledCount(date, localDate);
+    if (count > 0) {
+      remaining -= count;
+      if (remaining <= 0) return localDate;
+    }
+    date.setDate(date.getDate() + 1);
+  }
+  return null;
+}
+
+function finalPlannedDateForSubject(
+  planned: number,
+  subjectName: string,
+  subjectRegistry: ReturnType<typeof useCustomData>['subjectRegistry'],
+  subjectAttendance: Record<string, AttendanceData>,
+  wardAttendance: Record<string, AttendanceData>,
+  finishedMap: Record<string, boolean>,
+  scheduledCount: (date: Date, localDate: string) => number,
+): string | null {
+  const reference = subjectRegistry.find(item => item.name.trim().toLowerCase() === subjectName.trim().toLowerCase());
+  if (!reference) return null;
+  const key = subjectAttendanceKey(reference);
+  const store = reference.kind === 'sgt' || reference.domain === 'academic' ? subjectAttendance : wardAttendance;
+  const conducted = (store[key]?.attended || 0) + (store[key]?.missed || 0);
+  if (finishedMap[key]) return null;
+  return finalPlannedDate(planned, conducted, scheduledCount);
+}
+
 function rowsForSubject(subject: CustomSubject | UserAddedSubject): Array<{ day: string; time: string }> {
   if (subject.schedules?.length) {
     return subject.schedules.map(row => ({
@@ -257,23 +298,6 @@ function subjectRowSessionId(subject: CustomSubject | UserAddedSubject, row: { d
   return isSGT ? getCustomSubjectSessionId(subject.id, row.day, row.time, true, subject.id) : getCustomSubjectSessionId(subject.id, row.day, row.time);
 }
 
-function isFinalPlannedOccurrence(
-  name: string,
-  subjectRegistry: ReturnType<typeof useCustomData>['subjectRegistry'],
-  subjectAttendance: Record<string, AttendanceData>,
-  wardAttendance: Record<string, AttendanceData>,
-  finishedMap: Record<string, boolean>,
-  planned: number,
-): boolean {
-  if (planned <= 0) return false;
-  const reference = subjectRegistry.find(item => item.name.trim().toLowerCase() === name.trim().toLowerCase());
-  if (!reference) return false;
-  const key = subjectAttendanceKey(reference);
-  const store = reference.kind === 'sgt' || reference.domain === 'academic' ? subjectAttendance : wardAttendance;
-  const conducted = (store[key]?.attended || 0) + (store[key]?.missed || 0);
-  return !finishedMap[key] && conducted + 1 >= planned;
-}
-
 function buildOccurrences(input: {
   subjectMode: ReturnType<typeof useCustomData>['subjectMode'];
   customSubjects: CustomSubject[];
@@ -319,6 +343,8 @@ function buildOccurrences(input: {
         const category: ReminderCategory = registryItem?.kind === 'sgt' ? 'sgt' : domain === 'clinical' ? 'clinical' : 'academic';
         const planned = registryItem?.planned ?? subject.plannedClasses;
         const label = subjectDisplayLabel(subject.name, registryItem, category);
+        const subjectRows = rowsForSubject(subject);
+        const finalPlanned = finalPlannedDateForSubject(planned, subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, (date, dateString) => isWithinDates(dateString, subject.startDate, subject.endDate, subject.vacationPeriods) ? subjectRows.filter(row => row.day === dayAbbreviation(date) && Boolean(parseTime(row.time))).length : 0);
         for (const row of rowsForSubject(subject)) {
           if (row.day !== day) continue;
           const parsed = parseTime(row.time);
@@ -332,13 +358,14 @@ function buildOccurrences(input: {
             subjectLabel: label,
             category,
             ...reminderFlags(subjectAttentionForReference(registryItem, input.subjects, input.wards, input.finishedMap, planned, input.preferredPercentage)),
-            isFinalForSubject: isFinalOccurrence(localDate, rowsForSubject(subject), subject.endDate, subject.vacationPeriods) || isFinalPlannedOccurrence(subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, planned),
+            isFinalForSubject: isFinalOccurrence(localDate, subjectRows, subject.endDate, subject.vacationPeriods) || finalPlanned === localDate,
           });
         }
       }
 
       for (const ward of input.customWards) {
         if (!isWithinDates(localDate, ward.startDate, ward.endDate, ward.vacationPeriods)) continue;
+        const finalPlanned = finalPlannedDateForSubject(input.getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods), ward.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, (_date, dateString) => isWithinDates(dateString, ward.startDate, ward.endDate, ward.vacationPeriods) ? [ward.morningTime, ward.eveningTime].filter(time => Boolean(parseTime(time || ''))).length : 0);
         for (const [slot, time] of [['morning', ward.morningTime], ['evening', ward.eveningTime]] as const) {
           const parsed = parseTime(time || '');
           if (!parsed) continue;
@@ -351,7 +378,7 @@ function buildOccurrences(input: {
             subjectLabel: subjectDisplayLabel(ward.name, input.subjectRegistry.find(item => item.id === ward.id), 'ward'),
             category: 'ward',
             ...reminderFlags(subjectAttentionForReference(input.subjectRegistry.find(item => item.id === ward.id), input.subjects, input.wards, input.finishedMap, input.getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods), input.preferredPercentage)),
-            isFinalForSubject: isFinalDailyOccurrence(localDate, ward.endDate, ward.vacationPeriods) || isFinalPlannedOccurrence(ward.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods)),
+            isFinalForSubject: isFinalDailyOccurrence(localDate, ward.endDate, ward.vacationPeriods) || finalPlanned === localDate,
           });
         }
       }
@@ -367,6 +394,7 @@ function buildOccurrences(input: {
             || input.subjectRegistry.find(item => item.name.trim().toLowerCase() === name.trim().toLowerCase());
           const category: ReminderCategory = registryItem?.kind === 'sgt' ? 'sgt' : registryItem?.domain === 'clinical' ? 'clinical' : 'academic';
           const displayLabel = subjectDisplayLabel(label, registryItem, category);
+          const finalPlanned = finalPlannedDateForSubject(registryItem?.planned ?? input.getSubjectPlannedTotal(name), name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, (candidateDate) => (input.presetTimetable[candidateDate.getDay()] || []).filter(candidate => candidate.type !== 'ward' && candidate.type !== 'ward_replacement' && (candidate.subjects || []).some(subjectName => subjectName.trim().toLowerCase() === name.trim().toLowerCase()) && Boolean(parseTime(candidate.time))).length);
           add({
             id: safeOccurrenceId('preset', attendanceKeyForName(name, input.subjectRegistry), localDate, parsed.startMinute, name),
             localDate,
@@ -376,13 +404,15 @@ function buildOccurrences(input: {
             subjectLabel: displayLabel,
             category,
             ...reminderFlags(subjectAttentionForReference(registryItem, input.subjects, input.wards, input.finishedMap, registryItem?.planned ?? input.getSubjectPlannedTotal(name), input.preferredPercentage)),
-            isFinalForSubject: isFinalPlannedOccurrence(name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getSubjectPlannedTotal(name)),
+            isFinalForSubject: finalPlanned === localDate,
           });
         }
       }
 
       for (const subject of input.userAddedSubjects) {
         if (subject.subjectType !== 'allied' || subject.parentName !== 'Small Group Teaching') continue;
+        const subjectRows = rowsForSubject(subject);
+        const finalPlanned = finalPlannedDateForSubject(subject.plannedClasses, subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, (candidateDate, candidateLocalDate) => isWithinDates(candidateLocalDate, subject.startDate, subject.endDate, subject.vacationPeriods) ? subjectRows.filter(row => row.day === dayAbbreviation(candidateDate) && Boolean(parseTime(row.time))).length : 0);
         for (const row of rowsForSubject(subject)) {
           if (row.day !== day) continue;
           const parsed = parseTime(row.time);
@@ -396,13 +426,14 @@ function buildOccurrences(input: {
             subjectLabel: subjectDisplayLabel(subject.name, input.subjectRegistry.find(item => item.id === subject.id), 'sgt'),
             category: 'sgt',
             ...reminderFlags(subjectAttentionForReference(input.subjectRegistry.find(item => item.id === subject.id), input.subjects, input.wards, input.finishedMap, subject.plannedClasses, input.preferredPercentage)),
-            isFinalForSubject: isFinalOccurrence(localDate, rowsForSubject(subject), subject.endDate, subject.vacationPeriods) || isFinalPlannedOccurrence(subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, subject.plannedClasses),
+            isFinalForSubject: isFinalOccurrence(localDate, subjectRows, subject.endDate, subject.vacationPeriods) || finalPlanned === localDate,
           });
         }
       }
 
       for (const ward of input.presetWardSchedule) {
         if (localDate < ward.start || localDate > ward.end || isInVacation(localDate, ward.vacationPeriods)) continue;
+        const finalPlanned = finalPlannedDateForSubject(input.getPresetWardTotalPlanned(ward.ward), ward.ward, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, (_date, dateString) => dateString >= ward.start && dateString <= ward.end && !isInVacation(dateString, ward.vacationPeriods) ? [ward.morningTime, ward.eveningTime].filter(time => Boolean(parseTime(time || ''))).length : 0);
         for (const [slot, time] of [['morning', ward.morningTime], ['evening', ward.eveningTime]] as const) {
           const parsed = parseTime(time || '');
           if (!parsed) continue;
@@ -415,7 +446,7 @@ function buildOccurrences(input: {
             subjectLabel: subjectDisplayLabel(input.getPresetWardDisplayName(ward.ward), input.subjectRegistry.find(item => item.name.trim().toLowerCase() === ward.ward.trim().toLowerCase() && item.kind === 'preset-ward'), 'ward'),
             category: 'ward',
             ...reminderFlags(subjectAttentionForReference(input.subjectRegistry.find(item => item.name.trim().toLowerCase() === ward.ward.trim().toLowerCase() && item.kind === 'preset-ward'), input.subjects, input.wards, input.finishedMap, input.getPresetWardTotalPlanned(ward.ward), input.preferredPercentage)),
-            isFinalForSubject: isFinalDailyOccurrence(localDate, ward.end, ward.vacationPeriods) || isFinalPlannedOccurrence(ward.ward, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, input.getPresetWardTotalPlanned(ward.ward)),
+            isFinalForSubject: isFinalDailyOccurrence(localDate, ward.end, ward.vacationPeriods) || finalPlanned === localDate,
           });
         }
       }
@@ -431,10 +462,10 @@ function buildOccurrences(input: {
     finalCandidates.set(key, list);
   }
   for (const candidates of finalCandidates.values()) {
-    const dates = new Set(candidates.map(item => item.localDate));
-    const chosen = dates.size === 1
-      ? candidates.reduce((latest, item) => item.startMinute > latest.startMinute ? item : latest)
-      : candidates.reduce((earliest, item) => item.localDate < earliest.localDate || (item.localDate === earliest.localDate && item.startMinute < earliest.startMinute) ? item : earliest);
+    // Planned-count logic can flag more than one future row. The actual final
+    // occurrence is the latest scheduled one, not the first upcoming class.
+    const chosen = candidates.reduce((latest, item) =>
+      item.localDate > latest.localDate || (item.localDate === latest.localDate && item.startMinute > latest.startMinute) ? item : latest);
     for (const item of candidates) item.isFinalForSubject = item.id === chosen.id;
   }
 

@@ -333,6 +333,9 @@ export async function completeCurriculum(id: string): Promise<{ curricula: Curri
   const keysToRemove: string[] = [];
 
   if (completingActive) {
+    // Persist the live workspace before switching to a replacement so the
+    // archived curriculum retains its latest attendance and schedule state.
+    entries.push([`att_curriculum_bundle_${id}`, JSON.stringify(captureActiveBundle(target.kind))]);
     if (!replacement) {
       keysToRemove.push(ACTIVE_CURRICULUM_KEY);
       keysToRemove.push(...ALIAS_KEYS.filter(key => isOwnedByKind(key, target.kind) && !SHARED_ALIAS_KEYS.has(key)));

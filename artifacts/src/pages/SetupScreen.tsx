@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
-import { BookOpen, Pencil, ShieldCheck, ArrowRight, RefreshCw, Upload, Sparkles, AlertTriangle, Camera } from 'lucide-react';
-import { importDataFromJSON, getSnapshots } from '../utils/snapshotUtils';
+import { BookOpen, Pencil, ShieldCheck, ArrowRight, RefreshCw, Sparkles, AlertTriangle, Camera } from 'lucide-react';
+import { getSnapshots } from '../utils/snapshotUtils';
 import { deleteRemoteDevice } from '@/lib/webPushSync';
 import { disableDirectPush } from '@/lib/webPush';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
@@ -15,7 +15,6 @@ export default function SetupScreen() {
   const { username, updateUsername, profileImage, updateProfileImage } = useAuth();
   const { completeSetup, startFresh, setWhatsNewOpen } = useCustomData();
   const [, setLocation] = useLocation();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [detectedMode, setDetectedMode] = useState<SubjectMode>('preloaded');
@@ -105,16 +104,6 @@ export default function SetupScreen() {
 
   const handleRestorePreviousData = () => { void finishSetup(detectedMode); };
 
-  const handleRestoreBackupFile = (file: File) => {
-    importDataFromJSON(file, (success: boolean) => {
-      if (success) {
-        const updatedMode = (localStorage.getItem('att_subject_mode') as SubjectMode) || 'preloaded';
-        void finishSetup(updatedMode);
-      } else {
-        import("sonner").then(({ toast }) => toast.info('Failed to restore backup file. Please ensure it is a valid Attendenz JSON backup.'));
-      }
-    });
-  };
 
   const handleConfirmStartFresh = async () => {
     const remoteRemoved = await deleteRemoteDevice();
@@ -169,11 +158,6 @@ export default function SetupScreen() {
                     <RefreshCw className="w-4 h-4" />
                     <span>Restore Previous Data (Recommended)</span>
                   </button>
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="action-button action-button--neutral w-full">
-                    <Upload className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span>Restore Backup File (.json)</span>
-                  </button>
-                  <input type="file" ref={fileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRestoreBackupFile(f); }} accept=".json" className="hidden" />
                   <button type="button" onClick={() => setShowConfirmStartFresh(true)} className="action-button action-button--warning w-full">
                     Start Fresh with Clean Slate
                   </button>

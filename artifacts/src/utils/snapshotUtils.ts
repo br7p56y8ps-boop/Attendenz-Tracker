@@ -1,4 +1,4 @@
-import { idbGetAllChecked, idbSetMany, idbCommit, idbRemoveMany, idbRemove, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
+import { idbGetAllChecked, idbSetMany, idbRemove, storageCommitChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites } from '@/lib/idb';
 import { getActiveCurriculumName } from '@/lib/curriculumStore';
 import { assertBackupSize, filterStoredData, makeBackupEnvelope, validateBackupPayload, MAX_BACKUP_BYTES } from '@/utils/dataTransferSecurity';
 
@@ -202,15 +202,12 @@ export async function restoreSnapshot(snapshotId: string): Promise<boolean> {
     const current = await idbGetAllChecked();
     const keysToRemove = Object.keys(filterStoredData({ ...current, ...Object.fromEntries(Object.entries(localStorage).map(([k]) => [k, localStorage.getItem(k) || ''])) }))
       .filter(key => key !== SNAPSHOTS_KEY && !(key in target.data));
-    await idbCommit(entries, keysToRemove);
-    mirrorToLocalStorage(entries);
-    removeFromLocalStorage(keysToRemove);
+    await storageCommitChecked(entries, keysToRemove);
 
     await flushStorageWrites();
     // Force startup migration after any snapshot restore, including newer snapshots.
     const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];
-    await idbRemoveMany(migrationFlags);
-    removeFromLocalStorage(migrationFlags);
+    for (const key of migrationFlags) await storageRemoveItemChecked(key);
 
     return true;
   } catch (err) {
@@ -339,14 +336,11 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
       const current = await idbGetAllChecked();
       const keysToRemove = Object.keys(filterStoredData({ ...current }))
         .filter(key => key !== SNAPSHOTS_KEY && !(key in validatedData));
-      await idbCommit(entries, keysToRemove);
-      mirrorToLocalStorage(entries);
-      removeFromLocalStorage(keysToRemove);
+      await storageCommitChecked(entries, keysToRemove);
 
       // Force startup migration after any uploaded backup restore.
       const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];
-      await idbRemoveMany(migrationFlags);
-      removeFromLocalStorage(migrationFlags);
+      for (const key of migrationFlags) await storageRemoveItemChecked(key);
 
       callback(true);
     } catch (err) {

@@ -4,7 +4,7 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext';
-import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageSetItem } from '@/lib/idb';
+import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageRemoveItemChecked, storageSetItem } from '@/lib/idb';
 import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
 import { restoreSnapshot } from '@/utils/snapshotUtils';
@@ -70,11 +70,22 @@ function AuthGate() {
 
 function MainAppFlow() {
   const [arrivedAfterUpdate] = useState<boolean>(() => localStorage.getItem('att_just_updated') === 'true');
+  const [restoreError, setRestoreError] = useState(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
     const justUpdated = localStorage.getItem('att_just_updated') === 'true';
     const hasSeenWelcome = localStorage.getItem(HAS_SEEN_WELCOME_KEY) === 'true';
     return justUpdated || !hasSeenWelcome;
   });
+
+  if (restoreError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <h1 className="text-base font-extrabold text-foreground">Recovery could not be completed</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">Your recovery snapshot is preserved. Retry recovery before continuing.</p>
+        <button type="button" className="rounded-lg border border-primary px-4 py-2 text-sm font-bold text-foreground" onClick={() => setRestoreError(false)}>Retry Recovery</button>
+      </div>
+    );
+  }
 
   if (showWelcome) {
     return (
@@ -97,8 +108,18 @@ function MainAppFlow() {
         onComplete={async () => {
           const pendingRestoreId = localStorage.getItem('att_pending_update_restore');
           if (pendingRestoreId) {
-            try { await restoreSnapshot(pendingRestoreId); } catch (e) {}
-            await storageRemoveItem('att_pending_update_restore');
+            let restored = false;
+            try { restored = await restoreSnapshot(pendingRestoreId); } catch (e) {}
+            if (!restored) {
+              setRestoreError(true);
+              return;
+            }
+            try {
+              await storageRemoveItemChecked('att_pending_update_restore');
+            } catch (e) {
+              setRestoreError(true);
+              return;
+            }
             await storageSetItem(HAS_SEEN_WELCOME_KEY, 'true');
             await storageRemoveItem('att_just_updated');
             await storageRemoveItem('att_pwa_update_ready');
