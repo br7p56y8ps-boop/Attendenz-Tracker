@@ -324,12 +324,13 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const selColor = (s: string) => s === 'attended' ? 'text-emerald-500' : s === 'missed' ? 'text-rose-500' : 'text-amber-500';
   const selBg = (s: string) => s === 'attended' ? 'bg-emerald-500/25 border-emerald-500/60' : s === 'missed' ? 'bg-rose-500/25 border-rose-500/60' : 'bg-amber-500/25 border-amber-500/60';
   const selWord = (s: string) => s === 'attended' ? 'Attended' : s === 'missed' ? 'Bunked' : 'Holiday';
-  const displaySubject = isWard ? (subtitle || subject) : shortenSubject(subject);
+  const displaySubject = isWard ? (subtitle || subject) : (subject.length > 20 ? shortenSubject(subject) : subject);
   const tagEl = tag ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">{tag}</span> : null;
-  const pastSubjectTagEl = null;
+  const subjectTagFits = !isWard && !!tag && displaySubject.length + tag.length <= 24;
+  const pastSubjectTagEl = subjectTagFits ? tagEl : null;
   const pastTimeTagEl = isWard && tag
     ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">Clinical ({tag})</span>
-    : tagEl;
+    : subjectTagFits ? null : tagEl;
   const pastStatus = currentSelection === 'attended' ? 'Attended' : currentSelection === 'missed' ? 'Bunked' : currentSelection === 'off' ? 'Holiday' : isFinished ? 'No Planned Class' : 'Not Marked';
   const pastStatusClass = currentSelection === 'attended' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : currentSelection === 'missed' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : currentSelection === 'off' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-muted/30 text-muted-foreground border-border/50';
   const pastIsMarked = currentSelection === 'attended' || currentSelection === 'missed';
@@ -368,13 +369,13 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
                 {pastSubjectTagEl}
               </div>
               <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
-                <span className="truncate">({time})</span>
+                <span className="shrink-0 whitespace-nowrap">({time})</span>
                 {pastTimeTagEl}
               </div>
             </div>
             <div className="flex w-24 shrink-0 items-center justify-center">
               <div className="flex h-14 w-24 flex-col items-center justify-center gap-0.5 rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
-                <span className={cn('max-w-full whitespace-nowrap rounded-full border px-1.5 py-0.5 text-center font-bold uppercase tracking-wide', pastStatusClass, pastIsMarked ? 'text-[9px]' : 'text-[8px]')}>{pastStatus}</span>
+                <span className={cn('max-w-full whitespace-nowrap text-center font-bold uppercase tracking-wide', pastIsMarked ? 'rounded-full border px-1.5 py-0.5 text-[9px]' : 'text-[10px]', pastIsMarked ? pastStatusClass : 'text-muted-foreground')}>{pastStatus}</span>
                 {pastIsMarked && <span className="whitespace-nowrap text-[10px] font-extrabold text-foreground">(Class - <span className={selColor(currentSelection)}>{total}</span>/{totalPlannedClasses ?? total})</span>}
               </div>
             </div>
@@ -387,7 +388,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
                 {pastSubjectTagEl}
               </div>
               <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
-                <span className="truncate">{time}</span>
+                <span className="shrink-0 whitespace-nowrap">{time}</span>
                 {isWard && pastTimeTagEl}
               </div>
               {effectiveMode === 'future' && <div className="mt-1 flex items-center"><span className={cn('shrink-0 rounded-full border bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', isTomorrow ? futureTag.color : 'border-border/50 text-muted-foreground')}>{futureStatusText}</span></div>}

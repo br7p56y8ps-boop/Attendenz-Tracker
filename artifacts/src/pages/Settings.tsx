@@ -1790,10 +1790,9 @@ export default function Settings() {
                         <button type="button" onClick={() => setOpenCurriculumMenuId(openCurriculumMenuId === c.id ? null : c.id)} className="action-button action-button--icon shrink-0" aria-label={`More actions for ${c.name}`} aria-expanded={openCurriculumMenuId === c.id}><MoreHorizontal className="h-5 w-5" /></button>
                       </div>
                       {openCurriculumMenuId === c.id && (
-                        <div className="absolute right-3 top-12 z-20 min-w-44 rounded-xl border border-border bg-card p-1.5 shadow-xl">
+                        <div className="absolute bottom-12 right-3 z-20 min-w-44 rounded-xl border border-border bg-card p-1.5 opacity-100 shadow-xl backdrop-blur-none">
                           <button type="button" onClick={() => { setEditingCurriculumName(c.name); setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Rename</button>
-                          {c.status === 'active' && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'complete', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Mark as Complete</button>}
-                          {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'switch', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Switch to this Curriculum</button>}
+                          {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'complete', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Mark as Complete</button>}
                           {canDelete && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setCurriculumToDelete(c); }} className="action-button action-button--danger w-full justify-start px-3 py-2 text-left text-xs">Delete</button>}
                         </div>
                       )}
