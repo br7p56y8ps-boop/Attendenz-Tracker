@@ -2151,9 +2151,9 @@ export default function Manage() {
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-hidden bg-card">
+              <div className="relative z-0 min-h-0 flex-1 overflow-x-hidden overflow-y-hidden bg-card">
                 <div className="flex h-full min-h-0 flex-col rounded-xl bg-black/5 dark:bg-black border border-dashed border-border/80 px-4 py-3">
-                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ overscrollBehaviorY: 'contain' }}>
+                  <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain" style={{ overscrollBehaviorY: 'contain' }}>
               {groupedAcademicSlots.length === 0 ? (
                 <div className="flex w-full min-h-full flex-1 items-center justify-center text-center">
                   <p className="text-sm font-semibold text-muted-foreground">
