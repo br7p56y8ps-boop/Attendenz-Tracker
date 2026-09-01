@@ -26,52 +26,9 @@ const shortenSubject = (name: string) => ({
   'Departmental Integrated Teaching': 'Dept. Integrated',
 } as Record<string, string>)[name] || name;
 
-const SeverityRing = ({ sev }: { sev: 'must' | 'can' | 'safe' }) => {
-  const hex = sev === 'must' ? '#ef4444' : sev === 'can' ? '#f59e0b' : '#10b981';
-  const lines = sev === 'must' ? ['Must', 'Attend'] : sev === 'can' ? ['Can', 'Bunk'] : ['Safe', 'Bunk'];
-  return (
-    <div className="relative w-14 h-14 shrink-0">
-      <svg width="56" height="56" viewBox="0 0 56 56">
-        <circle cx="28" cy="28" r="24" fill="none" stroke={hex} strokeOpacity="0.25" strokeWidth="4" />
-        <circle cx="28" cy="28" r="24" fill="none" stroke={hex} strokeWidth="4" strokeLinecap="round" />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
-        <span className="text-[9px] font-extrabold" style={{ color: hex }}>{lines[0]}</span>
-        <span className="text-[9px] font-extrabold" style={{ color: hex }}>{lines[1]}</span>
-      </div>
-    </div>
-  );
-};
-
-const PercentageRing = ({ percentage, achieved }: { percentage: number; achieved: boolean }) => {
-  const hex = achieved ? '#10b981' : '#ef4444';
-  const circumference = 2 * Math.PI * 24;
-  const offset = circumference - (Math.min(100, Math.max(0, percentage)) / 100) * circumference;
-  return (
-    <div className="relative w-14 h-14 shrink-0">
-      <svg width="56" height="56" viewBox="0 0 56 56" className="transform -rotate-90">
-        <circle cx="28" cy="28" r="24" fill="none" stroke={hex} strokeOpacity="0.25" strokeWidth="4" />
-        <circle
-          cx="28"
-          cy="28"
-          r="24"
-          fill="none"
-          stroke={hex}
-          strokeWidth="4"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          className="transition-all duration-500 ease-out"
-        />
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-xs font-extrabold" style={{ color: hex }}>
-          {percentage.toFixed(0)}%
-        </span>
-      </div>
-    </div>
-  );
-};
+const ThreeDContainer = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn('flex rounded-xl border border-border/70 bg-background/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]', className)}>{children}</div>
+);
 
 const TypedLine = ({ selection, conducted, planned, animate, onStatusTap }: {
   selection: string; conducted: number; planned: number | undefined; animate: boolean; onStatusTap: () => void;
@@ -324,7 +281,8 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const selColor = (s: string) => s === 'attended' ? 'text-emerald-500' : s === 'missed' ? 'text-rose-500' : 'text-amber-500';
   const selBg = (s: string) => s === 'attended' ? 'bg-emerald-500/25 border-emerald-500/60' : s === 'missed' ? 'bg-rose-500/25 border-rose-500/60' : 'bg-amber-500/25 border-amber-500/60';
   const selWord = (s: string) => s === 'attended' ? 'Attended' : s === 'missed' ? 'Bunked' : 'Holiday';
-  const displaySubject = isWard ? (subtitle || subject) : (subject.length > 20 ? shortenSubject(subject) : subject);
+  const subjectName = isWard ? (subtitle || subject) : subject;
+  const displaySubject = subjectName.length > 20 ? shortenSubject(subjectName) : subjectName;
   const tagEl = tag ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">{tag}</span> : null;
   const subjectTagFits = !isWard && !!tag && displaySubject.length + tag.length <= 24;
   const pastSubjectTagEl = subjectTagFits ? tagEl : null;
@@ -374,10 +332,10 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
               </div>
             </div>
             <div className="flex w-24 shrink-0 items-center justify-center">
-              <div className="flex h-14 w-24 flex-col items-center justify-center gap-0.5 rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
-                <span className={cn('max-w-full whitespace-nowrap text-center font-bold uppercase tracking-wide', pastIsMarked ? 'rounded-full border px-1.5 py-0.5 text-[9px]' : 'text-[10px]', pastIsMarked ? pastStatusClass : 'text-muted-foreground')}>{pastStatus}</span>
+              <ThreeDContainer className="h-14 w-24 flex-col items-center justify-center gap-0.5 px-1">
+                <span className={cn('max-w-full text-center font-bold uppercase tracking-wide', pastIsMarked ? 'whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[9px]' : 'whitespace-normal break-words text-[9px] leading-tight', pastIsMarked ? pastStatusClass : 'text-muted-foreground')}>{pastStatus}</span>
                 {pastIsMarked && <span className="whitespace-nowrap text-[10px] font-extrabold text-foreground">(Class - <span className={selColor(currentSelection)}>{total}</span>/{totalPlannedClasses ?? total})</span>}
-              </div>
+              </ThreeDContainer>
             </div>
           </div>
         ) : (
@@ -407,12 +365,12 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
             </div>
             <div className="shrink-0 self-center">
               {effectiveMode === 'future' && !isFinished ? (
-                isTomorrow ? <SeverityRing sev={futureMsg.sev} /> : <div className="w-14 h-14" aria-hidden="true" />
+                isTomorrow ? <ThreeDContainer className="h-14 w-24 items-center justify-center px-1 text-center"><span className={cn('text-[10px] font-extrabold uppercase', futureMsg.sev === 'must' ? 'text-rose-500' : futureMsg.sev === 'can' ? 'text-amber-500' : 'text-emerald-500')}>{futureMsg.sev === 'must' ? 'Must Attend' : futureMsg.sev === 'can' ? 'Can Bunk' : 'Safe Bunk'}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
               ) : effectiveMode === 'future' && isFinished ? (
-                isTomorrow ? <PercentageRing percentage={percentage} achieved={finishedTargetMet} /> : <div className="w-14 h-14" aria-hidden="true" />
-              ) : (
-                <div className={cn('text-lg font-bold min-w-max', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(0)}%`}</div>
-              )}
+                isTomorrow ? <ThreeDContainer className="h-14 w-24 items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(0)}%`}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
+              ) : effectiveMode === 'today' && (currentSelection || isFinished) ? (
+                <ThreeDContainer className="h-14 w-24 items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(0)}%`}</span></ThreeDContainer>
+              ) : null}
             </div>
           </div>
         )}
