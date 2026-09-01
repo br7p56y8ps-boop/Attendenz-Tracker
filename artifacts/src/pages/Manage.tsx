@@ -2136,19 +2136,21 @@ export default function Manage() {
             {manageDaySelector}
           </div>
         )}
+        {section === 'academic' && (
+          <div className="shrink-0 flex items-center justify-between px-3 pt-1 text-primary">
+            <h3 className="text-sm font-extrabold uppercase tracking-wide">{DAY_ABBRS[selDay]}&apos;s Academic Schedule</h3>
+            <span className="text-xs font-semibold text-muted-foreground">{academicSlotsForDay.length} Slots</span>
+          </div>
+        )}
+        {section === 'clinical' && (
+          <h3 className="shrink-0 px-3 pt-1 text-sm font-extrabold uppercase tracking-wide text-primary">Clinical Rotation Schedule</h3>
+        )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card border border-dashed border-border/80 rounded-2xl p-3 shadow-sm space-y-2.5 relative flex flex-col overflow-hidden',
+            'manage-window-surface z-[3] isolate -mx-1 mt-0 min-h-0 flex-1 bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden',
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="shrink-0 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-card">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-extrabold uppercase tracking-wide text-primary">{DAY_ABBRS[selDay]}'s Academic Schedule</h3>
-                  <span className="text-xs text-muted-foreground font-semibold">{academicSlotsForDay.length} Slots</span>
-                </div>
-              </div>
-
               <div className="relative z-0 min-h-0 flex-1 overflow-hidden bg-card">
                 <div className="flex h-full min-h-0 flex-col rounded-xl bg-black/5 dark:bg-black border border-dashed border-border/80 px-4 py-3">
                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ overscrollBehaviorY: 'contain' }}>
@@ -2173,7 +2175,7 @@ export default function Manage() {
                 <div className="space-y-1.5">
                 {groupedAcademicSlots.map((group) => (
                   <React.Fragment key={group.time}>
-                    <span className="mb-1.5 flex min-h-7 w-full items-center justify-center border-y border-border/60 bg-card px-2 py-1 text-center text-xs font-bold text-primary">
+                    <span className="-mx-4 mb-1.5 flex min-h-7 w-[calc(100%+2rem)] items-center justify-center border-y border-border/60 bg-card px-2 py-1 text-center text-xs font-bold text-primary">
                       {group.time}
                     </span>
                     <div className="space-y-2">
@@ -2227,7 +2229,7 @@ export default function Manage() {
                   </div>
                 </div>
               </div>
-              <div className="shrink-0 -mx-3 -mb-3 bg-card px-3 pb-1 pt-0.5">
+              <div className="shrink-0 bg-card px-3 py-1">
                 <button
                   type="button"
                   onClick={openAddSlot}

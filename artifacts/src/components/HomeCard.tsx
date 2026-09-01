@@ -161,11 +161,23 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     return attendanceKey ? getHomeSelection(activeDateStr, attendanceKey, sessionId, isWard) : undefined;
   };
   const currentSelection = effectiveMode === 'past' ? getPastAttendance() : homeSelections[selectionKey];
-  const percentage = total === 0 ? 100 : (attended / total) * 100;
+  const historicalCounts = effectiveMode === 'past' && attendanceKey
+    ? Object.entries(homeSelections).reduce((counts, [key, selection]) => {
+        const keyDate = key.slice(0, 10);
+        const keySubject = key.slice(11);
+        const sameSubject = keySubject === attendanceKey || keySubject.startsWith(`${attendanceKey}-`) || keySubject.startsWith(`${attendanceKey}_`);
+        if (keyDate <= activeDateStr && sameSubject) {
+          if (selection === 'attended') counts.attended += 1;
+          if (selection === 'missed') counts.missed += 1;
+        }
+        return counts;
+      }, { attended: 0, missed: 0 })
+    : null;
+  const displayAttended = historicalCounts?.attended ?? attended;
+  const displayTotal = historicalCounts ? historicalCounts.attended + historicalCounts.missed : total;
+  const percentage = displayTotal === 0 ? 100 : (displayAttended / displayTotal) * 100;
 
   const todayStr = getCurrentDateStr();
-  const daysFromToday = Math.round((new Date(activeDateStr + 'T12:00:00').getTime() - new Date(todayStr + 'T12:00:00').getTime()) / 86400000);
-  const withinWeek = daysFromToday >= 0 && daysFromToday <= 7;
 
   const isScheduledOn = (d: Date): boolean => {
     const ds = toStr(d); const abbr = DAY_ABBRS[d.getDay()]; const dow = d.getDay();
@@ -221,6 +233,12 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
     }
     if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this Class</span> };
     return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this <span className="whitespace-nowrap">(+{k - 1}) {cls(k - 1)}</span></span> };
+  })();
+  const futureTag = (() => {
+    if (isFinished) return { text: 'No more scheduled Planned Class', color: 'text-muted-foreground' };
+    if (futureMsg.sev === 'must') return { text: needToAttend === 1 ? 'Tomorrow’s Class Only' : `Attend = ${needToAttend} ${cls(needToAttend)}`, color: 'text-rose-500' };
+    if (futureMsg.sev === 'can') return { text: canMissCount === 1 ? 'Tomorrow’s Class Only' : `Bunkable Class = ${canMissCount} ${cls(canMissCount)}`, color: 'text-amber-500' };
+    return { text: canMissCount === 1 ? 'Tomorrow’s Class Only' : `Safely Bunkable = ${canMissCount} ${cls(canMissCount)}`, color: 'text-emerald-500' };
   })();
 
   const getPercentageColor = (pct: number) => {
@@ -379,11 +397,15 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
                   {isFinished ? <span className={cn('font-bold text-[11px]', finishedTargetMet ? 'text-emerald-500' : 'text-rose-500')}>{getFinishedMessage()}</span> : renderTodayAdvisory()}
                 </div>
               )}
-              {effectiveMode === 'future' && !isFinished && withinWeek && <p className="text-[11px] leading-tight mt-1">{futureMsg.jsx}</p>}
+              {effectiveMode === 'future' && !isFinished && (
+                <div className="mt-1 flex justify-end">
+                  <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-muted/30 border-border/50', futureTag.color)}>{futureTag.text}</span>
+                </div>
+              )}
             </div>
             <div className="shrink-0 self-center">
               {effectiveMode === 'future' && !isFinished ? (
-                withinWeek ? <SeverityRing sev={futureMsg.sev} /> : null
+                <SeverityRing sev={futureMsg.sev} />
               ) : effectiveMode === 'future' && isFinished ? (
                 <PercentageRing percentage={percentage} achieved={finishedTargetMet} />
               ) : (
@@ -405,13 +427,9 @@ export const HomeCard = ({ subject, time, isWard = false, title, subtitle, tag, 
         )}
 
         {/* ── BOTTOM (future) ── */}
-        {effectiveMode === 'future' && (isFinished || !withinWeek) && (
+        {effectiveMode === 'future' && isFinished && (
           <div className="mt-3">
-            {isFinished ? (
-              <p className="text-[11px] font-semibold text-muted-foreground text-center">There will be No More Planned Classes!!</p>
-            ) : (
-              <p className="text-[11px] font-semibold text-muted-foreground text-center">Yet to be Conducted</p>
-            )}
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-muted/30 text-muted-foreground border-border/50">{futureTag.text}</span>
           </div>
         )}
       </div>
