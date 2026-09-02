@@ -9,7 +9,7 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
 import { activateCurriculum, completeCurriculum, createCurriculumChecked, deleteCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculumChecked, setCurriculumStatusChecked, CurriculumRecord } from '@/lib/curriculumStore';
-import { idbRemoveMany, idbGetAllChecked, idbCommit, storageClearChecked, storageSetItem, storageSetItemChecked, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
+import { idbGetAllChecked, storageClearChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
@@ -802,17 +802,14 @@ export default function Settings() {
       ] as [string, string]);
       const current = await idbGetAllChecked();
       const keysToRemove = Object.keys(filterStoredData(current)).filter(key => key !== SNAPSHOTS_KEY && !(key in transferImportData));
-      await idbCommit(entries, keysToRemove);
-      entries.forEach(([key, stringVal]) => localStorage.setItem(key, stringVal));
-      keysToRemove.forEach(key => localStorage.removeItem(key));
+      await storageCommitChecked(entries, keysToRemove);
 
       const migrationFlags = [
         'att_mode_separation_done_v1',
         'att_attendance_id_migration_v2_done_preloaded',
         'att_attendance_id_migration_v2_done_custom',
       ];
-      await idbRemoveMany(migrationFlags);
-      migrationFlags.forEach(flag => localStorage.removeItem(flag));
+      await Promise.all(migrationFlags.map(flag => storageRemoveItemChecked(flag)));
 
       notifySuccess('Data transferred successfully! Reloading...');
       setLocation('/');
@@ -873,6 +870,8 @@ export default function Settings() {
     setTimeout(() => setSnapshotMsg(''), 4000);
   };
   const handleDeleteAllData = async () => {
+    if (operationBusy) return;
+    setBusy('Deleting app data…');
     try {
       const remoteRemoved = await deleteRemoteDevice();
       if (!remoteRemoved) throw new Error(navigator.onLine ? 'Could not remove this device from the reminder service. Try again before deleting app data.' : 'Connect to the internet before deleting app data so remote reminders can be removed too.');
@@ -880,12 +879,14 @@ export default function Settings() {
       if (!unsubscribed) throw new Error('Could not unregister browser notifications. Try again before deleting app data.');
       await storageClearChecked();
       await storageSetItemChecked('att_idb_migrated_v1', 'true');
-      try { localStorage.clear(); } catch {}
-      localStorage.setItem('att_idb_migrated_v1', 'true');
       setShowDeleteDataDialog(false);
-      window.location.reload();
+      triggerConfirmationFeedback('danger');
+      notifySuccess('All app data deleted. Returning to Welcome and Setup…');
+      window.setTimeout(() => window.location.reload(), 700);
     } catch (error) {
       import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not delete all app data. Nothing was cleared.'));
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -1787,15 +1788,14 @@ export default function Settings() {
                           <span className="block truncate text-base font-extrabold text-foreground">{c.name}</span>
                           <span className="block text-[10px] font-semibold text-muted-foreground">{c.status === 'active' ? (c.id === activeCurriculumId ? 'In Use' : 'Available') : 'Archived'} · {c.kind === 'preset' ? 'Preset' : 'New Curriculum'}</span>
                         </div>
-                        <button type="button" onClick={() => setOpenCurriculumMenuId(openCurriculumMenuId === c.id ? null : c.id)} className="action-button action-button--icon shrink-0" aria-label={`More actions for ${c.name}`} aria-expanded={openCurriculumMenuId === c.id}><MoreHorizontal className="h-5 w-5" /></button>
+                        {c.status === 'archived' && <button type="button" onClick={() => setOpenCurriculumMenuId(openCurriculumMenuId === c.id ? null : c.id)} className="action-button action-button--icon shrink-0" aria-label={`More actions for ${c.name}`} aria-expanded={openCurriculumMenuId === c.id}><MoreHorizontal className="h-5 w-5" /></button>}
                       </div>
                       {openCurriculumMenuId === c.id && (
                         <div className="fixed inset-0 z-[70] bg-black/55 backdrop-blur-sm" onClick={() => setOpenCurriculumMenuId(null)}>
                           <div className="absolute bottom-0 left-0 right-0 mx-auto w-full max-w-md rounded-t-3xl border border-border/80 bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
                             <div className="mb-3 flex items-center justify-between"><p className="text-sm font-bold text-foreground">{c.name}</p><button type="button" onClick={() => setOpenCurriculumMenuId(null)} className="text-xl leading-none text-muted-foreground" aria-label="Close menu">×</button></div>
-                            <button type="button" onClick={() => { setEditingCurriculumName(c.name); setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Rename</button>
-                            {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'complete', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs">Mark as Complete</button>}
-                            {canDelete && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setCurriculumToDelete(c); }} className="action-button action-button--danger w-full justify-start px-3 py-2 text-left text-xs">Delete</button>}
+                            <button type="button" onClick={() => { setEditingCurriculumName(c.name); setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs"><span><span className="block">Rename</span><span className="block text-[10px] font-normal text-muted-foreground">Change the display name of this archived curriculum.</span></span></button>
+                            {canDelete && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setCurriculumToDelete(c); }} className="action-button action-button--danger w-full justify-start px-3 py-2 text-left text-xs"><span><span className="block">Delete</span><span className="block text-[10px] font-normal text-muted-foreground">Permanently remove this archived curriculum.</span></span></button>}
                           </div>
                         </div>
                       )}

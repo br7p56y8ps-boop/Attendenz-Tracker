@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey, type SelectionType } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, getCurrentDateStr, getSubjectColor, pctColor, getAttendanceStatus } from '@/lib/utils';
@@ -71,6 +71,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const { subjectMode, customSubjects, customWards, userAddedSubjects, presetTimetable, getCurrentPresetWard, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned, getSubjectIdByName } = useCustomData();
   const activeDateStr = dateStr || getCurrentDateStr();
   const cardRef = useRef<HTMLDivElement>(null);
+  const ecgTimeoutRef = useRef<number | null>(null);
 
   const [pendingSelection, setPendingSelection] = useState<'off' | 'missed' | 'attended' | null>(null);
   const [ecgPhase, setEcgPhase] = useState<'off' | 'missed' | 'attended' | null>(null);
@@ -83,6 +84,9 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     setEcgPhase(null);
     setUndoPending(false);
   }, [activeDateStr]);
+  useEffect(() => () => {
+    if (ecgTimeoutRef.current !== null) window.clearTimeout(ecgTimeoutRef.current);
+  }, []);
 
   const resolvedId = getSubjectIdByName(subject, isWard ? 'clinical' : 'academic');
   const attendanceKey: string | null = isSGT && sgtId
@@ -133,7 +137,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const daysFromToday = Math.round((new Date(activeDateStr + 'T12:00:00').getTime() - new Date(todayStr + 'T12:00:00').getTime()) / 86400000);
   const isTomorrow = daysFromToday === 1;
 
-  const isScheduledOn = (d: Date): boolean => {
+  const isScheduledOn = useCallback((d: Date): boolean => {
     const ds = toStr(d); const abbr = DAY_ABBRS[d.getDay()]; const dow = d.getDay();
     if (isWard) {
       if (subjectMode === 'custom') {
@@ -160,15 +164,15 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     if ((cs.schedules || []).some((x: any) => x.day === abbr)) return true;
     if (cs.days && cs.days.split(',').map((t: string) => t.trim()).includes(abbr)) return true;
     return false;
-  };
-  const k = (() => {
+  }, [isWard, subjectMode, customWards, getCurrentPresetWard, isSGT, sgtId, userAddedSubjects, customSubjects, presetTimetable, subject]);
+  const k = useMemo(() => {
     if (effectiveMode !== 'future') return 1;
     let count = 0;
     for (let d = addDays(new Date(todayStr + 'T12:00:00'), 1); d <= new Date(activeDateStr + 'T12:00:00'); d = addDays(d, 1)) {
       if (isScheduledOn(d)) count++;
     }
     return Math.max(1, count);
-  })();
+  }, [effectiveMode, todayStr, activeDateStr, isScheduledOn]);
 
   const canMissCount = Math.max(0, Math.floor((attended * 100) / preferredPercentage - total));
   const needToAttend = Math.max(1, Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage)));
@@ -246,7 +250,8 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
       setUndoPending(false);
       updateHomeSelection(selectionKey, attendanceKey, sel, isWard);
       triggerConfirmationFeedback(sel === 'off' ? 'info' : sel === 'missed' ? 'danger' : 'success');
-      setTimeout(() => setEcgPhase(null), 1500);
+      if (ecgTimeoutRef.current !== null) window.clearTimeout(ecgTimeoutRef.current);
+      ecgTimeoutRef.current = window.setTimeout(() => { setEcgPhase(null); ecgTimeoutRef.current = null; }, 1500);
     } else setPendingSelection(sel);
   };
   const handleUndoTap = () => {
@@ -324,8 +329,8 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
                 <span className="shrink-0 whitespace-nowrap">{time}</span>
               </div>
             </div>
-            <div className="flex w-24 shrink-0 items-center justify-center">
-              <ThreeDContainer className="h-14 w-24 flex-col items-center justify-center gap-0.5 px-1">
+              <div className="flex min-w-24 max-w-[11rem] shrink-0 items-center justify-center">
+              <ThreeDContainer className="min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 py-1">
                 <span className={cn('max-w-full text-center font-bold uppercase tracking-wide', pastIsMarked ? 'whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[9px]' : 'whitespace-normal break-words text-[9px] leading-tight', pastIsMarked ? pastStatusClass : 'text-muted-foreground')}>{pastStatus}</span>
                 {pastIsMarked && <span className="whitespace-nowrap text-[10px] font-extrabold text-foreground">(Class - <span className={selColor(currentSelection)}>{total}</span>/{totalPlannedClasses ?? total})</span>}
               </ThreeDContainer>
@@ -355,13 +360,15 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
             </div>
             <div className="shrink-0 self-center">
               {effectiveMode === 'future' && !isFinished ? (
-                isTomorrow ? <ThreeDContainer className="h-14 w-24 items-center justify-center px-1 text-center"><span className={cn('text-[10px] font-extrabold uppercase', futureMsg.sev === 'must' ? 'text-rose-500' : futureMsg.sev === 'can' ? 'text-amber-500' : 'text-emerald-500')}>{futureMsg.sev === 'must' ? 'Must Attend' : futureMsg.sev === 'can' ? 'Can Bunk' : 'Safe Bunk'}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
+                isTomorrow ? <ThreeDContainer className="min-h-14 min-w-24 max-w-[11rem] items-center justify-center px-1 text-center"><span className={cn('text-[10px] font-extrabold uppercase', futureMsg.sev === 'must' ? 'text-rose-500' : futureMsg.sev === 'can' ? 'text-amber-500' : 'text-emerald-500')}>{futureMsg.sev === 'must' ? 'Must Attend' : futureMsg.sev === 'can' ? 'Can Bunk' : 'Safe Bunk'}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
               ) : effectiveMode === 'future' && isFinished ? (
-                isTomorrow ? <ThreeDContainer className="h-14 w-24 items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(0)}%`}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
+                isTomorrow ? <ThreeDContainer className="min-h-14 min-w-24 max-w-[11rem] items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(0)}%`}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
               ) : effectiveMode === 'today' && currentSelection ? (
                 <ThreeDContainer className="h-14 w-24 items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(0)}%`}</span></ThreeDContainer>
               ) : effectiveMode === 'today' && isFinished ? (
-                <div className={cn('text-lg font-bold min-w-max', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(0)}%`}</div>
+                <ThreeDContainer className="min-h-14 min-w-24 max-w-[10rem] items-center justify-center px-2"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(0)}%`}</span></ThreeDContainer>
+              ) : effectiveMode === 'today' && !currentSelection && total > 0 ? (
+                <div className={cn('min-w-0 text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(0)}%`}</div>
               ) : null}
             </div>
           </div>

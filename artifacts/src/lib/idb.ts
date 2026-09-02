@@ -344,7 +344,19 @@ export function storageRemoveItemChecked(key: string): Promise<void> {
 export function storageClearChecked(): Promise<void> {
   return queueStorageWrite(async () => {
     await idbClear();
-    clearLocalStorage();
+    try {
+      localStorage.clear();
+      if (localStorage.length !== 0) throw new Error('LocalStorage could not be cleared completely.');
+    } catch (err) {
+      notifyStorageError(err, 'local-cache-clear');
+      throw err;
+    }
+    const remaining = await idbGetAllChecked();
+    if (Object.keys(remaining).length !== 0) {
+      const err = new Error('IndexedDB could not be cleared completely.');
+      notifyStorageError(err, 'clear-verify');
+      throw err;
+    }
   });
 }
 

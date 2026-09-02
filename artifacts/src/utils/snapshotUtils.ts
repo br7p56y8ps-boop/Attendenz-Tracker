@@ -1,5 +1,6 @@
-import { idbGetAllChecked, idbSetMany, idbRemove, storageCommitChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites } from '@/lib/idb';
+import { idbGetAllChecked, storageCommitChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites } from '@/lib/idb';
 import { getActiveCurriculumName } from '@/lib/curriculumStore';
+import { APP_VERSION } from '@/lib/appVersion';
 import { assertBackupSize, filterStoredData, makeBackupEnvelope, validateBackupPayload, MAX_BACKUP_BYTES } from '@/utils/dataTransferSecurity';
 
 export interface Snapshot {
@@ -11,18 +12,6 @@ export interface Snapshot {
 
 const SNAPSHOTS_KEY = 'attendenz_snapshots_v1';
 const MAX_SNAPSHOTS = 5;
-
-function mirrorToLocalStorage(entries: Array<[string, string]>): void {
-  for (const [key, value] of entries) {
-    try { localStorage.setItem(key, value); } catch {}
-  }
-}
-
-function removeFromLocalStorage(keys: string[]): void {
-  for (const key of keys) {
-    try { localStorage.removeItem(key); } catch {}
-  }
-}
 
 async function collectUserData(includeSnapshots = false): Promise<Record<string, string>> {
   const localData: Record<string, string> = {};
@@ -106,8 +95,7 @@ export async function createSnapshot(label: string = 'Auto Snapshot'): Promise<b
 
     const updated = [newSnapshot, ...snapshots].slice(0, MAX_SNAPSHOTS);
     const jsonStr = JSON.stringify(updated);
-    await idbSetMany([[SNAPSHOTS_KEY, jsonStr]]);
-    mirrorToLocalStorage([[SNAPSHOTS_KEY, jsonStr]]);
+    await storageCommitChecked([[SNAPSHOTS_KEY, jsonStr]]);
     return true;
   } catch (err) {
     // Callers can decide whether a safety-critical operation should proceed.
@@ -151,12 +139,10 @@ export async function snapshotDayComplete(isComplete: boolean): Promise<boolean>
       }
 
       const jsonStr = JSON.stringify(updated);
-      await idbSetMany([[SNAPSHOTS_KEY, jsonStr], [LAST_DAY_COMPLETE_KEY, todayStr]]);
-      mirrorToLocalStorage([[SNAPSHOTS_KEY, jsonStr], [LAST_DAY_COMPLETE_KEY, todayStr]]);
+    await storageCommitChecked([[SNAPSHOTS_KEY, jsonStr], [LAST_DAY_COMPLETE_KEY, todayStr]]);
     } else {
       // Unmarked a card - clear completion flag
-      await idbRemove(LAST_DAY_COMPLETE_KEY);
-      removeFromLocalStorage([LAST_DAY_COMPLETE_KEY]);
+      await storageRemoveItemChecked(LAST_DAY_COMPLETE_KEY);
     }
     return true;
   } catch (err) {
@@ -199,10 +185,7 @@ export async function restoreSnapshot(snapshotId: string): Promise<boolean> {
     if (!await prepareRestoreEnvironment()) return false;
 
     const entries = Object.entries(target.data);
-    const current = await idbGetAllChecked();
-    const keysToRemove = Object.keys(filterStoredData({ ...current, ...Object.fromEntries(Object.entries(localStorage).map(([k]) => [k, localStorage.getItem(k) || ''])) }))
-      .filter(key => key !== SNAPSHOTS_KEY && !(key in target.data));
-    await storageCommitChecked(entries, keysToRemove);
+    await storageCommitChecked([...entries, ['att_app_version', APP_VERSION]]);
 
     await flushStorageWrites();
     // Force startup migration after any snapshot restore, including newer snapshots.
@@ -333,10 +316,7 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
 
       await flushStorageWrites();
       const entries = Object.entries(validatedData);
-      const current = await idbGetAllChecked();
-      const keysToRemove = Object.keys(filterStoredData({ ...current }))
-        .filter(key => key !== SNAPSHOTS_KEY && !(key in validatedData));
-      await storageCommitChecked(entries, keysToRemove);
+      await storageCommitChecked([...entries, ['att_app_version', APP_VERSION]]);
 
       // Force startup migration after any uploaded backup restore.
       const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { storageSetItem, storageRemoveItem } from '@/lib/idb';
+import { storageSetItem, storageRemoveItem, storageSetItemChecked } from '@/lib/idb';
 import { snapshotBeforeEdit, snapshotDayComplete } from '@/utils/snapshotUtils';
 import { useCustomData } from '@/contexts/CustomDataContext';
 
@@ -179,29 +179,24 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
 
   const persistSubjectsForMode = (mode: 'preloaded' | 'custom', data: Record<string, AttendanceData>) => {
     const key = getStorageKeys(mode).subjectsKey;
-    localStorage.setItem(key, JSON.stringify(data));
-    storageSetItem(key, JSON.stringify(data));
+    void storageSetItemChecked(key, JSON.stringify(data));
   };
   const persistWardsForMode = (mode: 'preloaded' | 'custom', data: Record<string, AttendanceData>) => {
     const key = getStorageKeys(mode).wardsKey;
-    localStorage.setItem(key, JSON.stringify(data));
-    storageSetItem(key, JSON.stringify(data));
+    void storageSetItemChecked(key, JSON.stringify(data));
   };
   const persistHomeSelectionsForMode = (mode: 'preloaded' | 'custom', data: Record<string, SelectionType>) => {
     const key = getStorageKeys(mode).homeSelectionsKey;
-    localStorage.setItem(key, JSON.stringify(data));
-    storageSetItem(key, JSON.stringify(data));
+    void storageSetItemChecked(key, JSON.stringify(data));
   };
   const persistFinishedMapForMode = (mode: 'preloaded' | 'custom', data: Record<string, boolean>) => {
     const key = getStorageKeys(mode).finishedMapKey;
-    localStorage.setItem(key, JSON.stringify(data));
-    storageSetItem(key, JSON.stringify(data));
+    void storageSetItemChecked(key, JSON.stringify(data));
   };
 
   const savePreferredPercentage = (p: number) => {
     setPreferredPercentage(p);
-    localStorage.setItem(PREFERRED_PERCENTAGE_KEY, JSON.stringify(p));
-    storageSetItem(PREFERRED_PERCENTAGE_KEY, JSON.stringify(p));
+    void storageSetItemChecked(PREFERRED_PERCENTAGE_KEY, JSON.stringify(p));
   };
 
   const updateSubject = (subjectKey: string, attended: number, missed: number) => {

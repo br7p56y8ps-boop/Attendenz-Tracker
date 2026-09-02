@@ -998,6 +998,8 @@ export default function Manage() {
       if (!sgtStartDate || !sgtEndDate) { setFormError('Pick placement start and end dates.'); return; }
       if (sgtEndDate < sgtStartDate) { setFormError('End date must be after start date.'); return; }
       const rp = rowProblem(sgtRows); if (rp) { setFormError(rp); return; }
+      const duplicateSgtDay = sgtRows.find((row, index) => sgtRows.findIndex(other => other.day === row.day) !== index);
+      if (duplicateSgtDay) { setFormError(`Day ${duplicateSgtDay.day} is listed more than once. Use one schedule row per weekday.`); return; }
       const rows = buildRowsFromForm(sgtRows);
 
       const existingSGTForSubject = (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects)

@@ -132,7 +132,7 @@ export function sanitizeSnapshotsValue(value: string): string | null {
 export function validateBackupPayload(payload: unknown): Record<string, string> {
   if (!isPlainObject(payload)) throw new Error('Invalid backup file format.');
 
-  const candidate = payload.format === BACKUP_FORMAT && payload.version === BACKUP_VERSION
+  const candidate = payload.format === BACKUP_FORMAT && isPlainObject(payload.data)
     ? payload.data
     : payload;
 

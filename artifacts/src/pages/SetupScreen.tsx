@@ -7,6 +7,7 @@ import { BookOpen, Pencil, ShieldCheck, ArrowRight, RefreshCw, Sparkles, AlertTr
 import { getSnapshots } from '../utils/snapshotUtils';
 import { deleteRemoteDevice } from '@/lib/webPushSync';
 import { disableDirectPush } from '@/lib/webPush';
+import { idbGetAllChecked, INSTALLATION_METADATA_KEYS } from '@/lib/idb';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
 import femaleStudentProfile from '@/assets/images/female_student_profile_1784286920737.jpg';
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
@@ -25,25 +26,33 @@ export default function SetupScreen() {
   const [showConfirmStartFresh, setShowConfirmStartFresh] = useState<boolean>(false);
 
   useEffect(() => {
-    try {
+    let alive = true;
+    void (async () => {
+      try {
       const savedSubjects = localStorage.getItem('attendance_tracker_subjects');
       const savedCustomSub = localStorage.getItem('att_custom_subjects');
       const savedHistory = localStorage.getItem('att_history');
       const savedMode = localStorage.getItem('att_subject_mode') as SubjectMode | null;
       const snapshots = getSnapshots();
+      const localKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key));
+      const durableData = await idbGetAllChecked();
+      const hasDurableUserData = Object.entries(durableData).some(([key, value]) => key !== 'att_idb_migrated_v1' && !INSTALLATION_METADATA_KEYS.has(key) && Boolean(value));
+      const hasSeparatedData = localKeys.some(key => key.startsWith('attendance_tracker_') || key.startsWith('att_curriculum_bundle_') || key === 'att_curricula_v1' || key === 'att_active_curriculum_id_v1' || key === 'att_user_added_subjects');
       const hasData = Boolean(
         (savedSubjects && savedSubjects !== '{}') ||
         (savedCustomSub && savedCustomSub !== '[]') ||
         (savedHistory && savedHistory !== '{}') ||
-        snapshots.length > 0
+        snapshots.length > 0 || hasSeparatedData || hasDurableUserData
       );
-      if (hasData) {
+      if (alive && hasData) {
         setShowDataDetectedView(true);
         if (savedMode) setDetectedMode(savedMode);
       }
-    } catch (e) {
+      } catch (e) {
       // ignore
-    }
+      }
+    })();
+    return () => { alive = false; };
   }, []);
 
   /* ── Profile photo (identical logic to Account tab) ── */

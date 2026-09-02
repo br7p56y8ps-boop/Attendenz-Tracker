@@ -3,7 +3,7 @@ import { HomeCard } from '@/components/HomeCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { useAttendance } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSessionId, getCustomSubjectSessionId } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
@@ -61,8 +61,8 @@ export default function Home() {
   const today = new Date();
   const todayStr = toDateString(today);
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
-  const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, getCurrentPresetWard } = useCustomData();
-  const { homeSelections } = useAttendance();
+  const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
+  const { homeSelections, finishedMap, subjects, wards } = useAttendance();
   const [, setLocation] = useLocation();
 
   /* ── Update notice ── */
@@ -417,6 +417,34 @@ export default function Home() {
   ]);
 
   const cardMode: 'today' | 'past' | 'future' = isTodaySelected ? 'today' : isPast ? 'past' : 'future';
+  const isCompletedPlannedEntry = (entry: DayEntry): boolean => {
+    if (entry.kind !== 'card' || !entry.card) return false;
+    const c = entry.card;
+    const id = c.isSGT && c.sgtId
+      ? getSGTKey(c.sgtId)
+      : (() => {
+          const resolved = getSubjectIdByName(c.isWard ? (c.subtitle || c.subject) : c.subject, c.isWard ? 'clinical' : 'academic');
+          return resolved ? (c.isWard ? getWardAttendanceKey(resolved) : getAcademicAttendanceKey(resolved)) : null;
+        })();
+    if (!id) return false;
+    const record = c.isWard ? wards[id] : subjects[id];
+    const conducted = (record?.attended || 0) + (record?.missed || 0);
+    const planned = c.isWard
+      ? subjectMode === 'custom'
+        ? (() => { const ward = customWards.find(w => w.name.toLowerCase() === (c.subtitle || c.subject).toLowerCase()); return ward ? getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods) : 0; })()
+        : getPresetWardTotalPlanned(c.subtitle || c.subject)
+      : c.isSGT && c.sgtId
+        ? (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects).find((item: any) => item.id === c.sgtId)?.plannedClasses || 0
+        : getSubjectPlannedTotal(c.subject);
+    return !!finishedMap[id] || (planned > 0 && conducted >= planned);
+  };
+  const visibleEntries = useMemo(() => {
+    if (!isTodaySelected) return { pending: dayEntries, completed: [] as DayEntry[] };
+    const pending: DayEntry[] = [];
+    const completed: DayEntry[] = [];
+    dayEntries.forEach(entry => (isCompletedPlannedEntry(entry) ? completed : pending).push(entry));
+    return { pending, completed };
+  }, [dayEntries, isTodaySelected, finishedMap, subjects, wards, subjectMode, customWards, customSubjects, userAddedSubjects]);
 
   const dateWheel = (
     <div className="pt-1 pb-1">
@@ -581,7 +609,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="space-y-4 pt-1">
-            {dayEntries.map(entry => {
+            {visibleEntries.pending.map(entry => {
               if (entry.kind === 'holiday') {
                 return (
                   <div key={entry.id} className="bg-card rounded-2xl p-5 border border-border">
@@ -611,6 +639,18 @@ export default function Home() {
                 />
               );
             })}
+            {visibleEntries.completed.length > 0 && (
+              <section className="space-y-3 pt-2">
+                <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">Completed Planned Class</h2>
+                <div className="space-y-4 opacity-75">
+                  {visibleEntries.completed.map(entry => {
+                    if (entry.kind === 'holiday') return null;
+                    const c = entry.card!;
+                    return <HomeCard key={entry.id} subject={c.subject} time={c.time} isWard={c.isWard} title={c.title} subtitle={c.subtitle} tag={c.tag} tagColor={c.tagColor} sessionId={c.sessionId} dateStr={selectedDateStr} mode={cardMode} isSGT={c.isSGT} sgtId={c.sgtId} />;
+                  })}
+                </div>
+              </section>
+            )}
           </div>
         )}
         </div>

@@ -6,7 +6,7 @@ import {
   isCanonicalTimeRange,
   parseRangeToMinutes,
 } from '@/lib/utils';
-import { idbGetAllChecked, storageSetItem, storageRemoveItem, storageRemoveItemChecked, storageSetItemChecked } from '@/lib/idb';
+import { idbGetAllChecked, INSTALLATION_METADATA_KEYS, storageSetItem, storageRemoveItem, storageRemoveItemChecked, storageSetItemChecked } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import { APP_VERSION } from '@/lib/appVersion';
@@ -1497,6 +1497,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   const clearAllStorage = async () => {
     const durableData = await idbGetAllChecked();
+    const localKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key));
+    const discoveredUserKeys = [...Object.keys(durableData), ...localKeys].filter(key => key !== 'att_idb_migrated_v1' && !INSTALLATION_METADATA_KEYS.has(key));
     const durableCurriculumBundleKeys = Object.keys(durableData).filter(key => key.startsWith('att_curriculum_bundle_'));
     const keys = [
       CUSTOM_SUBJECTS_KEY,
@@ -1533,6 +1535,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       CURRICULUM_KEYS.CURRICULUM_MIGRATION_KEY,
       ...getCurricula().map(curriculum => `att_curriculum_bundle_${curriculum.id}`),
       ...durableCurriculumBundleKeys,
+      ...discoveredUserKeys,
     ];
     const results = await Promise.allSettled([...new Set(keys)].map(key => storageRemoveItemChecked(key)));
     if (results.some(result => result.status === 'rejected')) throw new Error('Some local data could not be deleted. Nothing was reported as complete.');
@@ -2090,10 +2093,47 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const exposedPresetTimetable = subjectMode === 'preloaded' ? presetTimetable : ({} as typeof TIMETABLE);
   const exposedPresetWardSchedule = subjectMode === 'preloaded' ? presetWardSchedule : [];
   const exposedPresetSubjectTotals = subjectMode === 'preloaded' ? presetSubjectTotals : {};
+  const contextValue = useMemo(() => ({
+    customSubjects: exposedCustomSubjects,
+    customWards: exposedCustomWards,
+    addCustomSubject, addCustomSubjects, updateCustomSubject, removeCustomSubject,
+    addCustomWard, addCustomWards, updateCustomWard, removeCustomWard,
+    getCurrentCustomWard, userAddedSubjects: exposedUserAddedSubjects,
+    addUserAddedSubject, addUserAddedSubjects, updateUserAddedSubject, removeUserAddedSubject,
+    isUserAddedName, presetTimetable: exposedPresetTimetable,
+    presetWardSchedule: exposedPresetWardSchedule, presetSubjectTotals: exposedPresetSubjectTotals,
+    addPresetWardEntry, updatePresetWardEntry, removePresetWardEntry, renamePresetWard,
+    updatePresetTimetableSlot, addSubjectToSlot, updatePresetWardSchedule, updatePresetSubjectTotal,
+    getSubjectPlannedTotal, getCurrentPresetWard, getPresetWardTotalPlanned, getCustomWardTotalPlanned,
+    countSGTPlannedDays, getParentOptions, isExistingParent, getAlliedChildCount,
+    getCustomAlliedChildren, getUserAddedAlliedChildren, isSubjectNameTaken, isWardNameTaken,
+    findSubjectTimeConflicts, findWardDateConflicts, bulkUpdateSubjectHierarchy,
+    subjectMode, setupDone, whatsNewOpen, setWhatsNewOpen: handleSetWhatsNewOpen,
+    completeSetup, startFresh, changeSubjectMode, clearRoutineData, getPresetSubjectDisplayName,
+    setPresetSubjectRename, getPresetWardDisplayName, subjectRegistry, getSubjectById, getSubjectIdByName,
+  }), [
+    exposedCustomSubjects, exposedCustomWards, exposedUserAddedSubjects, exposedPresetTimetable,
+    exposedPresetWardSchedule, exposedPresetSubjectTotals, subjectMode, setupDone, whatsNewOpen,
+    userAddedSubjects, customSubjects, customWards, presetTimetable, presetWardSchedule,
+    presetSubjectTotals, subjectRegistry,
+    addCustomSubject, addCustomSubjects, updateCustomSubject, removeCustomSubject,
+    addCustomWard, addCustomWards, updateCustomWard, removeCustomWard, getCurrentCustomWard,
+    addUserAddedSubject, addUserAddedSubjects, updateUserAddedSubject, removeUserAddedSubject,
+    isUserAddedName, addPresetWardEntry, updatePresetWardEntry, removePresetWardEntry, renamePresetWard,
+    updatePresetTimetableSlot, addSubjectToSlot, updatePresetWardSchedule, updatePresetSubjectTotal,
+    getSubjectPlannedTotal, getCurrentPresetWard, getPresetWardTotalPlanned, getCustomWardTotalPlanned,
+    countSGTPlannedDays, getParentOptions, isExistingParent, getAlliedChildCount, getCustomAlliedChildren,
+    getUserAddedAlliedChildren, isSubjectNameTaken, isWardNameTaken, findSubjectTimeConflicts,
+    findWardDateConflicts, bulkUpdateSubjectHierarchy, handleSetWhatsNewOpen, completeSetup, startFresh,
+    changeSubjectMode, clearRoutineData, getPresetSubjectDisplayName, setPresetSubjectRename,
+    getPresetWardDisplayName, getSubjectById, getSubjectIdByName,
+  ]);
 
   return (
     <CustomDataContext.Provider
-      value={{
+      value={contextValue}
+      /* The action functions are intentionally stable in behavior; state-bearing data above controls memo invalidation. */
+      /* value={{
         customSubjects: exposedCustomSubjects,
         customWards: exposedCustomWards,
         addCustomSubject,
@@ -2151,7 +2191,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         subjectRegistry,
         getSubjectById,
         getSubjectIdByName,
-      }}
+      }} */
     >
       {children}
     </CustomDataContext.Provider>

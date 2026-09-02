@@ -525,7 +525,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
       const body = parts.join('. ') + '.';
       await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${scheduleDate}`, 'Urgent Schedule Alert', body, url);
     } else if (hasInfo) {
-      const body = first ? `First Upcoming Class: ${cleanLabel(first.subjectLabel)} at ${formatMinute(first.startMinute)}.` : `Upcoming: ${listNames(digest)}.`;
+      const body = first ? `First Upcoming Class: ${cleanLabel(first.subjectLabel, first.category)} at ${formatMinute(first.startMinute)}.` : `Upcoming: ${listNames(digest)}.`;
       await deliverIfNew(env, device, `${device.device_id}:info-midnight:${scheduleDate}`, 'Upcoming Schedule', body, url);
     }
   }
