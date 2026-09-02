@@ -282,28 +282,26 @@ function ClinicalGroupCard({
   onAddRotation, onAddSGT, onEditRotation, onEditSGT, onDeleteRotation, onDeleteSGT,
   canDeleteRotation = true,
 }: any) {
-  const [expanded, setExpanded] = useState(false);
+  const rotationDates = rotation?.entry ? `${formatISODateDDMMYY(rotation.entry.start)} – ${formatISODateDDMMYY(rotation.entry.end)}` : null;
+  const sgtDates = sgt?.startDate && sgt?.endDate ? `${formatISODateDDMMYY(sgt.startDate)} – ${formatISODateDDMMYY(sgt.endDate)}` : null;
+  const datesDiffer = rotationDates && sgtDates && rotationDates !== sgtDates;
   return (
     <div className="border border-border/60 rounded-xl overflow-hidden bg-background/30">
-      <button type="button" onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between p-3 hover:bg-muted/20 transition-colors text-left">
+      <div className="p-3 border-b border-border/40">
         <div className="flex items-center gap-2">
           <span className="font-extrabold text-foreground" style={{ color: getSubjectColor(name) }}>{name}</span>
           {hasRotation && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full">Rotation</span>}
           {hasSGT && <span className="text-[10px] bg-purple-500/10 text-purple-500 px-2 py-0.5 rounded-full">SGT</span>}
         </div>
-        {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-      </button>
-      {expanded && (
-        <div className="p-3 pt-0 space-y-2">
+        <div className="mt-2 flex justify-center gap-4 text-center text-[10px] font-semibold text-muted-foreground">
+          {datesDiffer ? <><span><strong className="block text-primary">Clinical</strong>{rotationDates}</span><span><strong className="block text-purple-500">SGT</strong>{sgtDates}</span></> : <span>{rotationDates || sgtDates || 'No dates'}</span>}
+        </div>
+      </div>
+        <div className="p-3 space-y-2">
           {hasRotation ? (
             <div className="flex items-center justify-between bg-card border border-border/40 rounded-lg p-2.5">
-              <div>
-                <p className="text-xs font-bold text-foreground">Clinical Rotation</p>
-                <p className="text-[10px] text-muted-foreground">
-                  {formatISODateDDMMYY(rotation.entry.start)} – {formatISODateDDMMYY(rotation.entry.end)}
-                </p>
-              </div>
-              <div className="flex gap-1">
+              <div><p className="text-xs font-bold text-foreground">Clinical Rotation</p></div>
+              <div className="flex flex-col gap-1">
                 <button type="button" onClick={onEditRotation} className="action-button action-button--edit shrink-0">Edit</button>
                 {canDeleteRotation && (
                   <button type="button" onClick={onDeleteRotation} className="action-button action-button--danger shrink-0">Delete</button>
@@ -317,13 +315,8 @@ function ClinicalGroupCard({
           )}
           {hasSGT ? (
             <div className="flex items-center justify-between bg-card border border-border/40 rounded-lg p-2.5">
-              <div>
-                <p className="text-xs font-bold text-foreground">Small Group Teaching</p>
-                <p className="text-[10px] text-muted-foreground">
-                  {sgt.startDate && sgt.endDate ? `${formatISODateDDMMYY(sgt.startDate)} – ${formatISODateDDMMYY(sgt.endDate)}` : 'No dates'}
-                </p>
-              </div>
-              <div className="flex gap-1">
+              <div><p className="text-xs font-bold text-foreground">Small Group Teaching</p></div>
+              <div className="flex flex-col gap-1">
                 <button type="button" onClick={onEditSGT} className="action-button action-button--edit shrink-0">Edit</button>
                 <button type="button" onClick={onDeleteSGT} className="action-button action-button--danger shrink-0">Delete</button>
               </div>
@@ -334,7 +327,6 @@ function ClinicalGroupCard({
             </button>
           )}
         </div>
-      )}
     </div>
   );
 }
@@ -2154,7 +2146,7 @@ export default function Manage() {
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-x-hidden overflow-y-hidden bg-card">
+              <div className="relative z-0 min-h-0 flex-1 overflow-x-hidden overflow-y-hidden bg-transparent">
                 <div className="flex h-full min-h-0 flex-col rounded-xl bg-black/5 dark:bg-black border border-dashed border-border/80 px-4 py-3">
                   <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain" style={{ overscrollBehaviorY: 'contain' }}>
               {groupedAcademicSlots.length === 0 ? (
@@ -2232,7 +2224,7 @@ export default function Manage() {
                   </div>
                 </div>
               </div>
-              <div className="shrink-0 bg-card px-3 py-1">
+              <div className="shrink-0 bg-transparent px-3 py-1">
                 <button
                   type="button"
                   onClick={openAddSlot}
@@ -2246,7 +2238,7 @@ export default function Manage() {
 
           {section === 'clinical' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 px-0.5 pt-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 rounded-xl border border-dashed border-border/80 bg-black/5 px-4 py-3 dark:bg-black" style={{ overscrollBehaviorY: 'contain' }}>
                 {subjectMode === 'custom' && customClinicalCount === 0 ? (
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
                     <p className="text-sm font-semibold text-muted-foreground">
