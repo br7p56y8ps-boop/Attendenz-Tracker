@@ -329,8 +329,8 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
                 <span className="shrink-0 whitespace-nowrap">{time}</span>
               </div>
             </div>
-              <div className="flex min-w-24 max-w-[11rem] shrink-0 items-center justify-center">
-              <ThreeDContainer className="min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 py-1">
+              <div className="h-16 w-28 shrink-0">
+              <ThreeDContainer className="h-full w-full flex-col items-center justify-center gap-0.5 px-1 py-1">
                 <span className={cn('max-w-full text-center font-bold uppercase tracking-wide', pastIsMarked ? 'whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[9px]' : 'whitespace-normal break-words text-[9px] leading-tight', pastIsMarked ? pastStatusClass : 'text-muted-foreground')}>{pastStatus}</span>
                 {pastIsMarked && <span className="whitespace-nowrap text-[10px] font-extrabold text-foreground">(Class - <span className={selColor(currentSelection)}>{total}</span>/{totalPlannedClasses ?? total})</span>}
               </ThreeDContainer>
