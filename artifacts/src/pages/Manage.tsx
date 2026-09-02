@@ -396,7 +396,7 @@ Rules:
 - Every schedules entry must use exactly { "day": "Mon", "start": "09:00 AM", "end": "10:00 AM" }. Convert Monday/Mondays to Mon, Tuesday/Tuesdays to Tue, and so on. Never use weekday, date, from, to, startTime, endTime, or a numeric weekday field.
 - All times must be valid 12-hour strings with AM/PM. Convert 24-hour times such as 09:00 or 13:30 to 09:00 AM or 01:30 PM. Do not output a time range in start or end. A time range may be used only as the optional single "time" field instead of start/end.
 - Dates must be yyyy-mm-dd. Convert other date formats before returning JSON.
-- Return one object, not an array. Use double quotes, no comments, no trailing commas, no Markdown fence, and no explanatory text.
+- Return one object, not an array. Use only ASCII JSON punctuation and U+0022 double quotes ("). Never use typographic/curly quotes such as “ ” or ‘ ’. Include no comments, no trailing commas, no Markdown fence, and no explanatory text.
 - Preserve supplied information by normalizing it, but never invent missing schedule days, times, planned totals, rotations, or subjects.
 - For subjectMode "preloaded", do not include preset subjects in addedSubjects; include only user-added subjects and include preset sections only when they are present in the source.
 - For subjectMode "custom", include the custom academic, clinical, allied, and SGT subjects actually present in the source; omit absent sections.
@@ -1773,6 +1773,7 @@ export default function Manage() {
     let parsed: any;
     try {
       const normalized = raw.trim()
+        .replace(/[“”]/g, '"')
         .replace(/^```(?:json)?\s*/i, '')
         .replace(/\s*```$/i, '');
       try {
