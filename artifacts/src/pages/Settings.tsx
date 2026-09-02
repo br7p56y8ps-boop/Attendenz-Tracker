@@ -1,7 +1,7 @@
 import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell, MoreHorizontal } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import { assertBackupSize, filterStoredData, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
 import { useAuth } from '@/contexts/AuthContext';
@@ -264,6 +264,7 @@ export default function Settings() {
   const [newCurriculumName, setNewCurriculumName] = useState('');
   const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
   const [editingCurriculumName, setEditingCurriculumName] = useState('');
+  const [expandedCurriculumIds, setExpandedCurriculumIds] = useState<Record<string, boolean>>({});
   const [showArchiveFolder, setShowArchiveFolder] = useState(false);
   const [curriculumToDelete, setCurriculumToDelete] = useState<CurriculumRecord | null>(null);
   const [pendingCurriculumAction, setPendingCurriculumAction] = useState<{ type: 'complete' | 'switch' | 'reopen' | 'rename'; curriculum: CurriculumRecord } | null>(null);
@@ -271,9 +272,33 @@ export default function Settings() {
   const [creationRestriction, setCreationRestriction] = useState(false);
   const [showCreateCurriculumForm, setShowCreateCurriculumForm] = useState(false);
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
+  const curriculumSheetRef = useRef<HTMLDivElement>(null);
+  const [curriculumSheetMaxHeight, setCurriculumSheetMaxHeight] = useState<number | null>(null);
   const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
   const activeCurriculumCount = curricula.filter(c => c.status === 'active').length;
   const activeCurriculumReadyForNewRoutine = activeCurriculumCount < 2;
+  useLayoutEffect(() => {
+    if (!showSwitchDialog) {
+      setCurriculumSheetMaxHeight(null);
+      return undefined;
+    }
+    const sheet = curriculumSheetRef.current;
+    if (!sheet) return undefined;
+    const measure = () => {
+      const renderedHeight = sheet.scrollHeight;
+      if (renderedHeight > 0) {
+        setCurriculumSheetMaxHeight(previous => Math.max(previous ?? 0, renderedHeight));
+      }
+    };
+    const frame = window.requestAnimationFrame(measure);
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(sheet);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [showSwitchDialog, showArchiveFolder, curricula, expandedCurriculumIds, showCreateCurriculumForm]);
+
   useEffect(() => {
     if (pendingCurriculumAction?.type !== 'rename' && !showCreateCurriculumForm) return;
     const viewport = window.visualViewport;
@@ -882,6 +907,8 @@ export default function Settings() {
     setShowArchiveFolder(false);
     setShowCreateCurriculumForm(false);
     setCreationRestriction(false);
+    setExpandedCurriculumIds({});
+    setCurriculumSheetMaxHeight(null);
     setCurricula(getCurricula());
     setActiveCurriculumIdState(getActiveCurriculumId() || '');
     setShowSwitchDialog(true);
@@ -1737,7 +1764,7 @@ export default function Settings() {
       <AnimatePresence>
         {showSwitchDialog && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
-                <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} className="modal-sheet-content relative bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
+                <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} ref={curriculumSheetRef} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} style={curriculumSheetMaxHeight ? { minHeight: `${curriculumSheetMaxHeight}px`, height: 'auto' } : { height: 'auto' }} className="modal-sheet-content relative bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <div className="h-10 w-10 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="h-5 w-5 shrink-0 text-primary" /></div>
