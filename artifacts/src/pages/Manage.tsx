@@ -364,7 +364,6 @@ const AI_PROMPT = `You are helping me create a routine bundle for the Attendenz 
 
 {
   "version": 2,
-  "subjectMode": "preloaded",
   "addedSubjects": [
     {
       "name": "Cardiology",
@@ -389,20 +388,22 @@ const AI_PROMPT = `You are helping me create a routine bundle for the Attendenz 
       "eveningTime": "07:00 PM–09:00 PM",
       "vacationPeriods": [ { "start": "2026-02-05", "end": "2026-02-07" } ]
     }
-  ],
-  "presetTimetable": {},
-  "presetWardSchedule": [],
-  "presetSubjectTotals": {}
+  ]
 }
 
 Rules:
-- All times use 12-hour format with AM/PM. Use en-dash (–) between start and end, e.g. "09:00 AM–10:00 AM".
-- Dates are yyyy-mm-dd.
+- Convert any supplied image, table, weekday spelling, time notation, or schedule shape into the exact JSON schema above; do not copy source field names that are not in this schema.
+- Every schedules entry must use exactly { "day": "Mon", "start": "09:00 AM", "end": "10:00 AM" }. Convert Monday/Mondays to Mon, Tuesday/Tuesdays to Tue, and so on. Never use weekday, date, from, to, startTime, endTime, or a numeric weekday field.
+- All times must be valid 12-hour strings with AM/PM. Convert 24-hour times such as 09:00 or 13:30 to 09:00 AM or 01:30 PM. Do not output a time range in start or end. A time range may be used only as the optional single "time" field instead of start/end.
+- Dates must be yyyy-mm-dd. Convert other date formats before returning JSON.
+- Return one object, not an array. Use double quotes, no comments, no trailing commas, no Markdown fence, and no explanatory text.
+- Preserve supplied information by normalizing it, but never invent missing schedule days, times, planned totals, rotations, or subjects.
 - For subjectMode "preloaded", do not include preset subjects in addedSubjects; include only user-added subjects and include preset sections only when they are present in the source.
 - For subjectMode "custom", include the custom academic, clinical, allied, and SGT subjects actually present in the source; omit absent sections.
 - A subject of type "allied" must have parentCategory set to its parent name. An SGT subject must use parentCategory "Small Group Teaching", type "allied", and clinicalSubject equal to the ward name it belongs to.
 - Never classify an academic subject as SGT unless it belongs to Small Group Teaching. Preserve source names, days, times, dates, and planned totals exactly.
 - Vacation periods exclude those dates from planned class counts.
+- Do not include subjectMode. The app decides the target mode from the currently active routine and supplies it during import. The source image or routine does not need to identify it.
 Return only the JSON object, no markdown.`;
 
 export default function Manage() {
@@ -491,6 +492,7 @@ export default function Manage() {
   const [conflictSheet, setConflictSheet] = useState<{ messages: string[]; onConfirm: () => void } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [presetImportBlockedOpen, setPresetImportBlockedOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [pasteError, setPasteError] = useState<string | null>(null);
@@ -1681,6 +1683,16 @@ export default function Manage() {
     }
   };
 
+  const openRoutineImport = () => {
+    setMoreMenuOpen(false);
+    if (subjectMode === 'preloaded') {
+      setPresetImportBlockedOpen(true);
+      return;
+    }
+    setImportError(null);
+    setImportOpen(true);
+  };
+
   const normTimeTo12 = (t: string): string => {
     if (is12h(t)) return t.trim().replace(/\s+/g, ' ').toUpperCase();
     const minutes = parseRangeToMinutes(`${t}–${t}`)?.start;
@@ -1710,9 +1722,9 @@ export default function Manage() {
 
   const validateBundle = (obj: any): { ok: boolean; error?: string; bundle?: ImportBundle } => {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, error: 'Not a JSON object.' };
-    const b = obj as ImportBundle;
-    if (b.subjectMode !== 'preloaded' && b.subjectMode !== 'custom') return { ok: false, error: 'Missing/invalid "subjectMode".' };
-    if (b.subjectMode !== subjectMode) return { ok: false, error: `This is a ${b.subjectMode === 'custom' ? 'Custom' : 'Preset'} routine. Switch routine mode before importing it.` };
+    // The destination mode belongs to the active app routine, not to the supplied source file.
+    // Accept older exported bundles that contain subjectMode, but always override it safely.
+    const b = { ...obj, subjectMode } as ImportBundle;
     if (!Array.isArray(b.addedSubjects) && !Array.isArray(b.customWards) && !b.presetTimetable && !b.presetWardSchedule) return { ok: false, error: 'Bundle has no routine data.' };
     if (b.addedSubjects && !Array.isArray(b.addedSubjects)) return { ok: false, error: '"addedSubjects" must be an array.' };
     for (const s of b.addedSubjects || []) {
@@ -2750,7 +2762,7 @@ export default function Manage() {
               <Pencil className="w-4 h-4 text-primary shrink-0" />
               <span><span className="block text-xs font-bold text-foreground">Edit {section === 'academic' ? 'Academic' : 'Clinical'} Data</span><span className="block text-[10px] text-muted-foreground">Update planned data or remove added items</span></span>
             </button>
-            <button type="button" onClick={() => { setMoreMenuOpen(false); setImportError(null); setImportOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
+            <button type="button" onClick={openRoutineImport} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
               <Download className="w-4 h-4 text-primary shrink-0" />
               <span><span className="block text-xs font-bold text-foreground">Import</span><span className="block text-[10px] text-muted-foreground">Add or replace a routine</span></span>
             </button>
@@ -2762,6 +2774,20 @@ export default function Manage() {
               <SendToBack className="w-4 h-4 text-primary shrink-0" />
               <span><span className="block text-xs font-bold text-foreground">History</span><span className="block text-[10px] text-muted-foreground">View recent Manage actions</span></span>
             </button>
+          </div>
+        </OverlayModal>
+
+        <OverlayModal open={presetImportBlockedOpen} onClose={() => setPresetImportBlockedOpen(false)} maxW="max-w-md">
+          <div className="p-4 sm:p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 shrink-0 rounded-full bg-amber-500/15 flex items-center justify-center"><AlertTriangle className="h-5 w-5 text-amber-500" /></div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Import unavailable in this routine</h3>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">5th Year / Final Phase already includes the predefined subjects, clinical rotations, and weekly timetable. Import is disabled here to protect that preset structure.</p>
+              </div>
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">To change this routine, use Edit Slot, Add Academic, Add Clinical, or the other Manage actions. Export remains available.</p>
+            <button type="button" onClick={() => setPresetImportBlockedOpen(false)} className={cn(btnPrimary, 'w-full')}>Got it</button>
           </div>
         </OverlayModal>
 
