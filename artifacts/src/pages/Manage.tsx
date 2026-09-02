@@ -293,17 +293,17 @@ function ClinicalGroupCard({
   const sameRange = rotationRange === sgtRange;
   return (
     <div className="overflow-hidden border border-border/60 bg-background/30">
-      <div className="-mx-0 flex min-h-9 items-center justify-center border-b border-border/60 bg-card px-3 py-2 text-center">
+      <div className="flex min-h-9 items-center justify-center bg-card px-3 py-2 text-center">
         <p className="truncate text-sm font-extrabold" style={{ color: getSubjectColor(name) }}>{name}</p>
       </div>
       {hasRotation && (
         <div className="flex min-h-8 items-center justify-center border-b border-border/40 bg-card/70 px-3 py-1.5 text-center text-[10px] font-bold text-muted-foreground">
-          <span className="mr-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-primary">Clinical</span>{rotationRange}
+          {rotationRange}<span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-primary">Clinical</span>
         </div>
       )}
       {hasSGT && (!hasRotation || !sameRange) && (
         <div className="flex min-h-8 items-center justify-center border-b border-border/40 bg-card/70 px-3 py-1.5 text-center text-[10px] font-bold text-muted-foreground">
-          <span className="mr-1.5 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-purple-500">SGT</span>{sgtRange}
+          {sgtRange}<span className="ml-1.5 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-purple-500">SGT</span>
         </div>
       )}
       <div className="space-y-2 p-3">
@@ -2143,9 +2143,9 @@ export default function Manage() {
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-x-hidden overflow-y-hidden bg-transparent">
-                <div className="flex h-full min-h-0 flex-col bg-black/5 dark:bg-black border border-dashed border-border/80 px-4 py-3">
-                  <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain" style={{ overscrollBehaviorY: 'contain' }}>
+              <div className="relative z-0 min-h-0 flex-1 overflow-x-hidden overflow-y-hidden !bg-transparent">
+                <div className="flex h-full min-h-0 flex-col bg-black/5 dark:bg-black border border-dashed border-border/80 py-3">
+                  <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4" style={{ overscrollBehaviorY: 'contain' }}>
               {groupedAcademicSlots.length === 0 ? (
                 <div className="flex w-full min-h-full flex-1 items-center justify-center text-center">
                   <p className="text-sm font-semibold text-muted-foreground">
@@ -2221,7 +2221,7 @@ export default function Manage() {
                   </div>
                 </div>
               </div>
-              <div className="shrink-0 bg-transparent px-3 py-1">
+              <div className="shrink-0 !bg-transparent px-3 py-1">
                 <button
                   type="button"
                   onClick={openAddSlot}
@@ -2235,7 +2235,7 @@ export default function Manage() {
 
           {section === 'clinical' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain bg-transparent px-4 py-3 border border-dashed border-border/80" style={{ overscrollBehaviorY: 'contain' }}>
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 border border-dashed border-border/80 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
                 {subjectMode === 'custom' && customClinicalCount === 0 ? (
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
                     <p className="text-sm font-semibold text-muted-foreground">
