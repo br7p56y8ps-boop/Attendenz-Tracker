@@ -125,19 +125,12 @@ export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'back
     return () => window.clearInterval(timer);
   }, [phase, duration, complete]);
   return (
-    <div className="w-full space-y-2" role="progressbar" aria-label={`${phase === 'backing' ? 'Backup' : 'Update'} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
-      <div className="relative h-14 overflow-hidden rounded-full border border-border/80 bg-muted/35 p-1.5 shadow-[inset_0_2px_5px_rgba(0,0,0,0.25),0_1px_2px_rgba(255,255,255,0.08)]">
-        <div className="h-full rounded-full bg-background/45" />
-        <div
-          className={cn('absolute inset-y-1.5 left-1.5 rounded-full shadow-[0_5px_12px_rgba(0,0,0,0.3),inset_0_1px_1px_rgba(255,255,255,0.55)] transition-[width] duration-100 ease-linear motion-reduce:transition-none', phase === 'backing' ? 'bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-200' : 'bg-gradient-to-r from-primary via-blue-400 to-cyan-200')}
-          style={{ width: `calc(${Math.max(0, progress)}% - 0.75rem)` }}
-        />
-        <div
-          className={cn('absolute top-1/2 h-10 w-14 -translate-y-1/2 -translate-x-1/2 rounded-[1.25rem] shadow-[0_6px_14px_rgba(0,0,0,0.32),inset_0_1px_1px_rgba(255,255,255,0.6)] transition-[left] duration-100 ease-linear motion-reduce:transition-none', phase === 'backing' ? 'bg-gradient-to-br from-yellow-100 via-orange-400 to-amber-600' : 'bg-gradient-to-br from-cyan-100 via-blue-400 to-primary')}
-          style={{ left: `clamp(2rem, ${Math.max(0, progress)}%, calc(100% - 2rem))` }}
-          aria-hidden="true"
-        />
-        <div className="absolute inset-y-1.5 right-3 flex items-center text-sm font-extrabold tabular-nums text-foreground/80">{Math.round(progress)}%</div>
+    <div className={cn('jelly-slider w-full', phase === 'backing' ? 'jelly-slider--backing' : 'jelly-slider--updating')} role="progressbar" aria-label={`${phase === 'backing' ? 'Backup' : 'Update'} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+      <div className="jelly-slider__track">
+        <div className="jelly-slider__well" />
+        <div className="jelly-slider__fill" style={{ width: `calc(${Math.max(0, progress)}% - 1rem)` }} />
+        <div className="jelly-slider__handle" style={{ left: `clamp(2.25rem, ${Math.max(0, progress)}%, calc(100% - 2.25rem))` }} aria-hidden="true" />
+        <div className="jelly-slider__value">{Math.round(progress)}%</div>
       </div>
     </div>
   );

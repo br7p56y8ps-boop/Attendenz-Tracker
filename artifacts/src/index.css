@@ -244,6 +244,74 @@
 .action-button--warning:hover:not(:disabled) {
   background: color-mix(in srgb, var(--warning) 18%, transparent);
 }
+
+/* Jelly Slider: glass well, raised organic handle, and phase-specific glow. */
+.jelly-slider {
+  --jelly-light: #fef3c7;
+  --jelly-mid: #fb923c;
+  --jelly-dark: #b45309;
+  width: 100%;
+}
+.jelly-slider--updating {
+  --jelly-light: #cffafe;
+  --jelly-mid: #60a5fa;
+  --jelly-dark: #1d4ed8;
+}
+.jelly-slider__track {
+  position: relative;
+  height: 3.35rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--foreground) 22%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
+  box-shadow: inset 0 0.18rem 0.45rem rgba(0, 0, 0, 0.28), 0 0.12rem 0.25rem rgba(255, 255, 255, 0.08);
+}
+.jelly-slider__well {
+  position: absolute;
+  inset: 0.38rem;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--background) 48%, transparent);
+}
+.jelly-slider__fill {
+  position: absolute;
+  inset: 0.38rem auto 0.38rem 0.38rem;
+  min-width: 0.5rem;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--jelly-dark) 82%, transparent), var(--jelly-mid), var(--jelly-light));
+  box-shadow: 0 0.35rem 0.8rem color-mix(in srgb, var(--jelly-mid) 38%, transparent), inset 0 0.06rem 0.08rem rgba(255, 255, 255, 0.62);
+  transition: width 100ms linear;
+}
+.jelly-slider__handle {
+  position: absolute;
+  top: 50%;
+  width: 3.5rem;
+  height: 2.5rem;
+  border-radius: 42% 58% 52% 48% / 58% 42% 58% 42%;
+  transform: translate(-50%, -50%) rotate(-3deg);
+  background: linear-gradient(135deg, var(--jelly-light) 0%, var(--jelly-mid) 55%, var(--jelly-dark) 100%);
+  box-shadow: 0 0.45rem 0.9rem rgba(0, 0, 0, 0.4), inset 0 0.08rem 0.1rem rgba(255, 255, 255, 0.78), 0 0 1rem color-mix(in srgb, var(--jelly-mid) 42%, transparent);
+  transition: left 100ms linear, border-radius 180ms ease, transform 180ms ease;
+  animation: jelly-slider-breathe 1.4s ease-in-out infinite alternate;
+}
+.jelly-slider__value {
+  position: absolute;
+  inset: 0.38rem 0.85rem 0.38rem auto;
+  display: flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
+  font-size: 0.875rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+@keyframes jelly-slider-breathe {
+  from { border-radius: 42% 58% 52% 48% / 58% 42% 58% 42%; transform: translate(-50%, -50%) rotate(-3deg) scale(0.98); }
+  to { border-radius: 55% 45% 44% 56% / 44% 58% 42% 56%; transform: translate(-50%, -50%) rotate(2deg) scale(1.02); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jelly-slider__handle { animation: none; transition: none; }
+  .jelly-slider__fill { transition: none; }
+}
+
 .action-button--compact {
   min-height: 1.8rem;
   border-radius: 0.6rem;
