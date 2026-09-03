@@ -16,6 +16,7 @@ import { applyThemePreference, readThemePreference, type ThemePreference } from 
 import { getSoundEnabled, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type VibrationStyle } from '@/lib/feedback';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
+import { UpdateProgressSlider } from '@/utils/useUpdateFlow';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport, isStandalonePWA } from '@/lib/exportUtils';
 import { deleteRemoteDevice, getReminderRegistrationDiagnostics, getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, testRemoteNotification, type ReminderSyncStatus } from '@/lib/webPushSync';
@@ -234,11 +235,13 @@ export default function Settings() {
   const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0;
   const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
   const [dots, setDots] = useState(1);
+  const [progressComplete, setProgressComplete] = useState(false);
   useEffect(() => {
     if (updatePhase === 'none') return;
     const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450);
     return () => window.clearInterval(t);
   }, [updatePhase]);
+  useEffect(() => { if (updatePhase === 'none') setProgressComplete(false); }, [updatePhase]);
 
   const [busy, setBusy] = useState<string | null>(null);
   const operationBusy = busy !== null;
@@ -420,6 +423,7 @@ export default function Settings() {
       if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
         await storageSetItem('att_pending_update_restore', snaps[0].id);
       }
+      setProgressComplete(true);
     }
 
     await Promise.all([
@@ -444,6 +448,7 @@ export default function Settings() {
       const applyPwa = (window as any).attendenzApplyPwaUpdate;
       if (applyPwa) await applyPwa();
     } catch {}
+    setProgressComplete(true);
 
     const elapsed = Date.now() - start;
     if (elapsed < MIN_UPDATE_DELAY) {
@@ -1352,7 +1357,7 @@ export default function Settings() {
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5">
                           <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 min-w-0"><Volume2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-xs font-bold text-foreground">Confirmation Sound</span></div><SettingToggle checked={soundEnabled} onChange={updateSoundEnabled} label="Confirmation Sound" /></div>
                           <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">Play a short confirmation sound after you save or mark attendance. Your iPhone’s Silent mode, volume, and sound settings still control what you hear.</p>
-                          <label className="mt-3 flex items-center gap-3 text-xs font-semibold text-foreground"><span className="shrink-0 text-muted-foreground">Volume</span><input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={e => updateSoundVolume(Number(e.target.value))} disabled={!soundEnabled} className="min-w-0 flex-1 accent-blue-500 disabled:opacity-50" aria-label="Confirmation sound volume" /><output className="w-10 text-right text-xs font-bold text-blue-500">{Math.round(soundVolume * 100)}%</output></label>
+                          <label className="mt-3 flex items-center gap-3 text-xs font-semibold text-foreground"><span className="shrink-0 text-muted-foreground">Volume</span><input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={e => updateSoundVolume(Number(e.target.value))} disabled={!soundEnabled} className="compact-range flex-1" aria-label="Confirmation sound volume" /><output className="w-10 text-right text-xs font-bold text-blue-500">{Math.round(soundVolume * 100)}%</output></label>
                         </div>
                         <button type="button" onClick={testConfirmationFeedback} className="action-button action-button--update w-full">Test Feedback</button>
                       </div>
@@ -1706,13 +1711,13 @@ export default function Settings() {
             <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
               {updatePhase === 'backing' ? (
                 <>
-                  <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin" />
+                  <UpdateProgressSlider phase="backing" complete={progressComplete} />
                   <p className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
                   <p className="text-[10px] text-muted-foreground text-center">Securing your attendance records & preferences...</p>
                 </>
               ) : (
                 <>
-                  <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+                  <UpdateProgressSlider phase="updating" complete={progressComplete} />
                   <p className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
                   <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
                 </>

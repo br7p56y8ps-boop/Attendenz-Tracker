@@ -4,6 +4,7 @@ import { createSnapshot, getSnapshots } from '@/utils/snapshotUtils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { storageRemoveItem, storageSetItem } from '@/lib/idb';
 import { notifyUpdateAvailable } from '@/lib/webPush';
+import { cn } from '@/lib/utils';
 
 function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -57,7 +58,9 @@ export function useUpdateFlow() {
 
   const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
   const [dots, setDots] = useState(1);
+  const [progressComplete, setProgressComplete] = useState(false);
   useEffect(() => { if (updatePhase === 'none') return; const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450); return () => window.clearInterval(t); }, [updatePhase]);
+  useEffect(() => { if (updatePhase === 'none') setProgressComplete(false); }, [updatePhase]);
 
   const applyUpdate = async (withBackup: boolean) => {
     if (withBackup) {
@@ -71,6 +74,7 @@ export function useUpdateFlow() {
       if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
         await storageSetItem('att_pending_update_restore', snaps[0].id);
       }
+      setProgressComplete(true);
     }
 
     await Promise.all([
@@ -97,25 +101,59 @@ export function useUpdateFlow() {
       setUpdatePhase('none');
       return;
     }
+    setProgressComplete(true);
     const elapsed = Date.now() - start;
     if (elapsed < MIN) await new Promise(r => setTimeout(r, MIN - elapsed));
     window.location.href = import.meta.env.BASE_URL || '/';
   };
 
-  return { isUpdateAvailable, serverVersion, serverSummary, online, updatePhase, dots, applyUpdate };
+  return { isUpdateAvailable, serverVersion, serverSummary, online, updatePhase, dots, progressComplete, applyUpdate };
 }
 
-export const UpdateOverlay = ({ phase, dots }: { phase: 'none' | 'backing' | 'updating'; dots: number }) => (
+export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'backing' | 'updating'; complete?: boolean }) => {
+  const duration = phase === 'backing' ? 4000 : 8000;
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    setProgress(0);
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      const elapsed = Date.now() - started;
+      const timedProgress = Math.min(94, (elapsed / duration) * 94);
+      setProgress(complete ? 100 : timedProgress);
+      if (complete) window.clearInterval(timer);
+    }, 50);
+    return () => window.clearInterval(timer);
+  }, [phase, duration, complete]);
+  return (
+    <div className="w-full space-y-2" role="progressbar" aria-label={`${phase === 'backing' ? 'Backup' : 'Update'} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+      <div className="relative h-14 overflow-hidden rounded-full border border-border/80 bg-muted/35 p-1.5 shadow-[inset_0_2px_5px_rgba(0,0,0,0.25),0_1px_2px_rgba(255,255,255,0.08)]">
+        <div className="h-full rounded-full bg-background/45" />
+        <div
+          className={cn('absolute inset-y-1.5 left-1.5 rounded-full shadow-[0_5px_12px_rgba(0,0,0,0.3),inset_0_1px_1px_rgba(255,255,255,0.55)] transition-[width] duration-100 ease-linear motion-reduce:transition-none', phase === 'backing' ? 'bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-200' : 'bg-gradient-to-r from-primary via-blue-400 to-cyan-200')}
+          style={{ width: `calc(${Math.max(0, progress)}% - 0.75rem)` }}
+        />
+        <div
+          className={cn('absolute top-1/2 h-10 w-14 -translate-y-1/2 -translate-x-1/2 rounded-[1.25rem] shadow-[0_6px_14px_rgba(0,0,0,0.32),inset_0_1px_1px_rgba(255,255,255,0.6)] transition-[left] duration-100 ease-linear motion-reduce:transition-none', phase === 'backing' ? 'bg-gradient-to-br from-yellow-100 via-orange-400 to-amber-600' : 'bg-gradient-to-br from-cyan-100 via-blue-400 to-primary')}
+          style={{ left: `clamp(2rem, ${Math.max(0, progress)}%, calc(100% - 2rem))` }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-y-1.5 right-3 flex items-center text-sm font-extrabold tabular-nums text-foreground/80">{Math.round(progress)}%</div>
+      </div>
+    </div>
+  );
+};
+
+export const UpdateOverlay = ({ phase, dots, progressComplete }: { phase: 'none' | 'backing' | 'updating'; dots: number; progressComplete?: boolean }) => (
   <AnimatePresence>
     {phase !== 'none' && (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-end justify-center p-4">
         <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
           {phase === 'backing' ? (<>
-            <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin" />
+            <UpdateProgressSlider phase="backing" complete={progressComplete} />
             <p className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
             <p className="text-[10px] text-muted-foreground text-center">Securing your attendance records & preferences...</p>
           </>) : (<>
-            <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+            <UpdateProgressSlider phase="updating" complete={progressComplete} />
             <p className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
             <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
           </>)}
