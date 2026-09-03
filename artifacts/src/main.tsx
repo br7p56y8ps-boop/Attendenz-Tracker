@@ -6,16 +6,6 @@ import { APP_VERSION, PWA_CACHE_NAME, RELEASE_TYPE, UPDATE_MODE, type ReleaseTyp
 const base = import.meta.env.BASE_URL || '/';
 const BUILD_REVISION_KEY = 'att_pwa_build_revision';
 let silentBuildUpdateInFlight = false;
-function isVersionNewer(candidate: string, current: string): boolean {
-  const a = String(candidate).split('.').map(n => parseInt(n, 10) || 0);
-  const b = String(current).split('.').map(n => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    if ((a[i] || 0) > (b[i] || 0)) return true;
-    if ((a[i] || 0) < (b[i] || 0)) return false;
-  }
-  return false;
-}
-
 function clearUpdateState(): void {
   localStorage.removeItem('att_pwa_update_ready');
   localStorage.removeItem('att_pwa_latest_version');
@@ -119,7 +109,7 @@ if ('serviceWorker' in navigator) {
       if (!res.ok) return;
       const j = await res.json() as { version?: unknown; summary?: unknown; releaseType?: unknown; updateMode?: unknown };
       if (j && typeof j.version === 'string') {
-        if (isVersionNewer(j.version, APP_VERSION)) {
+        if (j.version !== APP_VERSION) {
           const releaseType: ReleaseType = j.releaseType === 'major' || j.releaseType === 'minor' ? j.releaseType : RELEASE_TYPE;
           const updateMode: UpdateMode = j.updateMode === 'automatic' || j.updateMode === 'manual' ? j.updateMode : UPDATE_MODE;
           if (updateMode === 'automatic') {
