@@ -10,7 +10,7 @@ export const LATEST_VERSION = APP_VERSION;
 // keep artifacts/public/version.json on the same version, release type, and update mode.
 // These controls are developer-only and are never presented as user settings.
 export const RELEASE_TYPE: ReleaseType = 'minor';
-export const UPDATE_MODE: UpdateMode = 'manual';
+export const UPDATE_MODE: UpdateMode = 'automatic';
 export interface WhatsNewItem {
   title: string;
   summary: string;
