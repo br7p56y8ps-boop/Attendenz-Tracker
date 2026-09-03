@@ -266,19 +266,19 @@ function ClinicalGroupCard({
   const sameRange = rotationRange === sgtRange;
   return (
     <div className="overflow-hidden rounded-xl border border-border/60 bg-background/30">
-      <div className="flex min-h-9 items-center justify-center bg-card px-3 py-2 text-center">
+      <div className="bg-card px-3 py-2 text-center">
         <p className="truncate text-sm font-extrabold" style={{ color: getSubjectColor(name) }}>{name}</p>
-      </div>
-      {hasRotation && (
-        <div className="flex min-h-8 items-center justify-center bg-card px-3 py-0.5 text-center text-[10px] font-bold text-muted-foreground">
+        {hasRotation && (
+          <div className="flex items-center justify-center text-[10px] font-bold text-muted-foreground">
           {rotationRange}<span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-primary">Clinical</span>
-        </div>
-      )}
-      {hasSGT && (!hasRotation || !sameRange) && (
-        <div className="flex min-h-8 items-center justify-center bg-card px-3 py-0.5 text-center text-[10px] font-bold text-muted-foreground">
+          </div>
+        )}
+        {hasSGT && (!hasRotation || !sameRange) && (
+          <div className="flex items-center justify-center text-[10px] font-bold text-muted-foreground">
           {sgtRange}<span className="ml-1.5 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-purple-500">SGT</span>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
       <div className="space-y-0 p-3">
         {hasRotation ? (
           <div className="flex min-h-14 items-center justify-between gap-2 rounded-t-xl border border-border/40 bg-background/50 p-2.5">
@@ -1630,7 +1630,7 @@ export default function Manage() {
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 border border-dashed border-border/80 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
                 {groupedAcademicSlots.length === 0 ? (
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
                     <p className="text-sm font-semibold text-muted-foreground">

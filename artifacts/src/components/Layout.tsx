@@ -75,7 +75,7 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
             return (
               <button type="button" key={path} onClick={() => setLocation(path)} className={cn(
                 'flex flex-col items-center justify-center flex-1 h-full space-y-1 transition-all duration-300 relative rounded-2xl active:scale-90',
-                active ? 'text-primary ring-1 ring-primary/25 filter drop-shadow-[0_0_8px_rgba(10,132,255,0.4)]' : 'text-muted-foreground/60 hover:text-foreground'
+                active ? 'text-primary filter drop-shadow-[0_0_8px_rgba(10,132,255,0.4)]' : 'text-muted-foreground/60 hover:text-foreground'
               )}>
                 {active && <motion.span layoutId="selected-tab-indicator" className="absolute inset-0 -z-10 rounded-2xl bg-primary/10" transition={{ type: 'spring', stiffness: 420, damping: 32 }} />}
                 <Icon className={cn('w-6 h-6 transition-transform duration-300', active ? 'scale-110' : 'scale-100')} strokeWidth={active ? 2.5 : 2} />

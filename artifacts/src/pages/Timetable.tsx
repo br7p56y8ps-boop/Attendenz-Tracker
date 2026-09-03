@@ -644,10 +644,10 @@ export default function Timetable() {
                   );
                 })}
               </div>
-              <div className="mt-1 flex min-h-0 items-center justify-between gap-2 sm:mt-2">
-                <button type="button" className="rotation-wheel-nav-button hidden action-button action-button--neutral action-button--compact sm:inline-flex" onPointerDown={e => e.stopPropagation()} onClick={() => moveWheel(-1)} aria-label="Previous rotation">Previous</button>
+              <div className="relative mt-1 flex min-h-0 items-center justify-center sm:mt-2">
+                <button type="button" className="rotation-wheel-nav-button hidden action-button action-button--neutral action-button--compact sm:absolute sm:left-0 sm:inline-flex" onPointerDown={e => e.stopPropagation()} onClick={() => moveWheel(-1)} aria-label="Previous rotation">Previous</button>
                 <p className="w-full flex-1 text-center text-[9px] text-muted-foreground/60 italic"><span className="sm:hidden">Swipe to browse</span><span className="hidden sm:inline">Use Previous/Next, arrow keys, or swipe to browse</span></p>
-                <button type="button" className="rotation-wheel-nav-button hidden action-button action-button--neutral action-button--compact sm:inline-flex" onPointerDown={e => e.stopPropagation()} onClick={() => moveWheel(1)} aria-label="Next rotation">Next</button>
+                <button type="button" className="rotation-wheel-nav-button hidden action-button action-button--neutral action-button--compact sm:absolute sm:right-0 sm:inline-flex" onPointerDown={e => e.stopPropagation()} onClick={() => moveWheel(1)} aria-label="Next rotation">Next</button>
               </div>
             </div>
           )}
