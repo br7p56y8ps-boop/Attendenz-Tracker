@@ -1533,6 +1533,17 @@ export default function Manage() {
     }
   }, [subjectMode, selDay, presetTimetable, customSubjects, isAcademicSubject]);
 
+  // Keep subjects sharing a scheduled time inside one time-header container.
+  const groupedAcademicSlots = useMemo(() => {
+    const groups: Record<string, Array<{ slot: any; idx: number; customSubject?: any }>> = {};
+    for (const item of academicSlotsForDay) {
+      const timeKey = canonicalizeTimeRange(item.slot.time);
+      if (!groups[timeKey]) groups[timeKey] = [];
+      groups[timeKey].push(item);
+    }
+    return Object.entries(groups).map(([time, items]) => ({ time, items }));
+  }, [academicSlotsForDay]);
+
   const selectedDayIsToday = selDay === new Date().getDay();
   const selectedDayIsHoliday = subjectMode === 'preloaded' && DAY_ABBRS[selDay] === 'Fri';
   const noMoreAcademicMessage = selectedDayIsToday
@@ -1627,7 +1638,7 @@ export default function Manage() {
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 border border-dashed border-border/80 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
-                {academicSlotsForDay.length === 0 ? (
+                {groupedAcademicSlots.length === 0 ? (
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
                     <p className="text-sm font-semibold text-muted-foreground">
                       {subjectMode === 'custom' && customAcademicCount === 0 ? (
@@ -1641,44 +1652,43 @@ export default function Manage() {
                   </div>
                 ) : (
                   <>
-                    {academicSlotsForDay.flatMap((item) => {
-                      const { slot, idx } = item;
-                      const customSubject = (item as any).customSubject;
-                      if (customSubject) {
-                        const rows = customSubject.schedules?.filter((sch: any) => sch.day === DAY_ABBRS[selDay]) || [];
-                        return rows.map((row: any, rowIndex: number) => (
-                          <div key={`${customSubject.id}-${rowIndex}`} className="rounded-xl border border-border/60 bg-background/50 p-3">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-extrabold leading-tight text-foreground" style={{ color: getSubjectColor(customSubject.name) }}>{customSubject.name}</p>
-                                <p className="mt-0.5 text-[11px] text-muted-foreground">{canonicalTimeRange(row.start, row.end)}</p>
-                              </div>
-                              <div className="flex shrink-0 items-center gap-1.5">
-                                <button type="button" onClick={() => openEditSubject('custom', customSubject.id)} className="action-button action-button--edit shrink-0">Edit</button>
-                                <button type="button" onClick={() => requestDeleteSubject('custom', customSubject.id)} className="action-button action-button--danger shrink-0">Delete</button>
-                              </div>
-                            </div>
-                            <p className="mt-2 text-[11px] text-muted-foreground">{customSubject.plannedClasses} planned{getEffectiveParentName(customSubject) ? ` · under ${getEffectiveParentName(customSubject)}` : ''}</p>
-                          </div>
-                        ));
-                      }
-                      return slot.subjects.filter((s: string) => isAcademicSubject(s)).map((subjectName: string) => {
-                        const displayName = getPresetSubjectDisplayName(subjectName);
-                        return (
-                          <div key={`${selDay}-${idx}-${subjectName}`} className="rounded-xl border border-border/60 bg-background/50 p-3">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-extrabold leading-tight text-foreground" style={{ color: getSubjectColor(displayName) }}>{displayName}</p>
-                                <p className="mt-0.5 text-[11px] text-muted-foreground">{slot.time}</p>
-                              </div>
-                              <button type="button" onClick={() => openEditSlot(selDay, idx)} className="action-button action-button--edit shrink-0">Edit</button>
-                            </div>
-                            <p className="mt-2 text-[11px] text-muted-foreground">{getSubjectPlannedTotal(resolvePresetOriginalName(subjectName))} planned</p>
-                            {userAddedSubjects.some(u => u.name === subjectName && !isSGTRecord(u)) && <div className="mt-1"><AddedBadge /></div>}
-                          </div>
-                        );
-                      });
-                    })}
+                    {groupedAcademicSlots.map((group) => (
+                      <div key={group.time} className="rounded-xl border border-border/60 bg-background/50 p-3">
+                        <div className="mb-2 flex min-h-7 items-center justify-center rounded-lg border border-border/60 bg-card px-2 py-1 text-center text-xs font-bold text-primary">
+                          {group.time}
+                        </div>
+                        <div className="space-y-2">
+                          {group.items.flatMap(({ slot, idx, customSubject }) => {
+                            if (customSubject) {
+                              const rows = customSubject.schedules?.filter((sch: any) => sch.day === DAY_ABBRS[selDay]) || [];
+                              return rows.map((_: any, rowIndex: number) => (
+                                <div key={`${customSubject.id}-${rowIndex}`} className="flex items-center gap-2.5 rounded-xl border border-border/60 bg-background/50 p-3">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-extrabold leading-tight text-foreground" style={{ color: getSubjectColor(customSubject.name) }}>{customSubject.name}</p>
+                                    <p className="mt-0.5 text-[11px] text-muted-foreground">{customSubject.plannedClasses} planned{getEffectiveParentName(customSubject) ? ` · under ${getEffectiveParentName(customSubject)}` : ''}</p>
+                                  </div>
+                                  <button type="button" onClick={() => openEditSubject('custom', customSubject.id)} className="action-button action-button--edit shrink-0">Edit</button>
+                                  <button type="button" onClick={() => requestDeleteSubject('custom', customSubject.id)} className="action-button action-button--danger shrink-0">Delete</button>
+                                </div>
+                              ));
+                            }
+                            return slot.subjects.filter((s: string) => isAcademicSubject(s)).map((subjectName: string) => {
+                              const displayName = getPresetSubjectDisplayName(subjectName);
+                              return (
+                                <div key={`${selDay}-${idx}-${subjectName}`} className="flex items-center gap-2.5 rounded-xl border border-border/60 bg-background/50 p-3">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-extrabold leading-tight text-foreground" style={{ color: getSubjectColor(displayName) }}>{displayName}</p>
+                                    <p className="mt-0.5 text-[11px] text-muted-foreground">{getSubjectPlannedTotal(resolvePresetOriginalName(subjectName))} planned</p>
+                                    {userAddedSubjects.some(u => u.name === subjectName && !isSGTRecord(u)) && <div className="mt-1"><AddedBadge /></div>}
+                                  </div>
+                                  <button type="button" onClick={() => openEditSlot(selDay, idx)} className="action-button action-button--edit shrink-0">Edit</button>
+                                </div>
+                              );
+                            });
+                          })}
+                        </div>
+                      </div>
+                    ))}
                     <div className="flex min-h-[8rem] items-center justify-center py-4 text-center">
                       <p className="text-sm font-semibold text-muted-foreground">{noMoreAcademicMessage}</p>
                     </div>

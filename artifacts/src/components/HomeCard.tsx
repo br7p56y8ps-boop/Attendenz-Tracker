@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey, type SelectionType } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { cn, getCurrentDateStr, getSubjectColor, pctColor, getAttendanceStatus } from '@/lib/utils';
+import { cn, getCurrentDateStr, getSubjectColor, pctColor, getAttendanceStatus, getPresetWardSessionId } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
@@ -124,10 +124,11 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const remainingClasses = totalPlannedClasses !== undefined ? Math.max(0, totalPlannedClasses - total) : undefined;
   const isFinished = isFinishedMarked || (totalPlannedClasses !== undefined && totalPlannedClasses > 0 && remainingClasses === 0);
 
-  // Clinical display numbering is the schedule occurrence, not attendance total.
-  // This keeps the index stable when any occurrence is marked or unmarked.
+  // Clinical display numbering follows conducted attendance: attended/missed
+  // sessions count, while sessions marked Off are excluded from the sequence.
+  // The attendance totals and status/color calculations below remain unchanged.
   const clinicalOccurrenceNumber = useMemo(() => {
-    if (!isWard) return total;
+    if (!isWard || !attendanceKey) return total;
     const isExcluded = (date: Date, vacations: Array<{ start?: string; end?: string }> = [], includePresetHolidays = false) => {
       if (date.getDay() === 5) return true;
       const dateStr = toStr(date);
@@ -157,15 +158,30 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
       new Date(activeDateStr + 'T12:00:00').getTime(),
     ));
     let count = 0;
+    const countIfConducted = (dateStr: string, session: string) => {
+      const selection = getHomeSelection(dateStr, attendanceKey, session, true);
+      if (selection === 'attended' || selection === 'missed') count += 1;
+    };
     for (let date = new Date(startStr + 'T12:00:00'); date <= end; date = addDays(date, 1)) {
       const dateStr = toStr(date);
-      const scheduled = subjectMode === 'custom'
-        ? dateStr >= startStr && dateStr <= endStr
-        : !!getCurrentPresetWard(date) && getCurrentPresetWard(date)?.ward === subject;
-      if (scheduled && !isExcluded(date, vacations, subjectMode === 'preloaded')) count += 2;
+      if (isExcluded(date, vacations, subjectMode === 'preloaded')) continue;
+      if (subjectMode === 'custom') {
+        if (dateStr >= startStr && dateStr <= endStr) {
+          countIfConducted(dateStr, 'custom-ward-am');
+          countIfConducted(dateStr, 'custom-ward-pm');
+        }
+        continue;
+      }
+      if (getCurrentPresetWard(date)?.ward !== subject) continue;
+      const slots = (presetTimetable as any)?.[date.getDay()] || [];
+      slots.forEach((slot: any, index: number) => {
+        if (slot.type === 'ward' || slot.type === 'ward_replacement') {
+          countIfConducted(dateStr, getPresetWardSessionId(index));
+        }
+      });
     }
-    return Math.max(1, count - (tag === 'Evening' ? 0 : 1));
-  }, [isWard, total, subjectMode, customWards, presetWardSchedule, subject, activeDateStr, getCurrentPresetWard, tag]);
+    return count;
+  }, [isWard, total, subjectMode, customWards, presetWardSchedule, presetTimetable, subject, activeDateStr, getCurrentPresetWard, getHomeSelection, attendanceKey]);
   const displayClassNumber = isWard ? clinicalOccurrenceNumber : total;
 
   const selectionKey = attendanceKey ? (sessionId ? `${activeDateStr}-${attendanceKey}-${sessionId}` : `${activeDateStr}-${attendanceKey}`) : '';
