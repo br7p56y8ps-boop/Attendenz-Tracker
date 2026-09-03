@@ -1,7 +1,7 @@
 export type ReleaseType = 'major' | 'minor';
 export type UpdateMode = 'manual' | 'automatic';
 
-export const APP_VERSION = "1.6.4.4";
+export const APP_VERSION = "1.6.5";
 export const PWA_CACHE_NAME = `attendenz-shell-v${APP_VERSION}`;
 export const LATEST_VERSION = APP_VERSION;
 
@@ -54,5 +54,5 @@ export const FEATURES_UPDATED = [
 ];
 export const RELEASE_NOTES = {
   version: APP_VERSION,
-  summary: "Pre-release v1.6.4.4: UI consistency, clearer controls, and notification refinements.",
+  summary: "Stable v1.6.5: update reliability, notification improvements, and UI refinements.",
 };

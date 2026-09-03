@@ -399,8 +399,8 @@
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-[class*="bg-card\\/"] { background-color: var(--card) !important; }
-[class*="bg-black\\/"] { background-color: #080808 !important; }
+[class*="bg-card/"] { background-color: var(--card) !important; }
+[class*="bg-black/"] { background-color: rgba(0, 0, 0, 0.8) !important; }
 .modal-sheet-content,
 [role="dialog"] {
   background-color: var(--card) !important;

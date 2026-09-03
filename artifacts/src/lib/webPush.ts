@@ -327,11 +327,11 @@ export function notifyManageChange(body: string): Promise<boolean> {
 }
 
 export function notifyUpdateAvailable(version: string): Promise<boolean> {
-  return showNotificationIfEnabled('updateAvailable', 'Update Available', `A new Attendenz version ${version} is ready. Open the app to review and update.`, `attendenz-update-available-${version}`);
+  return showNotificationIfEnabled('updateAvailable', 'Update Available', `A new version ${version} is ready. Open the app to review and update.`, `attendenz-update-available-${version}`);
 }
 
 export function notifyUpdateCompleted(version: string): Promise<boolean> {
-  return showNotificationIfEnabled('updateCompleted', 'Update Complete', `Attendenz is now updated to version ${version}.`, `attendenz-update-completed-${version}`);
+  return showNotificationIfEnabled('updateCompleted', 'Update Complete', `The app is now updated to version ${version}.`, `attendenz-update-completed-${version}`);
 }
 
 export function notifyCurriculumChange(body: string): Promise<boolean> {
