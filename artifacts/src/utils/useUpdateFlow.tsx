@@ -64,14 +64,13 @@ export function useUpdateFlow() {
   }, []);
 
   const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
-  const [dots, setDots] = useState(1);
   const [progressComplete, setProgressComplete] = useState(false);
-  useEffect(() => { if (updatePhase === 'none') return; const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450); return () => window.clearInterval(t); }, [updatePhase]);
   useEffect(() => { if (updatePhase === 'none') setProgressComplete(false); }, [updatePhase]);
 
   const applyUpdate = async (withBackup: boolean) => {
     if (withBackup) {
       setUpdatePhase('backing');
+      const backupStarted = Date.now();
       const snapshotCreated = await createSnapshot('Pre-Update Backup');
       if (!snapshotCreated) {
         setUpdatePhase('none');
@@ -81,7 +80,9 @@ export function useUpdateFlow() {
       if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
         await storageSetItem('att_pending_update_restore', snaps[0].id);
       }
+      await new Promise(r => setTimeout(r, Math.max(0, 5500 - (Date.now() - backupStarted))));
       setProgressComplete(true);
+      await new Promise(r => setTimeout(r, 500));
     }
 
     await Promise.all([
@@ -92,11 +93,8 @@ export function useUpdateFlow() {
       storageRemoveItem('att_has_seen_welcome_v1'),
       storageRemoveItem('att_app_version'),
     ]);
-    if (withBackup) {
-      await new Promise(r => setTimeout(r, 5500));
-    }
     setUpdatePhase('updating');
-    const MIN = 6500; const start = Date.now();
+    const MIN = 8000; const start = Date.now();
     let applied = false;
     try {
       const applyPwa = (window as any).attendenzApplyPwaUpdate as (() => Promise<boolean>) | undefined;
@@ -111,14 +109,15 @@ export function useUpdateFlow() {
     setProgressComplete(true);
     const elapsed = Date.now() - start;
     if (elapsed < MIN) await new Promise(r => setTimeout(r, MIN - elapsed));
+    await new Promise(r => setTimeout(r, 500));
     window.location.href = import.meta.env.BASE_URL || '/';
   };
 
-  return { isUpdateAvailable, serverVersion, serverSummary, online, updatePhase, dots, progressComplete, applyUpdate };
+  return { isUpdateAvailable, serverVersion, serverSummary, online, updatePhase, progressComplete, applyUpdate };
 }
 
 export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'backing' | 'updating'; complete?: boolean }) => {
-  const duration = phase === 'backing' ? 4000 : 8000;
+  const duration = phase === 'backing' ? 5500 : 8000;
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     setProgress(0);
@@ -132,29 +131,26 @@ export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'back
     return () => window.clearInterval(timer);
   }, [phase, duration, complete]);
   return (
-    <div className={cn('jelly-slider w-full', phase === 'backing' ? 'jelly-slider--backing' : 'jelly-slider--updating')} role="progressbar" aria-label={`${phase === 'backing' ? 'Backup' : 'Update'} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
-      <div className="jelly-slider__track">
-        <div className="jelly-slider__well" />
-        <div className="jelly-slider__fill" style={{ width: `calc(${Math.max(0, progress)}% - 1rem)` }} />
-        <div className="jelly-slider__handle" style={{ left: `clamp(2.25rem, ${Math.max(0, progress)}%, calc(100% - 2.25rem))` }} aria-hidden="true" />
-        <div className="jelly-slider__value">{Math.round(progress)}%</div>
+    <div className={cn('release-progress w-full', phase === 'backing' ? 'release-progress--backup' : 'release-progress--update')}>
+      <div className="release-progress__steps" role="progressbar" aria-label={`${phase === 'backing' ? 'Backup' : 'Update'} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+        <div className="release-progress__track"><div className="release-progress__fill" style={{ transform: `scaleX(${Math.max(0, progress) / 100})` }} /></div>
+        <div className="release-progress__markers" aria-hidden="true"><span /><span /><span /><span /></div>
       </div>
+      <p className="release-progress__label">{complete ? 'Complete' : phase === 'backing' ? (progress < 25 ? 'Creating Backup' : progress < 55 ? 'Taking Snapshot' : progress < 94 ? 'Validating' : 'Validating') : (progress < 33 ? 'Downloading 1/3' : progress < 66 ? 'Downloading 2/3' : 'Installing 1/3')}</p>
     </div>
   );
 };
 
-export const UpdateOverlay = ({ phase, dots, progressComplete }: { phase: 'none' | 'backing' | 'updating'; dots: number; progressComplete?: boolean }) => (
+export const UpdateOverlay = ({ phase, progressComplete }: { phase: 'none' | 'backing' | 'updating'; progressComplete?: boolean }) => (
   <AnimatePresence>
     {phase !== 'none' && (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[140] flex items-end justify-center p-4">
         <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
           {phase === 'backing' ? (<>
             <UpdateProgressSlider phase="backing" complete={progressComplete} />
-            <p className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
             <p className="text-[10px] text-muted-foreground text-center">Securing your attendance records & preferences...</p>
           </>) : (<>
             <UpdateProgressSlider phase="updating" complete={progressComplete} />
-            <p className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
             <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
           </>)}
         </motion.div>

@@ -235,13 +235,7 @@ export default function Settings() {
   }, []);
   const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0;
   const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
-  const [dots, setDots] = useState(1);
   const [progressComplete, setProgressComplete] = useState(false);
-  useEffect(() => {
-    if (updatePhase === 'none') return;
-    const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450);
-    return () => window.clearInterval(t);
-  }, [updatePhase]);
   useEffect(() => { if (updatePhase === 'none') setProgressComplete(false); }, [updatePhase]);
 
   const [busy, setBusy] = useState<string | null>(null);
@@ -1717,13 +1711,11 @@ export default function Settings() {
               {updatePhase === 'backing' ? (
                 <>
                   <UpdateProgressSlider phase="backing" complete={progressComplete} />
-                  <p id="settings-progress-title" className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
                   <p className="text-[10px] text-muted-foreground text-center">Securing your attendance records & preferences...</p>
                 </>
               ) : (
                 <>
                   <UpdateProgressSlider phase="updating" complete={progressComplete} />
-                  <p id="settings-progress-title" className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
                   <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
                 </>
               )}

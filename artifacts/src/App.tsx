@@ -29,7 +29,7 @@ const HAS_SEEN_WELCOME_KEY = 'att_has_seen_welcome_v1';
 function AuthGate() {
   const { isLoggedIn } = useAuth();
   const { setupDone } = useCustomData();
-  const { isUpdateAvailable, online, serverVersion, serverSummary, updatePhase, dots, progressComplete, applyUpdate } = useUpdateFlow();
+  const { isUpdateAvailable, online, serverVersion, serverSummary, updatePhase, progressComplete, applyUpdate } = useUpdateFlow();
   const [gateDismissed, setGateDismissed] = useState<boolean>(() => sessionStorage.getItem('att_update_gate_dismissed') === 'true');
 
   if (!isLoggedIn) return <Suspense fallback={<PageFallback />}><Login /></Suspense>;
@@ -50,7 +50,7 @@ function AuthGate() {
             onRemind={() => { sessionStorage.setItem('att_update_gate_dismissed', 'true'); setGateDismissed(true); }}
             onUpdate={(b) => applyUpdate(b)}
           />
-          <UpdateOverlay phase={updatePhase} dots={dots} progressComplete={progressComplete} />
+          <UpdateOverlay phase={updatePhase} progressComplete={progressComplete} />
         </>
       ) : (
         <Suspense fallback={<PageFallback />}>
