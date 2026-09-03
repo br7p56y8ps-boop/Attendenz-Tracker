@@ -76,7 +76,7 @@ export function WhatsNewPopup() {
       {whatsNewOpen && (
         <div
           ref={modalRef}
-          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 p-3 backdrop-blur-md sm:p-4"
+          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/80 p-3 backdrop-blur-md sm:p-4"
           onClick={handleClose}
         >
           <motion.div
@@ -89,7 +89,7 @@ export function WhatsNewPopup() {
             aria-modal="true"
             aria-labelledby="whats-new-title"
             tabIndex={-1}
-            className="modal-sheet-content flex h-auto max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-[0_24px_80px_rgba(0,0,0,0.24)] dark:bg-card/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
+            className="modal-sheet-content flex h-auto max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-[0_24px_80px_rgba(0,0,0,0.24)] dark:bg-card dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
           >
             {/* Fixed header */}
             <div className="flex shrink-0 items-center justify-between border-b border-border/60 bg-card px-4 pb-3 pt-4">
@@ -108,8 +108,8 @@ export function WhatsNewPopup() {
                   >
                     What's New
                   </h2>
-                  <span className="mt-1 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-500">
-                    Stable release v1.6.5
+                  <span className="mt-1 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wider text-emerald-500">
+                    (Pre-release version for v1.6.5)
                   </span>
                 </div>
               </div>

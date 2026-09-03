@@ -334,7 +334,7 @@ export const SubjectCard = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end justify-center p-4 overflow-hidden"
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end justify-center p-4 overflow-hidden"
               onClick={closeModal}
             >
               <motion.div
@@ -345,7 +345,7 @@ export const SubjectCard = ({
                 role="dialog"
                 aria-modal="true"
                 aria-label={`${displayName} details`}
-                className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
+                className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">

@@ -1,3 +1,4 @@
+import React from 'react';
 import { Minus, Plus } from 'lucide-react';
 
 interface CountStepperProps {
