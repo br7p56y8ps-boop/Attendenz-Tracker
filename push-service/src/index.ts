@@ -33,7 +33,7 @@ export interface A1Preferences {
   beforeClassWarnings: boolean;
   allScheduledClasses: boolean;
   unmarkedAttendanceToday: boolean;
-  updateAvailable: boolean;
+  updateAvailable?: boolean;
   leadMinutes: 15 | 30 | 60;
 }
 
@@ -52,7 +52,7 @@ export interface ReminderOccurrence {
 
 export interface A1ReminderPayload {
   version: 3;
-  appVersion: string;
+  appVersion?: string;
   deviceId: string;
   deviceToken: string;
   subscription: WebPushSubscription;
@@ -199,7 +199,7 @@ function isValidPreferences(value: unknown): value is A1Preferences {
     typeof prefs.beforeClassWarnings === 'boolean' &&
     typeof prefs.allScheduledClasses === 'boolean' &&
     typeof prefs.unmarkedAttendanceToday === 'boolean' &&
-    typeof prefs.updateAvailable === 'boolean' &&
+    (prefs.updateAvailable === undefined || typeof prefs.updateAvailable === 'boolean') &&
     (prefs.leadMinutes === 15 || prefs.leadMinutes === 30 || prefs.leadMinutes === 60)
   );
 }
@@ -209,7 +209,7 @@ function validatePayload(payload: unknown): payload is A1ReminderPayload {
   const item = payload as Partial<A1ReminderPayload>;
   return (
     item.version === 3 &&
-    typeof item.appVersion === 'string' && item.appVersion.length > 0 && item.appVersion.length <= 32 &&
+    (item.appVersion === undefined || (typeof item.appVersion === 'string' && item.appVersion.length > 0 && item.appVersion.length <= 32)) &&
     isValidId(item.deviceId, 16, 96) &&
     isValidId(item.deviceToken, 32, 160) &&
     isValidSubscription(item.subscription) &&
@@ -332,8 +332,8 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
     boolInt(payload.preferences.needAttentionSubjects),
     boolInt(payload.preferences.safeToMiss),
     boolInt(payload.preferences.unmarkedAttendanceToday),
-    payload.appVersion,
-    boolInt(payload.preferences.updateAvailable),
+    payload.appVersion || 'legacy',
+    boolInt(payload.preferences.updateAvailable === true),
     now,
     expiryIso(),
   );

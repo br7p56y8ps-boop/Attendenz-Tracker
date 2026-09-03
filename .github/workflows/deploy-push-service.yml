@@ -1,0 +1,58 @@
+name: Deploy push service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'push-service/**'
+      - 'artifacts/public/version.json'
+      - '.github/workflows/deploy-push-service.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-push-service-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: push-service/package.json
+
+      - name: Install push-service dependencies
+        working-directory: push-service
+        run: npm install --no-audit --no-fund
+
+      - name: Read release version
+        id: release
+        shell: bash
+        run: |
+          version=$(node -e "const fs=require('fs'); const v=JSON.parse(fs.readFileSync('artifacts/public/version.json','utf8')).version; if(!/^\\d+\\.\\d+\\.\\d+$/.test(v)) process.exit(1); process.stdout.write(v)")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Deploying release $version"
+
+      - name: Type-check push service
+        working-directory: push-service
+        run: npm run typecheck
+
+      - name: Apply pending D1 migrations
+        working-directory: push-service
+        run: npx wrangler d1 migrations apply attendenz-reminders --remote
+
+      - name: Deploy push Worker with release version
+        working-directory: push-service
+        run: npx wrangler deploy --var RELEASE_VERSION:${{ steps.release.outputs.version }}
