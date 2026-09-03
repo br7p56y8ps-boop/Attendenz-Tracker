@@ -64,15 +64,15 @@ export default defineConfig({
   server: {
     port,
     strictPort: true,
-    host: '0.0.0.0',
-    allowedHosts: true,
+    host: 'localhost',
+    allowedHosts: ['localhost', '127.0.0.1', '::1'],
     fs: {
       strict: true,
     },
   },
   preview: {
     port,
-    host: '0.0.0.0',
-    allowedHosts: true,
+    host: 'localhost',
+    allowedHosts: ['localhost', '127.0.0.1', '::1'],
   },
 });

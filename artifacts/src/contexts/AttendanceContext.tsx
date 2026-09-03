@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { storageSetItem, storageRemoveItem, storageSetItemChecked } from '@/lib/idb';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
+import { storageSetItem, storageRemoveItem, storageSetItemChecked, storageCommitChecked } from '@/lib/idb';
 import { snapshotBeforeEdit, snapshotDayComplete } from '@/utils/snapshotUtils';
 import { useCustomData } from '@/contexts/CustomDataContext';
 
@@ -27,14 +27,20 @@ interface AttendanceContextType {
   resetAllData: () => void;
   renameSubjectData: (oldName: string, newName: string) => void;
   renameWardData: (oldName: string, newName: string) => void;
-  removeSubjectData: (subjectName: string) => void;
-  removeWardData: (wardName: string) => void;
+  removeSubjectData: (subjectName: string, canonicalKey?: string) => void;
+  removeWardData: (wardName: string, canonicalKey?: string) => void;
   removeAttendanceByKey: (key: string) => void;
   removeAttendanceEntitiesForMode: (mode: 'preloaded' | 'custom', entities: Array<{ key: string; type: 'subject' | 'ward'; legacyKey?: string }>) => void;
   getHomeSelection: (dateStr: string, subjectKey: string, sessionId?: string, isWard?: boolean) => SelectionType | undefined;
 }
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
+
+function useStableCallback<T extends (...args: any[]) => any>(callback: T): T {
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+  return useCallback(((...args: Parameters<T>) => callbackRef.current(...args)) as T, []);
+}
 
 const LEGACY_SUBJECTS_KEY = 'attendance_tracker_subjects';
 const LEGACY_WARD_KEY = 'attendance_tracker_ward';
@@ -164,7 +170,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     loadDataForMode(subjectMode);
-    if (subjectRegistry.length > 0) migrateAttendanceToIDs(subjectMode, subjectRegistry);
+    if (subjectRegistry.length > 0) void migrateAttendanceToIDs(subjectMode, subjectRegistry);
   }, [subjectMode, subjectRegistry]);
 
   useEffect(() => {
@@ -194,39 +200,39 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     void storageSetItemChecked(key, JSON.stringify(data));
   };
 
-  const savePreferredPercentage = (p: number) => {
+  const savePreferredPercentage = useStableCallback((p: number) => {
     setPreferredPercentage(p);
     void storageSetItemChecked(PREFERRED_PERCENTAGE_KEY, JSON.stringify(p));
-  };
+  });
 
-  const updateSubject = (subjectKey: string, attended: number, missed: number) => {
+  const updateSubject = useStableCallback((subjectKey: string, attended: number, missed: number) => {
     snapshotBeforeEdit(`Edit ${subjectKey}`);
     setSubjects(prev => {
       const updated = { ...prev, [subjectKey]: { attended, missed } };
       persistSubjectsForMode(subjectMode, updated);
       return updated;
     });
-  };
+  });
 
-  const updateWard = (wardKey: string, attended: number, missed: number) => {
+  const updateWard = useStableCallback((wardKey: string, attended: number, missed: number) => {
     snapshotBeforeEdit(`Edit ${wardKey}`);
     setWards(prev => {
       const updated = { ...prev, [wardKey]: { attended, missed } };
       persistWardsForMode(subjectMode, updated);
       return updated;
     });
-  };
+  });
 
-  const toggleFinished = (key: string) => {
+  const toggleFinished = useStableCallback((key: string) => {
     snapshotBeforeEdit(`Toggle Finished ${key}`);
     setFinishedMap(prev => {
       const updated = { ...prev, [key]: !prev[key] };
       persistFinishedMapForMode(subjectMode, updated);
       return updated;
     });
-  };
+  });
 
-  const reopenFinishedIfPlanIncreased = (key: string, plannedTotal: number, isWard: boolean) => {
+  const reopenFinishedIfPlanIncreased = useStableCallback((key: string, plannedTotal: number, isWard: boolean) => {
     if (!key || !Number.isFinite(plannedTotal) || plannedTotal < 0 || !finishedMap[key]) return;
     const record = (isWard ? wards : subjects)[key];
     const conducted = (record?.attended || 0) + (record?.missed || 0);
@@ -238,74 +244,63 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       persistFinishedMapForMode(subjectMode, updated);
       return updated;
     });
-  };
+  });
 
-  const updateHomeSelection = (
+  const updateHomeSelection = useStableCallback((
     homeKey: string,
     subjectKey: string,
     selection: SelectionType,
     isWard: boolean,
     totalCardsOnScreen?: number
   ) => {
-    const previous = homeSelections[homeKey];
-    let newSelections: Record<string, SelectionType>;
-    if (previous === selection) {
-      const { [homeKey]: _removed, ...rest } = homeSelections;
-      newSelections = rest;
-    } else {
-      newSelections = { ...homeSelections, [homeKey]: selection };
-    }
+    let markedCount = 0;
+    setHomeSelections(previousSelections => {
+      const previous = previousSelections[homeKey];
+      const newSelections = previous === selection
+        ? Object.fromEntries(Object.entries(previousSelections).filter(([key]) => key !== homeKey))
+        : { ...previousSelections, [homeKey]: selection };
+      markedCount = Object.keys(newSelections).length;
+      persistHomeSelectionsForMode(subjectMode, newSelections);
 
-    setHomeSelections(newSelections);
-    persistHomeSelectionsForMode(subjectMode, newSelections);
-
-    let deltaAttended = 0;
-    let deltaMissed = 0;
-    if (previous === 'attended') deltaAttended -= 1;
-    if (previous === 'missed')   deltaMissed   -= 1;
-    if (previous !== selection) {
-      if (selection === 'attended') deltaAttended += 1;
-      if (selection === 'missed')   deltaMissed   += 1;
-    }
-
-    if (isWard) {
-      setWards(prev => {
-        const current = prev[subjectKey] || { attended: 0, missed: 0 };
-        const updated = {
-          ...prev,
-          [subjectKey]: {
+      let deltaAttended = previous === 'attended' ? -1 : 0;
+      let deltaMissed = previous === 'missed' ? -1 : 0;
+      if (previous !== selection) {
+        if (selection === 'attended') deltaAttended += 1;
+        if (selection === 'missed') deltaMissed += 1;
+      }
+      if (isWard) {
+        setWards(currentWards => {
+          const current = currentWards[subjectKey] || { attended: 0, missed: 0 };
+          const updated = { ...currentWards, [subjectKey]: {
             attended: Math.max(0, current.attended + deltaAttended),
-            missed: Math.max(0, current.missed + deltaMissed)
-          }
-        };
-        persistWardsForMode(subjectMode, updated);
-        return updated;
-      });
-    } else {
-      setSubjects(prev => {
-        const current = prev[subjectKey] || { attended: 0, missed: 0 };
-        const updated = {
-          ...prev,
-          [subjectKey]: {
+            missed: Math.max(0, current.missed + deltaMissed),
+          }};
+          persistWardsForMode(subjectMode, updated);
+          return updated;
+        });
+      } else {
+        setSubjects(currentSubjects => {
+          const current = currentSubjects[subjectKey] || { attended: 0, missed: 0 };
+          const updated = { ...currentSubjects, [subjectKey]: {
             attended: Math.max(0, current.attended + deltaAttended),
-            missed: Math.max(0, current.missed + deltaMissed)
-          }
-        };
-        persistSubjectsForMode(subjectMode, updated);
-        return updated;
-      });
-    }
+            missed: Math.max(0, current.missed + deltaMissed),
+          }};
+          persistSubjectsForMode(subjectMode, updated);
+          return updated;
+        });
+      }
+      return newSelections;
+    });
 
     const targetCardCount = totalCardsOnScreen || (Object.keys(subjects).length + Object.keys(wards).length);
-    const markedCount = Object.keys(newSelections).length;
     if (targetCardCount > 0 && markedCount >= targetCardCount) {
       snapshotDayComplete(true);
     } else {
       snapshotDayComplete(false);
     }
-  };
+  });
 
-  const resetAllData = () => {
+  const resetAllData = useStableCallback(() => {
     snapshotBeforeEdit('Reset All Data');
     const allKeys = [
       LEGACY_SUBJECTS_KEY, LEGACY_WARD_KEY, LEGACY_HOME_SELECTIONS_KEY, LEGACY_FINISHED_MAP_KEY,
@@ -320,7 +315,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     setWards({});
     setHomeSelections({});
     setFinishedMap({});
-  };
+  });
 
   // Key matching helpers (unchanged)
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -406,7 +401,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  const renameSubjectData = (oldName: string, newName: string) => {
+  const renameSubjectData = useStableCallback((oldName: string, newName: string) => {
     const o = oldName.trim();
     const n = newName.trim();
     if (!o || !n || o === n) return;
@@ -414,9 +409,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     renameStoreKey(setSubjects, (d) => persistSubjectsForMode(subjectMode, d), o, n);
     renameStoreKey(setFinishedMap, (d) => persistFinishedMapForMode(subjectMode, d), o, n);
     renameHomeSelectionsFor(o, n);
-  };
+  });
 
-  const renameWardData = (oldName: string, newName: string) => {
+  const renameWardData = useStableCallback((oldName: string, newName: string) => {
     const o = oldName.trim();
     const n = newName.trim();
     if (!o || !n || o === n) return;
@@ -426,18 +421,19 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     renameStoreKey(setWards, (d) => persistWardsForMode(subjectMode, d), oldKey, newKey);
     renameStoreKey(setFinishedMap, (d) => persistFinishedMapForMode(subjectMode, d), oldKey, newKey);
     renameHomeSelectionsFor(oldKey, newKey);
-  };
+  });
 
-  const removeSubjectData = (subjectName: string) => {
+  const removeSubjectData = useStableCallback((subjectName: string, canonicalKey?: string) => {
     const t = subjectName.trim();
     if (!t) return;
     snapshotBeforeEdit(`Delete subject data: ${t}`);
     removeStoreKey(setSubjects, (d) => persistSubjectsForMode(subjectMode, d), t);
     removeStoreKey(setFinishedMap, (d) => persistFinishedMapForMode(subjectMode, d), t);
     removeHomeSelectionsFor(t);
-  };
+    if (canonicalKey && canonicalKey !== t) removeAttendanceEntitiesForMode(subjectMode, [{ key: canonicalKey, type: 'subject', legacyKey: t }]);
+  });
 
-  const removeWardData = (wardName: string) => {
+  const removeWardData = useStableCallback((wardName: string, canonicalKey?: string) => {
     const t = wardName.trim();
     if (!t) return;
     snapshotBeforeEdit(`Delete ward data: ${t}`);
@@ -445,9 +441,10 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     removeStoreKey(setWards, (d) => persistWardsForMode(subjectMode, d), wardKey);
     removeStoreKey(setFinishedMap, (d) => persistFinishedMapForMode(subjectMode, d), wardKey);
     removeHomeSelectionsFor(wardKey);
-  };
+    if (canonicalKey && canonicalKey !== wardKey) removeAttendanceEntitiesForMode(subjectMode, [{ key: canonicalKey, type: 'ward', legacyKey: wardKey }]);
+  });
 
-  const removeAttendanceByKey = (key: string) => {
+  const removeAttendanceByKey = useStableCallback((key: string) => {
     if (!key) return;
     snapshotBeforeEdit(`Delete attendance key: ${key}`);
     if (isSGTKey(key) || !key.startsWith('ward-')) {
@@ -459,7 +456,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       removeStoreKey(setFinishedMap, (d) => persistFinishedMapForMode(subjectMode, d), key);
       removeHomeSelectionsFor(key);
     }
-  };
+  });
 
   const migrateSGTData = (mode: 'preloaded' | 'custom') => {
     try {
@@ -528,7 +525,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     } catch {}
   };
 
-  const migrateAttendanceToIDs = (mode: 'preloaded' | 'custom', registry: Array<{ id: string; name: string; domain: 'academic' | 'clinical'; kind: string }>) => {
+  const migrateAttendanceToIDs = async (mode: 'preloaded' | 'custom', registry: Array<{ id: string; name: string; domain: 'academic' | 'clinical'; kind: string }>) => {
     const flag = `${ID_MIGRATION_FLAG_PREFIX}${mode}`;
     if (localStorage.getItem(flag) === 'true') return;
     try {
@@ -611,17 +608,19 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
 
       const oldOrphans = JSON.parse(localStorage.getItem(ORPHANED_RECORDS_KEY) || '[]');
       const orphanJson = JSON.stringify([...oldOrphans, ...orphaned]);
-      persistSubjectsForMode(mode, nextSubjects);
-      persistWardsForMode(mode, nextWards);
-      persistHomeSelectionsForMode(mode, nextSelections);
-      persistFinishedMapForMode(mode, nextFinished);
-      localStorage.setItem(ORPHANED_RECORDS_KEY, orphanJson); storageSetItem(ORPHANED_RECORDS_KEY, orphanJson);
+      await storageCommitChecked([
+        [keys.subjectsKey, JSON.stringify(nextSubjects)],
+        [keys.wardsKey, JSON.stringify(nextWards)],
+        [keys.homeSelectionsKey, JSON.stringify(nextSelections)],
+        [keys.finishedMapKey, JSON.stringify(nextFinished)],
+        [ORPHANED_RECORDS_KEY, orphanJson],
+        [flag, 'true'],
+      ]);
       setSubjects(nextSubjects); setWards(nextWards); setHomeSelections(nextSelections); setFinishedMap(nextFinished);
-      localStorage.setItem(flag, 'true'); storageSetItem(flag, 'true');
     } catch {}
   };
 
-  const removeAttendanceEntitiesForMode = (mode: 'preloaded' | 'custom', entities: Array<{ key: string; type: 'subject' | 'ward'; legacyKey?: string }>) => {
+  const removeAttendanceEntitiesForMode = useStableCallback((mode: 'preloaded' | 'custom', entities: Array<{ key: string; type: 'subject' | 'ward'; legacyKey?: string }>) => {
     if (entities.length === 0) return;
     const keys = getStorageKeys(mode);
     try {
@@ -630,6 +629,10 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       const selectionData: Record<string, SelectionType> = JSON.parse(localStorage.getItem(keys.homeSelectionsKey) || '{}');
       const finishedData: Record<string, boolean> = JSON.parse(localStorage.getItem(keys.finishedMapKey) || '{}');
       const aliases = entities.flatMap(entity => [entity.key, entity.legacyKey].filter((x): x is string => Boolean(x)));
+      let subjectsChanged = false;
+      let wardsChanged = false;
+      let selectionsChanged = false;
+      let finishedChanged = false;
       const matches = (storedKey: string, alias: string) => {
         const date = storedKey.slice(0, 10);
         if (!DATE_RE.test(date)) return false;
@@ -639,20 +642,37 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       };
       for (const entity of entities) {
         const target = entity.type === 'ward' ? wardData : subjectData;
-        for (const alias of [entity.key, entity.legacyKey].filter((x): x is string => Boolean(x))) delete target[alias];
+        for (const alias of [entity.key, entity.legacyKey].filter((x): x is string => Boolean(x))) {
+          if (Object.prototype.hasOwnProperty.call(target, alias)) {
+            delete target[alias];
+            if (entity.type === 'ward') wardsChanged = true;
+            else subjectsChanged = true;
+          }
+        }
       }
-      for (const key of Object.keys(finishedData)) if (aliases.some(alias => key.toLowerCase() === alias.toLowerCase())) delete finishedData[key];
-      for (const key of Object.keys(selectionData)) if (aliases.some(alias => matches(key, alias))) delete selectionData[key];
-      const subjectJson = JSON.stringify(subjectData); const wardJson = JSON.stringify(wardData); const selectionJson = JSON.stringify(selectionData); const finishedJson = JSON.stringify(finishedData);
-      localStorage.setItem(keys.subjectsKey, subjectJson); storageSetItem(keys.subjectsKey, subjectJson);
-      localStorage.setItem(keys.wardsKey, wardJson); storageSetItem(keys.wardsKey, wardJson);
-      localStorage.setItem(keys.homeSelectionsKey, selectionJson); storageSetItem(keys.homeSelectionsKey, selectionJson);
-      localStorage.setItem(keys.finishedMapKey, finishedJson); storageSetItem(keys.finishedMapKey, finishedJson);
+      for (const key of Object.keys(finishedData)) {
+        if (aliases.some(alias => key.toLowerCase() === alias.toLowerCase())) {
+          delete finishedData[key];
+          finishedChanged = true;
+        }
+      }
+      for (const key of Object.keys(selectionData)) {
+        if (aliases.some(alias => matches(key, alias))) {
+          delete selectionData[key];
+          selectionsChanged = true;
+        }
+      }
+      const entries: Array<[string, string]> = [];
+      if (subjectsChanged) entries.push([keys.subjectsKey, JSON.stringify(subjectData)]);
+      if (wardsChanged) entries.push([keys.wardsKey, JSON.stringify(wardData)]);
+      if (selectionsChanged) entries.push([keys.homeSelectionsKey, JSON.stringify(selectionData)]);
+      if (finishedChanged) entries.push([keys.finishedMapKey, JSON.stringify(finishedData)]);
+      if (entries.length > 0) void storageCommitChecked(entries).catch(() => undefined);
       if (mode === subjectMode) { setSubjects(subjectData); setWards(wardData); setHomeSelections(selectionData); setFinishedMap(finishedData); }
     } catch {}
-  };
+  });
 
-  const getHomeSelection = (
+  const getHomeSelection = useStableCallback((
     dateStr: string,
     subjectKey: string,
     sessionId?: string
@@ -672,30 +692,32 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       }
     }
     return undefined;
-  };
+  });
 
-  return (
-    <AttendanceContext.Provider value={{
-      subjects,
-      wards,
-      homeSelections,
-      finishedMap,
-      preferredPercentage,
-      setPreferredPercentage: savePreferredPercentage,
-      updateSubject,
-      updateWard,
+  const contextValue = useMemo<AttendanceContextType>(() => ({
+    subjects,
+    wards,
+    homeSelections,
+    finishedMap,
+    preferredPercentage,
+    setPreferredPercentage: savePreferredPercentage,
+    updateSubject,
+    updateWard,
     toggleFinished,
     reopenFinishedIfPlanIncreased,
     updateHomeSelection,
-      resetAllData,
-      renameSubjectData,
-      renameWardData,
-      removeSubjectData,
-      removeWardData,
-      removeAttendanceByKey,
-      removeAttendanceEntitiesForMode,
-      getHomeSelection,
-    }}>
+    resetAllData,
+    renameSubjectData,
+    renameWardData,
+    removeSubjectData,
+    removeWardData,
+    removeAttendanceByKey,
+    removeAttendanceEntitiesForMode,
+    getHomeSelection,
+  }), [subjects, wards, homeSelections, finishedMap, preferredPercentage]);
+
+  return (
+    <AttendanceContext.Provider value={contextValue}>
       {children}
     </AttendanceContext.Provider>
   );

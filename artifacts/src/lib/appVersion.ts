@@ -2,6 +2,7 @@ export type ReleaseType = 'major' | 'minor';
 export type UpdateMode = 'manual' | 'automatic';
 
 export const APP_VERSION = "1.6.5";
+export const PWA_CACHE_NAME = `attendenz-shell-v${APP_VERSION}`;
 export const LATEST_VERSION = APP_VERSION;
 
 // Developer release reference: RELEASE_TYPE accepts only 'major' or 'minor'.

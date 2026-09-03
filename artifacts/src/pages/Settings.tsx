@@ -9,11 +9,12 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
 import { activateCurriculum, completeCurriculum, createCurriculumChecked, deleteCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculumChecked, setCurriculumStatusChecked, CurriculumRecord } from '@/lib/curriculumStore';
-import { idbGetAllChecked, storageClearChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites } from '@/lib/idb';
+import { idbGetAllChecked, storageClearChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
 import { getSoundEnabled, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type VibrationStyle } from '@/lib/feedback';
+import { useModalAccessibility } from '@/components/ui/dialog';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { UpdateProgressSlider } from '@/utils/useUpdateFlow';
@@ -740,6 +741,9 @@ export default function Settings() {
   };
 
   const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'snapshot' | 'export' | 'dataProtection' | 'identity' | 'feedback' | 'notifications' | 'theme' | null>(null);
+  const settingsModalRef = useModalAccessibility(Boolean(activeSettingModal), () => { setActiveSettingModal(null); setPendingPct(null); });
+  const updatePromptRef = useModalAccessibility(showUpdatePrompt && updatePhase === 'none', () => setShowUpdatePrompt(false));
+  const updateProgressRef = useModalAccessibility(updatePhase !== 'none');
   const [transferImportData, setTransferImportData] = useState<any>(null);
   const transferFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -857,8 +861,9 @@ export default function Settings() {
       if (!remoteRemoved) throw new Error(navigator.onLine ? 'Could not remove this device from the reminder service. Try again before deleting app data.' : 'Connect to the internet before deleting app data so remote reminders can be removed too.');
       const unsubscribed = await disableDirectPush();
       if (!unsubscribed) throw new Error('Could not unregister browser notifications. Try again before deleting app data.');
-      await storageClearChecked();
-      await storageSetItemChecked('att_idb_migrated_v1', 'true');
+      await storageSetItemChecked(PENDING_DELETE_ALL_KEY, 'true');
+      await storageClearChecked([PENDING_DELETE_ALL_KEY]);
+      await storageRemoveItemChecked(PENDING_DELETE_ALL_KEY);
       setShowDeleteDataDialog(false);
       triggerConfirmationFeedback('danger');
       notifySuccess('All app data deleted. Returning to Welcome and Setup…');
@@ -1261,7 +1266,7 @@ export default function Settings() {
                         <AlertCircle className="w-4 h-4 shrink-0" />
                         <p className="text-xs font-bold">Import Data Confirmation</p>
                       </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">You are about to replace the complete app backup on this device, including both Preset and Custom workspaces. We recommend creating a Full App Backup before continuing.</p>
+                      <p className="text-xs text-muted-foreground leading-relaxed">The selected backup will be merged with the data already on this device, including both Preset and Custom workspaces. Existing data is not removed. We recommend creating a Full App Backup before continuing.</p>
                       <div className="bg-background rounded-xl border border-border/60 p-2.5 space-y-1.5 mt-2">
                         <div className="flex justify-between text-xs"><span className="text-muted-foreground">App Version</span><span className="font-bold text-foreground">{transferImportData.att_app_version || 'Unknown'}</span></div>
                         <div className="flex justify-between text-xs"><span className="text-muted-foreground">Routine Mode</span><span className="font-bold text-foreground">{transferImportData.att_subject_mode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine'}</span></div>
@@ -1269,7 +1274,7 @@ export default function Settings() {
                       </div>
                       <div className="grid grid-cols-2 gap-2 pt-2">
                         <button onClick={() => setTransferImportData(null)} className="action-button action-button--cancel w-full">Cancel</button>
-                        <button onClick={executeTransferImport} className="action-button action-button--danger w-full">Replace & Import</button>
+                        <button onClick={executeTransferImport} className="action-button action-button--danger w-full">Merge & Import</button>
                       </div>
                     </div>
                   )}
@@ -1281,8 +1286,8 @@ export default function Settings() {
 
           <AnimatePresence>
             {activeSettingModal && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden" onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
-                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} role="dialog" aria-modal="true" aria-label="Settings dialog" className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-h-[min(70dvh,48rem)] shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} ref={settingsModalRef} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden" onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
+                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} role="dialog" aria-modal="true" aria-labelledby="settings-modal-title" tabIndex={-1} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-h-[min(70dvh,48rem)] shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
                                       <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3 shrink-0">
                       <div className="flex min-w-0 flex-1 items-start gap-3">
                         {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
@@ -1295,7 +1300,7 @@ export default function Settings() {
                       {activeSettingModal === 'notifications' && (<div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 border border-blue-500/20"><Bell className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'theme' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><Info className="w-5 h-5" /></div>)}
                       <div className="min-w-0 flex-1">
-                        <h3 className="break-words text-sm font-bold text-foreground sm:text-base">
+                        <h3 id="settings-modal-title" className="break-words text-sm font-bold text-foreground sm:text-base">
                           {activeSettingModal === 'preferredPc' && 'Curriculum Percentage'}
                           {activeSettingModal === 'curriculum' && 'Curriculum Management'}
                           {activeSettingModal === 'snapshot' && 'Snapshots & Storage'}
@@ -1683,12 +1688,12 @@ export default function Settings() {
       {/* All dialogs remain as before */}
       <AnimatePresence>
         {showUpdatePrompt && isUpdateAvailable && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowUpdatePrompt(false); }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} ref={updatePromptRef} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowUpdatePrompt(false); }}>
+            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} role="dialog" aria-modal="true" aria-labelledby="settings-update-title" tabIndex={-1} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20"><Download className="w-5 h-5 text-amber-500" /></div>
                 <div className="text-left">
-                  <h3 className="text-base font-bold text-foreground leading-tight">Update to <span className="text-emerald-400">v{serverVersion}</span> (Stable)</h3>
+                  <h3 id="settings-update-title" className="text-base font-bold text-foreground leading-tight">Update to <span className="text-emerald-400">v{serverVersion}</span> (Stable)</h3>
                   <p className="text-[11px] text-muted-foreground font-medium">Full App Backup Recommended</p>
                 </div>
               </div>
@@ -1707,18 +1712,18 @@ export default function Settings() {
 
       <AnimatePresence>
         {updatePhase !== 'none' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-end justify-center p-4">
-            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} ref={updateProgressRef} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-end justify-center p-4">
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} role="dialog" aria-modal="true" aria-labelledby="settings-progress-title" tabIndex={-1} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
               {updatePhase === 'backing' ? (
                 <>
                   <UpdateProgressSlider phase="backing" complete={progressComplete} />
-                  <p className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
+                  <p id="settings-progress-title" className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
                   <p className="text-[10px] text-muted-foreground text-center">Securing your attendance records & preferences...</p>
                 </>
               ) : (
                 <>
                   <UpdateProgressSlider phase="updating" complete={progressComplete} />
-                  <p className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
+                  <p id="settings-progress-title" className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
                   <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
                 </>
               )}

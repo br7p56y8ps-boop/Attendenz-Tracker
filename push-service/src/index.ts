@@ -5,6 +5,15 @@ const MAX_OCCURRENCES = 500;
 const DEVICE_TTL_DAYS = 45;
 const DEFAULT_ALLOWED_ORIGIN = 'https://benz-attendance-tracker.pages.dev';
 const CATEGORY_VALUES = new Set(['academic', 'clinical', 'sgt', 'ward']);
+const DOCUMENTED_PUSH_ENDPOINTS = [
+  'https://fcm.googleapis.com/',
+  'https://updates.push.services.mozilla.com/',
+  'https://wns2-par02p.notify.windows.com/',
+  'https://web.push.apple.com/',
+] as const;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 30;
+const rateLimitBuckets = new Map<string, { startedAt: number; count: number }>();
 
 export interface Env {
   DB: D1Database;
@@ -154,11 +163,20 @@ function isValidOccurrence(value: unknown): value is ReminderOccurrence {
   );
 }
 
+function isDocumentedPushEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    return url.protocol === 'https:' && DOCUMENTED_PUSH_ENDPOINTS.some(prefix => endpoint.startsWith(prefix));
+  } catch {
+    return false;
+  }
+}
+
 function isValidSubscription(value: unknown): value is WebPushSubscription {
   if (!value || typeof value !== 'object') return false;
   const subscription = value as Partial<WebPushSubscription>;
   return Boolean(
-    typeof subscription.endpoint === 'string' && subscription.endpoint.startsWith('https://') && subscription.endpoint.length <= 2048 &&
+    typeof subscription.endpoint === 'string' && isDocumentedPushEndpoint(subscription.endpoint) && subscription.endpoint.length <= 2048 &&
     subscription.keys && typeof subscription.keys.p256dh === 'string' && subscription.keys.p256dh.length >= 40 && subscription.keys.p256dh.length <= 200 &&
     typeof subscription.keys.auth === 'string' && subscription.keys.auth.length >= 16 && subscription.keys.auth.length <= 200
   );
@@ -227,11 +245,28 @@ function boolInt(value: boolean): number {
   return value ? 1 : 0;
 }
 
+function clientAddress(request: Request): string {
+  return request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For')?.split(',')[0].trim() || 'unknown';
+}
+
+function consumeRateLimit(request: Request, deviceId?: string): boolean {
+  const now = Date.now();
+  const keys = [`ip:${clientAddress(request)}`, deviceId ? `device:${deviceId}` : null].filter((key): key is string => Boolean(key));
+  for (const key of keys) {
+    const existing = rateLimitBuckets.get(key);
+    if (!existing || now - existing.startedAt >= RATE_LIMIT_WINDOW_MS) rateLimitBuckets.set(key, { startedAt: now, count: 1 });
+    else if (existing.count >= RATE_LIMIT_MAX_REQUESTS) return false;
+    else existing.count += 1;
+  }
+  return true;
+}
+
 async function syncDevice(request: Request, env: Env): Promise<Response> {
   const origin = allowedOrigin(request, env);
   if (!hasAllowedOrigin(request, env)) return error('origin_not_allowed', 403, origin);
   const token = authToken(request);
   if (!token || token.length < 32) return error('authorization_required', 401, origin);
+  if (!consumeRateLimit(request)) return error('rate_limited', 429, origin);
 
   let payload: unknown;
   try {
@@ -335,6 +370,7 @@ async function testDevice(request: Request, env: Env): Promise<Response> {
   if (!payload || typeof payload !== 'object') return error('invalid_test_payload', 400, origin);
   const item = payload as { deviceId?: unknown };
   if (!isValidId(item.deviceId, 16, 96)) return error('invalid_test_payload', 400, origin);
+  if (!consumeRateLimit(request, item.deviceId)) return error('rate_limited', 429, origin);
 
   const existing = await env.DB.prepare(
     'SELECT device_id, token_hash, subscription_json FROM devices WHERE device_id = ?1',
@@ -363,6 +399,7 @@ async function deleteDevice(request: Request, env: Env): Promise<Response> {
   if (!token) return error('authorization_required', 401, origin);
   const deviceId = new URL(request.url).searchParams.get('deviceId');
   if (!isValidId(deviceId, 16, 96)) return error('invalid_device_id', 400, origin);
+  if (!consumeRateLimit(request, deviceId)) return error('rate_limited', 429, origin);
   const tokenHash = await hashToken(token);
   const existing = await env.DB.prepare(
     'SELECT token_hash FROM devices WHERE device_id = ?1',

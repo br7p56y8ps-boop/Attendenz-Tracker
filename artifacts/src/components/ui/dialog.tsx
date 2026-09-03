@@ -2,6 +2,64 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
+import { lockScroll, unlockScroll } from '@/lib/scrollLock';
+
+const FOCUSABLE_SELECTOR = 'a[href], area[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])';
+
+export function useModalAccessibility(open: boolean, onEscape?: () => void) {
+  const surfaceRef = React.useRef<HTMLDivElement>(null);
+  const openerRef = React.useRef<HTMLElement | null>(null);
+  const onEscapeRef = React.useRef(onEscape);
+  React.useEffect(() => { onEscapeRef.current = onEscape; }, [onEscape]);
+  React.useEffect(() => {
+    if (!open || !surfaceRef.current) return undefined;
+    const surface = surfaceRef.current;
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const inerted: Array<{ element: HTMLElement; inert: boolean }> = [];
+    let current: HTMLElement = surface;
+    while (current.parentElement) {
+      const parent = current.parentElement;
+      Array.from(parent.children).forEach(child => {
+        if (child !== current && child instanceof HTMLElement) {
+          inerted.push({ element: child, inert: child.inert });
+          child.inert = true;
+        }
+      });
+      current = parent;
+    }
+    lockScroll();
+    const focusFirst = () => {
+      const first = surface.querySelector<HTMLElement>('[autofocus], ' + FOCUSABLE_SELECTOR);
+      (first || surface).focus({ preventScroll: true });
+    };
+    const frame = window.requestAnimationFrame(focusFirst);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!onEscapeRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onEscapeRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusables = Array.from(surface.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(el => !el.closest('[inert]'));
+      if (focusables.length === 0) { event.preventDefault(); surface.focus({ preventScroll: true }); return; }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', onKeyDown);
+      inerted.forEach(({ element, inert }) => { element.inert = inert; });
+      unlockScroll();
+      if (openerRef.current?.isConnected) openerRef.current.focus({ preventScroll: true });
+    };
+  }, [open]);
+  return surfaceRef;
+}
 
 const Dialog = DialogPrimitive.Root;
 

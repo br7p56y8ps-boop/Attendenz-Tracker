@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCustomData } from "@/contexts/CustomDataContext";
 import { Wrench, Zap } from "lucide-react";
@@ -8,7 +8,7 @@ import {
   WHATS_NEW_FIXES,
 } from "@/lib/appVersion";
 import type { WhatsNewItem } from "@/lib/appVersion";
-import { lockScroll, unlockScroll } from "@/lib/scrollLock";
+import { useModalAccessibility } from "@/components/ui/dialog";
 
 interface ReleaseItemProps {
   item: WhatsNewItem;
@@ -69,22 +69,14 @@ function ReleaseSection({
 export function WhatsNewPopup() {
   const { whatsNewOpen, setWhatsNewOpen } = useCustomData();
 
-  useEffect(() => {
-    if (whatsNewOpen) {
-      lockScroll();
-      return () => unlockScroll();
-    }
-    return undefined;
-  }, [whatsNewOpen]);
-
-  const handleClose = () => {
-    setWhatsNewOpen(false);
-  };
+  const handleClose = () => { setWhatsNewOpen(false); };
+  const modalRef = useModalAccessibility(whatsNewOpen, handleClose);
 
   return (
     <AnimatePresence>
       {whatsNewOpen && (
         <div
+          ref={modalRef}
           className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 p-3 backdrop-blur-md sm:p-4"
           onClick={handleClose}
         >
@@ -97,6 +89,7 @@ export function WhatsNewPopup() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="whats-new-title"
+            tabIndex={-1}
             className="modal-sheet-content flex h-auto max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-[0_24px_80px_rgba(0,0,0,0.24)] dark:bg-card/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
           >
             {/* Fixed header */}

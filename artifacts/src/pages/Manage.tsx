@@ -10,7 +10,7 @@ import {
   parseDayList,
   getEffectiveParentName,
 } from '@/contexts/CustomDataContext';
-import { useAttendance, getSGTKey, getAcademicAttendanceKey } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import {
   cn,
   canonicalTimeRange,
@@ -20,7 +20,7 @@ import {
   getSubjectColor,
 } from '@/lib/utils';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
-import { lockScroll, unlockScroll } from '@/lib/scrollLock';
+import { useModalAccessibility } from '@/components/ui/dialog';
 import { storageSetItem } from '@/lib/idb';
 import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
@@ -63,20 +63,12 @@ function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, foot
   open: boolean; onClose: () => void; children: React.ReactNode; maxW?: string;
   header?: React.ReactNode; footer?: React.ReactNode; heightClass?: string; bodyClassName?: string; dense?: boolean;
 }) {
-  const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onCloseRef.current(); } };
-    window.addEventListener('keydown', onKey);
-    lockScroll();
-    return () => { window.removeEventListener('keydown', onKey); unlockScroll(); };
-  }, [open]);
+  const modalRef = useModalAccessibility(open, onClose);
 
   if (!open) return null;
   if (typeof document === 'undefined') return null;
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-end justify-center p-4">
+    <div ref={modalRef} className="fixed inset-0 z-[120] flex items-end justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 48 }}
@@ -87,6 +79,7 @@ function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, foot
         role="dialog"
         aria-modal="true"
         aria-label="Manage dialog"
+        tabIndex={-1}
         className={cn('modal-sheet-content relative bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.42)] w-full max-h-[min(70dvh,48rem)] min-h-[12rem] flex flex-col overflow-hidden', maxW, heightClass)}
         onClick={e => e.stopPropagation()}
       >
@@ -1190,7 +1183,7 @@ export default function Manage() {
           if (isSGTRecord(item)) {
             removeAttendanceByKey(getSGTKey(item.id));
           } else {
-            for (const n of namesToPurge) removeSubjectData(n);
+            for (const n of namesToPurge) removeSubjectData(n, getAcademicAttendanceKey(item.id));
           }
             setDeleteSheet(null); showToast(`Deleted "${item.name}".`);
             void notifyManageChange(`${item.name} was removed from your routine.`);
@@ -1224,7 +1217,7 @@ export default function Manage() {
           recordHistory('Deleted Ward', { name: w.name, id: w.id });
           try {
             removeCustomWard(w.id);
-            removeWardData(w.name);
+            removeWardData(w.name, getWardAttendanceKey(w.id));
             setDeleteSheet(null); showToast(`Deleted "${w.name}".`);
             void notifyManageChange(`${w.name} was removed from your routine.`);
           } catch { showToast('Delete failed — please try again.', 'err'); }

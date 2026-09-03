@@ -32,12 +32,6 @@ export default function WelcomeVideoScreen({ onBeginExit, onComplete }: WelcomeV
       <Background scene={3} />
       <Scene4 />
 
-      <audio
-        src={`${import.meta.env.BASE_URL || '/'}audio/bg_music.mp3`}
-        preload="auto"
-        autoPlay
-        onError={() => {}}
-      />
     </motion.div>
   );
 }

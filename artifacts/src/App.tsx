@@ -4,7 +4,7 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext';
-import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageRemoveItemChecked, storageSetItem } from '@/lib/idb';
+import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageRemoveItemChecked, storageSetItem, recoverPendingDeleteAll } from '@/lib/idb';
 import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
 import { restoreSnapshot } from '@/utils/snapshotUtils';
@@ -44,7 +44,7 @@ function AuthGate() {
       {showGate ? (
         <>
           <UpdateModal
-            open
+            open={updatePhase === 'none'}
             serverVersion={serverVersion}
             summary={serverSummary}
             onRemind={() => { sessionStorage.setItem('att_update_gate_dismissed', 'true'); setGateDismissed(true); }}
@@ -160,7 +160,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     let alive = true;
-    initStorageAndMigrate().then(() => { ensureCurriculumMigration(); if (alive) setStorageReady(true); }).catch((error) => { if (alive) setStorageInitError(error instanceof Error ? error.message : 'Storage could not be initialized.'); });
+    initStorageAndMigrate().then(() => recoverPendingDeleteAll()).then(() => { ensureCurriculumMigration(); if (alive) setStorageReady(true); }).catch((error) => { if (alive) setStorageInitError(error instanceof Error ? error.message : 'Storage could not be initialized.'); });
 
     const applyCurrentTheme = () => applyThemePreference(readThemePreference());
     applyCurrentTheme();
@@ -180,10 +180,10 @@ export default function App() {
   return (
     <>
       {storageError && (
-        <div className="fixed inset-x-3 top-[5.25rem] z-[180] rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 py-3 text-xs text-amber-100 shadow-xl backdrop-blur-xl">
+        <div className="fixed inset-x-3 top-[5.25rem] z-[180] rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 py-3 text-xs text-amber-950 shadow-xl backdrop-blur-xl dark:text-amber-100">
           <div className="flex items-start justify-between gap-3">
             <p><strong>Storage Warning:</strong> Your latest changes may not be fully durable. Export a backup from Settings before closing the app.</p>
-            <button type="button" onClick={() => setStorageError(false)} className="shrink-0 font-bold text-amber-200" aria-label="Dismiss Storage Warning">Dismiss</button>
+            <button type="button" onClick={() => setStorageError(false)} className="shrink-0 font-bold text-amber-900 underline underline-offset-2 dark:text-amber-100" aria-label="Dismiss Storage Warning">Dismiss</button>
           </div>
         </div>
       )}

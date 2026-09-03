@@ -203,9 +203,25 @@ function base64UrlToBytes(value: string): Uint8Array {
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
 
+const DOCUMENTED_PUSH_ENDPOINTS = [
+  'https://fcm.googleapis.com/',
+  'https://updates.push.services.mozilla.com/',
+  'https://wns2-par02p.notify.windows.com/',
+  'https://web.push.apple.com/',
+] as const;
+
+function isDocumentedPushEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    return url.protocol === 'https:' && DOCUMENTED_PUSH_ENDPOINTS.some(prefix => endpoint.startsWith(prefix));
+  } catch {
+    return false;
+  }
+}
+
 function serializeSubscription(subscription: PushSubscription): DirectPushSubscription | null {
   const json = subscription.toJSON();
-  if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) return null;
+  if (!json.endpoint || !isDocumentedPushEndpoint(json.endpoint) || !json.keys?.p256dh || !json.keys.auth) return null;
   return {
     endpoint: json.endpoint,
     expirationTime: json.expirationTime ?? null,
