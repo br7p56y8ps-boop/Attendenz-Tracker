@@ -32,129 +32,98 @@
 
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Inter, sans-serif;
   
-  --radius-xl: 1rem;
-  --radius-2xl: 1.5rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1rem;
 }
 
 /* Light Theme (Default) */
 :root {
-  --background: #F2F2F7;
-  --foreground: #000000;
+  --background: #f4f7fa;
+  --foreground: #17212b;
   
-  --card: #FFFFFF;
-  --card-foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #17212b;
   
-  --border: rgba(0, 0, 0, 0.08);
+  --border: #d7e0e8;
   
-  --primary: #007AFF; /* iOS Light Blue */
-  --primary-foreground: #FFFFFF;
+  --primary: #1769aa;
+  --primary-foreground: #ffffff;
   
-  --muted: rgba(0, 0, 0, 0.04);
-  --muted-foreground: rgba(0, 0, 0, 0.55);
+  --muted: #edf2f6;
+  --muted-foreground: #526273;
   
-  --destructive: #FF3B30;
-  --destructive-foreground: #FFFFFF;
+  --destructive: #bd3039;
+  --destructive-foreground: #ffffff;
   
-  --success: #34C759;
-  --warning: #FF9500;
+  --success: #16845b;
+  --warning: #b46b00;
 }
 
 /* Dark Theme */
 .dark {
-  --background: #000000;
-  --foreground: #FFFFFF;
+  --background: #101820;
+  --foreground: #edf3f7;
   
-  --card: rgba(28, 28, 30, 0.65);
-  --card-foreground: #FFFFFF;
+  --card: #182632;
+  --card-foreground: #edf3f7;
   
-  /* Neutral UI borders: visible light grey in black theme; explicit colored borders override this token. */
-  --border: rgba(255, 255, 255, 0.28);
+  --border: #344957;
   
-  --primary: #0A84FF; /* iOS Dark Blue */
-  --primary-foreground: #FFFFFF;
+  --primary: #55a8e8;
+  --primary-foreground: #07131d;
   
-  --muted: rgba(255, 255, 255, 0.06);
-  --muted-foreground: rgba(255, 255, 255, 0.5);
+  --muted: #223441;
+  --muted-foreground: #aabac5;
   
-  --destructive: #FF453A;
-  --destructive-foreground: #FFFFFF;
+  --destructive: #f27b83;
+  --destructive-foreground: #18070a;
   
-  --success: #32D74B;
-  --warning: #FF9F0A;
+  --success: #54c995;
+  --warning: #f0b24d;
 }
 
-/* Premium Liquid Glass Styles */
+/* Structured medical dashboard surfaces. Existing class names are retained so
+   page structure and component composition remain unchanged. */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.06);
-}
-
-.dark .glass-panel {
-  background: rgba(20, 20, 25, 0.58);
+  background: var(--card);
   border: 1px solid var(--border);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  box-shadow: 0 1px 2px rgba(23, 33, 43, 0.05);
+  border-radius: 0.75rem;
 }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.04);
-}
-
-.dark .glass-card {
-  background: rgba(30, 30, 35, 0.58);
+  background: var(--card);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 2px rgba(23, 33, 43, 0.04);
+  border-radius: 0.75rem;
 }
 
 .glass-card-hover {
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: border-color 180ms ease, background-color 180ms ease;
 }
 .glass-card-hover:hover {
-  transform: translateY(-4px) scale(1.01);
-  background: rgba(255, 255, 255, 0.95);
-  border-color: rgba(0, 0, 0, 0.12);
-  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.08);
-}
-.dark .glass-card-hover:hover {
-  background: rgba(40, 40, 48, 0.5);
-  border-color: var(--border);
-  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, var(--primary) 3%, var(--card));
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
 }
 
 .glass-button {
-  background: rgba(0, 0, 0, 0.04);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.dark .glass-button {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--card);
   border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
 .glass-button:hover {
-  background: rgba(0, 0, 0, 0.08);
-}
-.dark .glass-button:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--muted);
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
 }
 
 .glass-button-primary {
-  background: #007AFF;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 15px rgba(0, 122, 255, 0.25);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.dark .glass-button-primary {
-  background: #0A84FF;
-  box-shadow: 0 4px 15px rgba(10, 132, 255, 0.3);
+  background: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 78%, var(--foreground));
+  color: var(--primary-foreground);
+  box-shadow: none;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
 /* Shared action controls: readable labels, colored outlines, light highlights. */
@@ -411,6 +380,21 @@
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* Existing components retain their geometry while inheriting solid dashboard
+   surfaces instead of rendering frosted glass. */
+.backdrop-blur-sm,
+.backdrop-blur-md,
+.backdrop-blur-2xl,
+.backdrop-blur-xl {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[class*="bg-card\\/"] { background-color: var(--card) !important; }
+[class~="rounded-3xl"] { border-radius: 1rem !important; }
+[class~="rounded-2xl"] { border-radius: 0.875rem !important; }
+[class*="shadow-["] { box-shadow: 0 1px 3px rgba(23, 33, 43, 0.10) !important; }
+.dark [class*="shadow-["] { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28) !important; }
 
 /* iOS smooth scrolling & hidden scrollbars */
 ::-webkit-scrollbar {
