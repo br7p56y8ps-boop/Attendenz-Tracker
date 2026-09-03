@@ -26,6 +26,7 @@ import {
   type DirectPushSubscription,
   type NotificationPreferences,
 } from '@/lib/webPush';
+import { APP_VERSION } from '@/lib/appVersion';
 import {
   parseRangeToMinutes,
   getPresetAcademicSessionId,
@@ -90,12 +91,13 @@ type ReminderOccurrence = {
 
 type ReminderSyncPayload = {
   version: 3;
+  appVersion: string;
   deviceId: string;
   deviceToken: string;
   subscription: DirectPushSubscription;
   timezone: string;
   notificationsEnabled: boolean;
-  preferences: Pick<NotificationPreferences, 'needAttentionSummary' | 'needAttentionSubjects' | 'safeToMiss' | 'lastPlannedClassToday' | 'firstClassOfDay' | 'beforeClassWarnings' | 'allScheduledClasses' | 'unmarkedAttendanceToday' | 'leadMinutes'>;
+  preferences: Pick<NotificationPreferences, 'needAttentionSummary' | 'needAttentionSubjects' | 'safeToMiss' | 'lastPlannedClassToday' | 'firstClassOfDay' | 'beforeClassWarnings' | 'allScheduledClasses' | 'unmarkedAttendanceToday' | 'updateAvailable' | 'leadMinutes'>;
   occurrences: ReminderOccurrence[];
 };
 
@@ -616,7 +618,8 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
       }
       const preferences = getNotificationPreferences();
       const payload: ReminderSyncPayload = {
-          version: 3,
+        version: 3,
+        appVersion: APP_VERSION,
         deviceId: getDeviceId(),
         deviceToken: getDeviceToken(),
         subscription,
@@ -631,6 +634,7 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
           beforeClassWarnings: preferences.beforeClassWarnings && preferences.attendanceGroupEnabled,
           allScheduledClasses: preferences.allScheduledClasses && preferences.dailyScheduleGroupEnabled,
           unmarkedAttendanceToday: preferences.unmarkedAttendanceToday && preferences.attendanceGroupEnabled,
+          updateAvailable: preferences.updateAvailable && preferences.updatesGroupEnabled,
           leadMinutes: preferences.leadMinutes,
         },
         occurrences: buildOccurrences({

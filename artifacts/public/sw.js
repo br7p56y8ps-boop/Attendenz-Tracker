@@ -1,7 +1,7 @@
 /* Attendenz guard worker — EMERGENCY FIX for redirect error.
    After deploying this version, NEVER CHANGE THIS FILE AGAIN.
    Data lives in localStorage/IndexedDB, not in this cache, so clearing SW cache doesn't affect user data. */
-const VERSION = '1.6.4.4';
+const VERSION = '1.6.5';
 const SHELL = `attendenz-shell-v${VERSION}`;
 let activationApproved = false;
 

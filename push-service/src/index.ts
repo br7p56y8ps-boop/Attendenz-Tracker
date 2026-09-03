@@ -21,6 +21,7 @@ export interface Env {
   VAPID_SERVER_PUBLIC_KEY: string;
   VAPID_SERVER_PRIVATE_KEY: string;
   ALLOWED_ORIGIN?: string;
+  RELEASE_VERSION?: string;
 }
 
 export interface A1Preferences {
@@ -32,6 +33,7 @@ export interface A1Preferences {
   beforeClassWarnings: boolean;
   allScheduledClasses: boolean;
   unmarkedAttendanceToday: boolean;
+  updateAvailable?: boolean;
   leadMinutes: 15 | 30 | 60;
 }
 
@@ -50,6 +52,7 @@ export interface ReminderOccurrence {
 
 export interface A1ReminderPayload {
   version: 3;
+  appVersion?: string;
   deviceId: string;
   deviceToken: string;
   subscription: WebPushSubscription;
@@ -77,6 +80,8 @@ type DeviceRow = {
   need_attention_subjects: number;
   safe_to_miss: number;
   unmarked_attendance_today: number;
+  app_version: string;
+  update_available: number;
 };
 
 type OccurrenceRow = ReminderOccurrence & { device_id: string };
@@ -194,6 +199,7 @@ function isValidPreferences(value: unknown): value is A1Preferences {
     typeof prefs.beforeClassWarnings === 'boolean' &&
     typeof prefs.allScheduledClasses === 'boolean' &&
     typeof prefs.unmarkedAttendanceToday === 'boolean' &&
+    (prefs.updateAvailable === undefined || typeof prefs.updateAvailable === 'boolean') &&
     (prefs.leadMinutes === 15 || prefs.leadMinutes === 30 || prefs.leadMinutes === 60)
   );
 }
@@ -203,6 +209,7 @@ function validatePayload(payload: unknown): payload is A1ReminderPayload {
   const item = payload as Partial<A1ReminderPayload>;
   return (
     item.version === 3 &&
+    (item.appVersion === undefined || (typeof item.appVersion === 'string' && item.appVersion.length > 0 && item.appVersion.length <= 32)) &&
     isValidId(item.deviceId, 16, 96) &&
     isValidId(item.deviceToken, 32, 160) &&
     isValidSubscription(item.subscription) &&
@@ -290,8 +297,8 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       midnight_need_attention, final_class_today, first_class_today,
       pre_class_need_attention, all_scheduled_digest,
       lead_minutes, need_attention_subjects, safe_to_miss, unmarked_attendance_today,
-      last_sync_at, expires_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+      app_version, update_available, last_sync_at, expires_at
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
     ON CONFLICT(device_id) DO UPDATE SET
       token_hash = excluded.token_hash,
       subscription_json = excluded.subscription_json,
@@ -306,6 +313,8 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       need_attention_subjects = excluded.need_attention_subjects,
       safe_to_miss = excluded.safe_to_miss,
       unmarked_attendance_today = excluded.unmarked_attendance_today,
+      app_version = excluded.app_version,
+      update_available = excluded.update_available,
       last_sync_at = excluded.last_sync_at,
       expires_at = excluded.expires_at`,
     ).bind(
@@ -323,6 +332,8 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
     boolInt(payload.preferences.needAttentionSubjects),
     boolInt(payload.preferences.safeToMiss),
     boolInt(payload.preferences.unmarkedAttendanceToday),
+    payload.appVersion || 'legacy',
+    boolInt(payload.preferences.updateAvailable === true),
     now,
     expiryIso(),
   );
@@ -598,11 +609,16 @@ async function runScheduled(env: Env, scheduledAt: number): Promise<void> {
     `SELECT device_id, subscription_json, timezone, notifications_enabled,
             midnight_need_attention, final_class_today, first_class_today,
       pre_class_need_attention, all_scheduled_digest, lead_minutes,
-      need_attention_subjects, safe_to_miss, unmarked_attendance_today
+      need_attention_subjects, safe_to_miss, unmarked_attendance_today,
+      app_version, update_available
       FROM devices WHERE notifications_enabled = 1 AND expires_at > ?1`,
   ).bind(new Date(scheduledAt).toISOString()).all<DeviceRow>();
   for (const device of devices.results || []) {
     try {
+      const releaseVersion = env.RELEASE_VERSION || '1.6.5';
+      if (device.update_available && device.app_version !== releaseVersion) {
+        await deliverIfNew(env, device, `${device.device_id}:update-available:${releaseVersion}`, 'Update Available', `A new version ${releaseVersion} is ready. Open the app to review and update.`, DEFAULT_ALLOWED_ORIGIN);
+      }
       await processDevice(env, device, scheduledAt);
     } catch (cause) {
       console.error('Reminder processing failed', device.device_id, cause instanceof Error ? cause.message : 'unknown_error');

@@ -1,6 +1,6 @@
 {
-  "version": "1.6.4.4",
-  "summary": "Pre-release v1.6.4.4: UI consistency, clearer controls, and notification refinements.",
+  "version": "1.6.5",
+  "summary": "Stable v1.6.5: update reliability, notification improvements, and UI refinements.",
   "releaseType": "minor",
   "updateMode": "manual"
 }

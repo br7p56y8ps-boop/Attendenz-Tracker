@@ -77,6 +77,7 @@ async function activateApprovedServiceWorker(): Promise<void> {
 }
 
 async function checkForSilentBuildUpdate(): Promise<void> {
+  if (UPDATE_MODE !== 'automatic') return;
   try {
     const res = await fetch(`${base}build-revision.json?ts=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return;
