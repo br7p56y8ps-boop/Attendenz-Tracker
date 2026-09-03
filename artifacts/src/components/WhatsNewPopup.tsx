@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useCustomData } from "@/contexts/CustomDataContext";
 import { Wrench, Zap } from "lucide-react";
 import {
-  APP_VERSION,
   WHATS_NEW_UPGRADES,
   WHATS_NEW_FIXES,
 } from "@/lib/appVersion";
@@ -110,7 +109,7 @@ export function WhatsNewPopup() {
                     What's New
                   </h2>
                   <span className="mt-1 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-500">
-                    v{APP_VERSION} (Stable)
+                    Pre-Release of v1.6.5
                   </span>
                 </div>
               </div>
@@ -126,14 +125,14 @@ export function WhatsNewPopup() {
               >
                 <div className="space-y-4">
                   <ReleaseSection
-                    title="Upgrades"
+                    title="Upgrades / New Features"
                     icon={<Zap className="h-3.5 w-3.5 shrink-0" />}
                     items={WHATS_NEW_UPGRADES}
                     titleClass="text-emerald-500"
                     accentClass="text-muted-foreground"
                   />
                   <ReleaseSection
-                    title="Fixes / Refinements"
+                    title="Fixes & Refinements"
                     icon={<Wrench className="h-3.5 w-3.5 shrink-0" />}
                     items={WHATS_NEW_FIXES}
                     titleClass="text-amber-500"
