@@ -315,7 +315,8 @@ export async function showNotificationIfEnabled(
   if (!getSystemNotificationsEnabled() || !isNotificationPreferenceEnabled(preference) || getNotificationPermission() !== 'granted') return false;
   try {
     const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification(title, { body, tag, data: { url: '/' } });
+    const combinedTitle = `${title}${body.trim() ? ` — ${body.trim().replace(/[.!?]+\s*$/u, '')}` : ''}`;
+    await registration.showNotification(combinedTitle, { body: '', tag, data: { url: '/' } });
     return true;
   } catch {
     return false;
@@ -346,8 +347,8 @@ export async function showLocalTestNotification(): Promise<boolean> {
   if (!getSystemNotificationsEnabled() || getNotificationPermission() !== 'granted') return false;
   try {
     const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification('Test Notification', {
-      body: 'System Notifications are enabled on this device.',
+    await registration.showNotification('Test Notification — System Notifications are enabled on this device', {
+      body: '',
       tag: 'attendenz-test-notification',
       data: { url: '/' },
     });

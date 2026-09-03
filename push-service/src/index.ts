@@ -488,8 +488,9 @@ async function sendPush(env: Env, subscription: WebPushSubscription, heading: st
     publicKey: env.VAPID_SERVER_PUBLIC_KEY,
     privateKey: env.VAPID_SERVER_PRIVATE_KEY,
   };
+  const combinedTitle = `${heading}${body.trim() ? ` — ${body.trim().replace(/[.!?]+\s*$/u, '')}` : ''}`;
   const payload = await buildPushPayload({
-    data: JSON.stringify({ title: heading, body, url }),
+    data: JSON.stringify({ title: combinedTitle, body: '', url }),
     options: { ttl: 300, urgency: 'high', topic: collapseId.slice(0, 32) },
   }, subscription, vapid);
   const response = await fetch(subscription.endpoint, payload as RequestInit);
