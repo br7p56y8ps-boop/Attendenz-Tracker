@@ -270,12 +270,12 @@ function ClinicalGroupCard({
         <p className="truncate text-sm font-extrabold" style={{ color: getSubjectColor(name) }}>{name}</p>
       </div>
       {hasRotation && (
-        <div className="flex min-h-8 items-center justify-center border-b border-border/40 bg-card/70 px-3 py-1.5 text-center text-[10px] font-bold text-muted-foreground">
+        <div className="flex min-h-8 items-center justify-center bg-card px-3 py-0.5 text-center text-[10px] font-bold text-muted-foreground">
           {rotationRange}<span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-primary">Clinical</span>
         </div>
       )}
       {hasSGT && (!hasRotation || !sameRange) && (
-        <div className="flex min-h-8 items-center justify-center border-b border-border/40 bg-card/70 px-3 py-1.5 text-center text-[10px] font-bold text-muted-foreground">
+        <div className="flex min-h-8 items-center justify-center bg-card px-3 py-0.5 text-center text-[10px] font-bold text-muted-foreground">
           {sgtRange}<span className="ml-1.5 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-purple-500">SGT</span>
         </div>
       )}
@@ -1688,8 +1688,8 @@ export default function Manage() {
                   </>
                 )}
               </div>
-              <div className="shrink-0 bg-transparent px-3 py-2">
-                <button type="button" onClick={openAddSlot} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300">
+              <div className="shrink-0 px-3 py-2">
+                <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
                   <Plus className="h-3.5 w-3.5" /> Add Slot
                 </button>
               </div>
