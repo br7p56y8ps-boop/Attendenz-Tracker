@@ -25,6 +25,13 @@ export function useUpdateFlow() {
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
   const [serverSummary, setServerSummary] = useState<string>(() => localStorage.getItem('att_pwa_update_summary') || '');
   useEffect(() => {
+    const pendingVersion = localStorage.getItem('att_pwa_latest_version');
+    const pendingSummary = localStorage.getItem('att_pwa_update_summary') || '';
+    if (localStorage.getItem('att_pwa_update_ready') === 'true' && pendingVersion) {
+      setPwaReady(true);
+      setServerVersion(pendingVersion);
+      setServerSummary(pendingSummary);
+    }
     const onReady = () => setPwaReady(true);
     const onCleared = () => {
       setPwaReady(false);

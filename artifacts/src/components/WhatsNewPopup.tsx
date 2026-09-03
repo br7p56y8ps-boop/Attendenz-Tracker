@@ -109,7 +109,7 @@ export function WhatsNewPopup() {
                     What's New
                   </h2>
                   <span className="mt-1 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-500">
-                    Pre-Release of v1.6.5
+                    Pre-release version for v1.6.5
                   </span>
                 </div>
               </div>
