@@ -1533,17 +1533,6 @@ export default function Manage() {
     }
   }, [subjectMode, selDay, presetTimetable, customSubjects, isAcademicSubject]);
 
-  // Group slots by identical time for common container
-  const groupedAcademicSlots = useMemo(() => {
-    const groups: Record<string, Array<{ slot: any; idx: number; customSubject?: any }>> = {};
-    for (const item of academicSlotsForDay) {
-      const timeKey = canonicalizeTimeRange(item.slot.time);
-      if (!groups[timeKey]) groups[timeKey] = [];
-      groups[timeKey].push(item);
-    }
-    return Object.entries(groups).map(([time, items]) => ({ time, items }));
-  }, [academicSlotsForDay]);
-
   const selectedDayIsToday = selDay === new Date().getDay();
   const selectedDayIsHoliday = subjectMode === 'preloaded' && DAY_ABBRS[selDay] === 'Fri';
   const noMoreAcademicMessage = selectedDayIsToday
@@ -1637,96 +1626,72 @@ export default function Manage() {
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-x-hidden overflow-y-hidden !bg-transparent">
-                <div className="flex h-full min-h-0 flex-col bg-black/5 dark:bg-black border border-dashed border-border/80 py-3">
-                  <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4" style={{ overscrollBehaviorY: 'contain' }}>
-              {groupedAcademicSlots.length === 0 ? (
-                <div className="flex w-full min-h-full flex-1 items-center justify-center text-center">
-                  <p className="text-sm font-semibold text-muted-foreground">
-                    {subjectMode === 'custom' && customAcademicCount === 0 ? (
-                      <>
-                        No Lecture Subject added yet. Tap{' '}
-                        <button type="button" onClick={openMoreMenu} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button>{' '}
-                        to add a new Subject.
-                      </>
-                    ) : selectedDayIsHoliday ? (
-                      'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
-                    ) : (
-                      'No planned Lecture Classes for today!'
-                    )}
-                  </p>
-                </div>
-              ) : (
-                <>
-                <div className="space-y-1.5">
-                {groupedAcademicSlots.map((group) => (
-                  <React.Fragment key={group.time}>
-                    <span className="-mx-4 mb-1.5 flex min-h-7 w-[calc(100%+2rem)] items-center justify-center border-y border-border/60 bg-card px-2 py-1 text-center text-xs font-bold text-primary">
-                      {group.time}
-                    </span>
-                    <div className="space-y-2">
-                      {group.items.map(({ slot, idx, customSubject }) => {
-                        if (customSubject) {
-                          const s = customSubject;
-                          const rows = s.schedules?.filter((sch: any) => sch.day === DAY_ABBRS[selDay]) || [];
-                          return rows.map((_: any, i: number) => (
-                            <div key={`${s.id}-${i}`} className="bg-background/50 border border-border/60 rounded-xl p-3 flex items-center gap-2.5">
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 border border-dashed border-border/80 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
+                {academicSlotsForDay.length === 0 ? (
+                  <div className="flex min-h-full items-center justify-center px-6 text-center">
+                    <p className="text-sm font-semibold text-muted-foreground">
+                      {subjectMode === 'custom' && customAcademicCount === 0 ? (
+                        <>No Lecture Subject added yet. Tap <button type="button" onClick={openMoreMenu} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button> to add a new Subject.</>
+                      ) : selectedDayIsHoliday ? (
+                        'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
+                      ) : (
+                        'No planned Lecture Classes for today!'
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {academicSlotsForDay.flatMap((item) => {
+                      const { slot, idx } = item;
+                      const customSubject = (item as any).customSubject;
+                      if (customSubject) {
+                        const rows = customSubject.schedules?.filter((sch: any) => sch.day === DAY_ABBRS[selDay]) || [];
+                        return rows.map((row: any, rowIndex: number) => (
+                          <div key={`${customSubject.id}-${rowIndex}`} className="rounded-xl border border-border/60 bg-background/50 p-3">
+                            <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0 flex-1">
-                                <p className="font-extrabold text-foreground text-sm leading-tight truncate" style={{ color: getSubjectColor(s.name) }}>{s.name}</p>
-                                <p className="text-[11px] text-muted-foreground mt-0.5">{s.name}: {s.plannedClasses} planned{getEffectiveParentName(s) ? ` · under ${getEffectiveParentName(s)}` : ''}</p>
+                                <p className="truncate text-sm font-extrabold leading-tight text-foreground" style={{ color: getSubjectColor(customSubject.name) }}>{customSubject.name}</p>
+                                <p className="mt-0.5 text-[11px] text-muted-foreground">{canonicalTimeRange(row.start, row.end)}</p>
                               </div>
-                              <button type="button" onClick={() => openEditSubject('custom', s.id)} className="action-button action-button--edit shrink-0">Edit</button>
-                              <button type="button" onClick={() => requestDeleteSubject('custom', s.id)} className="action-button action-button--danger shrink-0">Delete</button>
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                <button type="button" onClick={() => openEditSubject('custom', customSubject.id)} className="action-button action-button--edit shrink-0">Edit</button>
+                                <button type="button" onClick={() => requestDeleteSubject('custom', customSubject.id)} className="action-button action-button--danger shrink-0">Delete</button>
+                              </div>
                             </div>
-                          ));
-                        }
-                        const academicSubjects = slot.subjects.filter((s: string) => isAcademicSubject(s));
-                        const displayNames = academicSubjects.map((s: string) => getPresetSubjectDisplayName(s));
+                            <p className="mt-2 text-[11px] text-muted-foreground">{customSubject.plannedClasses} planned{getEffectiveParentName(customSubject) ? ` · under ${getEffectiveParentName(customSubject)}` : ''}</p>
+                          </div>
+                        ));
+                      }
+                      return slot.subjects.filter((s: string) => isAcademicSubject(s)).map((subjectName: string) => {
+                        const displayName = getPresetSubjectDisplayName(subjectName);
                         return (
-                          <div key={`${selDay}-${idx}`} className="bg-background/50 border border-border/60 rounded-xl p-3 flex items-center gap-2.5">
-                            <div className="min-w-0 flex-1">
-                              <p className="font-extrabold text-foreground text-sm leading-tight truncate" style={{ color: getSubjectColor(displayNames[0] || '') }}>
-                                {displayNames.join(', ')}
-                              </p>
-                              <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                                {academicSubjects.map((s: string, index: number) => `${displayNames[index]}: ${getSubjectPlannedTotal(resolvePresetOriginalName(s))} planned`).join(' · ')}
-                              </p>
-                              {academicSubjects.some((s: string) => userAddedSubjects.some(u => u.name === s && !isSGTRecord(u))) && <div className="mt-1"><AddedBadge /></div>}
+                          <div key={`${selDay}-${idx}-${subjectName}`} className="rounded-xl border border-border/60 bg-background/50 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-extrabold leading-tight text-foreground" style={{ color: getSubjectColor(displayName) }}>{displayName}</p>
+                                <p className="mt-0.5 text-[11px] text-muted-foreground">{slot.time}</p>
+                              </div>
+                              <button type="button" onClick={() => openEditSlot(selDay, idx)} className="action-button action-button--edit shrink-0">Edit</button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => openEditSlot(selDay, idx)}
-                              className="action-button action-button--edit shrink-0"
-                            >
-                              Edit
-                            </button>
+                            <p className="mt-2 text-[11px] text-muted-foreground">{getSubjectPlannedTotal(resolvePresetOriginalName(subjectName))} planned</p>
+                            {userAddedSubjects.some(u => u.name === subjectName && !isSGTRecord(u)) && <div className="mt-1"><AddedBadge /></div>}
                           </div>
                         );
-                      })}
+                      });
+                    })}
+                    <div className="flex min-h-[8rem] items-center justify-center py-4 text-center">
+                      <p className="text-sm font-semibold text-muted-foreground">{noMoreAcademicMessage}</p>
                     </div>
-                  </React.Fragment>
-                ))}
-                </div>
-                <div className="flex min-h-[8rem] flex-1 items-center justify-center py-4 text-center">
-                  <p className="text-sm font-semibold text-muted-foreground">{noMoreAcademicMessage}</p>
-                </div>
-                </>
-              )}
-                  </div>
-                </div>
+                  </>
+                )}
               </div>
               <div className="shrink-0 !bg-transparent px-3 py-1">
-                <button
-                  type="button"
-                  onClick={openAddSlot}
-                  className="w-full py-2 rounded-xl border border-dashed border-cyan-400 text-xs font-semibold text-cyan-400 hover:bg-cyan-400/10 hover:text-cyan-300 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add Slot
+                <button type="button" onClick={openAddSlot} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300">
+                  <Plus className="h-3.5 w-3.5" /> Add Slot
                 </button>
               </div>
             </div>
           )}
-
           {section === 'clinical' && (
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 border border-dashed border-border/80 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
