@@ -488,9 +488,12 @@ async function sendPush(env: Env, subscription: WebPushSubscription, heading: st
     publicKey: env.VAPID_SERVER_PUBLIC_KEY,
     privateKey: env.VAPID_SERVER_PRIVATE_KEY,
   };
-  const combinedTitle = `${heading}${body.trim() ? ` — ${body.trim().replace(/[.!?]+\s*$/u, '')}` : ''}`;
+  const hasStructuredRows = body.includes('\n');
+  const combinedTitle = hasStructuredRows
+    ? heading
+    : `${heading}${body.trim() ? ` — ${body.trim().replace(/[.!?]+\s*$/u, '')}` : ''}`;
   const payload = await buildPushPayload({
-    data: JSON.stringify({ title: combinedTitle, body: '', url }),
+    data: JSON.stringify({ title: combinedTitle, body: hasStructuredRows ? body.trim() : '', url }),
     options: { ttl: 300, urgency: 'high', topic: collapseId.slice(0, 32) },
   }, subscription, vapid);
   const response = await fetch(subscription.endpoint, payload as RequestInit);
@@ -571,7 +574,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
       if (mustAttend.length > 0) parts.push(`Must Attend: ${listNames(mustAttend)}`);
       if (needAttention.length > 0) parts.push(`Need Attention: ${listNames(needAttention)}`);
       if (finalClasses.length > 0) parts.push(`Upcoming Last Planned Class: ${listNames(finalClasses)}`);
-      const body = parts.join('. ') + '.';
+      const body = parts.join('\n');
       await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${scheduleDate}`, 'Urgent Schedule Alert', body, url);
     } else if (hasInfo) {
       const body = first ? `First Upcoming Class: ${cleanLabel(first.subjectLabel, first.category)} at ${formatMinute(first.startMinute)}.` : `Upcoming: ${listNames(digest)}.`;
