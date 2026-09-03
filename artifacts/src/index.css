@@ -61,25 +61,25 @@
 
 /* Dark Theme */
 .dark {
-  --background: #101820;
-  --foreground: #edf3f7;
+  --background: #0a0a0a;
+  --foreground: #f5f5f5;
   
-  --card: #182632;
-  --card-foreground: #edf3f7;
+  --card: #151515;
+  --card-foreground: #f5f5f5;
   
-  --border: #344957;
+  --border: #2a2a2a;
   
-  --primary: #55a8e8;
-  --primary-foreground: #07131d;
+  --primary: #4d9de0;
+  --primary-foreground: #ffffff;
   
-  --muted: #223441;
-  --muted-foreground: #aabac5;
+  --muted: #1d1d1d;
+  --muted-foreground: #a3a3a3;
   
-  --destructive: #f27b83;
-  --destructive-foreground: #18070a;
+  --destructive: #ef737c;
+  --destructive-foreground: #1a0809;
   
-  --success: #54c995;
-  --warning: #f0b24d;
+  --success: #55c78f;
+  --warning: #e9ad4d;
 }
 
 /* Structured medical dashboard surfaces. Existing class names are retained so
@@ -391,6 +391,9 @@
   -webkit-backdrop-filter: none !important;
 }
 [class*="bg-card\\/"] { background-color: var(--card) !important; }
+[class*="bg-black\\/"] { background-color: #080808 !important; }
+.modal-sheet-content,
+[role="dialog"] { background-color: var(--card) !important; }
 [class~="rounded-3xl"] { border-radius: 1rem !important; }
 [class~="rounded-2xl"] { border-radius: 0.875rem !important; }
 [class*="shadow-["] { box-shadow: 0 1px 3px rgba(23, 33, 43, 0.10) !important; }
