@@ -10,26 +10,24 @@ import {
   parseDayList,
   getEffectiveParentName,
 } from '@/contexts/CustomDataContext';
-import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey, getAcademicAttendanceKey } from '@/contexts/AttendanceContext';
 import {
   cn,
   canonicalTimeRange,
   canonicalizeTimeRange,
   parseRangeToMinutes,
   formatISODateDDMMYY,
-  to12h,
   getSubjectColor,
 } from '@/lib/utils';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { storageSetItem } from '@/lib/idb';
-import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import { getCurricula } from '@/lib/curriculumStore';
 import {
   Plus, Trash2, X, AlertTriangle,
-  GraduationCap, Stethoscope, Download, Upload, Copy, Share2,
+  GraduationCap, Stethoscope,
   Check, ChevronDown, ChevronRight, SendToBack, Pencil,
 } from 'lucide-react';
 
@@ -51,7 +49,6 @@ const descCls = 'block text-[10px] text-muted-foreground/70 mb-1.5';
 const inlineErrCls =
   'text-[11px] font-semibold text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2';
 const CREATE_NEW = '__create_new__';
-const BUNDLE_VERSION = 2;
 const DAY_AFTER_HOLIDAY_INDEX = 6; // Saturday follows the app-wide Friday holiday boundary.
 
 const genId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -172,19 +169,6 @@ interface EditSlotState {
   subjects: Array<{ name: string; planned: number; id: string }>;
   multiSelectMode: boolean;
 }
-interface ImportBundle {
-  version?: number; subjectMode?: 'preloaded' | 'custom';
-  addedSubjects?: Array<{
-    id?: string; name: string; type?: string; parentCategory?: string | null; planned?: number;
-    schedules?: Array<{ day: string; start?: string; end?: string; time?: string }>;
-    clinicalSubject?: string; startDate?: string; endDate?: string;
-    vacationPeriods?: Array<{ start: string; end: string }>;
-  }>;
-  customWards?: Array<{ id?: string; name: string; startDate: string; endDate: string; morningTime?: string; eveningTime?: string; vacationPeriods?: Array<{ start: string; end: string }> }>;
-  presetTimetable?: any; presetWardSchedule?: any; presetSubjectTotals?: Record<string, number>;
-}
-interface ImportReport { subjectsAdd: number; subjectsSkip: string[]; wardsAdd: number; wardsSkip: string[]; slots: number; rotations: number; }
-
 const newRow = (usedDays: string[]): ScheduleRow => {
   const day = DAY_ABBRS.find(d => !usedDays.includes(d)) || 'Mon';
   return { id: genId('row'), day, startTime: '09:00 AM', endTime: '10:00 AM' };
@@ -268,10 +252,6 @@ const formatHistoryDetail = (entry: any): string => {
       return `${d.name || ''} under ${d.clinicalSubject || ''} · ${d.planned || 0} planned`;
     case 'Edited Planned':
       return `${d.name || ''}: → ${d.planned ?? ''}`;
-    case 'Imported (Merge)':
-      return `${d.subjects || 0} subject(s), ${d.rotations || 0} rotation(s)`;
-    case 'Imported (Replace)':
-      return `Mode: ${d.mode || 'unknown'}`;
     default:
       return '';
   }
@@ -360,58 +340,12 @@ function VacationEditor({ vacations, onChange }: {
   );
 }
 
-const AI_PROMPT = `You are helping me create a routine bundle for the Attendenz Tracker app. Return exactly one plain JSON object in UTF-8 text. Do not return an image, Markdown, a code fence, commentary, headings, or explanatory prose. Use the exact schema below; omit any section that is not present in the source rather than inventing empty or preset data.
-
-{
-  "version": 2,
-  "addedSubjects": [
-    {
-      "name": "Cardiology",
-      "type": "single",
-      "parentCategory": null,
-      "planned": 40,
-      "schedules": [
-        { "day": "Mon", "start": "09:00 AM", "end": "10:00 AM" }
-      ],
-      "clinicalSubject": null,
-      "startDate": "2026-01-24",
-      "endDate": "2026-02-27",
-      "vacationPeriods": [ { "start": "2026-02-01", "end": "2026-02-03" } ]
-    }
-  ],
-  "customWards": [
-    {
-      "name": "Surgery",
-      "startDate": "2026-01-24",
-      "endDate": "2026-02-27",
-      "morningTime": "09:30 AM–11:30 AM",
-      "eveningTime": "07:00 PM–09:00 PM",
-      "vacationPeriods": [ { "start": "2026-02-05", "end": "2026-02-07" } ]
-    }
-  ]
-}
-
-Rules:
-- Convert any supplied image, table, weekday spelling, time notation, or schedule shape into the exact JSON schema above; do not copy source field names that are not in this schema.
-- Every schedules entry must use exactly { "day": "Mon", "start": "09:00 AM", "end": "10:00 AM" }. Convert Monday/Mondays to Mon, Tuesday/Tuesdays to Tue, and so on. Never use weekday, date, from, to, startTime, endTime, or a numeric weekday field.
-- All times must be valid 12-hour strings with AM/PM. Convert 24-hour times such as 09:00 or 13:30 to 09:00 AM or 01:30 PM. Do not output a time range in start or end. A time range may be used only as the optional single "time" field instead of start/end.
-- Dates must be yyyy-mm-dd. Convert other date formats before returning JSON.
-- Return one object, not an array. Use only ASCII JSON punctuation and U+0022 double quotes ("). Never use typographic/curly quotes such as “ ” or ‘ ’. Include no comments, no trailing commas, no Markdown fence, and no explanatory text.
-- Preserve supplied information by normalizing it, but never invent missing schedule days, times, planned totals, rotations, or subjects.
-- For subjectMode "preloaded", do not include preset subjects in addedSubjects; include only user-added subjects and include preset sections only when they are present in the source.
-- For subjectMode "custom", include the custom academic, clinical, allied, and SGT subjects actually present in the source; omit absent sections.
-- A subject of type "allied" must have parentCategory set to its parent name. An SGT subject must use parentCategory "Small Group Teaching", type "allied", and clinicalSubject equal to the ward name it belongs to.
-- Never classify an academic subject as SGT unless it belongs to Small Group Teaching. Preserve source names, days, times, dates, and planned totals exactly.
-- Vacation periods exclude those dates from planned class counts.
-- Do not include subjectMode. The app decides the target mode from the currently active routine and supplies it during import. The source image or routine does not need to identify it.
-Return only the JSON object, no markdown.`;
-
 export default function Manage() {
   const {
     subjectMode,
     customSubjects, customWards,
     userAddedSubjects,
-    presetTimetable, presetWardSchedule, presetSubjectTotals,
+    presetTimetable, presetWardSchedule,
     addCustomSubjects, updateCustomSubject, removeCustomSubject,
     addCustomWards, updateCustomWard, removeCustomWard,
     addUserAddedSubjects, updateUserAddedSubject, removeUserAddedSubject,
@@ -428,7 +362,7 @@ export default function Manage() {
     getPresetSubjectDisplayName,
     getPresetWardDisplayName,
   } = useCustomData();
-  const { removeSubjectData, removeWardData, removeAttendanceByKey, removeAttendanceEntitiesForMode, reopenFinishedIfPlanIncreased } = useAttendance();
+  const { removeSubjectData, removeWardData, removeAttendanceByKey, reopenFinishedIfPlanIncreased } = useAttendance();
   const [, setLocation] = useLocation();
 
   const [note, setNote] = useState<{ msg: string; kind: 'ok' | 'err' | 'info' } | null>(null);
@@ -490,16 +424,6 @@ export default function Manage() {
   const [showMoveForm, setShowMoveForm] = useState(false);
   const [deleteSheet, setDeleteSheet] = useState<{ title: string; lines: string[]; onConfirm: () => void } | null>(null);
   const [conflictSheet, setConflictSheet] = useState<{ messages: string[]; onConfirm: () => void } | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [presetImportBlockedOpen, setPresetImportBlockedOpen] = useState(false);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteText, setPasteText] = useState('');
-  const [pasteError, setPasteError] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ bundle: ImportBundle; report: ImportReport } | null>(null);
-  const [replaceConfirm, setReplaceConfirm] = useState(false);
-  const importFileRef = useRef<HTMLInputElement>(null);
   const [editSubject, setEditSubject] = useState<EditSubjectState | null>(null);
   const [editWard, setEditWard] = useState<EditWardState | null>(null);
   const [addSlotOpen, setAddSlotOpen] = useState(false);
@@ -1569,449 +1493,6 @@ export default function Manage() {
     }
   };
 
-  /* ── Import / Export ── */
-  const is12h = (t: string) => /^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(t);
-
-  const bundleJson = () => {
-    const added = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-    const addedSubjects = added.map(s => {
-      const sourceSchedules = (s.schedules && s.schedules.length)
-        ? s.schedules
-        : parseDayList(s.days).map((d: string) => ({ day: d, time: s.time || '' }));
-      const schedules = sourceSchedules.map((sch: any) => {
-        const canonical = sch.time
-          ? canonicalizeTimeRange(sch.time)
-          : canonicalTimeRange(sch.start || '', sch.end || '');
-        const { start, end } = splitRange(canonical);
-        return subjectMode === 'preloaded'
-          ? { day: sch.day, start, end }
-          : { day: sch.day, time: canonical };
-      });
-      return {
-        id: s.id,
-        name: s.name,
-        type: s.subjectType,
-        parentCategory: getEffectiveParentName(s) ?? null,
-        planned: s.plannedClasses,
-        schedules,
-        clinicalSubject: (s as any).clinicalSubject || undefined,
-        startDate: (s as any).startDate || undefined,
-        endDate: (s as any).endDate || undefined,
-        vacationPeriods: (s as any).vacationPeriods || undefined,
-      };
-    });
-    const bundle = subjectMode === 'preloaded'
-      ? {
-          version: BUNDLE_VERSION,
-          subjectMode,
-          addedSubjects,
-          customWards: [],
-          presetTimetable,
-          presetWardSchedule,
-          presetSubjectTotals,
-        }
-      : {
-          version: BUNDLE_VERSION,
-          subjectMode,
-          addedSubjects,
-          customWards: customWards.map(w => ({
-            id: w.id,
-            name: w.name,
-            startDate: w.startDate,
-            endDate: w.endDate,
-            morningTime: w.morningTime,
-            eveningTime: w.eveningTime,
-            vacationPeriods: w.vacationPeriods || undefined,
-          })),
-        };
-    return JSON.stringify(bundle, null, 2);
-  };
-
-  const doDownload = () => {
-    try {
-      const blob = new Blob([bundleJson()], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `attendenz-routine-${formatISODateDDMMYY(new Date().toISOString()).replace(/\//g, '-')}.json`;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-      showToast('Routine bundle downloaded.');
-      setExportOpen(false);
-      setMoreMenuOpen(true);
-    } catch { showToast('Download failed — please try again.', 'err'); }
-  };
-  const doCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(bundleJson());
-      showToast('Bundle copied to clipboard.');
-      setExportOpen(false);
-      setMoreMenuOpen(true);
-    }
-    catch { showToast('Copy failed — use Download instead.', 'err'); }
-  };
-  const doShare = async () => {
-    const json = bundleJson();
-    try {
-      const blob = new Blob([json], { type: 'application/json' });
-      const file = new File([blob], 'attendenz-routine.json', { type: 'application/json' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Attendenz Routine', text: 'Routine bundle (no attendance data).' });
-        showToast('Share sheet opened.');
-        setExportOpen(false);
-        setMoreMenuOpen(true);
-        return;
-      }
-      throw new Error('no-share');
-    } catch {
-      try {
-        await navigator.clipboard.writeText(json);
-        showToast('Share unavailable — bundle copied instead.', 'info');
-        setExportOpen(false);
-        setMoreMenuOpen(true);
-      }
-      catch { showToast('Share failed — use Download.', 'err'); }
-    }
-  };
-
-  const copyAIPrompt = async () => {
-    try {
-      await navigator.clipboard.writeText(AI_PROMPT);
-      showToast('AI prompt copied! Paste it to your AI assistant.', 'info');
-    } catch {
-      showToast('Failed to copy prompt.', 'err');
-    }
-  };
-
-  const openRoutineImport = () => {
-    setMoreMenuOpen(false);
-    if (subjectMode === 'preloaded') {
-      setPresetImportBlockedOpen(true);
-      return;
-    }
-    setImportError(null);
-    setImportOpen(true);
-  };
-
-  const normTimeTo12 = (t: string): string => {
-    if (is12h(t)) return t.trim().replace(/\s+/g, ' ').toUpperCase();
-    const minutes = parseRangeToMinutes(`${t}–${t}`)?.start;
-    if (minutes === undefined) return '';
-    const hours = Math.floor(minutes / 60);
-    const mins = String(minutes % 60).padStart(2, '0');
-    return to12h(`${hours}:${mins}`);
-  };
-
-  const normalizeImportedSchedule = (sch: any): { day: string; start: string; end: string; time: string } | null => {
-    if (!sch || typeof sch.day !== 'string' || !DAY_ABBRS.includes(sch.day as (typeof DAY_ABBRS)[number])) return null;
-    let start = '';
-    let end = '';
-    if (typeof sch.time === 'string' && sch.time.trim()) {
-      const range = canonicalizeTimeRange(sch.time.trim());
-      const split = splitRange(range);
-      start = normTimeTo12(split.start);
-      end = normTimeTo12(split.end);
-    } else {
-      start = typeof sch.start === 'string' ? normTimeTo12(sch.start) : '';
-      end = typeof sch.end === 'string' ? normTimeTo12(sch.end) : '';
-    }
-    if (!start || !end) return null;
-    const time = canonicalTimeRange(start, end);
-    return { day: sch.day, start, end, time };
-  };
-
-  const validateBundle = (obj: any): { ok: boolean; error?: string; bundle?: ImportBundle } => {
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, error: 'Not a JSON object.' };
-    // The destination mode belongs to the active app routine, not to the supplied source file.
-    // Accept older exported bundles that contain subjectMode, but always override it safely.
-    const b = { ...obj, subjectMode } as ImportBundle;
-    if (!Array.isArray(b.addedSubjects) && !Array.isArray(b.customWards) && !b.presetTimetable && !b.presetWardSchedule) return { ok: false, error: 'Bundle has no routine data.' };
-    if (b.addedSubjects && !Array.isArray(b.addedSubjects)) return { ok: false, error: '"addedSubjects" must be an array.' };
-    for (const s of b.addedSubjects || []) {
-      if (!s || typeof s.name !== 'string' || !s.name.trim()) return { ok: false, error: 'Every added subject needs a "name".' };
-      for (const sch of s.schedules || []) {
-        if (!normalizeImportedSchedule(sch)) {
-          return { ok: false, error: `Subject "${s.name}": schedules need a valid day and time.` };
-        }
-      }
-    }
-    if (b.customWards && !Array.isArray(b.customWards)) return { ok: false, error: '"customWards" must be an array.' };
-    return { ok: true, bundle: b };
-  };
-
-  const buildReport = (b: ImportBundle): ImportReport => {
-    const subjectsSkip: string[] = []; let subjectsAdd = 0;
-    for (const s of b.addedSubjects || []) {
-      const domain = s.parentCategory === 'Small Group Teaching' ? 'clinical' as const : 'academic' as const;
-      if (isSubjectNameTaken(s.name, undefined, domain)) { subjectsSkip.push(`${s.name} (duplicate name)`); continue; }
-      const rows = (s.schedules || []).map(normalizeImportedSchedule).filter((row): row is NonNullable<ReturnType<typeof normalizeImportedSchedule>> => row !== null);
-      if (rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined, domain).some(c => !c.exact))) {
-        subjectsSkip.push(`${s.name} (time overlap)`);
-        continue;
-      }
-      subjectsAdd++;
-    }
-    const wardsSkip: string[] = []; let wardsAdd = 0;
-    for (const w of b.customWards || []) {
-      if (isWardNameTaken(w.name)) { wardsSkip.push(`${w.name} (duplicate name)`); continue; }
-      if (findWardDateConflicts(w.startDate, w.endDate, undefined).length) { wardsSkip.push(`${w.name} (date overlap)`); continue; }
-      wardsAdd++;
-    }
-    const slots: number = b.subjectMode === 'preloaded'
-      ? Object.values(b.presetTimetable || {}).reduce<number>((acc: number, day: any) => {
-          if (!Array.isArray(day)) return acc;
-          return acc + day.filter((slot: any) => slot.type !== 'ward' && slot.type !== 'ward_replacement').length;
-        }, 0)
-      : 0;
-    const rotations = b.subjectMode === 'custom'
-      ? (b.customWards || []).length
-      : (b.presetWardSchedule || []).length;
-    return { subjectsAdd, subjectsSkip, wardsAdd, wardsSkip, slots, rotations };
-  };
-
-  const beginImport = (raw: string, source: 'file' | 'paste') => {
-    let parsed: any;
-    try {
-      const normalized = raw.trim()
-        .replace(/[“”]/g, '"')
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```$/i, '');
-      try {
-        parsed = JSON.parse(normalized);
-      } catch {
-        const start = normalized.indexOf('{');
-        const end = normalized.lastIndexOf('}');
-        if (start < 0 || end <= start) throw new Error('no-json');
-        parsed = JSON.parse(normalized.slice(start, end + 1));
-      }
-    } catch {
-      const msg = 'Invalid JSON — check the file or pasted text.';
-      if (source === 'paste') setPasteError(msg); else setImportError(msg);
-      return;
-    }
-    const v = validateBundle(parsed);
-    if (!v.ok || !v.bundle) {
-      const msg = v.error || 'Invalid bundle.';
-      if (source === 'paste') setPasteError(msg); else setImportError(msg);
-      return;
-    }
-    setPasteError(null); setImportError(null); setPasteOpen(false); setImportOpen(false);
-    setPreview({ bundle: v.bundle, report: buildReport(v.bundle) });
-    showToast('Bundle valid — review the preview.', 'info');
-  };
-
-  const applyMerge = async () => {
-    if (!preview) return;
-    try {
-      if (!await snapshotBeforeEdit('Merge Routine Import')) {
-        showToast('Merge stopped — the safety snapshot could not be created.', 'err');
-        return;
-      }
-      const b = preview.bundle;
-      if (b.subjectMode !== subjectMode) {
-        showToast('Merge stopped — switch to the matching routine mode first.', 'err');
-        return;
-      }
-      const items: any[] = [];
-      for (const s of b.addedSubjects || []) {
-        const domain = s.parentCategory === 'Small Group Teaching' ? 'clinical' as const : 'academic' as const;
-        if (isSubjectNameTaken(s.name, undefined, domain)) continue;
-        const rows = (s.schedules || []).map(normalizeImportedSchedule).filter((row): row is NonNullable<ReturnType<typeof normalizeImportedSchedule>> => row !== null);
-        if (!rows.length) rows.push({ day: 'Mon', time: canonicalTimeRange('09:00 AM', '10:00 AM'), start: '09:00 AM', end: '10:00 AM' });
-        if (rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined, domain).some(c => !c.exact))) continue;
-        items.push({
-          name: s.name,
-          subjectType: (s.type as any) || 'single',
-          parentName: s.parentCategory || undefined,
-          plannedClasses: s.planned ?? 0,
-          rows,
-          clinicalSubject: s.clinicalSubject,
-          startDate: s.startDate,
-          endDate: s.endDate,
-          vacationPeriods: s.vacationPeriods,
-        });
-      }
-      let wardsAdded = 0;
-      for (const w of b.customWards || []) {
-        if (isWardNameTaken(w.name)) continue;
-        if (findWardDateConflicts(w.startDate, w.endDate, undefined).length) continue;
-        const mt = canonicalizeTimeRange(w.morningTime || '09:30 AM–11:30 AM');
-        const et = canonicalizeTimeRange(w.eveningTime || '07:00 PM–09:00 PM');
-        if (subjectMode === 'preloaded') addPresetWardEntry({ start: w.startDate, end: w.endDate, ward: w.name, morningTime: mt, eveningTime: et, addedByUser: true, vacationPeriods: w.vacationPeriods });
-        else addCustomWards([{ name: w.name, startDate: w.startDate, endDate: w.endDate, morningTime: mt, eveningTime: et, vacationPeriods: w.vacationPeriods }]);
-        wardsAdded++;
-      }
-      let rotationsAdded = 0;
-      let timetableChanges = 0;
-      for (const e of subjectMode === 'preloaded' ? (b.presetWardSchedule || []) : []) {
-        if (!e || e.addedByUser !== true) continue;
-        if (presetWardSchedule.some(x => x.ward.toLowerCase() === String(e.ward).toLowerCase() && x.start === e.start && x.end === e.end)) continue;
-        if (findWardDateConflicts(e.start, e.end, undefined).length) continue;
-        const mt = canonicalizeTimeRange(e.morningTime || '09:30 AM–11:30 AM');
-        const et = canonicalizeTimeRange(e.eveningTime || '07:00 PM–09:00 PM');
-        if (subjectMode === 'preloaded') addPresetWardEntry({ start: e.start, end: e.end, ward: e.ward, morningTime: mt, eveningTime: et, addedByUser: true, vacationPeriods: e.vacationPeriods });
-        else addCustomWards([{ name: e.ward, startDate: e.start, endDate: e.end, morningTime: mt, eveningTime: et, vacationPeriods: e.vacationPeriods }]);
-        rotationsAdded++;
-      }
-      if (subjectMode === 'preloaded' && b.presetTimetable) {
-        Object.entries(b.presetTimetable).forEach(([dayStr, slots]) => {
-          const day = parseInt(dayStr, 10);
-          if (isNaN(day) || !Array.isArray(slots)) return;
-          for (const slot of slots as any[]) {
-            if (!slot || !slot.subjects || slot.subjects.length === 0) continue;
-            if (slot.type === 'ward' || slot.type === 'ward_replacement') continue;
-            const time = canonicalizeTimeRange(slot.time);
-            const existingIdx = (presetTimetable[day] || []).findIndex(s => canonicalizeTimeRange(s.time) === time);
-            if (existingIdx >= 0) {
-              const merged = Array.from(new Set([...(presetTimetable[day][existingIdx].subjects || []), ...slot.subjects]));
-              if (merged.length !== (presetTimetable[day][existingIdx].subjects || []).length) timetableChanges += 1;
-              updatePresetTimetableSlot(day, existingIdx, time, merged, day);
-            } else {
-              slot.subjects.forEach((n: string) => addSubjectToSlot(day, time, n));
-              timetableChanges += 1;
-            }
-          }
-        });
-      }
-      if (items.length) commitSubjects(items);
-      recordHistory('Imported (Merge)', { subjects: items.length, rotations: wardsAdded + rotationsAdded });
-      setPreview(null);
-      setMoreMenuOpen(true);
-      const total = items.length + wardsAdded + rotationsAdded + timetableChanges;
-      if (total === 0) showToast('Nothing new to merge (duplicates or preset-only data). Use Replace to adopt the bundle.', 'info');
-      else {
-        showToast(`Merged ${items.length} subject(s), ${wardsAdded + rotationsAdded} rotation(s).`);
-        void notifyManageChange('Your routine was updated successfully.');
-      }
-    } catch { showToast('Merge failed — please try again.', 'err'); }
-  };
-
-  const applyReplace = async () => {
-    if (!preview) return;
-    const b = preview.bundle;
-    if (b.subjectMode !== subjectMode) {
-      showToast('Replace stopped — switch to the matching routine mode first.', 'err');
-      return;
-    }
-    if (!await snapshotBeforeEdit('Replace Routine Import')) {
-      showToast('Replace stopped — the safety snapshot could not be created.', 'err');
-      return;
-    }
-    recordHistory('Imported (Replace)', { mode: b.subjectMode });
-
-    const existingStore = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-    const existingByNameDomain = new Map<string, any>();
-    const existingById = new Map<string, any>();
-    for (const ex of existingStore) {
-      const isSGT = isSGTRecord(ex);
-      const key = `${ex.name.trim().toLowerCase()}|${isSGT ? 'sgt' : 'academic'}`;
-      existingByNameDomain.set(key, ex);
-      if (ex.id) existingById.set(ex.id, ex);
-    }
-
-    const incomingSubjectRecords = b.addedSubjects || [];
-    const incomingSubjectIds = new Set(incomingSubjectRecords.map((x: any) => typeof x.id === 'string' ? x.id : '').filter(Boolean));
-    const incomingSubjectNames = new Set(incomingSubjectRecords.map((x: any) => `${String(x.name || '').trim().toLowerCase()}|${x.parentCategory === 'Small Group Teaching' ? 'sgt' : 'academic'}`));
-    const incomingWardNames = new Set([
-      ...(b.customWards || []).map((x: any) => String(x.name || '').trim().toLowerCase()),
-      ...(b.presetWardSchedule || []).filter((x: any) => x?.addedByUser === true).map((x: any) => String(x.ward || '').trim().toLowerCase()),
-    ]);
-    const omittedEntities: Array<{ key: string; type: 'subject' | 'ward'; legacyKey?: string }> = [];
-    for (const oldSubject of existingStore) {
-      const kind = isSGTRecord(oldSubject) ? 'sgt' : 'academic';
-      const identity = `${oldSubject.name.trim().toLowerCase()}|${kind}`;
-      if ((oldSubject.id && incomingSubjectIds.has(oldSubject.id)) || incomingSubjectNames.has(identity)) continue;
-      const key = kind === 'sgt' ? getSGTKey(oldSubject.id) : getAcademicAttendanceKey(oldSubject.id || oldSubject.name);
-      omittedEntities.push({ key, type: 'subject', legacyKey: oldSubject.name });
-    }
-    for (const oldWard of subjectMode === 'preloaded' ? presetWardSchedule.filter((x: any) => x.addedByUser === true) : customWards) {
-      const name = String('ward' in oldWard ? oldWard.ward : oldWard.name).trim();
-      if (!name || incomingWardNames.has(name.toLowerCase())) continue;
-      const id = (oldWard as any).id;
-      omittedEntities.push({ key: getWardAttendanceKey(id || name), type: 'ward', legacyKey: `ward-${name}` });
-    }
-    removeAttendanceEntitiesForMode(b.subjectMode || 'preloaded', omittedEntities);
-
-    const toSubjectRecord = (s: any) => {
-      const normalizedSchedules: Array<NonNullable<ReturnType<typeof normalizeImportedSchedule>>> = (s.schedules || [])
-        .map((sch: any) => normalizeImportedSchedule(sch))
-        .filter((schedule: ReturnType<typeof normalizeImportedSchedule>): schedule is NonNullable<ReturnType<typeof normalizeImportedSchedule>> => schedule !== null);
-      const schedules = normalizedSchedules.map(({ day, start, end }) => ({ day, start, end }));
-
-      const isSGT = s.parentCategory === 'Small Group Teaching';
-      const domainKey = `${s.name.trim().toLowerCase()}|${isSGT ? 'sgt' : 'academic'}`;
-      const existing = (typeof s.id === 'string' && existingById.get(s.id)) || existingByNameDomain.get(domainKey);
-      const id = existing?.id || (typeof s.id === 'string' && s.id.trim() ? s.id : genId(b.subjectMode === 'preloaded' ? 'ua' : 'cs'));
-
-      return {
-        id,
-        name: s.name,
-        subjectType: s.type || 'single',
-        parentName: s.parentCategory || undefined,
-        category: s.parentCategory || undefined,
-        plannedClasses: s.planned ?? 0,
-        days: schedules.map((x: any) => x.day).join(', '),
-        time: schedules.length ? canonicalTimeRange(schedules[0].start, schedules[0].end) : '',
-        schedules: subjectMode === 'preloaded'
-          ? schedules
-          : schedules.map((x: any) => ({ day: x.day, time: canonicalTimeRange(x.start, x.end) })),
-        clinicalSubject: s.clinicalSubject,
-        startDate: s.startDate,
-        endDate: s.endDate,
-        vacationPeriods: s.vacationPeriods,
-      };
-    };
-
-    const records = (b.addedSubjects || []).map(toSubjectRecord);
-
-    if (subjectMode === 'preloaded' && b.presetTimetable) {
-      localStorage.setItem('att_preset_timetable', JSON.stringify(b.presetTimetable));
-      storageSetItem('att_preset_timetable', JSON.stringify(b.presetTimetable));
-    }
-    if (subjectMode === 'preloaded' && b.presetWardSchedule) {
-      const ws = (b.presetWardSchedule || []).map((e: any) => ({
-        ...e,
-        morningTime: canonicalizeTimeRange(e.morningTime || '09:30 AM–11:30 AM'),
-        eveningTime: canonicalizeTimeRange(e.eveningTime || '07:00 PM–09:00 PM'),
-      }));
-      localStorage.setItem('att_preset_ward_schedule', JSON.stringify(ws));
-      storageSetItem('att_preset_ward_schedule', JSON.stringify(ws));
-    }
-    if (subjectMode === 'preloaded' && b.presetSubjectTotals) {
-      localStorage.setItem('att_preset_subject_totals', JSON.stringify(b.presetSubjectTotals));
-      storageSetItem('att_preset_subject_totals', JSON.stringify(b.presetSubjectTotals));
-    }
-
-    if (subjectMode === 'custom') {
-      localStorage.setItem('att_custom_subjects', JSON.stringify(records));
-      storageSetItem('att_custom_subjects', JSON.stringify(records));
-
-      const existingWards = new Map(customWards.map(w => [w.name.trim().toLowerCase(), w]));
-      const cw = (b.customWards || []).map((w: any, i: number) => ({
-        ...w,
-        id: typeof w.id === 'string' && w.id.trim()
-          ? w.id
-          : existingWards.get(w.name.trim().toLowerCase())?.id || `cw_imp_${Date.now()}_${i}`,
-        morningTime: canonicalizeTimeRange(w.morningTime || '09:30 AM–11:30 AM'),
-        eveningTime: canonicalizeTimeRange(w.eveningTime || '07:00 PM–09:00 PM'),
-      }));
-      localStorage.setItem('att_custom_wards', JSON.stringify(cw));
-      storageSetItem('att_custom_wards', JSON.stringify(cw));
-    } else {
-      localStorage.setItem('att_user_added_subjects', JSON.stringify(records));
-      storageSetItem('att_user_added_subjects', JSON.stringify(records));
-    }
-
-    localStorage.setItem('att_subject_mode', b.subjectMode || 'preloaded');
-    storageSetItem('att_subject_mode', b.subjectMode || 'preloaded');
-    setPreview(null);
-    setMoreMenuOpen(true);
-    showToast('Routine replaced — reloading…');
-    void notifyManageChange('Your routine was updated successfully.');
-    setLocation('/');
-    setTimeout(() => window.location.reload(), 900);
-  };
-
   const renderRowList = (
     rows: ScheduleRow[],
     onUpdate: (id: string, patch: Partial<ScheduleRow>) => void,
@@ -2129,7 +1610,7 @@ export default function Manage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-end justify-center bg-black/55 backdrop-blur-sm" onClick={() => setNoActiveCurriculumMessage(false)}>
           <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} className="modal-sheet-content !min-h-0 w-full max-w-md rounded-t-3xl bg-card/90 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-foreground">No Active Curricula</h3>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">There are no Active Curricula. Reopen or Create a new Active Curricula from <button type="button" onClick={() => { setNoActiveCurriculumMessage(false); setLocation('/account'); }} className="font-semibold text-blue-500 hover:text-blue-400">Setting&apos;s</button> Curriculum Management to Add/Edit a Subject data or Import/Export Routine.</p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">There are no Active Curricula. Reopen or Create a new Active Curricula from <button type="button" onClick={() => { setNoActiveCurriculumMessage(false); setLocation('/account'); }} className="font-semibold text-blue-500 hover:text-blue-400">Setting&apos;s</button> Curriculum Management to Add/Edit a Subject data.</p>
             <button type="button" onClick={() => setNoActiveCurriculumMessage(false)} className="action-button action-button--cancel mt-3 w-full min-h-10">Close</button>
           </motion.div>
         </motion.div>, document.body
@@ -2763,32 +2244,10 @@ export default function Manage() {
               <Pencil className="w-4 h-4 text-primary shrink-0" />
               <span><span className="block text-xs font-bold text-foreground">Edit {section === 'academic' ? 'Academic' : 'Clinical'} Data</span><span className="block text-[10px] text-muted-foreground">Update planned data or remove added items</span></span>
             </button>
-            <button type="button" onClick={openRoutineImport} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
-              <Download className="w-4 h-4 text-primary shrink-0" />
-              <span><span className="block text-xs font-bold text-foreground">Import</span><span className="block text-[10px] text-muted-foreground">Add or replace a routine</span></span>
-            </button>
-            <button type="button" onClick={() => { setMoreMenuOpen(false); setExportOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
-              <Upload className="w-4 h-4 text-primary shrink-0" />
-              <span><span className="block text-xs font-bold text-foreground">Export</span><span className="block text-[10px] text-muted-foreground">Save a copy of your routine</span></span>
-            </button>
             <button type="button" onClick={() => { setMoreMenuOpen(false); setHistoryOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
               <SendToBack className="w-4 h-4 text-primary shrink-0" />
               <span><span className="block text-xs font-bold text-foreground">History</span><span className="block text-[10px] text-muted-foreground">View recent Manage actions</span></span>
             </button>
-          </div>
-        </OverlayModal>
-
-        <OverlayModal open={presetImportBlockedOpen} onClose={() => setPresetImportBlockedOpen(false)} maxW="max-w-md">
-          <div className="p-4 sm:p-5 space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 shrink-0 rounded-full bg-amber-500/15 flex items-center justify-center"><AlertTriangle className="h-5 w-5 text-amber-500" /></div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Import unavailable in this routine</h3>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">5th Year / Final Phase already includes the predefined subjects, clinical rotations, and weekly timetable. Import is disabled here to protect that preset structure.</p>
-              </div>
-            </div>
-            <p className="text-xs leading-relaxed text-muted-foreground">To change this routine, use Edit Slot, Add Academic, Add Clinical, or the other Manage actions. Export remains available.</p>
-            <button type="button" onClick={() => setPresetImportBlockedOpen(false)} className={cn(btnPrimary, 'w-full')}>Got it</button>
           </div>
         </OverlayModal>
 
@@ -3191,99 +2650,6 @@ export default function Manage() {
           )}
         </OverlayModal>
 
-        {/* Export Modal */}
-        <OverlayModal open={exportOpen} onClose={() => { setExportOpen(false); setMoreMenuOpen(true); }} header={
-          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-foreground">Export Routine</h3><button type="button" onClick={() => { setExportOpen(false); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon" aria-label="Close Export Routine"><X className="w-4 h-4" /></button></div>
-        }>
-          <div className="p-4 sm:p-5 space-y-2.5">
-            <p className="text-[10px] text-muted-foreground mt-0.5">Bundle contains routine data only — never attendance.</p>
-            <Note note={note} />
-            <button type="button" onClick={doShare} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-2')}><Share2 className="w-4 h-4" /> Share…</button>
-            <button type="button" onClick={doDownload} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Download className="w-4 h-4" /> Download .json</button>
-            <button type="button" onClick={doCopy} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Copy className="w-4 h-4" /> Copy to Clipboard</button>
-          </div>
-        </OverlayModal>
-
-        {/* Import Modal */}
-        <OverlayModal open={importOpen} onClose={() => { setImportOpen(false); setImportError(null); setMoreMenuOpen(true); }} header={
-          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-foreground">Import Routine</h3><button type="button" onClick={() => { setImportOpen(false); setImportError(null); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon" aria-label="Close Import Routine"><X className="w-4 h-4" /></button></div>
-        }>
-          <div className="p-4 sm:p-5 space-y-2.5">
-            <p className="text-[10px] text-muted-foreground mt-0.5">Load a routine bundle from a file or pasted JSON. Attendance is never imported.</p>
-            <Note note={note} />
-            {importError && <p className={inlineErrCls}>{importError}</p>}
-            <button type="button" onClick={() => importFileRef.current?.click()} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-2')}><Download className="w-4 h-4" /> Choose .json File</button>
-            <input ref={importFileRef} type="file" accept=".json,application/json" className="hidden"
-              onChange={e => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                const reader = new FileReader();
-                reader.onload = ev => beginImport(String(ev.target?.result || ''), 'file');
-                reader.readAsText(f);
-                e.target.value = '';
-              }} />
-            <button type="button" onClick={() => { setPasteError(null); setPasteOpen(true); }} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Copy className="w-4 h-4" /> Paste JSON…</button>
-            <button type="button" onClick={copyAIPrompt} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Copy className="w-4 h-4" /> Copy AI Prompt</button>
-          </div>
-        </OverlayModal>
-
-        {/* Paste JSON Modal */}
-        <OverlayModal open={pasteOpen} onClose={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} maxW="max-w-lg" header={
-          <div><h3 className="text-sm font-bold text-foreground">Paste Bundle JSON</h3></div>
-        }>
-          <div className="p-4 sm:p-5 space-y-2.5">
-            <p className="text-[10px] text-muted-foreground mt-0.5">Paste the bundle text from another device, then validate.</p>
-            {pasteError && <p className={inlineErrCls}>{pasteError}</p>}
-            <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={8} className={cn(inputCls, 'h-auto font-mono text-[10px] py-2')} placeholder='{"version":2,"subjectMode":…}' />
-            <div className="flex gap-2">
-              <button type="button" onClick={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} className={cn(btnCancel, 'flex-1')}>Cancel</button>
-              <button type="button" onClick={() => beginImport(pasteText, 'paste')} className={cn(btnPrimary, 'flex-1')}>Validate & Preview</button>
-            </div>
-          </div>
-        </OverlayModal>
-
-        {/* Import Preview Modal */}
-        <OverlayModal open={!!preview} onClose={() => { setPreview(null); setMoreMenuOpen(true); }} maxW="max-w-lg" header={
-          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-foreground">Import Preview</h3><button type="button" onClick={() => { setPreview(null); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon" aria-label="Close Import Preview"><X className="w-4 h-4" /></button></div>
-        }>
-          {preview && (
-            <div className="p-4 sm:p-5 space-y-3">
-              <p className="text-[10px] text-muted-foreground mt-0.5">Review exactly what will be added or skipped before anything changes.</p>
-              <Note note={note} />
-              <div className="bg-muted/30 border border-border/50 rounded-xl p-3 text-xs text-foreground space-y-1">
-                <p>Mode: <strong>{preview.bundle.subjectMode}</strong> · Subjects to add: <strong>{preview.report.subjectsAdd}</strong> · Rotations to add: <strong>{preview.report.wardsAdd}</strong></p>
-                <p>Preset slots in bundle: <strong>{preview.report.slots}</strong> · Preset rotations: <strong>{preview.report.rotations}</strong></p>
-              </div>
-              {(preview.report.subjectsSkip.length > 0 || preview.report.wardsSkip.length > 0) && (
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 space-y-1">
-                  <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wide">Skipped (duplicates / overlaps)</p>
-                  {[...preview.report.subjectsSkip, ...preview.report.wardsSkip].map((s, i) => <p key={i} className="text-[11px] text-foreground">• {s}</p>)}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <button type="button" onClick={applyMerge} className={cn(btnPrimary, 'flex-1')}>Merge</button>
-                <button type="button" onClick={() => setReplaceConfirm(true)} className="action-button action-button--danger flex-1">Replace</button>
-              </div>
-            </div>
-          )}
-        </OverlayModal>
-
-        {/* Replace Confirm Modal */}
-        <OverlayModal open={replaceConfirm} onClose={() => setReplaceConfirm(false)}>
-          <div className="p-4 sm:p-5 space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0"><AlertTriangle className="w-5 h-5 text-rose-500" /></div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Replace everything?</h3>
-                <p className="text-xs text-muted-foreground">This wipes your current routine and adopts the bundle. A snapshot is taken first.</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setReplaceConfirm(false)} className={cn(btnCancel, 'flex-1')}>Cancel</button>
-              <button type="button" onClick={() => { setReplaceConfirm(false); applyReplace(); }} className="action-button action-button--danger flex-1">Yes, Replace</button>
-            </div>
-          </div>
-        </OverlayModal>
       </div>
     </Layout>
   );

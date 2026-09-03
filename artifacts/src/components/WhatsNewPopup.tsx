@@ -133,14 +133,14 @@ export function WhatsNewPopup() {
               >
                 <div className="space-y-4">
                   <ReleaseSection
-                    title="Upgrades / New Features"
+                    title="Upgrades"
                     icon={<Zap className="h-3.5 w-3.5 shrink-0" />}
                     items={WHATS_NEW_UPGRADES}
                     titleClass="text-emerald-500"
                     accentClass="text-muted-foreground"
                   />
                   <ReleaseSection
-                    title="Fixes & Refinements"
+                    title="Fixes / Refinements"
                     icon={<Wrench className="h-3.5 w-3.5 shrink-0" />}
                     items={WHATS_NEW_FIXES}
                     titleClass="text-amber-500"

@@ -16,21 +16,23 @@ export interface WhatsNewItem {
   details: string;
 }
 export const WHATS_NEW_UPGRADES: WhatsNewItem[] = [
-  { title: "Must Attend Summary Notifications", summary: "Receive summaries about Classes you should attend to stay on track.", details: "" },
-  { title: "Need Attention Subjects Notifications", summary: "Get notified when a Subject requires attention.", details: "" },
-  { title: "Safe to Miss a Class Notification", summary: "See when missing a Class remains safe for your attendance target.", details: "" },
-  { title: "Before-Class Warnings", summary: "Receive reminders before scheduled Classes begin.", details: "" },
-  { title: "Late Evening Unmarked Attendance Notifications", summary: "Get reminders when today’s scheduled Class attendance is still unmarked.", details: "" },
-  { title: "Feedback & Sound", summary: "Enjoy improved feedback and sound responses throughout Attendenz.", details: "" },
-  { title: "Curriculum Management", summary: "Manage active curricula and switching with clearer controls.", details: "" },
+  { title: "New UI Design", summary: "Refreshed interface with modern styling, improved readability, and consistent light/dark theme.", details: "" },
+  { title: "Curriculum Management", summary: "Separate active and archived curricula; switch, complete, reopen, rename, or delete with confirmations.", details: "" },
+  { title: "Stronger Data Safety", summary: "Reliable IndexedDB persistence with ordered writes and LocalStorage mirroring; backup/restore verifies success and supports older backups.", details: "" },
+  { title: "Smarter Backup & Restore", summary: "Restored data is version-stamped; failed updates no longer loop silently.", details: "" },
+  { title: "Clearer Home Cards", summary: "Past, today, tomorrow, and future classes are visually distinct; Clinical and SGT subjects show labels like Clinical (Morning) and Small Group.", details: "" },
+  { title: "Improved Notifications", summary: "More specific categories (Must Attend, Need Attention, Safe to Miss), correct subject-type labels, and accurate final planned class detection.", details: "" },
+  { title: "Enhanced Export Controls", summary: "Export PDF, Excel, or CSV with subject, custom-date, or semester scope from Settings.", details: "" },
+  { title: "Reliable PWA Updates", summary: "Service worker and version metadata stay in sync.", details: "" },
+  { title: "Start Fresh & Delete All Data", summary: "Completely wipe user data and return to the Welcome screen.", details: "" },
 ];
 export const WHATS_NEW_FIXES: WhatsNewItem[] = [
-  { title: "Fixed Home Display Message", summary: "Home wording now better reflects selected dates.", details: "" },
-  { title: "Fixed Notification Delay", summary: "Improved reminder timing and delivery reliability.", details: "" },
-  { title: "Fixed Manage Tab", summary: "Improved schedule layout and empty-state presentation.", details: "" },
-  { title: "Fixed Backup / Restore", summary: "Improved backup and restore modal controls.", details: "" },
-  { title: "Fixed Export PDF", summary: "Improved attendance report presentation and reliability.", details: "" },
-  { title: "Fixed Theme", summary: "Improved theme-consistent colours and text presentation.", details: "" },
+  { title: "Home & Subject Cards", summary: "Fixed long status text overflow, separated completed classes, aligned percentage containers, and removed the unwanted vertical divider.", details: "" },
+  { title: "Manage Tab Layout", summary: "Academic schedule full-width time rows; Clinical and SGT entries separated with their own actions; improved spacing and scrolling.", details: "" },
+  { title: "Settings Organization", summary: "Clearer sections with consistent theme colors and borders.", details: "" },
+  { title: "Mobile Usability", summary: "Improved keyboard handling for rename/create dialogs and curriculum modal sizes to content.", details: "" },
+  { title: "Attendance & Feedback", summary: "Cancellable confirmations plus configurable vibration, sound, and volume.", details: "" },
+  { title: "Overall Polish", summary: "Responsive spacing, background blackout for modals, consistent 3D percentage containers.", details: "" },
 ];
 export const FEATURES_UPDATED = [
   {
