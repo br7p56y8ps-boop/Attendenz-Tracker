@@ -153,23 +153,19 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
       vacations = schedules.flatMap(entry => entry.vacationPeriods || []);
     }
     if (!startStr || !endStr || activeDateStr < startStr) return total;
-    const end = new Date(Math.min(
-      new Date(endStr + 'T12:00:00').getTime(),
-      new Date(activeDateStr + 'T12:00:00').getTime(),
-    ));
-    let count = 0;
+    const end = new Date(endStr + 'T12:00:00');
+    const activeDate = new Date(activeDateStr + 'T12:00:00');
+    let laterConducted = 0;
     const countIfConducted = (dateStr: string, session: string) => {
       const selection = getHomeSelection(dateStr, attendanceKey, session, true);
-      if (selection === 'attended' || selection === 'missed') count += 1;
+      if (selection === 'attended' || selection === 'missed') laterConducted += 1;
     };
-    for (let date = new Date(startStr + 'T12:00:00'); date <= end; date = addDays(date, 1)) {
+    for (let date = addDays(activeDate, 1); date <= end; date = addDays(date, 1)) {
       const dateStr = toStr(date);
       if (isExcluded(date, vacations, subjectMode === 'preloaded')) continue;
       if (subjectMode === 'custom') {
-        if (dateStr >= startStr && dateStr <= endStr) {
-          countIfConducted(dateStr, 'custom-ward-am');
-          countIfConducted(dateStr, 'custom-ward-pm');
-        }
+        countIfConducted(dateStr, 'custom-ward-am');
+        countIfConducted(dateStr, 'custom-ward-pm');
         continue;
       }
       if (getCurrentPresetWard(date)?.ward !== subject) continue;
@@ -180,8 +176,23 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
         }
       });
     }
-    return count;
-  }, [isWard, total, subjectMode, customWards, presetWardSchedule, presetTimetable, subject, activeDateStr, getCurrentPresetWard, getHomeSelection, attendanceKey]);
+    if (activeDateStr >= startStr && activeDateStr <= endStr && !isExcluded(activeDate, vacations, subjectMode === 'preloaded')) {
+      if (subjectMode === 'custom') {
+        if (sessionId === 'custom-ward-am') countIfConducted(activeDateStr, 'custom-ward-pm');
+      } else if (getCurrentPresetWard(activeDate)?.ward === subject) {
+        const slots = (presetTimetable as any)?.[activeDate.getDay()] || [];
+        let currentFound = false;
+        for (let index = 0; index < slots.length; index += 1) {
+          const slot = slots[index];
+          if (slot.type !== 'ward' && slot.type !== 'ward_replacement') continue;
+          const currentSession = getPresetWardSessionId(index);
+          if (currentFound) countIfConducted(activeDateStr, currentSession);
+          if (currentSession === sessionId) currentFound = true;
+        }
+      }
+    }
+    return Math.max(1, total - laterConducted);
+  }, [isWard, total, subjectMode, customWards, presetWardSchedule, presetTimetable, subject, activeDateStr, getCurrentPresetWard, getHomeSelection, attendanceKey, sessionId]);
   const displayClassNumber = isWard ? clinicalOccurrenceNumber : total;
 
   const selectionKey = attendanceKey ? (sessionId ? `${activeDateStr}-${attendanceKey}-${sessionId}` : `${activeDateStr}-${attendanceKey}`) : '';
