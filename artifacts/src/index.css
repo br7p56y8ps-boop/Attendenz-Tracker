@@ -393,7 +393,12 @@
 [class*="bg-card\\/"] { background-color: var(--card) !important; }
 [class*="bg-black\\/"] { background-color: #080808 !important; }
 .modal-sheet-content,
-[role="dialog"] { background-color: var(--card) !important; }
+[role="dialog"] {
+  background-color: var(--card) !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
 [class~="rounded-3xl"] { border-radius: 1rem !important; }
 [class~="rounded-2xl"] { border-radius: 0.875rem !important; }
 [class*="shadow-["] { box-shadow: 0 1px 3px rgba(23, 33, 43, 0.10) !important; }
@@ -658,45 +663,10 @@ input[type="time"] {
 .app-shell .text-xl { font-size: clamp(1.1875rem, 4.5vw, 1.25rem); }
 .app-shell .text-2xl { font-size: clamp(1.3125rem, 5vw, 1.5rem); }
 .app-shell .text-3xl { font-size: clamp(1.5rem, 5.8vw, 1.875rem); }
+
 .app-shell .leading-tight { line-height: 1.2; }
 .app-shell .leading-relaxed { line-height: 1.5; }
-/* Structural surfaces must fully cover scrolling content. Preserve geometry and
-   stacking, but remove alpha fills, blur, and translucent pseudo-elements. */
-.app-shell > header,
-.app-shell .bottom-nav-surface,
-.modal-sheet-content,
-[role="dialog"] {
-  background-color: var(--card) !important;
-  background-image: none !important;
-  opacity: 1 !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-.app-shell .bottom-nav-surface::before {
-  background: var(--card) !important;
-  opacity: 1 !important;
-}
-[class*="bg-black/"] {
-  background-color: #080808 !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-/* Higher-specificity fallbacks for utility rules emitted after custom CSS. */
-html body .app-shell > header,
-html body .app-shell .bottom-nav-surface,
-html body .modal-sheet-content,
-html body [role="dialog"] {
-  background-color: var(--card) !important;
-  background-image: none !important;
-  opacity: 1 !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-html body [class*="bg-black/"] {
-  background-color: #080808 !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
+
 @media (max-width: 374px) {
   .app-shell .gap-3 { gap: 0.625rem; }
   .app-shell .p-4 { padding: 0.875rem; }

@@ -35,7 +35,7 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
       className="app-shell min-h-[100dvh] pb-0 bg-background flex flex-col text-foreground transition-colors duration-300"
       style={{ '--app-header-height': `${headerHeight}px`, '--app-bottom-nav-height': '4.5rem', '--app-bottom-nav-offset': '0px' } as React.CSSProperties}
     >
-      <header ref={headerRef} className="fixed inset-x-0 top-0 z-50 border-b border-border/80 bg-card/75 backdrop-blur-2xl rounded-b-[28px] shadow-[0_12px_32px_rgba(0,0,0,0.18)] supports-[backdrop-filter]:bg-card/65">
+      <header ref={headerRef} className="fixed inset-x-0 top-0 z-50 border-b border-black/20 dark:border-white/20 bg-card rounded-b-[28px] shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
         <div className="max-w-3xl mx-auto w-full px-4 pt-[env(safe-area-inset-top)] py-3">
           <div className="flex items-center justify-between gap-3 min-h-[4.5rem]">
             <div className="min-w-0">
@@ -59,7 +59,7 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
         transition={{ type: 'spring', stiffness: 260, damping: 26 }}
         className={cn(
           'fixed bottom-0 left-0 right-0 md:left-0 md:right-0 md:w-full',
-          'bottom-nav-surface bg-card/75 backdrop-blur-2xl border-x-0 border-b-0 border-t border-border/80 rounded-t-[28px] rounded-b-none pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40 before:pointer-events-none before:absolute before:inset-x-0 before:-top-5 before:h-5 before:rounded-t-[28px] before:bg-gradient-to-t before:from-card/20 before:to-transparent',
+          'bottom-nav-surface bg-card border-x-0 border-b-0 border-t border-black/20 dark:border-white/20 rounded-t-[28px] rounded-b-none pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40',
           'transition-all duration-300', bottomNavClassName
         )}
       >
