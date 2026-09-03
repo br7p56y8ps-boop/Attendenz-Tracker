@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS devices (
   need_attention_subjects INTEGER NOT NULL DEFAULT 1,
   safe_to_miss INTEGER NOT NULL DEFAULT 0,
   unmarked_attendance_today INTEGER NOT NULL DEFAULT 1,
-  app_version TEXT NOT NULL DEFAULT '1.6.5',
+  app_version TEXT NOT NULL DEFAULT '1.6.6',
   update_available INTEGER NOT NULL DEFAULT 1,
   last_sync_at TEXT NOT NULL,
   expires_at TEXT NOT NULL
