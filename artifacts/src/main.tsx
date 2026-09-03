@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
-import { APP_VERSION, RELEASE_TYPE, UPDATE_MODE, type ReleaseType, type UpdateMode } from '@/lib/appVersion';
+import { APP_VERSION, PWA_CACHE_NAME, RELEASE_TYPE, UPDATE_MODE, type ReleaseType, type UpdateMode } from '@/lib/appVersion';
 
 const base = import.meta.env.BASE_URL || '/';
 const BUILD_REVISION_KEY = 'att_pwa_build_revision';
@@ -28,7 +28,7 @@ function clearUpdateState(): void {
 
 async function refreshCachedShell(): Promise<boolean> {
   try {
-    const cache = await caches.open('attendenz-shell-v1');
+    const cache = await caches.open(PWA_CACHE_NAME);
     const indexUrl = `${base}index.html`;
     const fresh = await fetch(`${indexUrl}?refresh=${Date.now()}`, { cache: 'no-store' });
     if (!fresh.ok) return false;
@@ -109,9 +109,13 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register(`${base}sw.js`).catch(() => {});
   });
 
+  let updateCheckInFlight: AbortController | null = null;
   const checkForUpdate = async () => {
+    if (document.visibilityState === 'hidden' || updateCheckInFlight) return;
+    const controller = new AbortController();
+    updateCheckInFlight = controller;
     try {
-      const res = await fetch(`${base}version.json?ts=${Date.now()}`, { cache: 'no-store' });
+      const res = await fetch(`${base}version.json?ts=${Date.now()}`, { cache: 'no-store', signal: controller.signal });
       if (!res.ok) return;
       const j = await res.json() as { version?: unknown; summary?: unknown; releaseType?: unknown; updateMode?: unknown };
       if (j && typeof j.version === 'string') {
@@ -138,16 +142,22 @@ if ('serviceWorker' in navigator) {
           if (j.version === APP_VERSION) void checkForSilentBuildUpdate();
         }
       }
-    } catch { /* offline — ignore */ }
+    } catch { /* offline or hidden/aborted — ignore */ }
+    finally {
+      if (updateCheckInFlight === controller) updateCheckInFlight = null;
+    }
   };
 
   window.addEventListener('load', () => {
     void checkForUpdate();
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) void checkForUpdate();
+    if (document.visibilityState === 'hidden') updateCheckInFlight?.abort();
+    else void checkForUpdate();
   });
-  window.setInterval(() => { void checkForUpdate(); }, 60000);
+  window.setInterval(() => {
+    if (document.visibilityState !== 'hidden') void checkForUpdate();
+  }, 60000);
 }
 
 /* Account's visible Update button calls this: updates the cached shell directly. */

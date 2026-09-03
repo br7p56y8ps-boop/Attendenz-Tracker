@@ -1,5 +1,6 @@
-import { idbGetAll, idbRemove, idbRemoveMany, idbSetMany, storageRemoveItem } from '@/lib/idb';
-import { CURRICULUM_KEYS, getActiveCurriculumName } from '@/lib/curriculumStore';
+import { idbGetAllChecked, storageCommitChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites } from '@/lib/idb';
+import { getActiveCurriculumName } from '@/lib/curriculumStore';
+import { APP_VERSION } from '@/lib/appVersion';
 import { assertBackupSize, filterStoredData, makeBackupEnvelope, validateBackupPayload, MAX_BACKUP_BYTES } from '@/utils/dataTransferSecurity';
 
 export interface Snapshot {
@@ -12,18 +13,6 @@ export interface Snapshot {
 const SNAPSHOTS_KEY = 'attendenz_snapshots_v1';
 const MAX_SNAPSHOTS = 5;
 
-function mirrorToLocalStorage(entries: Array<[string, string]>): void {
-  for (const [key, value] of entries) {
-    try { localStorage.setItem(key, value); } catch {}
-  }
-}
-
-function removeFromLocalStorage(keys: string[]): void {
-  for (const key of keys) {
-    try { localStorage.removeItem(key); } catch {}
-  }
-}
-
 async function collectUserData(includeSnapshots = false): Promise<Record<string, string>> {
   const localData: Record<string, string> = {};
   for (let i = 0; i < localStorage.length; i++) {
@@ -34,7 +23,8 @@ async function collectUserData(includeSnapshots = false): Promise<Record<string,
     }
   }
 
-  const indexedData = await idbGetAll();
+  await flushStorageWrites();
+  const indexedData = await idbGetAllChecked();
   const data = { ...filterStoredData(localData), ...filterStoredData(indexedData) };
   if (!includeSnapshots) delete data[SNAPSHOTS_KEY];
   return data;
@@ -105,8 +95,7 @@ export async function createSnapshot(label: string = 'Auto Snapshot'): Promise<b
 
     const updated = [newSnapshot, ...snapshots].slice(0, MAX_SNAPSHOTS);
     const jsonStr = JSON.stringify(updated);
-    await idbSetMany([[SNAPSHOTS_KEY, jsonStr]]);
-    mirrorToLocalStorage([[SNAPSHOTS_KEY, jsonStr]]);
+    await storageCommitChecked([[SNAPSHOTS_KEY, jsonStr]]);
     return true;
   } catch (err) {
     // Callers can decide whether a safety-critical operation should proceed.
@@ -150,12 +139,10 @@ export async function snapshotDayComplete(isComplete: boolean): Promise<boolean>
       }
 
       const jsonStr = JSON.stringify(updated);
-      await idbSetMany([[SNAPSHOTS_KEY, jsonStr], [LAST_DAY_COMPLETE_KEY, todayStr]]);
-      mirrorToLocalStorage([[SNAPSHOTS_KEY, jsonStr], [LAST_DAY_COMPLETE_KEY, todayStr]]);
+    await storageCommitChecked([[SNAPSHOTS_KEY, jsonStr], [LAST_DAY_COMPLETE_KEY, todayStr]]);
     } else {
       // Unmarked a card - clear completion flag
-      await idbRemove(LAST_DAY_COMPLETE_KEY);
-      removeFromLocalStorage([LAST_DAY_COMPLETE_KEY]);
+      await storageRemoveItemChecked(LAST_DAY_COMPLETE_KEY);
     }
     return true;
   } catch (err) {
@@ -177,26 +164,10 @@ export async function snapshotBeforeEdit(actionName: string): Promise<boolean> {
  * - Removes mode-separation flag so migration can run again on next load
  */
 async function prepareRestoreEnvironment(): Promise<boolean> {
-  const snapshotCreated = await createSnapshot('Pre-Restore Safety');
-  if (!snapshotCreated) return false;
-
   try {
-
-    const MODE_SPECIFIC_ATTENDANCE_KEYS = [
-      'attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'attendance_tracker_finished_map',
-      'attendance_tracker_subjects_preset', 'attendance_tracker_ward_preset', 'attendance_tracker_home_selections_preset', 'attendance_tracker_finished_map_preset',
-      'attendance_tracker_subjects_custom', 'attendance_tracker_ward_custom', 'attendance_tracker_home_selections_custom', 'attendance_tracker_finished_map_custom',
-      'att_attendance_id_migration_v2_done_preloaded',       'att_attendance_id_migration_v2_done_custom',
-      'att_mode_separation_done_v1',
-      CURRICULUM_KEYS.CURRICULA_KEY,
-      CURRICULUM_KEYS.ACTIVE_CURRICULUM_KEY,
-      CURRICULUM_KEYS.CURRICULUM_MIGRATION_KEY,
-    ];
-
-    await idbRemoveMany(MODE_SPECIFIC_ATTENDANCE_KEYS);
-    removeFromLocalStorage(MODE_SPECIFIC_ATTENDANCE_KEYS);
-    return true;
-  } catch (err) {
+    await flushStorageWrites();
+    return await createSnapshot('Pre-Restore Safety');
+  } catch {
     return false;
   }
 }
@@ -214,13 +185,12 @@ export async function restoreSnapshot(snapshotId: string): Promise<boolean> {
     if (!await prepareRestoreEnvironment()) return false;
 
     const entries = Object.entries(target.data);
-    await idbSetMany(entries);
-    mirrorToLocalStorage(entries);
+    await storageCommitChecked([...entries, ['att_app_version', APP_VERSION]]);
 
+    await flushStorageWrites();
     // Force startup migration after any snapshot restore, including newer snapshots.
     const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];
-    await idbRemoveMany(migrationFlags);
-    removeFromLocalStorage(migrationFlags);
+    for (const key of migrationFlags) await storageRemoveItemChecked(key);
 
     return true;
   } catch (err) {
@@ -268,47 +238,44 @@ export function autoSnapshotOnLoad(): void {
 /**
  * Export all localStorage & IndexedDB data as a downloadable JSON file
  */
-export async function exportDataAsJSON(returnData: boolean = false): Promise<string | void> {
+export async function exportDataAsJSON(returnData: boolean = false): Promise<string | boolean> {
   try {
     const backupData = await collectUserData(true);
     const jsonData = JSON.stringify(makeBackupEnvelope(backupData), null, 2);
-    if (returnData) {
-      return jsonData;
-    }
+    if (returnData) return jsonData;
 
     const dateStr = formatDateDDMMYY().replace(/\//g, '-');
-    const blob = new Blob([jsonData], { type: "application/json" });
+    const blob = new Blob([jsonData], { type: 'application/json' });
     const filename = `attendenz_backup_${dateStr}.json`;
-    const file = new File([blob], filename, { type: "application/json" });
+    const file = new File([blob], filename, { type: 'application/json' });
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      navigator.share({
+      await navigator.share({
         files: [file],
-        title: "Attendenz Backup",
-        text: "Backup file for Attendenz-Tracker",
-      }).catch(err => {
-        if (err.name !== "AbortError") console.error("Share failed:", err);
+        title: 'Attendenz Backup',
+        text: 'Backup file for Attendenz-Tracker',
       });
     } else {
       const url = URL.createObjectURL(blob);
-      const downloadAnchor = document.createElement("a");
-      downloadAnchor.setAttribute("href", url);
-      downloadAnchor.setAttribute("download", filename);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', url);
+      downloadAnchor.setAttribute('download', filename);
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
       URL.revokeObjectURL(url);
     }
+    return true;
   } catch (err) {
-     // console.error('Failed to export JSON backup:', err);
-    import("sonner").then(({ toast }) => toast.info('Failed to export data backup.'));
+    return false;
   }
 }
 
 export async function shareDataAsJSON(): Promise<boolean> {
   try {
-    const jsonData = await exportDataAsJSON(true) as string;
-    const blob = new Blob([jsonData], { type: 'application/json' });
+    const exported = await exportDataAsJSON(true);
+    if (typeof exported !== 'string') return false;
+    const blob = new Blob([exported], { type: 'application/json' });
     const dateStr = formatDateDDMMYY().replace(/\//g, '-');
     const file = new File([blob], `attendenz_backup_${dateStr}.json`, { type: 'application/json' });
 
@@ -320,8 +287,7 @@ export async function shareDataAsJSON(): Promise<boolean> {
       });
       return true;
     } else {
-      exportDataAsJSON();
-      return true;
+      return await exportDataAsJSON() === true;
     }
   } catch (err) {
      // console.error('Failed to share:', err);
@@ -348,14 +314,13 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
         return;
       }
 
+      await flushStorageWrites();
       const entries = Object.entries(validatedData);
-      await idbSetMany(entries);
-      mirrorToLocalStorage(entries);
+      await storageCommitChecked([...entries, ['att_app_version', APP_VERSION]]);
 
       // Force startup migration after any uploaded backup restore.
       const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];
-      await idbRemoveMany(migrationFlags);
-      removeFromLocalStorage(migrationFlags);
+      for (const key of migrationFlags) await storageRemoveItemChecked(key);
 
       callback(true);
     } catch (err) {

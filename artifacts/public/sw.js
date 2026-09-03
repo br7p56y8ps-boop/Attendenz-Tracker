@@ -1,7 +1,8 @@
 /* Attendenz guard worker — EMERGENCY FIX for redirect error.
    After deploying this version, NEVER CHANGE THIS FILE AGAIN.
    Data lives in localStorage/IndexedDB, not in this cache, so clearing SW cache doesn't affect user data. */
-const SHELL = 'attendenz-shell-v1';
+const VERSION = '1.6.4.4';
+const SHELL = `attendenz-shell-v${VERSION}`;
 let activationApproved = false;
 
 self.addEventListener('install', (e) => {
@@ -9,6 +10,7 @@ self.addEventListener('install', (e) => {
     caches.open(SHELL)
       .then((c) => c.addAll([`${self.registration.scope}index.html`]))
       .catch(() => {})
+      // Manual releases remain waiting until the application explicitly approves activation.
   );
 });
 
@@ -26,9 +28,9 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('push', (e) => {
   let payload = {};
   try { payload = e.data ? e.data.json() : {}; } catch {}
-  const title = typeof payload.title === 'string' ? payload.title : 'Attendenz';
+  const title = typeof payload.title === 'string' && payload.title.trim() ? payload.title : 'Scheduled Reminder';
   const options = {
-    body: typeof payload.body === 'string' ? payload.body : 'You have an Attendenz reminder.',
+    body: typeof payload.body === 'string' && payload.body.trim() ? payload.body : 'You have a scheduled reminder.',
     tag: typeof payload.tag === 'string' ? payload.tag : 'attendenz-reminder',
     data: { url: typeof payload.url === 'string' ? payload.url : '/' },
   };

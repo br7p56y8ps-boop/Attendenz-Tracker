@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
+import { CountStepper } from '@/components/CountStepper';
 import {
   useCustomData,
   DAY_ABBRS,
@@ -16,18 +17,17 @@ import {
   canonicalizeTimeRange,
   parseRangeToMinutes,
   formatISODateDDMMYY,
-  to12h,
   getSubjectColor,
 } from '@/lib/utils';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
-import { lockScroll, unlockScroll } from '@/lib/scrollLock';
+import { useModalAccessibility } from '@/components/ui/dialog';
 import { storageSetItem } from '@/lib/idb';
-import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
+import { getCurricula } from '@/lib/curriculumStore';
 import {
   Plus, Trash2, X, AlertTriangle,
-  GraduationCap, Stethoscope, Download, Upload, Copy, Share2,
+  GraduationCap, Stethoscope,
   Check, ChevronDown, ChevronRight, SendToBack, Pencil,
 } from 'lucide-react';
 
@@ -49,7 +49,6 @@ const descCls = 'block text-[10px] text-muted-foreground/70 mb-1.5';
 const inlineErrCls =
   'text-[11px] font-semibold text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2';
 const CREATE_NEW = '__create_new__';
-const BUNDLE_VERSION = 2;
 const DAY_AFTER_HOLIDAY_INDEX = 6; // Saturday follows the app-wide Friday holiday boundary.
 
 const genId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -64,20 +63,12 @@ function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, foot
   open: boolean; onClose: () => void; children: React.ReactNode; maxW?: string;
   header?: React.ReactNode; footer?: React.ReactNode; heightClass?: string; bodyClassName?: string; dense?: boolean;
 }) {
-  const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onCloseRef.current(); } };
-    window.addEventListener('keydown', onKey);
-    lockScroll();
-    return () => { window.removeEventListener('keydown', onKey); unlockScroll(); };
-  }, [open]);
+  const modalRef = useModalAccessibility(open, onClose);
 
   if (!open) return null;
   if (typeof document === 'undefined') return null;
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-end justify-center p-4">
+    <div ref={modalRef} className="fixed inset-0 z-[120] flex items-end justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 48 }}
@@ -88,6 +79,7 @@ function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, foot
         role="dialog"
         aria-modal="true"
         aria-label="Manage dialog"
+        tabIndex={-1}
         className={cn('modal-sheet-content relative bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.42)] w-full max-h-[min(70dvh,48rem)] min-h-[12rem] flex flex-col overflow-hidden', maxW, heightClass)}
         onClick={e => e.stopPropagation()}
       >
@@ -170,19 +162,6 @@ interface EditSlotState {
   subjects: Array<{ name: string; planned: number; id: string }>;
   multiSelectMode: boolean;
 }
-interface ImportBundle {
-  version?: number; subjectMode?: 'preloaded' | 'custom';
-  addedSubjects?: Array<{
-    id?: string; name: string; type?: string; parentCategory?: string | null; planned?: number;
-    schedules?: Array<{ day: string; start?: string; end?: string; time?: string }>;
-    clinicalSubject?: string; startDate?: string; endDate?: string;
-    vacationPeriods?: Array<{ start: string; end: string }>;
-  }>;
-  customWards?: Array<{ id?: string; name: string; startDate: string; endDate: string; morningTime?: string; eveningTime?: string; vacationPeriods?: Array<{ start: string; end: string }> }>;
-  presetTimetable?: any; presetWardSchedule?: any; presetSubjectTotals?: Record<string, number>;
-}
-interface ImportReport { subjectsAdd: number; subjectsSkip: string[]; wardsAdd: number; wardsSkip: string[]; slots: number; rotations: number; }
-
 const newRow = (usedDays: string[]): ScheduleRow => {
   const day = DAY_ABBRS.find(d => !usedDays.includes(d)) || 'Mon';
   return { id: genId('row'), day, startTime: '09:00 AM', endTime: '10:00 AM' };
@@ -266,10 +245,6 @@ const formatHistoryDetail = (entry: any): string => {
       return `${d.name || ''} under ${d.clinicalSubject || ''} · ${d.planned || 0} planned`;
     case 'Edited Planned':
       return `${d.name || ''}: → ${d.planned ?? ''}`;
-    case 'Imported (Merge)':
-      return `${d.subjects || 0} subject(s), ${d.rotations || 0} rotation(s)`;
-    case 'Imported (Replace)':
-      return `Mode: ${d.mode || 'unknown'}`;
     default:
       return '';
   }
@@ -280,59 +255,48 @@ function ClinicalGroupCard({
   onAddRotation, onAddSGT, onEditRotation, onEditSGT, onDeleteRotation, onDeleteSGT,
   canDeleteRotation = true,
 }: any) {
-  const [expanded, setExpanded] = useState(false);
+  const rotationStart = rotation?.entry?.startDate || rotation?.entry?.start;
+  const rotationEnd = rotation?.entry?.endDate || rotation?.entry?.end;
+  const rotationRange = hasRotation && rotationStart && rotationEnd
+    ? `${formatISODateDDMMYY(rotationStart)} – ${formatISODateDDMMYY(rotationEnd)}`
+    : 'No dates';
+  const sgtRange = hasSGT && sgt?.startDate && sgt?.endDate
+    ? `${formatISODateDDMMYY(sgt.startDate)} – ${formatISODateDDMMYY(sgt.endDate)}`
+    : 'No dates';
+  const sameRange = rotationRange === sgtRange;
   return (
-    <div className="border border-border/60 rounded-xl overflow-hidden bg-background/30">
-      <button type="button" onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between p-3 hover:bg-muted/20 transition-colors text-left">
-        <div className="flex items-center gap-2">
-          <span className="font-extrabold text-foreground" style={{ color: getSubjectColor(name) }}>{name}</span>
-          {hasRotation && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full">Rotation</span>}
-          {hasSGT && <span className="text-[10px] bg-purple-500/10 text-purple-500 px-2 py-0.5 rounded-full">SGT</span>}
-        </div>
-        {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-      </button>
-      {expanded && (
-        <div className="p-3 pt-0 space-y-2">
-          {hasRotation ? (
-            <div className="flex items-center justify-between bg-card border border-border/40 rounded-lg p-2.5">
-              <div>
-                <p className="text-xs font-bold text-foreground">Clinical Rotation</p>
-                <p className="text-[10px] text-muted-foreground">
-                  {formatISODateDDMMYY(rotation.entry.start)} – {formatISODateDDMMYY(rotation.entry.end)}
-                </p>
-              </div>
-              <div className="flex gap-1">
-                <button type="button" onClick={onEditRotation} className="action-button action-button--edit shrink-0">Edit</button>
-                {canDeleteRotation && (
-                  <button type="button" onClick={onDeleteRotation} className="action-button action-button--danger shrink-0">Delete</button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <button type="button" onClick={onAddRotation} className="w-full py-2 text-xs font-medium text-primary hover:underline flex items-center gap-1">
-              <Plus className="w-3 h-3" /> Add Rotation
-            </button>
-          )}
-          {hasSGT ? (
-            <div className="flex items-center justify-between bg-card border border-border/40 rounded-lg p-2.5">
-              <div>
-                <p className="text-xs font-bold text-foreground">Small Group Teaching</p>
-                <p className="text-[10px] text-muted-foreground">
-                  {sgt.startDate && sgt.endDate ? `${formatISODateDDMMYY(sgt.startDate)} – ${formatISODateDDMMYY(sgt.endDate)}` : 'No dates'}
-                </p>
-              </div>
-              <div className="flex gap-1">
-                <button type="button" onClick={onEditSGT} className="action-button action-button--edit shrink-0">Edit</button>
-                <button type="button" onClick={onDeleteSGT} className="action-button action-button--danger shrink-0">Delete</button>
-              </div>
-            </div>
-          ) : (
-            <button type="button" onClick={onAddSGT} className="w-full py-2 text-xs font-medium text-purple-500 hover:underline flex items-center gap-1">
-              <Plus className="w-3 h-3" /> Add SGT
-            </button>
-          )}
-        </div>
-      )}
+    <div className="overflow-hidden rounded-xl border border-border/60 bg-background/30">
+      <div className="bg-card px-3 py-2 text-center">
+        <p className="truncate text-sm font-extrabold" style={{ color: getSubjectColor(name) }}>{name}</p>
+        {hasRotation && (
+          <div className="flex items-center justify-center text-[10px] font-bold text-muted-foreground">
+          {rotationRange}<span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-primary">Clinical</span>
+          </div>
+        )}
+        {hasSGT && (!hasRotation || !sameRange) && (
+          <div className="flex items-center justify-center text-[10px] font-bold text-muted-foreground">
+          {sgtRange}<span className="ml-1.5 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-purple-500">SGT</span>
+          </div>
+        )}
+      </div>
+      <div className="space-y-0 p-3">
+        {hasRotation ? (
+          <div className="flex min-h-14 items-center justify-between gap-2 rounded-t-xl border border-border/40 bg-background/50 p-2.5">
+            <p className="min-w-0 flex-1 truncate text-xs font-bold text-foreground">Clinical Rotation</p>
+            <div className="flex shrink-0 items-center gap-1"><button type="button" onClick={onEditRotation} className="action-button action-button--edit shrink-0">Edit</button>{canDeleteRotation && <button type="button" onClick={onDeleteRotation} className="action-button action-button--danger shrink-0">Delete</button>}</div>
+          </div>
+        ) : (
+          <button type="button" onClick={onAddRotation} className="w-full py-2 text-xs font-medium text-primary hover:underline flex items-center justify-center gap-1"><Plus className="w-3 h-3" /> Add Rotation</button>
+        )}
+        {hasSGT ? (
+          <div className="flex min-h-14 items-center justify-between gap-2 rounded-b-xl border border-border/40 bg-background/50 p-2.5">
+            <p className="min-w-0 flex-1 truncate text-xs font-bold text-foreground">Small Group Teaching</p>
+            <div className="flex shrink-0 items-center gap-1"><button type="button" onClick={onDeleteSGT} className="action-button action-button--danger shrink-0">Delete</button><button type="button" onClick={onEditSGT} className="action-button action-button--edit shrink-0">Edit</button></div>
+          </div>
+        ) : (
+          <button type="button" onClick={onAddSGT} className="w-full py-2 text-xs font-medium text-purple-500 hover:underline flex items-center justify-center gap-1"><Plus className="w-3 h-3" /> Add SGT</button>
+        )}
+      </div>
     </div>
   );
 }
@@ -369,57 +333,12 @@ function VacationEditor({ vacations, onChange }: {
   );
 }
 
-const AI_PROMPT = `You are helping me create a routine bundle for the Attendenz Tracker app. Return exactly one plain JSON object in UTF-8 text. Do not return an image, Markdown, a code fence, commentary, headings, or explanatory prose. Use the exact schema below; omit any section that is not present in the source rather than inventing empty or preset data.
-
-{
-  "version": 2,
-  "subjectMode": "preloaded",
-  "addedSubjects": [
-    {
-      "name": "Cardiology",
-      "type": "single",
-      "parentCategory": null,
-      "planned": 40,
-      "schedules": [
-        { "day": "Mon", "start": "09:00 AM", "end": "10:00 AM" }
-      ],
-      "clinicalSubject": null,
-      "startDate": "2026-01-24",
-      "endDate": "2026-02-27",
-      "vacationPeriods": [ { "start": "2026-02-01", "end": "2026-02-03" } ]
-    }
-  ],
-  "customWards": [
-    {
-      "name": "Surgery",
-      "startDate": "2026-01-24",
-      "endDate": "2026-02-27",
-      "morningTime": "09:30 AM–11:30 AM",
-      "eveningTime": "07:00 PM–09:00 PM",
-      "vacationPeriods": [ { "start": "2026-02-05", "end": "2026-02-07" } ]
-    }
-  ],
-  "presetTimetable": {},
-  "presetWardSchedule": [],
-  "presetSubjectTotals": {}
-}
-
-Rules:
-- All times use 12-hour format with AM/PM. Use en-dash (–) between start and end, e.g. "09:00 AM–10:00 AM".
-- Dates are yyyy-mm-dd.
-- For subjectMode "preloaded", do not include preset subjects in addedSubjects; include only user-added subjects and include preset sections only when they are present in the source.
-- For subjectMode "custom", include the custom academic, clinical, allied, and SGT subjects actually present in the source; omit absent sections.
-- A subject of type "allied" must have parentCategory set to its parent name. An SGT subject must use parentCategory "Small Group Teaching", type "allied", and clinicalSubject equal to the ward name it belongs to.
-- Never classify an academic subject as SGT unless it belongs to Small Group Teaching. Preserve source names, days, times, dates, and planned totals exactly.
-- Vacation periods exclude those dates from planned class counts.
-Return only the JSON object, no markdown.`;
-
 export default function Manage() {
   const {
     subjectMode,
     customSubjects, customWards,
     userAddedSubjects,
-    presetTimetable, presetWardSchedule, presetSubjectTotals,
+    presetTimetable, presetWardSchedule,
     addCustomSubjects, updateCustomSubject, removeCustomSubject,
     addCustomWards, updateCustomWard, removeCustomWard,
     addUserAddedSubjects, updateUserAddedSubject, removeUserAddedSubject,
@@ -436,7 +355,7 @@ export default function Manage() {
     getPresetSubjectDisplayName,
     getPresetWardDisplayName,
   } = useCustomData();
-  const { removeSubjectData, removeWardData, removeAttendanceByKey, removeAttendanceEntitiesForMode, reopenFinishedIfPlanIncreased } = useAttendance();
+  const { removeSubjectData, removeWardData, removeAttendanceByKey, reopenFinishedIfPlanIncreased } = useAttendance();
   const [, setLocation] = useLocation();
 
   const [note, setNote] = useState<{ msg: string; kind: 'ok' | 'err' | 'info' } | null>(null);
@@ -498,15 +417,6 @@ export default function Manage() {
   const [showMoveForm, setShowMoveForm] = useState(false);
   const [deleteSheet, setDeleteSheet] = useState<{ title: string; lines: string[]; onConfirm: () => void } | null>(null);
   const [conflictSheet, setConflictSheet] = useState<{ messages: string[]; onConfirm: () => void } | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteText, setPasteText] = useState('');
-  const [pasteError, setPasteError] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ bundle: ImportBundle; report: ImportReport } | null>(null);
-  const [replaceConfirm, setReplaceConfirm] = useState(false);
-  const importFileRef = useRef<HTMLInputElement>(null);
   const [editSubject, setEditSubject] = useState<EditSubjectState | null>(null);
   const [editWard, setEditWard] = useState<EditWardState | null>(null);
   const [addSlotOpen, setAddSlotOpen] = useState(false);
@@ -516,6 +426,7 @@ export default function Manage() {
   const [addSlotPlanned, setAddSlotPlanned] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [noActiveCurriculumMessage, setNoActiveCurriculumMessage] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
   const [historyClearEntry, setHistoryClearEntry] = useState<any | null>(null);
   const [editDataOpen, setEditDataOpen] = useState(false);
@@ -577,6 +488,8 @@ export default function Manage() {
     return Array.from(new Set([...customNames, ...customSgtParents])).sort();
   }, [subjectMode, customWards, userAddedSubjects, customSubjects]);
 
+  const customAcademicCount = customSubjects.filter(s => !isSGTRecord(s)).length;
+  const customClinicalCount = customWards.length + customSubjects.filter(s => isSGTRecord(s)).length;
   const clinicalSubjectOptions = useMemo(() => {
     const opts = allClinicalSubjects.map(name => ({
       value: name,
@@ -633,7 +546,20 @@ export default function Manage() {
     return Array.from(set).sort();
   }, [subjectMode, userAddedSubjects, customSubjects]);
 
+  const openMoreMenu = () => {
+    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
+      setNoActiveCurriculumMessage(true);
+      return;
+    }
+    setMoreMenuOpen(true);
+  };
+
   const openEditDataFromMore = () => {
+    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
+      setMoreMenuOpen(false);
+      setNoActiveCurriculumMessage(true);
+      return;
+    }
     setMoreMenuOpen(false);
     setReturnToMoreAfterEditData(true);
     setEditDataOpen(true);
@@ -718,6 +644,10 @@ export default function Manage() {
 
   const openAddSlot = () => { setAddSlotSubject(''); setAddSlotStart('09:00 AM'); setAddSlotEnd('10:00 AM'); setAddSlotPlanned(0); setFormError(null); setAddSlotOpen(true); setAddSuccess(false); };
   const openAddFromMore = () => {
+    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
+      setNoActiveCurriculumMessage(true);
+      return;
+    }
     setMoreMenuOpen(false);
     setReturnToMoreAfterAdd(true);
     setFormError(null);
@@ -976,6 +906,8 @@ export default function Manage() {
       if (!sgtStartDate || !sgtEndDate) { setFormError('Pick placement start and end dates.'); return; }
       if (sgtEndDate < sgtStartDate) { setFormError('End date must be after start date.'); return; }
       const rp = rowProblem(sgtRows); if (rp) { setFormError(rp); return; }
+      const duplicateSgtDay = sgtRows.find((row, index) => sgtRows.findIndex(other => other.day === row.day) !== index);
+      if (duplicateSgtDay) { setFormError(`Day ${duplicateSgtDay.day} is listed more than once. Use one schedule row per weekday.`); return; }
       const rows = buildRowsFromForm(sgtRows);
 
       const existingSGTForSubject = (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects)
@@ -1251,7 +1183,7 @@ export default function Manage() {
           if (isSGTRecord(item)) {
             removeAttendanceByKey(getSGTKey(item.id));
           } else {
-            for (const n of namesToPurge) removeSubjectData(n);
+            for (const n of namesToPurge) removeSubjectData(n, getAcademicAttendanceKey(item.id));
           }
             setDeleteSheet(null); showToast(`Deleted "${item.name}".`);
             void notifyManageChange(`${item.name} was removed from your routine.`);
@@ -1285,7 +1217,7 @@ export default function Manage() {
           recordHistory('Deleted Ward', { name: w.name, id: w.id });
           try {
             removeCustomWard(w.id);
-            removeWardData(w.name);
+            removeWardData(w.name, getWardAttendanceKey(w.id));
             setDeleteSheet(null); showToast(`Deleted "${w.name}".`);
             void notifyManageChange(`${w.name} was removed from your routine.`);
           } catch { showToast('Delete failed — please try again.', 'err'); }
@@ -1554,438 +1486,6 @@ export default function Manage() {
     }
   };
 
-  /* ── Import / Export ── */
-  const is12h = (t: string) => /^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(t);
-
-  const bundleJson = () => {
-    const added = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-    const addedSubjects = added.map(s => {
-      const sourceSchedules = (s.schedules && s.schedules.length)
-        ? s.schedules
-        : parseDayList(s.days).map((d: string) => ({ day: d, time: s.time || '' }));
-      const schedules = sourceSchedules.map((sch: any) => {
-        const canonical = sch.time
-          ? canonicalizeTimeRange(sch.time)
-          : canonicalTimeRange(sch.start || '', sch.end || '');
-        const { start, end } = splitRange(canonical);
-        return subjectMode === 'preloaded'
-          ? { day: sch.day, start, end }
-          : { day: sch.day, time: canonical };
-      });
-      return {
-        id: s.id,
-        name: s.name,
-        type: s.subjectType,
-        parentCategory: getEffectiveParentName(s) ?? null,
-        planned: s.plannedClasses,
-        schedules,
-        clinicalSubject: (s as any).clinicalSubject || undefined,
-        startDate: (s as any).startDate || undefined,
-        endDate: (s as any).endDate || undefined,
-        vacationPeriods: (s as any).vacationPeriods || undefined,
-      };
-    });
-    const bundle = subjectMode === 'preloaded'
-      ? {
-          version: BUNDLE_VERSION,
-          subjectMode,
-          addedSubjects,
-          customWards: [],
-          presetTimetable,
-          presetWardSchedule,
-          presetSubjectTotals,
-        }
-      : {
-          version: BUNDLE_VERSION,
-          subjectMode,
-          addedSubjects,
-          customWards: customWards.map(w => ({
-            id: w.id,
-            name: w.name,
-            startDate: w.startDate,
-            endDate: w.endDate,
-            morningTime: w.morningTime,
-            eveningTime: w.eveningTime,
-            vacationPeriods: w.vacationPeriods || undefined,
-          })),
-        };
-    return JSON.stringify(bundle, null, 2);
-  };
-
-  const doDownload = () => {
-    try {
-      const blob = new Blob([bundleJson()], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `attendenz-routine-${formatISODateDDMMYY(new Date().toISOString()).replace(/\//g, '-')}.json`;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-      showToast('Routine bundle downloaded.');
-      setExportOpen(false);
-      setMoreMenuOpen(true);
-    } catch { showToast('Download failed — please try again.', 'err'); }
-  };
-  const doCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(bundleJson());
-      showToast('Bundle copied to clipboard.');
-      setExportOpen(false);
-      setMoreMenuOpen(true);
-    }
-    catch { showToast('Copy failed — use Download instead.', 'err'); }
-  };
-  const doShare = async () => {
-    const json = bundleJson();
-    try {
-      const blob = new Blob([json], { type: 'application/json' });
-      const file = new File([blob], 'attendenz-routine.json', { type: 'application/json' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Attendenz Routine', text: 'Routine bundle (no attendance data).' });
-        showToast('Share sheet opened.');
-        setExportOpen(false);
-        setMoreMenuOpen(true);
-        return;
-      }
-      throw new Error('no-share');
-    } catch {
-      try {
-        await navigator.clipboard.writeText(json);
-        showToast('Share unavailable — bundle copied instead.', 'info');
-        setExportOpen(false);
-        setMoreMenuOpen(true);
-      }
-      catch { showToast('Share failed — use Download.', 'err'); }
-    }
-  };
-
-  const copyAIPrompt = async () => {
-    try {
-      await navigator.clipboard.writeText(AI_PROMPT);
-      showToast('AI prompt copied! Paste it to your AI assistant.', 'info');
-    } catch {
-      showToast('Failed to copy prompt.', 'err');
-    }
-  };
-
-  const normTimeTo12 = (t: string): string => {
-    if (is12h(t)) return t.trim().replace(/\s+/g, ' ').toUpperCase();
-    const minutes = parseRangeToMinutes(`${t}–${t}`)?.start;
-    if (minutes === undefined) return '';
-    const hours = Math.floor(minutes / 60);
-    const mins = String(minutes % 60).padStart(2, '0');
-    return to12h(`${hours}:${mins}`);
-  };
-
-  const normalizeImportedSchedule = (sch: any): { day: string; start: string; end: string; time: string } | null => {
-    if (!sch || typeof sch.day !== 'string' || !DAY_ABBRS.includes(sch.day as (typeof DAY_ABBRS)[number])) return null;
-    let start = '';
-    let end = '';
-    if (typeof sch.time === 'string' && sch.time.trim()) {
-      const range = canonicalizeTimeRange(sch.time.trim());
-      const split = splitRange(range);
-      start = normTimeTo12(split.start);
-      end = normTimeTo12(split.end);
-    } else {
-      start = typeof sch.start === 'string' ? normTimeTo12(sch.start) : '';
-      end = typeof sch.end === 'string' ? normTimeTo12(sch.end) : '';
-    }
-    if (!start || !end) return null;
-    const time = canonicalTimeRange(start, end);
-    return { day: sch.day, start, end, time };
-  };
-
-  const validateBundle = (obj: any): { ok: boolean; error?: string; bundle?: ImportBundle } => {
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, error: 'Not a JSON object.' };
-    const b = obj as ImportBundle;
-    if (b.subjectMode !== 'preloaded' && b.subjectMode !== 'custom') return { ok: false, error: 'Missing/invalid "subjectMode".' };
-    if (b.subjectMode !== subjectMode) return { ok: false, error: `This is a ${b.subjectMode === 'custom' ? 'Custom' : 'Preset'} routine. Switch routine mode before importing it.` };
-    if (!Array.isArray(b.addedSubjects) && !Array.isArray(b.customWards) && !b.presetTimetable && !b.presetWardSchedule) return { ok: false, error: 'Bundle has no routine data.' };
-    if (b.addedSubjects && !Array.isArray(b.addedSubjects)) return { ok: false, error: '"addedSubjects" must be an array.' };
-    for (const s of b.addedSubjects || []) {
-      if (!s || typeof s.name !== 'string' || !s.name.trim()) return { ok: false, error: 'Every added subject needs a "name".' };
-      for (const sch of s.schedules || []) {
-        if (!normalizeImportedSchedule(sch)) {
-          return { ok: false, error: `Subject "${s.name}": schedules need a valid day and time.` };
-        }
-      }
-    }
-    if (b.customWards && !Array.isArray(b.customWards)) return { ok: false, error: '"customWards" must be an array.' };
-    return { ok: true, bundle: b };
-  };
-
-  const buildReport = (b: ImportBundle): ImportReport => {
-    const subjectsSkip: string[] = []; let subjectsAdd = 0;
-    for (const s of b.addedSubjects || []) {
-      const domain = s.parentCategory === 'Small Group Teaching' ? 'clinical' as const : 'academic' as const;
-      if (isSubjectNameTaken(s.name, undefined, domain)) { subjectsSkip.push(`${s.name} (duplicate name)`); continue; }
-      const rows = (s.schedules || []).map(normalizeImportedSchedule).filter((row): row is NonNullable<ReturnType<typeof normalizeImportedSchedule>> => row !== null);
-      if (rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined, domain).some(c => !c.exact))) {
-        subjectsSkip.push(`${s.name} (time overlap)`);
-        continue;
-      }
-      subjectsAdd++;
-    }
-    const wardsSkip: string[] = []; let wardsAdd = 0;
-    for (const w of b.customWards || []) {
-      if (isWardNameTaken(w.name)) { wardsSkip.push(`${w.name} (duplicate name)`); continue; }
-      if (findWardDateConflicts(w.startDate, w.endDate, undefined).length) { wardsSkip.push(`${w.name} (date overlap)`); continue; }
-      wardsAdd++;
-    }
-    const slots: number = b.subjectMode === 'preloaded'
-      ? Object.values(b.presetTimetable || {}).reduce<number>((acc: number, day: any) => {
-          if (!Array.isArray(day)) return acc;
-          return acc + day.filter((slot: any) => slot.type !== 'ward' && slot.type !== 'ward_replacement').length;
-        }, 0)
-      : 0;
-    const rotations = b.subjectMode === 'custom'
-      ? (b.customWards || []).length
-      : (b.presetWardSchedule || []).length;
-    return { subjectsAdd, subjectsSkip, wardsAdd, wardsSkip, slots, rotations };
-  };
-
-  const beginImport = (raw: string, source: 'file' | 'paste') => {
-    let parsed: any;
-    try {
-      const normalized = raw.trim()
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```$/i, '');
-      try {
-        parsed = JSON.parse(normalized);
-      } catch {
-        const start = normalized.indexOf('{');
-        const end = normalized.lastIndexOf('}');
-        if (start < 0 || end <= start) throw new Error('no-json');
-        parsed = JSON.parse(normalized.slice(start, end + 1));
-      }
-    } catch {
-      const msg = 'Invalid JSON — check the file or pasted text.';
-      if (source === 'paste') setPasteError(msg); else setImportError(msg);
-      return;
-    }
-    const v = validateBundle(parsed);
-    if (!v.ok || !v.bundle) {
-      const msg = v.error || 'Invalid bundle.';
-      if (source === 'paste') setPasteError(msg); else setImportError(msg);
-      return;
-    }
-    setPasteError(null); setImportError(null); setPasteOpen(false); setImportOpen(false);
-    setPreview({ bundle: v.bundle, report: buildReport(v.bundle) });
-    showToast('Bundle valid — review the preview.', 'info');
-  };
-
-  const applyMerge = async () => {
-    if (!preview) return;
-    try {
-      if (!await snapshotBeforeEdit('Merge Routine Import')) {
-        showToast('Merge stopped — the safety snapshot could not be created.', 'err');
-        return;
-      }
-      const b = preview.bundle;
-      if (b.subjectMode !== subjectMode) {
-        showToast('Merge stopped — switch to the matching routine mode first.', 'err');
-        return;
-      }
-      const items: any[] = [];
-      for (const s of b.addedSubjects || []) {
-        const domain = s.parentCategory === 'Small Group Teaching' ? 'clinical' as const : 'academic' as const;
-        if (isSubjectNameTaken(s.name, undefined, domain)) continue;
-        const rows = (s.schedules || []).map(normalizeImportedSchedule).filter((row): row is NonNullable<ReturnType<typeof normalizeImportedSchedule>> => row !== null);
-        if (!rows.length) rows.push({ day: 'Mon', time: canonicalTimeRange('09:00 AM', '10:00 AM'), start: '09:00 AM', end: '10:00 AM' });
-        if (rows.some(r => findSubjectTimeConflicts([r.day], r.time, undefined, domain).some(c => !c.exact))) continue;
-        items.push({
-          name: s.name,
-          subjectType: (s.type as any) || 'single',
-          parentName: s.parentCategory || undefined,
-          plannedClasses: s.planned ?? 0,
-          rows,
-          clinicalSubject: s.clinicalSubject,
-          startDate: s.startDate,
-          endDate: s.endDate,
-          vacationPeriods: s.vacationPeriods,
-        });
-      }
-      let wardsAdded = 0;
-      for (const w of b.customWards || []) {
-        if (isWardNameTaken(w.name)) continue;
-        if (findWardDateConflicts(w.startDate, w.endDate, undefined).length) continue;
-        const mt = canonicalizeTimeRange(w.morningTime || '09:30 AM–11:30 AM');
-        const et = canonicalizeTimeRange(w.eveningTime || '07:00 PM–09:00 PM');
-        if (subjectMode === 'preloaded') addPresetWardEntry({ start: w.startDate, end: w.endDate, ward: w.name, morningTime: mt, eveningTime: et, addedByUser: true, vacationPeriods: w.vacationPeriods });
-        else addCustomWards([{ name: w.name, startDate: w.startDate, endDate: w.endDate, morningTime: mt, eveningTime: et, vacationPeriods: w.vacationPeriods }]);
-        wardsAdded++;
-      }
-      let rotationsAdded = 0;
-      let timetableChanges = 0;
-      for (const e of subjectMode === 'preloaded' ? (b.presetWardSchedule || []) : []) {
-        if (!e || e.addedByUser !== true) continue;
-        if (presetWardSchedule.some(x => x.ward.toLowerCase() === String(e.ward).toLowerCase() && x.start === e.start && x.end === e.end)) continue;
-        if (findWardDateConflicts(e.start, e.end, undefined).length) continue;
-        const mt = canonicalizeTimeRange(e.morningTime || '09:30 AM–11:30 AM');
-        const et = canonicalizeTimeRange(e.eveningTime || '07:00 PM–09:00 PM');
-        if (subjectMode === 'preloaded') addPresetWardEntry({ start: e.start, end: e.end, ward: e.ward, morningTime: mt, eveningTime: et, addedByUser: true, vacationPeriods: e.vacationPeriods });
-        else addCustomWards([{ name: e.ward, startDate: e.start, endDate: e.end, morningTime: mt, eveningTime: et, vacationPeriods: e.vacationPeriods }]);
-        rotationsAdded++;
-      }
-      if (subjectMode === 'preloaded' && b.presetTimetable) {
-        Object.entries(b.presetTimetable).forEach(([dayStr, slots]) => {
-          const day = parseInt(dayStr, 10);
-          if (isNaN(day) || !Array.isArray(slots)) return;
-          for (const slot of slots as any[]) {
-            if (!slot || !slot.subjects || slot.subjects.length === 0) continue;
-            if (slot.type === 'ward' || slot.type === 'ward_replacement') continue;
-            const time = canonicalizeTimeRange(slot.time);
-            const existingIdx = (presetTimetable[day] || []).findIndex(s => canonicalizeTimeRange(s.time) === time);
-            if (existingIdx >= 0) {
-              const merged = Array.from(new Set([...(presetTimetable[day][existingIdx].subjects || []), ...slot.subjects]));
-              if (merged.length !== (presetTimetable[day][existingIdx].subjects || []).length) timetableChanges += 1;
-              updatePresetTimetableSlot(day, existingIdx, time, merged, day);
-            } else {
-              slot.subjects.forEach((n: string) => addSubjectToSlot(day, time, n));
-              timetableChanges += 1;
-            }
-          }
-        });
-      }
-      if (items.length) commitSubjects(items);
-      recordHistory('Imported (Merge)', { subjects: items.length, rotations: wardsAdded + rotationsAdded });
-      setPreview(null);
-      setMoreMenuOpen(true);
-      const total = items.length + wardsAdded + rotationsAdded + timetableChanges;
-      if (total === 0) showToast('Nothing new to merge (duplicates or preset-only data). Use Replace to adopt the bundle.', 'info');
-      else {
-        showToast(`Merged ${items.length} subject(s), ${wardsAdded + rotationsAdded} rotation(s).`);
-        void notifyManageChange('Your routine was updated successfully.');
-      }
-    } catch { showToast('Merge failed — please try again.', 'err'); }
-  };
-
-  const applyReplace = async () => {
-    if (!preview) return;
-    const b = preview.bundle;
-    if (b.subjectMode !== subjectMode) {
-      showToast('Replace stopped — switch to the matching routine mode first.', 'err');
-      return;
-    }
-    if (!await snapshotBeforeEdit('Replace Routine Import')) {
-      showToast('Replace stopped — the safety snapshot could not be created.', 'err');
-      return;
-    }
-    recordHistory('Imported (Replace)', { mode: b.subjectMode });
-
-    const existingStore = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-    const existingByNameDomain = new Map<string, any>();
-    const existingById = new Map<string, any>();
-    for (const ex of existingStore) {
-      const isSGT = isSGTRecord(ex);
-      const key = `${ex.name.trim().toLowerCase()}|${isSGT ? 'sgt' : 'academic'}`;
-      existingByNameDomain.set(key, ex);
-      if (ex.id) existingById.set(ex.id, ex);
-    }
-
-    const incomingSubjectRecords = b.addedSubjects || [];
-    const incomingSubjectIds = new Set(incomingSubjectRecords.map((x: any) => typeof x.id === 'string' ? x.id : '').filter(Boolean));
-    const incomingSubjectNames = new Set(incomingSubjectRecords.map((x: any) => `${String(x.name || '').trim().toLowerCase()}|${x.parentCategory === 'Small Group Teaching' ? 'sgt' : 'academic'}`));
-    const incomingWardNames = new Set([
-      ...(b.customWards || []).map((x: any) => String(x.name || '').trim().toLowerCase()),
-      ...(b.presetWardSchedule || []).filter((x: any) => x?.addedByUser === true).map((x: any) => String(x.ward || '').trim().toLowerCase()),
-    ]);
-    const omittedEntities: Array<{ key: string; type: 'subject' | 'ward'; legacyKey?: string }> = [];
-    for (const oldSubject of existingStore) {
-      const kind = isSGTRecord(oldSubject) ? 'sgt' : 'academic';
-      const identity = `${oldSubject.name.trim().toLowerCase()}|${kind}`;
-      if ((oldSubject.id && incomingSubjectIds.has(oldSubject.id)) || incomingSubjectNames.has(identity)) continue;
-      const key = kind === 'sgt' ? getSGTKey(oldSubject.id) : getAcademicAttendanceKey(oldSubject.id || oldSubject.name);
-      omittedEntities.push({ key, type: 'subject', legacyKey: oldSubject.name });
-    }
-    for (const oldWard of subjectMode === 'preloaded' ? presetWardSchedule.filter((x: any) => x.addedByUser === true) : customWards) {
-      const name = String('ward' in oldWard ? oldWard.ward : oldWard.name).trim();
-      if (!name || incomingWardNames.has(name.toLowerCase())) continue;
-      const id = (oldWard as any).id;
-      omittedEntities.push({ key: getWardAttendanceKey(id || name), type: 'ward', legacyKey: `ward-${name}` });
-    }
-    removeAttendanceEntitiesForMode(b.subjectMode || 'preloaded', omittedEntities);
-
-    const toSubjectRecord = (s: any) => {
-      const normalizedSchedules: Array<NonNullable<ReturnType<typeof normalizeImportedSchedule>>> = (s.schedules || [])
-        .map((sch: any) => normalizeImportedSchedule(sch))
-        .filter((schedule: ReturnType<typeof normalizeImportedSchedule>): schedule is NonNullable<ReturnType<typeof normalizeImportedSchedule>> => schedule !== null);
-      const schedules = normalizedSchedules.map(({ day, start, end }) => ({ day, start, end }));
-
-      const isSGT = s.parentCategory === 'Small Group Teaching';
-      const domainKey = `${s.name.trim().toLowerCase()}|${isSGT ? 'sgt' : 'academic'}`;
-      const existing = (typeof s.id === 'string' && existingById.get(s.id)) || existingByNameDomain.get(domainKey);
-      const id = existing?.id || (typeof s.id === 'string' && s.id.trim() ? s.id : genId(b.subjectMode === 'preloaded' ? 'ua' : 'cs'));
-
-      return {
-        id,
-        name: s.name,
-        subjectType: s.type || 'single',
-        parentName: s.parentCategory || undefined,
-        category: s.parentCategory || undefined,
-        plannedClasses: s.planned ?? 0,
-        days: schedules.map((x: any) => x.day).join(', '),
-        time: schedules.length ? canonicalTimeRange(schedules[0].start, schedules[0].end) : '',
-        schedules: subjectMode === 'preloaded'
-          ? schedules
-          : schedules.map((x: any) => ({ day: x.day, time: canonicalTimeRange(x.start, x.end) })),
-        clinicalSubject: s.clinicalSubject,
-        startDate: s.startDate,
-        endDate: s.endDate,
-        vacationPeriods: s.vacationPeriods,
-      };
-    };
-
-    const records = (b.addedSubjects || []).map(toSubjectRecord);
-
-    if (subjectMode === 'preloaded' && b.presetTimetable) {
-      localStorage.setItem('att_preset_timetable', JSON.stringify(b.presetTimetable));
-      storageSetItem('att_preset_timetable', JSON.stringify(b.presetTimetable));
-    }
-    if (subjectMode === 'preloaded' && b.presetWardSchedule) {
-      const ws = (b.presetWardSchedule || []).map((e: any) => ({
-        ...e,
-        morningTime: canonicalizeTimeRange(e.morningTime || '09:30 AM–11:30 AM'),
-        eveningTime: canonicalizeTimeRange(e.eveningTime || '07:00 PM–09:00 PM'),
-      }));
-      localStorage.setItem('att_preset_ward_schedule', JSON.stringify(ws));
-      storageSetItem('att_preset_ward_schedule', JSON.stringify(ws));
-    }
-    if (subjectMode === 'preloaded' && b.presetSubjectTotals) {
-      localStorage.setItem('att_preset_subject_totals', JSON.stringify(b.presetSubjectTotals));
-      storageSetItem('att_preset_subject_totals', JSON.stringify(b.presetSubjectTotals));
-    }
-
-    if (subjectMode === 'custom') {
-      localStorage.setItem('att_custom_subjects', JSON.stringify(records));
-      storageSetItem('att_custom_subjects', JSON.stringify(records));
-
-      const existingWards = new Map(customWards.map(w => [w.name.trim().toLowerCase(), w]));
-      const cw = (b.customWards || []).map((w: any, i: number) => ({
-        ...w,
-        id: typeof w.id === 'string' && w.id.trim()
-          ? w.id
-          : existingWards.get(w.name.trim().toLowerCase())?.id || `cw_imp_${Date.now()}_${i}`,
-        morningTime: canonicalizeTimeRange(w.morningTime || '09:30 AM–11:30 AM'),
-        eveningTime: canonicalizeTimeRange(w.eveningTime || '07:00 PM–09:00 PM'),
-      }));
-      localStorage.setItem('att_custom_wards', JSON.stringify(cw));
-      storageSetItem('att_custom_wards', JSON.stringify(cw));
-    } else {
-      localStorage.setItem('att_user_added_subjects', JSON.stringify(records));
-      storageSetItem('att_user_added_subjects', JSON.stringify(records));
-    }
-
-    localStorage.setItem('att_subject_mode', b.subjectMode || 'preloaded');
-    storageSetItem('att_subject_mode', b.subjectMode || 'preloaded');
-    setPreview(null);
-    setMoreMenuOpen(true);
-    showToast('Routine replaced — reloading…');
-    void notifyManageChange('Your routine was updated successfully.');
-    setLocation('/');
-    setTimeout(() => window.location.reload(), 900);
-  };
-
   const renderRowList = (
     rows: ScheduleRow[],
     onUpdate: (id: string, patch: Partial<ScheduleRow>) => void,
@@ -2026,7 +1526,7 @@ export default function Manage() {
     }
   }, [subjectMode, selDay, presetTimetable, customSubjects, isAcademicSubject]);
 
-  // Group slots by identical time for common container
+  // Keep subjects sharing a scheduled time inside one time-header container.
   const groupedAcademicSlots = useMemo(() => {
     const groups: Record<string, Array<{ slot: any; idx: number; customSubject?: any }>> = {};
     for (const item of academicSlotsForDay) {
@@ -2036,6 +1536,12 @@ export default function Manage() {
     }
     return Object.entries(groups).map(([time, items]) => ({ time, items }));
   }, [academicSlotsForDay]);
+
+  const selectedDayIsToday = selDay === new Date().getDay();
+  const selectedDayIsHoliday = subjectMode === 'preloaded' && DAY_ABBRS[selDay] === 'Fri';
+  const noMoreAcademicMessage = selectedDayIsToday
+    ? 'No more planned Class for today!!'
+    : `No more planned Classes for ${DAY_ABBRS[selDay]}`;
 
   const manageSectionSwitcher = (
     <div className="pt-1 pb-1">
@@ -2085,12 +1591,23 @@ export default function Manage() {
     <Layout
       mainClassName="h-[100dvh] min-h-0 overflow-hidden"
       contentClassName="h-full min-h-0"
+      bottomNavClassName="border-t-0"
       headerRight={
-        <button type="button" onClick={() => setMoreMenuOpen(true)} className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
+        <button type="button" onClick={openMoreMenu} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
           <SendToBack className="w-4 h-4" />
+          <span className="text-[9px] font-extrabold leading-none">More</span>
         </button>
       }
     >
+      {noActiveCurriculumMessage && createPortal(
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-end justify-center bg-black/55 backdrop-blur-sm" onClick={() => setNoActiveCurriculumMessage(false)}>
+          <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} className="modal-sheet-content !min-h-0 w-full max-w-md rounded-t-3xl bg-card/90 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-foreground">No Active Curricula</h3>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">There are no Active Curricula. Reopen or Create a new Active Curricula from <button type="button" onClick={() => { setNoActiveCurriculumMessage(false); setLocation('/account'); }} className="font-semibold text-blue-500 hover:text-blue-400">Setting&apos;s</button> Curriculum Management to Add/Edit a Subject data.</p>
+            <button type="button" onClick={() => setNoActiveCurriculumMessage(false)} className="action-button action-button--cancel mt-3 w-full min-h-10">Close</button>
+          </motion.div>
+        </motion.div>, document.body
+      )}
       <div className="flex h-full min-h-0 flex-col gap-1 scroll-reachability">
         <div className="shrink-0">{manageSectionSwitcher}</div>
         {manageDaySelector && (
@@ -2098,90 +1615,98 @@ export default function Manage() {
             {manageDaySelector}
           </div>
         )}
+        {section === 'academic' && (
+          <div className="shrink-0 flex items-center justify-between px-3 pt-1 text-primary">
+            <h3 className="text-sm font-extrabold uppercase tracking-wide">{DAY_ABBRS[selDay]}&apos;s Academic Schedule</h3>
+            <span className="text-xs font-semibold text-muted-foreground">{academicSlotsForDay.length} Slots</span>
+          </div>
+        )}
+        {section === 'clinical' && (
+          <h3 className="shrink-0 px-3 pt-1 text-sm font-extrabold uppercase tracking-wide text-primary">Clinical Rotation Schedule</h3>
+        )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-1 min-h-0 flex-1 bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2.5 soft-entry-boundary relative flex flex-col overflow-hidden',
+            'manage-window-surface z-[3] isolate -mx-1 mt-0 min-h-0 flex-1 bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden',
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="shrink-0 -mx-3 -mt-3 px-3 pt-3 pb-2 bg-card border-b border-border/60">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-extrabold uppercase tracking-wide text-primary">{DAY_ABBRS[selDay]}'s Academic Schedule</h3>
-                  <span className="text-xs text-muted-foreground font-semibold">{academicSlotsForDay.length} Slots</span>
-                </div>
-              </div>
-
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-1.5 pr-1 pb-1 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
-              {groupedAcademicSlots.length === 0 ? (
-                <div className="flex items-center justify-center min-h-[160px] bg-background/40 border border-dashed border-border rounded-xl">
-                  <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
-                </div>
-              ) : (
-                groupedAcademicSlots.map((group) => (
-                  <React.Fragment key={group.time}>
-                    <span className="mb-1.5 flex min-h-7 w-full items-center justify-center border-y border-border/60 bg-card px-2 py-1 text-center text-xs font-bold text-primary">
-                      {group.time}
-                    </span>
-                    <div className="space-y-2">
-                      {group.items.map(({ slot, idx, customSubject }) => {
-                        if (customSubject) {
-                          const s = customSubject;
-                          const rows = s.schedules?.filter((sch: any) => sch.day === DAY_ABBRS[selDay]) || [];
-                          return rows.map((_: any, i: number) => (
-                            <div key={`${s.id}-${i}`} className="bg-background/50 border border-border/60 rounded-xl p-3 flex items-center gap-2.5">
-                              <div className="min-w-0 flex-1">
-                                <p className="font-extrabold text-foreground text-sm leading-tight truncate" style={{ color: getSubjectColor(s.name) }}>{s.name}</p>
-                                <p className="text-[11px] text-muted-foreground mt-0.5">{s.name}: {s.plannedClasses} planned{getEffectiveParentName(s) ? ` · under ${getEffectiveParentName(s)}` : ''}</p>
-                              </div>
-                              <button type="button" onClick={() => openEditSubject('custom', s.id)} className="action-button action-button--edit shrink-0">Edit</button>
-                              <button type="button" onClick={() => requestDeleteSubject('custom', s.id)} className="action-button action-button--danger shrink-0">Delete</button>
-                            </div>
-                          ));
-                        }
-                        const academicSubjects = slot.subjects.filter((s: string) => isAcademicSubject(s));
-                        const displayNames = academicSubjects.map((s: string) => getPresetSubjectDisplayName(s));
-                        return (
-                          <div key={`${selDay}-${idx}`} className="bg-background/50 border border-border/60 rounded-xl p-3 flex items-center gap-2.5">
-                            <div className="min-w-0 flex-1">
-                              <p className="font-extrabold text-foreground text-sm leading-tight truncate" style={{ color: getSubjectColor(displayNames[0] || '') }}>
-                                {displayNames.join(', ')}
-                              </p>
-                              <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                                {academicSubjects.map((s: string, index: number) => `${displayNames[index]}: ${getSubjectPlannedTotal(resolvePresetOriginalName(s))} planned`).join(' · ')}
-                              </p>
-                              {academicSubjects.some((s: string) => userAddedSubjects.some(u => u.name === s && !isSGTRecord(u))) && <div className="mt-1"><AddedBadge /></div>}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => openEditSlot(selDay, idx)}
-                              className="action-button action-button--edit shrink-0"
-                            >
-                              Edit
-                            </button>
-                          </div>
-                        );
-                      })}
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
+                {groupedAcademicSlots.length === 0 ? (
+                  <div className="flex min-h-full items-center justify-center px-6 text-center">
+                    <p className="text-sm font-semibold text-muted-foreground">
+                      {subjectMode === 'custom' && customAcademicCount === 0 ? (
+                        <>No Lecture Subject added yet. Tap <button type="button" onClick={openMoreMenu} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button> to add a new Subject.</>
+                      ) : selectedDayIsHoliday ? (
+                        'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
+                      ) : (
+                        'No planned Lecture Classes for today!'
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {groupedAcademicSlots.map((group) => (
+                      <div key={group.time} className="rounded-xl border border-border/60 bg-background/50 p-3">
+                        <div className="mb-2 flex min-h-7 items-center justify-center rounded-lg border border-border/60 bg-card px-2 py-1 text-center text-xs font-bold text-primary">
+                          {group.time}
+                        </div>
+                        <div className="space-y-2">
+                          {group.items.flatMap(({ slot, idx, customSubject }) => {
+                            if (customSubject) {
+                              const rows = customSubject.schedules?.filter((sch: any) => sch.day === DAY_ABBRS[selDay]) || [];
+                              return rows.map((_: any, rowIndex: number) => (
+                                <div key={`${customSubject.id}-${rowIndex}`} className="flex items-center gap-2.5 rounded-xl border border-border/60 bg-background/50 p-3">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-extrabold leading-tight text-foreground" style={{ color: getSubjectColor(customSubject.name) }}>{customSubject.name}</p>
+                                    <p className="mt-0.5 text-[11px] text-muted-foreground">{customSubject.plannedClasses} planned{getEffectiveParentName(customSubject) ? ` · under ${getEffectiveParentName(customSubject)}` : ''}</p>
+                                  </div>
+                                  <button type="button" onClick={() => openEditSubject('custom', customSubject.id)} className="action-button action-button--edit shrink-0">Edit</button>
+                                  <button type="button" onClick={() => requestDeleteSubject('custom', customSubject.id)} className="action-button action-button--danger shrink-0">Delete</button>
+                                </div>
+                              ));
+                            }
+                            return slot.subjects.filter((s: string) => isAcademicSubject(s)).map((subjectName: string) => {
+                              const displayName = getPresetSubjectDisplayName(subjectName);
+                              return (
+                                <div key={`${selDay}-${idx}-${subjectName}`} className="flex items-center gap-2.5 rounded-xl border border-border/60 bg-background/50 p-3">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-extrabold leading-tight text-foreground" style={{ color: getSubjectColor(displayName) }}>{displayName}</p>
+                                    <p className="mt-0.5 text-[11px] text-muted-foreground">{getSubjectPlannedTotal(resolvePresetOriginalName(subjectName))} planned</p>
+                                    {userAddedSubjects.some(u => u.name === subjectName && !isSGTRecord(u)) && <div className="mt-1"><AddedBadge /></div>}
+                                  </div>
+                                  <button type="button" onClick={() => openEditSlot(selDay, idx)} className="action-button action-button--edit shrink-0">Edit</button>
+                                </div>
+                              );
+                            });
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex min-h-[8rem] items-center justify-center py-4 text-center">
+                      <p className="text-sm font-semibold text-muted-foreground">{noMoreAcademicMessage}</p>
                     </div>
-                  </React.Fragment>
-                ))
-              )}
+                  </>
+                )}
               </div>
-              <div className="shrink-0 border-t border-border/60 bg-card pt-2">
-                <button
-                  type="button"
-                  onClick={openAddSlot}
-                  className="w-full py-2 rounded-xl border border-dashed border-border text-xs font-semibold text-muted-foreground hover:bg-muted/20 hover:text-foreground transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add Slot
+              <div className="shrink-0 px-3 py-2">
+                <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
+                  <Plus className="h-3.5 w-3.5" /> Add Slot
                 </button>
               </div>
             </div>
           )}
-
           {section === 'clinical' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 pr-1 pb-2 bg-card" style={{ overscrollBehaviorY: 'contain' }}>
-                {allClinicalSubjects.map(name => {
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 border border-dashed border-border/80 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
+                {subjectMode === 'custom' && customClinicalCount === 0 ? (
+                  <div className="flex min-h-full items-center justify-center px-6 text-center">
+                    <p className="text-sm font-semibold text-muted-foreground">
+                      No Clinical Subject added yet. Tap{' '}
+                      <button type="button" onClick={openMoreMenu} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button>{' '}
+                      to add a new Subject.
+                    </p>
+                  </div>
+                ) : allClinicalSubjects.map(name => {
                   const group = { rotation: getRotationForSubject(name), sgt: getSGTForSubject(name) };
                   return (
                     <ClinicalGroupCard
@@ -2201,13 +1726,14 @@ export default function Manage() {
                     />
                   );
                 })}
-                {allClinicalSubjects.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-5">No Clinical Subjects found. Add a Rotation or SGT to get started.</p>
+                {subjectMode !== 'custom' && allClinicalSubjects.length === 0 && (
+                  <div className="flex min-h-full items-center justify-center px-6 text-center">
+                    <p className="text-sm font-semibold text-muted-foreground">No Clinical Subjects found. Add a Rotation or SGT to get started.</p>
+                  </div>
                 )}
               </div>
             </div>
           )}
-          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-px bg-border/80" />
         </section>
         {/* Add New Modal */}
         <OverlayModal
@@ -2518,16 +2044,14 @@ export default function Manage() {
                         </div>
                         {isExpanded && !isAuto && (
                           <div className="p-2.5 border-t border-border/40 bg-muted/10 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <label className="w-1/2 text-[10px] font-semibold text-muted-foreground uppercase">Total Planned Classes</label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={draftPlanned ?? item.planned}
-                                onChange={e => setDraftPlanned(parseInt(e.target.value, 10) || 0)}
-                                className={cn(inputCls, 'w-1/2')}
-                              />
-                            </div>
+                            <CountStepper
+                              label="Total Planned Classes"
+                              value={draftPlanned ?? item.planned}
+                              onDecrement={() => setDraftPlanned(Math.max(0, (draftPlanned ?? item.planned) - 1))}
+                              onIncrement={() => setDraftPlanned((draftPlanned ?? item.planned) + 1)}
+                              decrementDisabled={(draftPlanned ?? item.planned) <= 0}
+                              ariaLabel="Total Planned Classes"
+                            />
                             <div className="flex gap-2">
                               <button
                                 type="button"
@@ -2595,16 +2119,14 @@ export default function Manage() {
                         </div>
                         {isExpanded && !isAuto && (
                           <div className="p-2.5 border-t border-border/40 bg-muted/10 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <label className="w-1/2 text-[10px] font-semibold text-muted-foreground uppercase">Total Planned Classes</label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={draftPlanned ?? item.planned}
-                                onChange={e => setDraftPlanned(parseInt(e.target.value, 10) || 0)}
-                                className={cn(inputCls, 'w-1/2')}
-                              />
-                            </div>
+                            <CountStepper
+                              label="Total Planned Classes"
+                              value={draftPlanned ?? item.planned}
+                              onDecrement={() => setDraftPlanned(Math.max(0, (draftPlanned ?? item.planned) - 1))}
+                              onIncrement={() => setDraftPlanned((draftPlanned ?? item.planned) + 1)}
+                              decrementDisabled={(draftPlanned ?? item.planned) <= 0}
+                              ariaLabel="Total Planned Classes"
+                            />
                             <div className="flex gap-2">
                               <button
                                 type="button"
@@ -2641,7 +2163,7 @@ export default function Manage() {
             </div>
           }
           footer={
-            <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}>
+            <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5 border-2 border-cyan-400/90')}>
               <Plus className="w-3.5 h-3.5" /> Add Slot
             </button>
           }
@@ -2689,14 +2211,6 @@ export default function Manage() {
             <button type="button" onClick={openEditDataFromMore} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
               <Pencil className="w-4 h-4 text-primary shrink-0" />
               <span><span className="block text-xs font-bold text-foreground">Edit {section === 'academic' ? 'Academic' : 'Clinical'} Data</span><span className="block text-[10px] text-muted-foreground">Update planned data or remove added items</span></span>
-            </button>
-            <button type="button" onClick={() => { setMoreMenuOpen(false); setImportError(null); setImportOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
-              <Download className="w-4 h-4 text-primary shrink-0" />
-              <span><span className="block text-xs font-bold text-foreground">Import</span><span className="block text-[10px] text-muted-foreground">Add or replace a routine</span></span>
-            </button>
-            <button type="button" onClick={() => { setMoreMenuOpen(false); setExportOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
-              <Upload className="w-4 h-4 text-primary shrink-0" />
-              <span><span className="block text-xs font-bold text-foreground">Export</span><span className="block text-[10px] text-muted-foreground">Save a copy of your routine</span></span>
             </button>
             <button type="button" onClick={() => { setMoreMenuOpen(false); setHistoryOpen(true); }} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
               <SendToBack className="w-4 h-4 text-primary shrink-0" />
@@ -2781,7 +2295,7 @@ export default function Manage() {
           }
           footer={
             <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={btnCancel}>Cancel</button>
+              <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={cn(btnCancel, editSubject?.subjectType === 'allied' && 'text-destructive hover:text-destructive')}>Cancel</button>
               <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save Changes</button>
             </div>
           }
@@ -2851,14 +2365,18 @@ export default function Manage() {
           onClose={() => { setEditWard(null); setEditError(null); }}
           maxW="max-w-lg"
           header={
-            <>
-              <div><h3 className="text-sm font-bold text-foreground">Edit Rotation</h3></div>
-              <p className="text-[10px] text-muted-foreground mt-1">Change dates, session times, or vacations. Rename is disabled.</p>
-            </>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
+                <p className="text-[10px] text-muted-foreground mt-1">Change dates, session times, or vacations. Rename is disabled.</p>
+              </div>
+              <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="action-button action-button--close action-button--icon shrink-0" aria-label="Close Edit Rotation">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           }
           footer={
             <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className={btnCancel}>Cancel</button>
               <button type="button" onClick={saveEditWard} className={btnPrimary}>Save Changes</button>
             </div>
           }
@@ -3100,99 +2618,6 @@ export default function Manage() {
           )}
         </OverlayModal>
 
-        {/* Export Modal */}
-        <OverlayModal open={exportOpen} onClose={() => { setExportOpen(false); setMoreMenuOpen(true); }} header={
-          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-foreground">Export Routine</h3><button type="button" onClick={() => { setExportOpen(false); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon" aria-label="Close Export Routine"><X className="w-4 h-4" /></button></div>
-        }>
-          <div className="p-4 sm:p-5 space-y-2.5">
-            <p className="text-[10px] text-muted-foreground mt-0.5">Bundle contains routine data only — never attendance.</p>
-            <Note note={note} />
-            <button type="button" onClick={doShare} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-2')}><Share2 className="w-4 h-4" /> Share…</button>
-            <button type="button" onClick={doDownload} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Download className="w-4 h-4" /> Download .json</button>
-            <button type="button" onClick={doCopy} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Copy className="w-4 h-4" /> Copy to Clipboard</button>
-          </div>
-        </OverlayModal>
-
-        {/* Import Modal */}
-        <OverlayModal open={importOpen} onClose={() => { setImportOpen(false); setImportError(null); setMoreMenuOpen(true); }} header={
-          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-foreground">Import Routine</h3><button type="button" onClick={() => { setImportOpen(false); setImportError(null); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon" aria-label="Close Import Routine"><X className="w-4 h-4" /></button></div>
-        }>
-          <div className="p-4 sm:p-5 space-y-2.5">
-            <p className="text-[10px] text-muted-foreground mt-0.5">Load a routine bundle from a file or pasted JSON. Attendance is never imported.</p>
-            <Note note={note} />
-            {importError && <p className={inlineErrCls}>{importError}</p>}
-            <button type="button" onClick={() => importFileRef.current?.click()} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-2')}><Download className="w-4 h-4" /> Choose .json File</button>
-            <input ref={importFileRef} type="file" accept=".json,application/json" className="hidden"
-              onChange={e => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                const reader = new FileReader();
-                reader.onload = ev => beginImport(String(ev.target?.result || ''), 'file');
-                reader.readAsText(f);
-                e.target.value = '';
-              }} />
-            <button type="button" onClick={() => { setPasteError(null); setPasteOpen(true); }} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Copy className="w-4 h-4" /> Paste JSON…</button>
-            <button type="button" onClick={copyAIPrompt} className={cn(btnGhost, 'w-full flex items-center justify-center gap-2')}><Copy className="w-4 h-4" /> Copy AI Prompt</button>
-          </div>
-        </OverlayModal>
-
-        {/* Paste JSON Modal */}
-        <OverlayModal open={pasteOpen} onClose={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} maxW="max-w-lg" header={
-          <div><h3 className="text-sm font-bold text-foreground">Paste Bundle JSON</h3></div>
-        }>
-          <div className="p-4 sm:p-5 space-y-2.5">
-            <p className="text-[10px] text-muted-foreground mt-0.5">Paste the bundle text from another device, then validate.</p>
-            {pasteError && <p className={inlineErrCls}>{pasteError}</p>}
-            <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={8} className={cn(inputCls, 'h-auto font-mono text-[10px] py-2')} placeholder='{"version":2,"subjectMode":…}' />
-            <div className="flex gap-2">
-              <button type="button" onClick={() => { setPasteOpen(false); setPasteText(''); setPasteError(null); }} className={cn(btnCancel, 'flex-1')}>Cancel</button>
-              <button type="button" onClick={() => beginImport(pasteText, 'paste')} className={cn(btnPrimary, 'flex-1')}>Validate & Preview</button>
-            </div>
-          </div>
-        </OverlayModal>
-
-        {/* Import Preview Modal */}
-        <OverlayModal open={!!preview} onClose={() => { setPreview(null); setMoreMenuOpen(true); }} maxW="max-w-lg" header={
-          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-foreground">Import Preview</h3><button type="button" onClick={() => { setPreview(null); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon" aria-label="Close Import Preview"><X className="w-4 h-4" /></button></div>
-        }>
-          {preview && (
-            <div className="p-4 sm:p-5 space-y-3">
-              <p className="text-[10px] text-muted-foreground mt-0.5">Review exactly what will be added or skipped before anything changes.</p>
-              <Note note={note} />
-              <div className="bg-muted/30 border border-border/50 rounded-xl p-3 text-xs text-foreground space-y-1">
-                <p>Mode: <strong>{preview.bundle.subjectMode}</strong> · Subjects to add: <strong>{preview.report.subjectsAdd}</strong> · Rotations to add: <strong>{preview.report.wardsAdd}</strong></p>
-                <p>Preset slots in bundle: <strong>{preview.report.slots}</strong> · Preset rotations: <strong>{preview.report.rotations}</strong></p>
-              </div>
-              {(preview.report.subjectsSkip.length > 0 || preview.report.wardsSkip.length > 0) && (
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 space-y-1">
-                  <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wide">Skipped (duplicates / overlaps)</p>
-                  {[...preview.report.subjectsSkip, ...preview.report.wardsSkip].map((s, i) => <p key={i} className="text-[11px] text-foreground">• {s}</p>)}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <button type="button" onClick={applyMerge} className={cn(btnPrimary, 'flex-1')}>Merge</button>
-                <button type="button" onClick={() => setReplaceConfirm(true)} className="action-button action-button--danger flex-1">Replace</button>
-              </div>
-            </div>
-          )}
-        </OverlayModal>
-
-        {/* Replace Confirm Modal */}
-        <OverlayModal open={replaceConfirm} onClose={() => setReplaceConfirm(false)}>
-          <div className="p-4 sm:p-5 space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0"><AlertTriangle className="w-5 h-5 text-rose-500" /></div>
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Replace everything?</h3>
-                <p className="text-xs text-muted-foreground">This wipes your current routine and adopts the bundle. A snapshot is taken first.</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setReplaceConfirm(false)} className={cn(btnCancel, 'flex-1')}>Cancel</button>
-              <button type="button" onClick={() => { setReplaceConfirm(false); applyReplace(); }} className="action-button action-button--danger flex-1">Yes, Replace</button>
-            </div>
-          </div>
-        </OverlayModal>
       </div>
     </Layout>
   );

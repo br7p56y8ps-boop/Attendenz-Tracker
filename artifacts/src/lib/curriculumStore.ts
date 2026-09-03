@@ -1,4 +1,4 @@
-import { storageSetItem, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
+import { storageSetItem, storageRemoveItemChecked, storageCommitChecked, flushStorageWrites } from './idb';
 
 export type CurriculumStatus = 'active' | 'archived';
 export type CurriculumKind = 'preset' | 'custom';
@@ -78,7 +78,7 @@ const isOwnedByKind = (key: string, kind: CurriculumKind): boolean =>
 
 function write(key: string, value: string): void {
   localStorage.setItem(key, value);
-  storageSetItem(key, value);
+  void storageSetItem(key, value);
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -192,27 +192,37 @@ export function syncBundleToActiveAliases(bundle: CurriculumBundle, kind?: Curri
   for (const key of ALIAS_KEYS) {
     if (!isOwnedByKind(key, targetKind)) continue;
     const value = bundle[key];
-    if (value !== undefined) {
-      write(key, value);
-    } else if (!SHARED_ALIAS_KEYS.has(key)) {
-      localStorage.removeItem(key);
-      void storageRemoveItem(key);
-    }
+    if (value !== undefined) write(key, value);
   }
+}
+
+function getBundleAliasChanges(bundle: CurriculumBundle, kind: CurriculumKind): { entries: Array<[string, string]>; keysToRemove: string[] } {
+  const entries: Array<[string, string]> = [];
+  const keysToRemove: string[] = [];
+  for (const key of ALIAS_KEYS) {
+    if (!isOwnedByKind(key, kind)) continue;
+    const value = bundle[key];
+    if (value !== undefined) entries.push([key, value]);
+  }
+  return { entries, keysToRemove };
 }
 
 export function setActiveCurriculumId(id: string): void {
   write(ACTIVE_CURRICULUM_KEY, id);
 }
 
-export function createCurriculum(name: string): CurriculumRecord {
+export async function clearActiveCurriculumChecked(): Promise<void> {
+  await storageRemoveItemChecked(ACTIVE_CURRICULUM_KEY);
+}
+
+function buildNewCurriculum(name: string): CurriculumRecord {
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Curriculum name is required.');
   const curricula = getCurricula();
   if (curricula.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
     throw new Error('A curriculum with this name already exists.');
   }
-  const record: CurriculumRecord = {
+  return {
     id: makeId(),
     name: trimmed,
     status: 'active',
@@ -220,74 +230,217 @@ export function createCurriculum(name: string): CurriculumRecord {
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
+}
+
+const emptyCustomBundle = (status: 'Active' | 'Completed' = 'Active'): CurriculumBundle => ({
+  'att_subject_mode': 'custom',
+  'att_custom_subjects': '[]',
+  'att_custom_wards': '[]',
+  'attendance_tracker_subjects_custom': '{}',
+  'attendance_tracker_ward_custom': '{}',
+  'attendance_tracker_home_selections_custom': '{}',
+  'attendance_tracker_finished_map_custom': '{}',
+  'attendance_tracker_preferred_percentage': '75',
+  'att_curriculum_status': status,
+});
+
+export function createCurriculum(name: string): CurriculumRecord {
+  const record = buildNewCurriculum(name);
+  const curricula = getCurricula();
   saveCurricula([...curricula, record]);
-  saveCurriculumBundle(record.id, {
-    'att_subject_mode': 'custom',
-    'att_custom_subjects': '[]',
-    'att_custom_wards': '[]',
-    'attendance_tracker_subjects_custom': '{}',
-    'attendance_tracker_ward_custom': '{}',
-    'attendance_tracker_home_selections_custom': '{}',
-    'attendance_tracker_finished_map_custom': '{}',
-    'attendance_tracker_preferred_percentage': '75',
-    'att_curriculum_status': 'Active',
-  });
+  saveCurriculumBundle(record.id, emptyCustomBundle());
   return record;
 }
 
-export function renameCurriculum(id: string, name: string): CurriculumRecord[] {
+export async function createCurriculumChecked(name: string): Promise<CurriculumRecord> {
+  const record = buildNewCurriculum(name);
+  const existing = getCurricula();
+  const curricula = [...existing, record];
+  const existingPreferredPercentage = localStorage.getItem('attendance_tracker_preferred_percentage');
+  const bundle = {
+    ...emptyCustomBundle(),
+    ...(existingPreferredPercentage !== null ? { 'attendance_tracker_preferred_percentage': existingPreferredPercentage } : {}),
+  };
+  const entries: Array<[string, string]> = [
+    [CURRICULA_KEY, JSON.stringify(curricula)],
+    [`att_curriculum_bundle_${record.id}`, JSON.stringify(bundle)],
+  ];
+  const existingActive = existing.find(curriculum => curriculum.status === 'active') || null;
+  const activeRecord = existing.find(curriculum => curriculum.id === getActiveCurriculumId()) || null;
+  const shouldEstablishWorkspace = !existingActive;
+  const shouldRepairActivePointer = Boolean(existingActive && (!activeRecord || activeRecord.status !== 'active'));
+  if (shouldEstablishWorkspace) {
+    const aliases = getBundleAliasChanges(bundle, 'custom');
+    entries.push(...aliases.entries);
+    entries.push([ACTIVE_CURRICULUM_KEY, record.id]);
+    await storageCommitChecked(entries, aliases.keysToRemove);
+  } else {
+    if (shouldRepairActivePointer) entries.push([ACTIVE_CURRICULUM_KEY, existingActive.id]);
+    await storageCommitChecked(entries);
+  }
+  return record;
+}
+
+function buildRenamedCurricula(id: string, name: string): CurriculumRecord[] {
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Curriculum name is required.');
   const curricula = getCurricula();
+  if (!curricula.some(c => c.id === id)) throw new Error('Curriculum not found.');
   if (curricula.some(c => c.id !== id && c.name.toLowerCase() === trimmed.toLowerCase())) {
     throw new Error('A curriculum with this name already exists.');
   }
-  const updated = curricula.map(c => c.id === id ? { ...c, name: trimmed, updatedAt: nowIso() } : c);
+  return curricula.map(c => c.id === id ? { ...c, name: trimmed, updatedAt: nowIso() } : c);
+}
+
+export function renameCurriculum(id: string, name: string): CurriculumRecord[] {
+  const updated = buildRenamedCurricula(id, name);
   saveCurricula(updated);
   return updated;
+}
+
+export async function renameCurriculumChecked(id: string, name: string): Promise<CurriculumRecord[]> {
+  const updated = buildRenamedCurricula(id, name);
+  await storageCommitChecked([[CURRICULA_KEY, JSON.stringify(updated)]]);
+  return updated;
+}
+
+function buildCurriculumStatusUpdate(id: string, status: CurriculumStatus): CurriculumRecord[] {
+  const curricula = getCurricula();
+  if (!curricula.some(c => c.id === id)) throw new Error('Curriculum not found.');
+  return curricula.map(c => c.id === id ? { ...c, status, updatedAt: nowIso() } : c);
 }
 
 export function setCurriculumStatus(id: string, status: CurriculumStatus): CurriculumRecord[] {
-  const updated = getCurricula().map(c => c.id === id ? { ...c, status, updatedAt: nowIso() } : c);
+  const updated = buildCurriculumStatusUpdate(id, status);
   saveCurricula(updated);
   return updated;
 }
 
-export async function activateCurriculum(id: string): Promise<void> {
+export async function setCurriculumStatusChecked(id: string, status: CurriculumStatus): Promise<CurriculumRecord[]> {
+  const updated = buildCurriculumStatusUpdate(id, status);
+  await storageCommitChecked([[CURRICULA_KEY, JSON.stringify(updated)]]);
+  return updated;
+}
+
+export async function completeCurriculum(id: string): Promise<{ curricula: CurriculumRecord[]; replacement: CurriculumRecord | null }> {
+  const curricula = getCurricula();
+  const target = curricula.find(curriculum => curriculum.id === id);
+  if (!target) throw new Error('Curriculum not found.');
+  const updated = curricula.map(curriculum => curriculum.id === id ? { ...curriculum, status: 'archived' as const, updatedAt: nowIso() } : curriculum);
+  const completingActive = getActiveCurriculumId() === id;
+  const replacement = completingActive ? updated.find(curriculum => curriculum.status === 'active') || null : null;
+  const entries: Array<[string, string]> = [[CURRICULA_KEY, JSON.stringify(updated)]];
+  const keysToRemove: string[] = [];
+
+  if (completingActive) {
+    // Persist the live workspace before switching to a replacement so the
+    // archived curriculum retains its latest attendance and schedule state.
+    entries.push([`att_curriculum_bundle_${id}`, JSON.stringify(captureActiveBundle(target.kind))]);
+    if (!replacement) {
+      keysToRemove.push(ACTIVE_CURRICULUM_KEY);
+      keysToRemove.push(...ALIAS_KEYS.filter(key => isOwnedByKind(key, target.kind) && !SHARED_ALIAS_KEYS.has(key)));
+      entries.push(['att_curriculum_status', 'Completed']);
+    } else {
+      const replacementBundle = {
+        ...getCurriculumBundle(replacement.id),
+        'att_subject_mode': replacement.kind === 'custom' ? 'custom' : 'preloaded',
+        'att_curriculum_status': 'Active',
+      };
+      entries.push([`att_curriculum_bundle_${replacement.id}`, JSON.stringify(replacementBundle)]);
+      const aliases = getBundleAliasChanges(replacementBundle, replacement.kind);
+      entries.push(...aliases.entries);
+      keysToRemove.push(...aliases.keysToRemove);
+      entries.push([ACTIVE_CURRICULUM_KEY, replacement.id]);
+    }
+  }
+
+  await storageCommitChecked(entries, keysToRemove);
+  await flushStorageWrites();
+  return { curricula: updated, replacement };
+}
+
+export async function deleteCurriculum(id: string): Promise<CurriculumRecord[]> {
   const target = getCurricula().find(c => c.id === id);
   if (!target) throw new Error('Curriculum not found.');
+  if (target.kind === 'preset' || id === defaultCurriculumId('preset') || id === defaultCurriculumId('custom')) {
+    throw new Error('Preset curricula cannot be deleted.');
+  }
+  const remaining = getCurricula().filter(c => c.id !== id);
+  const deletingActive = getActiveCurriculumId() === id;
+  const replacement = deletingActive ? remaining.find(c => c.status === 'active') || null : null;
+  const entries: Array<[string, string]> = [[CURRICULA_KEY, JSON.stringify(remaining)]];
+  const keysToRemove = [`att_curriculum_bundle_${id}`];
+
+  if (deletingActive) {
+    if (!replacement) {
+      keysToRemove.push(ACTIVE_CURRICULUM_KEY);
+      keysToRemove.push(...ALIAS_KEYS.filter(key => isOwnedByKind(key, target.kind) && !SHARED_ALIAS_KEYS.has(key)));
+      entries.push(['att_curriculum_status', 'Completed']);
+    } else {
+      const replacementBundle = {
+        ...getCurriculumBundle(replacement.id),
+        'att_subject_mode': replacement.kind === 'custom' ? 'custom' : 'preloaded',
+        'att_curriculum_status': 'Active',
+      };
+      entries.push([`att_curriculum_bundle_${replacement.id}`, JSON.stringify(replacementBundle)]);
+      const aliases = getBundleAliasChanges(replacementBundle, replacement.kind);
+      entries.push(...aliases.entries);
+      keysToRemove.push(...aliases.keysToRemove);
+      entries.push([ACTIVE_CURRICULUM_KEY, replacement.id]);
+    }
+  }
+
+  await storageCommitChecked(entries, keysToRemove);
+  await flushStorageWrites();
+  return remaining;
+}
+
+export async function activateCurriculum(id: string): Promise<void> {
+  const curricula = getCurricula();
+  const target = curricula.find(c => c.id === id);
+  if (!target) throw new Error('Curriculum not found.');
+  const activeCount = curricula.filter(c => c.status === 'active').length;
+  if (target.status === 'archived' && activeCount >= 2) {
+    throw new Error('You already have the maximum number of Active Curricula. Mark one Complete before reopening another.');
+  }
   const currentId = getActiveCurriculumId();
   const currentKind: CurriculumKind = localStorage.getItem('att_subject_mode') === 'custom' ? 'custom' : 'preset';
-  const current = currentId ? getCurricula().find(c => c.id === currentId) : null;
-  if (current && current.kind === currentKind) {
-    saveCurriculumBundle(currentId!, captureActiveBundle(currentKind));
+  const current = currentId ? curricula.find(c => c.id === currentId) : null;
+  const entries: Array<[string, string]> = [];
+  const keysToRemove: string[] = [];
+  if (current && current.id !== id && current.kind === currentKind) {
+    entries.push([`att_curriculum_bundle_${current.id}`, JSON.stringify(captureActiveBundle(currentKind))]);
   } else if (current && current.kind !== currentKind) {
     const matching = getCurriculumForKind(currentKind);
-    if (matching) saveCurriculumBundle(matching.id, captureActiveBundle(currentKind));
+    if (matching && matching.id !== id) entries.push([`att_curriculum_bundle_${matching.id}`, JSON.stringify(captureActiveBundle(currentKind))]);
   }
   const next = {
     ...getCurriculumBundle(id),
     'att_subject_mode': target.kind === 'custom' ? 'custom' : 'preloaded',
+    'att_curriculum_status': 'Active',
   };
-  setActiveCurriculumId(id);
-  syncBundleToActiveAliases(next, target.kind);
-  const curricula = getCurricula().map(c => c.id === id ? { ...c, status: 'active' as const, updatedAt: nowIso() } : c);
-  saveCurricula(curricula);
+  entries.push([`att_curriculum_bundle_${id}`, JSON.stringify(next)]);
+  const aliases = getBundleAliasChanges(next, target.kind);
+  entries.push(...aliases.entries);
+  keysToRemove.push(...aliases.keysToRemove);
+  entries.push([CURRICULA_KEY, JSON.stringify(curricula.map(c => c.id === id ? { ...c, status: 'active' as const, updatedAt: nowIso() } : c))]);
+  entries.push([ACTIVE_CURRICULUM_KEY, id]);
+  await storageCommitChecked(entries, keysToRemove);
   await flushStorageWrites();
 }
 
 export function ensureCurriculumMigration(): void {
-  if (localStorage.getItem(CURRICULUM_MIGRATION_KEY) === 'true' && getActiveCurriculum()) {
-    repairPresetBundleFromLiveWorkspace();
-    reconcileActiveCurriculumToMode();
-    return;
-  }
-
+  const migrationComplete = localStorage.getItem(CURRICULUM_MIGRATION_KEY) === 'true';
   const existing = getCurricula();
-  if (existing.length > 0 && getActiveCurriculumId()) {
+  const active = getActiveCurriculum();
+  if (existing.length > 0) {
+    if (!active) {
+      const activeCandidate = existing.find(curriculum => curriculum.status === 'active');
+      if (activeCandidate) setActiveCurriculumId(activeCandidate.id);
+    }
     repairPresetBundleFromLiveWorkspace();
-    write(CURRICULUM_MIGRATION_KEY, 'true');
-    reconcileActiveCurriculumToMode();
+    if (getActiveCurriculum()) reconcileActiveCurriculumToMode();
+    if (!migrationComplete) write(CURRICULUM_MIGRATION_KEY, 'true');
     return;
   }
 

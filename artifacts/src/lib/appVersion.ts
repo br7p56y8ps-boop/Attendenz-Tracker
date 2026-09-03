@@ -1,7 +1,8 @@
 export type ReleaseType = 'major' | 'minor';
 export type UpdateMode = 'manual' | 'automatic';
 
-export const APP_VERSION = "1.6.4.2";
+export const APP_VERSION = "1.6.4.4";
+export const PWA_CACHE_NAME = `attendenz-shell-v${APP_VERSION}`;
 export const LATEST_VERSION = APP_VERSION;
 
 // Developer release reference: RELEASE_TYPE accepts only 'major' or 'minor'.
@@ -16,26 +17,23 @@ export interface WhatsNewItem {
   details: string;
 }
 export const WHATS_NEW_UPGRADES: WhatsNewItem[] = [
-  {
-    title: "Scheduled Notifications",
-    summary: "New reminders for your Classes and attendance risks.",
-    details:
-      "Receive grouped Must Attend and Need Attention reminders, configurable Before-Class Warnings, Last Planned Class Today notices, and reminders for newly added Subjects scheduled for the same day.",
-  },
+  { title: "New UI Design", summary: "Refreshed interface with modern styling, improved readability, and consistent light/dark theme.", details: "" },
+  { title: "Curriculum Management", summary: "Separate active and archived curricula; switch, complete, reopen, rename, or delete with confirmations.", details: "" },
+  { title: "Stronger Data Safety", summary: "Reliable IndexedDB persistence with ordered writes and LocalStorage mirroring; backup/restore verifies success and supports older backups.", details: "" },
+  { title: "Smarter Backup & Restore", summary: "Restored data is version-stamped; failed updates no longer loop silently.", details: "" },
+  { title: "Clearer Home Cards", summary: "Past, today, tomorrow, and future classes are visually distinct; Clinical and SGT subjects show labels like Clinical (Morning) and Small Group.", details: "" },
+  { title: "Improved Notifications", summary: "More specific categories (Must Attend, Need Attention, Safe to Miss), correct subject-type labels, and accurate final planned class detection.", details: "" },
+  { title: "Enhanced Export Controls", summary: "Export PDF, Excel, or CSV with subject, custom-date, or semester scope from Settings.", details: "" },
+  { title: "Reliable PWA Updates", summary: "Service worker and version metadata stay in sync.", details: "" },
+  { title: "Start Fresh & Delete All Data", summary: "Completely wipe user data and return to the Welcome screen.", details: "" },
 ];
 export const WHATS_NEW_FIXES: WhatsNewItem[] = [
-  {
-    title: "Calendar and Export Reliability",
-    summary: "Calendar, attendance reports, and mobile layouts are more dependable.",
-    details:
-      "Fixed the Calendar blank-page issue, improved lifecycle-aware attendance statuses across the app and reports, included Clinical, Ward, and SGT records correctly, and refined the formal PDF and spreadsheet exports.",
-  },
-  {
-    title: "1.6 Series Improvements",
-    summary: "Safer local data and clearer everyday controls.",
-    details:
-      "The 1.6 series added active curriculum workspaces, responsive Manage controls, protected local backups, clearer Settings, Feedback & Sounds choices, and reversible System Notifications.",
-  },
+  { title: "Home & Subject Cards", summary: "Fixed long status text overflow, separated completed classes, aligned percentage containers, and removed the unwanted vertical divider.", details: "" },
+  { title: "Manage Tab Layout", summary: "Academic schedule full-width time rows; Clinical and SGT entries separated with their own actions; improved spacing and scrolling.", details: "" },
+  { title: "Settings Organization", summary: "Clearer sections with consistent theme colors and borders.", details: "" },
+  { title: "Mobile Usability", summary: "Improved keyboard handling for rename/create dialogs and curriculum modal sizes to content.", details: "" },
+  { title: "Attendance & Feedback", summary: "Cancellable confirmations plus configurable vibration, sound, and volume.", details: "" },
+  { title: "Overall Polish", summary: "Responsive spacing, background blackout for modals, consistent 3D percentage containers.", details: "" },
 ];
 export const FEATURES_UPDATED = [
   {
@@ -56,5 +54,5 @@ export const FEATURES_UPDATED = [
 ];
 export const RELEASE_NOTES = {
   version: APP_VERSION,
-  summary: "Release v1.6.4.2: Scheduled Notifications, Calendar reliability, and export improvements.",
+  summary: "Pre-release v1.6.4.4: UI consistency, clearer controls, and notification refinements.",
 };

@@ -3,9 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCustomData, SubjectMode } from '@/contexts/CustomDataContext';
-import { BookOpen, Pencil, ShieldCheck, ArrowRight, RefreshCw, Upload, Sparkles, AlertTriangle, Camera } from 'lucide-react';
-import { importDataFromJSON, getSnapshots } from '../utils/snapshotUtils';
+import { BookOpen, Pencil, ShieldCheck, ArrowRight, RefreshCw, Sparkles, AlertTriangle, Camera } from 'lucide-react';
+import { getSnapshots } from '../utils/snapshotUtils';
 import { deleteRemoteDevice } from '@/lib/webPushSync';
+import { disableDirectPush } from '@/lib/webPush';
+import { idbGetAllChecked, INSTALLATION_METADATA_KEYS } from '@/lib/idb';
 import maleStudentProfile from '@/assets/images/male_student_profile_1784286906428.jpg';
 import femaleStudentProfile from '@/assets/images/female_student_profile_1784286920737.jpg';
 import neutralStudentProfile from '@/assets/images/neutral_student_profile_1784286934617.jpg';
@@ -14,7 +16,6 @@ export default function SetupScreen() {
   const { username, updateUsername, profileImage, updateProfileImage } = useAuth();
   const { completeSetup, startFresh, setWhatsNewOpen } = useCustomData();
   const [, setLocation] = useLocation();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [detectedMode, setDetectedMode] = useState<SubjectMode>('preloaded');
@@ -25,25 +26,33 @@ export default function SetupScreen() {
   const [showConfirmStartFresh, setShowConfirmStartFresh] = useState<boolean>(false);
 
   useEffect(() => {
-    try {
+    let alive = true;
+    void (async () => {
+      try {
       const savedSubjects = localStorage.getItem('attendance_tracker_subjects');
       const savedCustomSub = localStorage.getItem('att_custom_subjects');
       const savedHistory = localStorage.getItem('att_history');
       const savedMode = localStorage.getItem('att_subject_mode') as SubjectMode | null;
       const snapshots = getSnapshots();
+      const localKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key));
+      const durableData = await idbGetAllChecked();
+      const hasDurableUserData = Object.entries(durableData).some(([key, value]) => key !== 'att_idb_migrated_v1' && !INSTALLATION_METADATA_KEYS.has(key) && Boolean(value));
+      const hasSeparatedData = localKeys.some(key => key.startsWith('attendance_tracker_') || key.startsWith('att_curriculum_bundle_') || key === 'att_curricula_v1' || key === 'att_active_curriculum_id_v1' || key === 'att_user_added_subjects');
       const hasData = Boolean(
         (savedSubjects && savedSubjects !== '{}') ||
         (savedCustomSub && savedCustomSub !== '[]') ||
         (savedHistory && savedHistory !== '{}') ||
-        snapshots.length > 0
+        snapshots.length > 0 || hasSeparatedData || hasDurableUserData
       );
-      if (hasData) {
+      if (alive && hasData) {
         setShowDataDetectedView(true);
         if (savedMode) setDetectedMode(savedMode);
       }
-    } catch (e) {
+      } catch (e) {
       // ignore
-    }
+      }
+    })();
+    return () => { alive = false; };
   }, []);
 
   /* ── Profile photo (identical logic to Account tab) ── */
@@ -90,37 +99,39 @@ export default function SetupScreen() {
   };
 
   /* ── Finish → always land on Home ── */
-  const finishSetup = (mode: SubjectMode) => {
-    if (localIdentityName.trim()) updateUsername(localIdentityName.trim());
-    localStorage.removeItem('att_just_updated');
-    completeSetup(mode, mode === 'custom' ? customRoutineName : undefined);
-    setLocation('/');
-    setWhatsNewOpen(true);
+  const finishSetup = async (mode: SubjectMode) => {
+    try {
+      if (localIdentityName.trim()) updateUsername(localIdentityName.trim());
+      localStorage.removeItem('att_just_updated');
+      await completeSetup(mode, mode === 'custom' ? customRoutineName : undefined);
+      setLocation('/');
+      setWhatsNewOpen(true);
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not finish setup without risking existing data.'));
+    }
   };
 
-  const handleRestorePreviousData = () => finishSetup(detectedMode);
+  const handleRestorePreviousData = () => { void finishSetup(detectedMode); };
 
-  const handleRestoreBackupFile = (file: File) => {
-    importDataFromJSON(file, (success: boolean) => {
-      if (success) {
-        const updatedMode = (localStorage.getItem('att_subject_mode') as SubjectMode) || 'preloaded';
-        finishSetup(updatedMode);
-      } else {
-        import("sonner").then(({ toast }) => toast.info('Failed to restore backup file. Please ensure it is a valid Attendenz JSON backup.'));
-      }
-    });
-  };
 
   const handleConfirmStartFresh = async () => {
-    await deleteRemoteDevice();
+    const remoteRemoved = await deleteRemoteDevice();
+    if (!remoteRemoved) {
+      import('sonner').then(({ toast }) => toast.error(navigator.onLine ? 'Could not remove this device from reminders. Try again before starting fresh.' : 'Connect to the internet before starting fresh so remote reminders can be removed too.'));
+      return;
+    }
+    const unsubscribed = await disableDirectPush();
+    if (!unsubscribed) {
+      import('sonner').then(({ toast }) => toast.error('Could not unregister browser notifications. Try again before starting fresh.'));
+      return;
+    }
     try {
-      const registration = await navigator.serviceWorker?.ready;
-      const subscription = await registration?.pushManager.getSubscription();
-      await subscription?.unsubscribe();
-    } catch {}
-    await startFresh();
-    setShowDataDetectedView(false);
-    setShowConfirmStartFresh(false);
+      await startFresh();
+      setShowDataDetectedView(false);
+      setShowConfirmStartFresh(false);
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not delete local data. Nothing was reported as complete.'));
+    }
   };
 
   return (
@@ -156,11 +167,6 @@ export default function SetupScreen() {
                     <RefreshCw className="w-4 h-4" />
                     <span>Restore Previous Data (Recommended)</span>
                   </button>
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="action-button action-button--neutral w-full">
-                    <Upload className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span>Restore Backup File (.json)</span>
-                  </button>
-                  <input type="file" ref={fileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRestoreBackupFile(f); }} accept=".json" className="hidden" />
                   <button type="button" onClick={() => setShowConfirmStartFresh(true)} className="action-button action-button--warning w-full">
                     Start Fresh with Clean Slate
                   </button>

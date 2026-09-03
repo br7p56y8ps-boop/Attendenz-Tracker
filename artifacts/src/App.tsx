@@ -4,7 +4,7 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext';
-import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageSetItem } from '@/lib/idb';
+import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageRemoveItemChecked, storageSetItem, recoverPendingDeleteAll } from '@/lib/idb';
 import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
 import { restoreSnapshot } from '@/utils/snapshotUtils';
@@ -22,14 +22,14 @@ const Login = lazy(() => import('@/pages/Login'));
 const SetupScreen = lazy(() => import('@/pages/SetupScreen'));
 const NotFound = lazy(() => import('@/pages/not-found'));
 
-const PageFallback = () => <div className="min-h-[40vh] flex items-center justify-center text-sm text-muted-foreground">Loading…</div>;
+const PageFallback = () => <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Initialising…</div>;
 
 const HAS_SEEN_WELCOME_KEY = 'att_has_seen_welcome_v1';
 
 function AuthGate() {
   const { isLoggedIn } = useAuth();
   const { setupDone } = useCustomData();
-  const { isUpdateAvailable, online, serverVersion, serverSummary, updatePhase, dots, applyUpdate } = useUpdateFlow();
+  const { isUpdateAvailable, online, serverVersion, serverSummary, updatePhase, dots, progressComplete, applyUpdate } = useUpdateFlow();
   const [gateDismissed, setGateDismissed] = useState<boolean>(() => sessionStorage.getItem('att_update_gate_dismissed') === 'true');
 
   if (!isLoggedIn) return <Suspense fallback={<PageFallback />}><Login /></Suspense>;
@@ -44,13 +44,13 @@ function AuthGate() {
       {showGate ? (
         <>
           <UpdateModal
-            open
+            open={updatePhase === 'none'}
             serverVersion={serverVersion}
             summary={serverSummary}
             onRemind={() => { sessionStorage.setItem('att_update_gate_dismissed', 'true'); setGateDismissed(true); }}
             onUpdate={(b) => applyUpdate(b)}
           />
-          <UpdateOverlay phase={updatePhase} dots={dots} />
+          <UpdateOverlay phase={updatePhase} dots={dots} progressComplete={progressComplete} />
         </>
       ) : (
         <Suspense fallback={<PageFallback />}>
@@ -70,11 +70,22 @@ function AuthGate() {
 
 function MainAppFlow() {
   const [arrivedAfterUpdate] = useState<boolean>(() => localStorage.getItem('att_just_updated') === 'true');
+  const [restoreError, setRestoreError] = useState(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
     const justUpdated = localStorage.getItem('att_just_updated') === 'true';
     const hasSeenWelcome = localStorage.getItem(HAS_SEEN_WELCOME_KEY) === 'true';
     return justUpdated || !hasSeenWelcome;
   });
+
+  if (restoreError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <h1 className="text-base font-extrabold text-foreground">Recovery could not be completed</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">Your recovery snapshot is preserved. Retry recovery before continuing.</p>
+        <button type="button" className="rounded-lg border border-primary px-4 py-2 text-sm font-bold text-foreground" onClick={() => setRestoreError(false)}>Retry Recovery</button>
+      </div>
+    );
+  }
 
   if (showWelcome) {
     return (
@@ -97,8 +108,18 @@ function MainAppFlow() {
         onComplete={async () => {
           const pendingRestoreId = localStorage.getItem('att_pending_update_restore');
           if (pendingRestoreId) {
-            try { await restoreSnapshot(pendingRestoreId); } catch (e) {}
-            await storageRemoveItem('att_pending_update_restore');
+            let restored = false;
+            try { restored = await restoreSnapshot(pendingRestoreId); } catch (e) {}
+            if (!restored) {
+              setRestoreError(true);
+              return;
+            }
+            try {
+              await storageRemoveItemChecked('att_pending_update_restore');
+            } catch (e) {
+              setRestoreError(true);
+              return;
+            }
             await storageSetItem(HAS_SEEN_WELCOME_KEY, 'true');
             await storageRemoveItem('att_just_updated');
             await storageRemoveItem('att_pwa_update_ready');
@@ -124,6 +145,7 @@ function MainAppFlow() {
 export default function App() {
   const [storageReady, setStorageReady] = useState(false);
   const [storageError, setStorageError] = useState(false);
+  const [storageInitError, setStorageInitError] = useState<string | null>(null);
   useEffect(() => {
     const onStorageError = () => setStorageError(true);
     const flushOnHide = () => { if (document.visibilityState === 'hidden') void flushStorageWrites(); };
@@ -138,7 +160,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     let alive = true;
-    initStorageAndMigrate().then(() => ensureCurriculumMigration()).finally(() => { if (alive) setStorageReady(true); });
+    initStorageAndMigrate().then(() => recoverPendingDeleteAll()).then(() => { ensureCurriculumMigration(); if (alive) setStorageReady(true); }).catch((error) => { if (alive) setStorageInitError(error instanceof Error ? error.message : 'Storage could not be initialized.'); });
 
     const applyCurrentTheme = () => applyThemePreference(readThemePreference());
     applyCurrentTheme();
@@ -153,15 +175,15 @@ export default function App() {
     };
   }, []);
 
-  if (!storageReady) return null;
+  if (!storageReady) return <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground"><span>Initialising…</span>{storageInitError && <><span className="text-center px-6">{storageInitError}</span><button type="button" className="rounded-lg border border-primary px-3 py-2 text-foreground" onClick={() => window.location.reload()}>Retry</button></>}</div>;
 
   return (
     <>
       {storageError && (
-        <div className="fixed inset-x-3 top-[5.25rem] z-[180] rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 py-3 text-xs text-amber-100 shadow-xl backdrop-blur-xl">
+        <div className="fixed inset-x-3 top-[5.25rem] z-[180] rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 py-3 text-xs text-amber-950 shadow-xl backdrop-blur-xl dark:text-amber-100">
           <div className="flex items-start justify-between gap-3">
             <p><strong>Storage Warning:</strong> Your latest changes may not be fully durable. Export a backup from Settings before closing the app.</p>
-            <button type="button" onClick={() => setStorageError(false)} className="shrink-0 font-bold text-amber-200" aria-label="Dismiss Storage Warning">Dismiss</button>
+            <button type="button" onClick={() => setStorageError(false)} className="shrink-0 font-bold text-amber-900 underline underline-offset-2 dark:text-amber-100" aria-label="Dismiss Storage Warning">Dismiss</button>
           </div>
         </div>
       )}

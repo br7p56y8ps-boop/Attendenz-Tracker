@@ -10,6 +10,9 @@ const EXCLUDED_KEYS = new Set([
   'att_mode_separation_done_v1',
   'att_attendance_id_migration_v2_done_preloaded',
   'att_attendance_id_migration_v2_done_custom',
+  'att_pwa_build_revision',
+  'att_pwa_release_type',
+  'att_pwa_update_mode',
   'att_pwa_update_ready',
   'att_pwa_latest_version',
   'att_pwa_update_summary',
@@ -73,6 +76,21 @@ export interface BackupEnvelope {
   data: Record<string, string>;
 }
 
+function getEnvelopeData(payload: Record<string, unknown>): Record<string, unknown> {
+  if (payload.format !== BACKUP_FORMAT) return payload;
+  const version = payload.version;
+  if (typeof version === 'number' && Number.isInteger(version) && version > BACKUP_VERSION) {
+    throw new Error('This backup was created by a newer version of Attendenz. Update the app before restoring it.');
+  }
+  if (version !== undefined && (typeof version !== 'number' || !Number.isInteger(version) || version < 0)) {
+    throw new Error('Invalid backup version.');
+  }
+  if (!isPlainObject(payload.data)) throw new Error('Invalid backup data.');
+  // Known versions currently share the same key/value representation. The
+  // normalized return value is therefore the current schema.
+  return payload.data;
+}
+
 export function isAllowedBackupKey(key: string): boolean {
   if (!key || EXCLUDED_KEYS.has(key)) return false;
   return ALLOWED_EXACT_KEYS.has(key) || ALLOWED_PREFIXES.some(prefix => key.startsWith(prefix));
@@ -129,9 +147,7 @@ export function sanitizeSnapshotsValue(value: string): string | null {
 export function validateBackupPayload(payload: unknown): Record<string, string> {
   if (!isPlainObject(payload)) throw new Error('Invalid backup file format.');
 
-  const candidate = payload.format === BACKUP_FORMAT && payload.version === BACKUP_VERSION
-    ? payload.data
-    : payload;
+  const candidate = getEnvelopeData(payload);
 
   if (!isPlainObject(candidate)) throw new Error('Invalid backup data.');
 

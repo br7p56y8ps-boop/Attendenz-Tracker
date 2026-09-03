@@ -1,11 +1,18 @@
 const DB_NAME = 'AttendenzDatabase';
 const STORE_NAME = 'key_value_store';
 const DB_VERSION = 1;
+const IDB_OPERATION_TIMEOUT_MS = 8000;
+export const INSTALLATION_METADATA_KEYS = new Set([
+  'att_pwa_build_revision', 'att_pwa_release_type', 'att_pwa_update_mode',
+  'att_pwa_update_ready', 'att_pwa_latest_version', 'att_pwa_update_summary',
+  'att_pending_update_restore', 'att_just_updated', 'att_app_version',
+]);
 
 let dbInstance: IDBDatabase | null = null;
 let dbPromise: Promise<IDBDatabase> | null = null;
 let pendingStorageWrites: Promise<void> = Promise.resolve();
 export const STORAGE_ERROR_EVENT = 'att-storage-error';
+export const PENDING_DELETE_ALL_KEY = 'att_pending_delete_all_v1';
 
 function notifyStorageError(error: unknown, operation: string, key?: string): void {
   if (typeof window === 'undefined') return;
@@ -48,8 +55,14 @@ function getDB(): Promise<IDBDatabase> {
         }
       };
 
+      const timeout = window.setTimeout(() => {
+        resetDB();
+        reject(new Error('IndexedDB initialization timed out.'));
+      }, IDB_OPERATION_TIMEOUT_MS);
+
       request.onsuccess = () => {
         const db = request.result;
+        window.clearTimeout(timeout);
         dbInstance = db;
 
         db.onclose = () => {
@@ -71,12 +84,15 @@ function getDB(): Promise<IDBDatabase> {
       };
 
       request.onerror = () => {
+        window.clearTimeout(timeout);
         resetDB();
         reject(request.error || new Error('Failed to open IndexedDB'));
       };
 
       request.onblocked = () => {
+        window.clearTimeout(timeout);
         resetDB();
+        reject(new Error('IndexedDB is blocked by another tab. Close the other tab and retry.'));
       };
     });
   }
@@ -102,16 +118,21 @@ async function withStore<T = void>(
           return;
         }
 
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+        const timeout = window.setTimeout(() => {
+          try { tx.abort(); } catch {}
+          reject(new Error('IndexedDB transaction timed out.'));
+        }, IDB_OPERATION_TIMEOUT_MS);
+        const finish = () => window.clearTimeout(timeout);
+        let result: T | undefined;
+        tx.onerror = () => { finish(); reject(tx.error); };
+        tx.onabort = () => { finish(); reject(tx.error || new Error('Transaction aborted')); };
+        tx.oncomplete = () => { finish(); resolve(result); };
 
         const store = tx.objectStore(STORE_NAME);
         const req = callback(store);
         if (req) {
-          req.onsuccess = () => resolve(req.result as T);
+          req.onsuccess = () => { result = req.result as T; };
           req.onerror = () => reject(req.error);
-        } else {
-          tx.oncomplete = () => resolve(undefined);
         }
       });
     } catch (err) {
@@ -155,6 +176,18 @@ export async function idbSetMany(entries: Array<[string, string]>): Promise<void
   }
 }
 
+export async function idbCommit(entries: Array<[string, string]>, keysToRemove: string[] = []): Promise<void> {
+  try {
+    await withStore('readwrite', store => {
+      entries.forEach(([key, value]) => store.put({ key, value }));
+      keysToRemove.forEach(key => store.delete(key));
+    });
+  } catch (err) {
+    notifyStorageError(err, 'commit');
+    throw err;
+  }
+}
+
 export async function idbRemove(key: string): Promise<void> {
   try {
     await withStore('readwrite', store => store.delete(key));
@@ -175,20 +208,26 @@ export async function idbRemoveMany(keys: string[]): Promise<void> {
   }
 }
 
-export async function idbGetAll(): Promise<Record<string, string>> {
+export async function idbGetAllChecked(): Promise<Record<string, string>> {
   try {
     const items = await withStore<Array<{ key: string; value: string }>>('readonly', store => store.getAll());
     const result: Record<string, string> = {};
     if (items) {
       items.forEach(item => {
-        if (item && item.key) {
-          result[item.key] = item.value;
-        }
+        if (item && item.key) result[item.key] = item.value;
       });
     }
     return result;
   } catch (err) {
     notifyStorageError(err, 'get-all');
+    throw err;
+  }
+}
+
+export async function idbGetAll(): Promise<Record<string, string>> {
+  try {
+    return await idbGetAllChecked();
+  } catch {
     return {};
   }
 }
@@ -198,6 +237,24 @@ export async function idbClear(): Promise<void> {
     await withStore('readwrite', store => store.clear());
   } catch (err) {
     notifyStorageError(err, 'clear');
+    throw err;
+  }
+}
+
+export async function idbRemoveAllExcept(keysToKeep: string[]): Promise<void> {
+  const keep = new Set(keysToKeep);
+  try {
+    await withStore('readwrite', store => {
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        if (!keep.has(String(cursor.key))) cursor.delete();
+        cursor.continue();
+      };
+    });
+  } catch (err) {
+    notifyStorageError(err, 'remove-all-except');
     throw err;
   }
 }
@@ -228,7 +285,7 @@ export async function initStorageAndMigrate(): Promise<void> {
 
     const allIdbData = await idbGetAll();
     for (const [k, v] of Object.entries(allIdbData)) {
-      if (k !== 'att_idb_migrated_v1') {
+      if (k !== 'att_idb_migrated_v1' && !INSTALLATION_METADATA_KEYS.has(k)) {
         localStorage.setItem(k, v);
       }
     }
@@ -238,6 +295,7 @@ export async function initStorageAndMigrate(): Promise<void> {
     }
   } catch (err) {
     notifyStorageError(err, 'initialization');
+    throw err;
   }
 }
 
@@ -251,30 +309,106 @@ function queueStorageWrite(operation: () => Promise<void>): Promise<void> {
   return next;
 }
 
-export function storageSetItem(key: string, value: string): Promise<void> {
+function setLocalStorageValue(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch (err) {
     notifyStorageError(err, 'local-cache-set', key);
   }
-  return queueStorageWrite(() => idbSet(key, value)).catch(() => undefined);
 }
 
-export function storageRemoveItem(key: string): Promise<void> {
+function removeLocalStorageValue(key: string): void {
   try {
     localStorage.removeItem(key);
   } catch (err) {
     notifyStorageError(err, 'local-cache-remove', key);
   }
-  return queueStorageWrite(() => idbRemove(key)).catch(() => undefined);
 }
 
-export function storageClear(): Promise<void> {
+function clearLocalStorage(): void {
   try {
     localStorage.clear();
   } catch (err) {
     notifyStorageError(err, 'local-cache-clear');
   }
+}
+
+/**
+ * Queue a write and preserve its rejection for callers that need to gate a
+ * success message on the durable IndexedDB operation.
+ */
+export function storageSetItemChecked(key: string, value: string): Promise<void> {
+  return queueStorageWrite(async () => {
+    await idbSet(key, value);
+    setLocalStorageValue(key, value);
+  });
+}
+
+export function storageCommitChecked(entries: Array<[string, string]>, keysToRemove: string[] = []): Promise<void> {
+  return queueStorageWrite(async () => {
+    await idbCommit(entries, keysToRemove);
+    entries.forEach(([key, value]) => setLocalStorageValue(key, value));
+    keysToRemove.forEach(removeLocalStorageValue);
+  });
+}
+
+export function storageRemoveItemChecked(key: string): Promise<void> {
+  return queueStorageWrite(async () => {
+    await idbRemove(key);
+    removeLocalStorageValue(key);
+  });
+}
+
+export function storageClearChecked(keysToKeep: string[] = []): Promise<void> {
+  return queueStorageWrite(async () => {
+    await idbRemoveAllExcept(keysToKeep);
+    const keep = new Set(keysToKeep);
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+        const key = localStorage.key(i);
+        if (key && !keep.has(key)) localStorage.removeItem(key);
+      }
+      const remainingLocal: string[] = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key && !keep.has(key)) remainingLocal.push(key);
+      }
+      if (remainingLocal.length !== 0) throw new Error('LocalStorage could not be cleared completely.');
+    } catch (err) {
+      notifyStorageError(err, 'local-cache-clear');
+      throw err;
+    }
+    const remaining = await idbGetAllChecked();
+    if (Object.keys(remaining).some(key => !keep.has(key))) {
+      const err = new Error('IndexedDB could not be cleared completely.');
+      notifyStorageError(err, 'clear-verify');
+      throw err;
+    }
+  });
+}
+
+export async function recoverPendingDeleteAll(): Promise<void> {
+  if (localStorage.getItem(PENDING_DELETE_ALL_KEY) !== 'true') return;
+  await storageClearChecked([PENDING_DELETE_ALL_KEY]);
+  await storageRemoveItemChecked(PENDING_DELETE_ALL_KEY);
+}
+
+/**
+ * Best-effort helpers retain their existing non-blocking behavior for routine
+ * UI updates. Safety-critical flows should use the checked variants above.
+ */
+export function storageSetItem(key: string, value: string): Promise<void> {
+  setLocalStorageValue(key, value);
+  return queueStorageWrite(() => idbSet(key, value)).catch(() => undefined);
+}
+
+export function storageRemoveItem(key: string): Promise<void> {
+  removeLocalStorageValue(key);
+  return queueStorageWrite(() => idbRemove(key)).catch(() => undefined);
+}
+
+export function storageClear(): Promise<void> {
+  clearLocalStorage();
   return queueStorageWrite(() => idbClear()).catch(() => undefined);
 }
 

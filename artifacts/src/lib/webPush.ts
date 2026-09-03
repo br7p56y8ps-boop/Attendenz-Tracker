@@ -54,7 +54,7 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   activityGroupEnabled: true,
   updatesGroupEnabled: true,
   needAttentionSummary: true,
-  needAttentionSubjects: true,
+  needAttentionSubjects: false,
   safeToMiss: false,
   lastPlannedClassToday: true,
   firstClassOfDay: false,
@@ -64,8 +64,8 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   updateAvailable: true,
   updateCompleted: true,
   curriculumChanges: false,
-  dataTransfer: false,
-  unmarkedAttendanceToday: true,
+  dataTransfer: true,
+  unmarkedAttendanceToday: false,
   leadMinutes: 30,
   midnightNeedAttention: true,
   finalClassToday: true,
@@ -129,7 +129,7 @@ export function getNotificationPreferences(): NotificationPreferences {
       activityGroupEnabled: parsed.activityGroupEnabled !== false,
       updatesGroupEnabled: parsed.updatesGroupEnabled !== false,
       needAttentionSummary,
-      needAttentionSubjects: parsed.needAttentionSubjects ?? needAttentionSummary,
+      needAttentionSubjects: parsed.needAttentionSubjects ?? DEFAULT_PREFERENCES.needAttentionSubjects,
       safeToMiss: parsed.safeToMiss === true,
       lastPlannedClassToday,
       firstClassOfDay,
@@ -140,7 +140,7 @@ export function getNotificationPreferences(): NotificationPreferences {
       updateCompleted: parsed.updateCompleted !== false,
       curriculumChanges: parsed.curriculumChanges === true,
       dataTransfer: parsed.dataTransfer === true,
-      unmarkedAttendanceToday: parsed.unmarkedAttendanceToday !== false,
+      unmarkedAttendanceToday: parsed.unmarkedAttendanceToday ?? DEFAULT_PREFERENCES.unmarkedAttendanceToday,
       leadMinutes,
       midnightNeedAttention: needAttentionSummary,
       finalClassToday: lastPlannedClassToday,
@@ -203,9 +203,25 @@ function base64UrlToBytes(value: string): Uint8Array {
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
 
+const DOCUMENTED_PUSH_ENDPOINTS = [
+  'https://fcm.googleapis.com/',
+  'https://updates.push.services.mozilla.com/',
+  'https://wns2-par02p.notify.windows.com/',
+  'https://web.push.apple.com/',
+] as const;
+
+function isDocumentedPushEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    return url.protocol === 'https:' && DOCUMENTED_PUSH_ENDPOINTS.some(prefix => endpoint.startsWith(prefix));
+  } catch {
+    return false;
+  }
+}
+
 function serializeSubscription(subscription: PushSubscription): DirectPushSubscription | null {
   const json = subscription.toJSON();
-  if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) return null;
+  if (!json.endpoint || !isDocumentedPushEndpoint(json.endpoint) || !json.keys?.p256dh || !json.keys.auth) return null;
   return {
     endpoint: json.endpoint,
     expirationTime: json.expirationTime ?? null,
@@ -255,7 +271,7 @@ export async function enableDirectPush(): Promise<EnableNotificationsResult> {
     if (!subscription) {
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY),
+        applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY) as unknown as BufferSource,
       });
     }
     if (!serializeSubscription(subscription)) return 'failed';
@@ -266,14 +282,27 @@ export async function enableDirectPush(): Promise<EnableNotificationsResult> {
   }
 }
 
-export async function disableDirectPush(): Promise<void> {
+/**
+ * Recreate a missing browser subscription only after permission has already
+ * been granted. This is safe to call during reminder-sync recovery because it
+ * never opens a permission prompt.
+ */
+export async function recoverDirectPushSubscription(): Promise<EnableNotificationsResult> {
+  if (getNotificationPermission() !== 'granted') return 'failed';
+  return enableDirectPush();
+}
+
+export async function disableDirectPush(): Promise<boolean> {
   setSystemNotificationsEnabled(false);
   try {
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
-    await subscription?.unsubscribe();
+    if (!subscription) return true;
+    return await subscription.unsubscribe();
   } catch {
-    // Disabling must never interrupt normal offline attendance use.
+    // Disabling local notifications remains safe for offline attendance use,
+    // but callers can now explain that browser cleanup was incomplete.
+    return false;
   }
 }
 
@@ -294,30 +323,30 @@ export async function showNotificationIfEnabled(
 }
 
 export function notifyManageChange(body: string): Promise<boolean> {
-  return showNotificationIfEnabled('manageChanges', 'Attendenz · Routine Updated', body, 'attendenz-manage-change');
+  return showNotificationIfEnabled('manageChanges', 'Routine Updated', body, 'attendenz-manage-change');
 }
 
 export function notifyUpdateAvailable(version: string): Promise<boolean> {
-  return showNotificationIfEnabled('updateAvailable', 'Attendenz · Update Available', `A new Attendenz version ${version} is ready. Open the app to review and update.`, `attendenz-update-available-${version}`);
+  return showNotificationIfEnabled('updateAvailable', 'Update Available', `A new Attendenz version ${version} is ready. Open the app to review and update.`, `attendenz-update-available-${version}`);
 }
 
 export function notifyUpdateCompleted(version: string): Promise<boolean> {
-  return showNotificationIfEnabled('updateCompleted', 'Attendenz · Update Complete', `Attendenz is now updated to version ${version}.`, `attendenz-update-completed-${version}`);
+  return showNotificationIfEnabled('updateCompleted', 'Update Complete', `Attendenz is now updated to version ${version}.`, `attendenz-update-completed-${version}`);
 }
 
 export function notifyCurriculumChange(body: string): Promise<boolean> {
-  return showNotificationIfEnabled('curriculumChanges', 'Attendenz · Curriculum Updated', body, `attendenz-curriculum-change-${Date.now()}`);
+  return showNotificationIfEnabled('curriculumChanges', 'Curriculum Updated', body, `attendenz-curriculum-change-${Date.now()}`);
 }
 
 export function notifyDataTransfer(body: string): Promise<boolean> {
-  return showNotificationIfEnabled('dataTransfer', 'Attendenz · Data Transfer Complete', body, `attendenz-data-transfer-${Date.now()}`);
+  return showNotificationIfEnabled('dataTransfer', 'Data Transfer Complete', body, `attendenz-data-transfer-${Date.now()}`);
 }
 
 export async function showLocalTestNotification(): Promise<boolean> {
   if (!getSystemNotificationsEnabled() || getNotificationPermission() !== 'granted') return false;
   try {
     const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification('Attendenz · Test Notification', {
+    await registration.showNotification('Test Notification', {
       body: 'System Notifications are enabled on this device.',
       tag: 'attendenz-test-notification',
       data: { url: '/' },
