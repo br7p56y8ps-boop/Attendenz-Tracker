@@ -69,7 +69,7 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
           'transition-all duration-300', bottomNavClassName
         )}
       >
-        <nav aria-label="Primary navigation" className="flex justify-around items-center h-14" onTouchStart={e => { navTouchStartX.current = e.changedTouches[0]?.clientX ?? null; }} onTouchEnd={e => { const start = navTouchStartX.current; navTouchStartX.current = null; const end = e.changedTouches[0]?.clientX; if (start !== null && end !== undefined && Math.abs(end - start) >= 48) changeBySwipe(end < start ? 1 : -1); }}>
+        <nav aria-label="Primary navigation" className="flex justify-around items-center h-14" onTouchStart={e => { navTouchStartX.current = e.changedTouches[0]?.clientX ?? null; }} onTouchEnd={e => { const start = navTouchStartX.current; navTouchStartX.current = null; const end = e.changedTouches[0]?.clientX; if (start !== null && end !== undefined && Math.abs(end - start) >= 48) changeBySwipe(end < start ? -1 : 1); }}>
           {NAV_ITEMS.map(({ path, label, Icon }) => {
             const active = location === path;
             return (

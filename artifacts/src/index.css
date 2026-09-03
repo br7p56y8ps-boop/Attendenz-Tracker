@@ -416,6 +416,10 @@
 [class~="rounded-2xl"] { border-radius: 0.875rem !important; }
 [class*="shadow-["] { box-shadow: 0 1px 3px rgba(23, 33, 43, 0.10) !important; }
 .dark [class*="shadow-["] { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28) !important; }
+.rotation-wheel-nav-button.hidden { display: none !important; }
+@media (min-width: 640px) {
+  .rotation-wheel-nav-button.hidden { display: inline-flex !important; }
+}
 
 /* iOS smooth scrolling & hidden scrollbars */
 ::-webkit-scrollbar {
