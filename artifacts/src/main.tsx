@@ -58,6 +58,24 @@ async function refreshCachedShell(): Promise<boolean> {
   }
 }
 
+async function activateApprovedServiceWorker(): Promise<void> {
+  const registration = await navigator.serviceWorker.getRegistration(base);
+  if (!registration) return;
+  await registration.update().catch(() => {});
+  const waiting = registration.waiting;
+  if (!waiting) return;
+  await new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, 5000);
+    const onControllerChange = () => {
+      window.clearTimeout(timeout);
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      resolve();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+    waiting.postMessage({ type: 'SKIP_WAITING' });
+  });
+}
+
 async function checkForSilentBuildUpdate(): Promise<void> {
   try {
     const res = await fetch(`${base}build-revision.json?ts=${Date.now()}`, { cache: 'no-store' });
@@ -103,6 +121,7 @@ if ('serviceWorker' in navigator) {
           if (updateMode === 'automatic') {
             const refreshed = await refreshCachedShell();
             if (refreshed) {
+              await activateApprovedServiceWorker();
               clearUpdateState();
               window.location.reload();
               return;
@@ -135,6 +154,7 @@ if ('serviceWorker' in navigator) {
 (window as any).attendenzApplyPwaUpdate = async (): Promise<boolean> => {
   const refreshed = await refreshCachedShell();
   if (!refreshed) return false;
+  await activateApprovedServiceWorker();
   clearUpdateState();
   window.location.reload();
   return true;

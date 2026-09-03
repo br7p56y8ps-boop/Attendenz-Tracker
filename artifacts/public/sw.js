@@ -2,18 +2,25 @@
    After deploying this version, NEVER CHANGE THIS FILE AGAIN.
    Data lives in localStorage/IndexedDB, not in this cache, so clearing SW cache doesn't affect user data. */
 const SHELL = 'attendenz-shell-v1';
+let activationApproved = false;
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(SHELL)
       .then((c) => c.addAll([`${self.registration.scope}index.html`]))
       .catch(() => {})
-      .then(() => self.skipWaiting()) // Activate immediately to replace broken worker
   );
 });
 
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') {
+    activationApproved = true;
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('activate', (e) => {
-  e.waitUntil(self.clients.claim()); // Take control immediately to replace broken worker
+  if (activationApproved) e.waitUntil(self.clients.claim());
 });
 
 self.addEventListener('push', (e) => {
