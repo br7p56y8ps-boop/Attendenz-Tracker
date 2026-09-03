@@ -136,7 +136,7 @@ export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'back
         <div className="release-progress__track"><div className="release-progress__fill" style={{ transform: `scaleX(${Math.max(0, progress) / 100})` }} /></div>
         <div className="release-progress__markers" aria-hidden="true"><span /><span /><span /><span /></div>
       </div>
-      <p className="release-progress__label">{complete ? 'Complete' : phase === 'backing' ? (progress < 25 ? 'Creating Backup' : progress < 55 ? 'Taking Snapshot' : progress < 94 ? 'Validating' : 'Validating') : (progress < 33 ? 'Downloading 1/3' : progress < 66 ? 'Downloading 2/3' : 'Installing 1/3')}</p>
+      <p className="release-progress__label">{complete ? (phase === 'backing' ? 'Complete' : 'Updated') : phase === 'backing' ? (progress < 25 ? 'Creating Backup' : progress < 55 ? 'Taking Snapshot' : 'Validating') : (progress < 45 ? 'Initialising' : progress < 78 ? 'Downloading' : 'Installing')}</p>
     </div>
   );
 };
