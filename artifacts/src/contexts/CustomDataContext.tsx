@@ -6,7 +6,7 @@ import {
   isCanonicalTimeRange,
   parseRangeToMinutes,
 } from '@/lib/utils';
-import { idbGetAllChecked, INSTALLATION_METADATA_KEYS, storageSetItem, storageRemoveItem, storageRemoveItemChecked, storageSetItemChecked } from '@/lib/idb';
+import { idbGetAllChecked, INSTALLATION_METADATA_KEYS, storageSetItem, storageRemoveItemChecked, storageSetItemChecked } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import { APP_VERSION } from '@/lib/appVersion';
@@ -610,7 +610,7 @@ interface CustomDataContextType {
   completeSetup: (mode: SubjectMode, customRoutineName?: string) => Promise<void>;
   startFresh: () => Promise<void>;
   changeSubjectMode: (mode: SubjectMode) => void;
-  clearRoutineData: (mode: SubjectMode) => void;
+  clearRoutineData: (mode: SubjectMode) => void | Promise<void>;
   getPresetSubjectDisplayName: (originalName: string) => string;
   setPresetSubjectRename: (oldName: string, newName: string) => void;
   getPresetWardDisplayName: (originalName: string) => string;
@@ -1572,7 +1572,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     setSubjectMode(mode);
   });
 
-  const clearRoutineData = useStableCallback((modeToClear: SubjectMode) => {
+  const clearRoutineData = useStableCallback(async (modeToClear: SubjectMode) => {
     if (modeToClear === 'preloaded') {
       const keys = [
         PRESET_TIMETABLE_KEY,
@@ -1583,8 +1583,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         PRESET_WARD_RENAMES_KEY,
       ];
       for (const key of keys) {
-        localStorage.removeItem(key);
-        storageRemoveItem(key);
+        await storageRemoveItemChecked(key);
       }
       presetTimetableRef.current = TIMETABLE;
       setPresetTimetable(TIMETABLE);
@@ -1594,10 +1593,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       setRenamedPresetSubjects({});
       setRenamedPresetWards({});
     } else {
-      localStorage.removeItem(CUSTOM_SUBJECTS_KEY);
-      storageRemoveItem(CUSTOM_SUBJECTS_KEY);
-      localStorage.removeItem(CUSTOM_WARDS_KEY);
-      storageRemoveItem(CUSTOM_WARDS_KEY);
+      await storageRemoveItemChecked(CUSTOM_SUBJECTS_KEY);
+      await storageRemoveItemChecked(CUSTOM_WARDS_KEY);
       setCustomSubjects([]);
       setCustomWards([]);
     }

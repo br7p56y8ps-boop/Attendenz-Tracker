@@ -1,20 +1,28 @@
 /* Attendenz guard worker — EMERGENCY FIX for redirect error.
    After deploying this version, NEVER CHANGE THIS FILE AGAIN.
    Data lives in localStorage/IndexedDB, not in this cache, so clearing SW cache doesn't affect user data. */
-const VERSION = '1.6.5';
+const VERSION = '1.6.4.3';
 const SHELL = `attendenz-shell-v${VERSION}`;
+let activationApproved = false;
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(SHELL)
       .then((c) => c.addAll([`${self.registration.scope}index.html`]))
       .catch(() => {})
-      .then(() => self.skipWaiting()) // Activate immediately to replace broken worker
+      // Manual releases remain waiting until the application explicitly approves activation.
   );
 });
 
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') {
+    activationApproved = true;
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('activate', (e) => {
-  e.waitUntil(self.clients.claim()); // Take control immediately to replace broken worker
+  if (activationApproved) e.waitUntil(self.clients.claim());
 });
 
 self.addEventListener('push', (e) => {
