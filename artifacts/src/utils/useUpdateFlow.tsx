@@ -4,6 +4,7 @@ import { createSnapshot, getSnapshots } from '@/utils/snapshotUtils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { storageRemoveItem, storageSetItem } from '@/lib/idb';
 import { notifyUpdateAvailable } from '@/lib/webPush';
+import { cn } from '@/lib/utils';
 
 function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -20,10 +21,17 @@ export function useUpdateFlow() {
     localStorage.setItem('att_app_version', APP_VERSION);
     return APP_VERSION;
   });
-  const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
+  const [, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
   const [serverSummary, setServerSummary] = useState<string>(() => localStorage.getItem('att_pwa_update_summary') || '');
   useEffect(() => {
+    const pendingVersion = localStorage.getItem('att_pwa_latest_version');
+    const pendingSummary = localStorage.getItem('att_pwa_update_summary') || '';
+    if (localStorage.getItem('att_pwa_update_ready') === 'true' && pendingVersion) {
+      setPwaReady(true);
+      setServerVersion(pendingVersion);
+      setServerSummary(pendingSummary);
+    }
     const onReady = () => setPwaReady(true);
     const onCleared = () => {
       setPwaReady(false);
@@ -57,7 +65,9 @@ export function useUpdateFlow() {
 
   const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
   const [dots, setDots] = useState(1);
+  const [progressComplete, setProgressComplete] = useState(false);
   useEffect(() => { if (updatePhase === 'none') return; const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450); return () => window.clearInterval(t); }, [updatePhase]);
+  useEffect(() => { if (updatePhase === 'none') setProgressComplete(false); }, [updatePhase]);
 
   const applyUpdate = async (withBackup: boolean) => {
     if (withBackup) {
@@ -71,6 +81,7 @@ export function useUpdateFlow() {
       if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
         await storageSetItem('att_pending_update_restore', snaps[0].id);
       }
+      setProgressComplete(true);
     }
 
     await Promise.all([
@@ -97,25 +108,52 @@ export function useUpdateFlow() {
       setUpdatePhase('none');
       return;
     }
+    setProgressComplete(true);
     const elapsed = Date.now() - start;
     if (elapsed < MIN) await new Promise(r => setTimeout(r, MIN - elapsed));
     window.location.href = import.meta.env.BASE_URL || '/';
   };
 
-  return { isUpdateAvailable, serverVersion, serverSummary, online, updatePhase, dots, applyUpdate };
+  return { isUpdateAvailable, serverVersion, serverSummary, online, updatePhase, dots, progressComplete, applyUpdate };
 }
 
-export const UpdateOverlay = ({ phase, dots }: { phase: 'none' | 'backing' | 'updating'; dots: number }) => (
+export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'backing' | 'updating'; complete?: boolean }) => {
+  const duration = phase === 'backing' ? 4000 : 8000;
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    setProgress(0);
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      const elapsed = Date.now() - started;
+      const timedProgress = Math.min(94, (elapsed / duration) * 94);
+      setProgress(complete ? 100 : timedProgress);
+      if (complete) window.clearInterval(timer);
+    }, 50);
+    return () => window.clearInterval(timer);
+  }, [phase, duration, complete]);
+  return (
+    <div className={cn('jelly-slider w-full', phase === 'backing' ? 'jelly-slider--backing' : 'jelly-slider--updating')} role="progressbar" aria-label={`${phase === 'backing' ? 'Backup' : 'Update'} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+      <div className="jelly-slider__track">
+        <div className="jelly-slider__well" />
+        <div className="jelly-slider__fill" style={{ width: `calc(${Math.max(0, progress)}% - 1rem)` }} />
+        <div className="jelly-slider__handle" style={{ left: `clamp(2.25rem, ${Math.max(0, progress)}%, calc(100% - 2.25rem))` }} aria-hidden="true" />
+        <div className="jelly-slider__value">{Math.round(progress)}%</div>
+      </div>
+    </div>
+  );
+};
+
+export const UpdateOverlay = ({ phase, dots, progressComplete }: { phase: 'none' | 'backing' | 'updating'; dots: number; progressComplete?: boolean }) => (
   <AnimatePresence>
     {phase !== 'none' && (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-end justify-center p-4">
-        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[140] flex items-end justify-center p-4">
+        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
           {phase === 'backing' ? (<>
-            <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin" />
+            <UpdateProgressSlider phase="backing" complete={progressComplete} />
             <p className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
             <p className="text-[10px] text-muted-foreground text-center">Securing your attendance records & preferences...</p>
           </>) : (<>
-            <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+            <UpdateProgressSlider phase="updating" complete={progressComplete} />
             <p className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
             <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
           </>)}
@@ -130,8 +168,8 @@ export const UpdateModal = ({ open, serverVersion, summary, onRemind, onUpdate }
 }) => (
   <AnimatePresence>
     {open && (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-end justify-center p-4">
-        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[120] flex items-end justify-center p-4">
+        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20"><span className="text-amber-500 font-extrabold">↑</span></div>
             <div className="text-left">

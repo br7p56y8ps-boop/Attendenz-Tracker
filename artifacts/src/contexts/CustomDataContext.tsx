@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback, ReactNode } from 'react';
 import {
   getCurrentDateStr,
   canonicalTimeRange,
@@ -6,11 +6,11 @@ import {
   isCanonicalTimeRange,
   parseRangeToMinutes,
 } from '@/lib/utils';
-import { storageSetItem, storageRemoveItem } from '@/lib/idb';
+import { idbGetAllChecked, INSTALLATION_METADATA_KEYS, storageSetItem, storageRemoveItemChecked, storageSetItemChecked } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import { APP_VERSION } from '@/lib/appVersion';
-import { activateCurriculum, ensureCurriculumMigration, getCurriculumForKind, renameCurriculum } from '@/lib/curriculumStore';
+import { activateCurriculum, ensureCurriculumMigration, getCurricula, getCurriculumForKind, renameCurriculumChecked, CURRICULUM_KEYS } from '@/lib/curriculumStore';
 
 export interface CustomSubject {
   id: string;
@@ -607,10 +607,10 @@ interface CustomDataContextType {
   setupDone: boolean;
   whatsNewOpen: boolean;
   setWhatsNewOpen: (b: boolean) => void;
-  completeSetup: (mode: SubjectMode, customRoutineName?: string) => void;
-  startFresh: () => void;
+  completeSetup: (mode: SubjectMode, customRoutineName?: string) => Promise<void>;
+  startFresh: () => Promise<void>;
   changeSubjectMode: (mode: SubjectMode) => void;
-  clearRoutineData: (mode: SubjectMode) => void;
+  clearRoutineData: (mode: SubjectMode) => void | Promise<void>;
   getPresetSubjectDisplayName: (originalName: string) => string;
   setPresetSubjectRename: (oldName: string, newName: string) => void;
   getPresetWardDisplayName: (originalName: string) => string;
@@ -621,6 +621,13 @@ interface CustomDataContextType {
 
 const CustomDataContext = createContext<CustomDataContextType | undefined>(undefined);
 
+
+
+function useStableCallback<T extends (...args: any[]) => any>(callback: T): T {
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+  return useCallback(((...args: Parameters<T>) => callbackRef.current(...args)) as T, []);
+}
 export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [customSubjects, setCustomSubjects] = useState<CustomSubject[]>([]);
   const [customWards, setCustomWards] = useState<CustomWard[]>([]);
@@ -867,13 +874,13 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     presetWardSchedule,
   ]);
 
-  const getSubjectById = (id: string): SubjectRef | undefined =>
-    subjectRegistry.find(r => r.id === id);
+  const getSubjectById = useStableCallback((id: string): SubjectRef | undefined =>
+    subjectRegistry.find(r => r.id === id));
 
-  const getSubjectIdByName = (name: string, domain: SubjectDomain): string | undefined => {
+  const getSubjectIdByName = useStableCallback((name: string, domain: SubjectDomain): string | undefined => {
     const n = name.trim().toLowerCase();
     return subjectRegistry.find(r => r.domain === domain && r.name.trim().toLowerCase() === n)?.id;
-  };
+  });
 
   const isExcludedClinicalDay = (
     d: Date,
@@ -970,13 +977,13 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     return count;
   }
 
-  const handleSetWhatsNewOpen = (open: boolean) => {
+  const handleSetWhatsNewOpen = useStableCallback((open: boolean) => {
     if (!open) {
       localStorage.setItem(WHATS_NEW_KEY, 'true');
       storageSetItem(WHATS_NEW_KEY, 'true');
     }
     setWhatsNewOpenState(open);
-  };
+  });
 
   const saveSubjects = (data: CustomSubject[]) => {
     setCustomSubjects(data);
@@ -1027,7 +1034,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     storageSetItem(PRESET_WARD_RENAMES_KEY, JSON.stringify(data));
   };
 
-  const addCustomSubjects = (items: Array<Omit<CustomSubject, 'id'>>): CustomSubject[] => {
+  const addCustomSubjects = useStableCallback((items: Array<Omit<CustomSubject, 'id'>>): CustomSubject[] => {
     if (subjectMode !== 'custom') return [];
     const created: CustomSubject[] = items.map(it => {
       const base: CustomSubject = {
@@ -1048,12 +1055,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     });
     saveSubjects([...customSubjects, ...created]);
     return created;
-  };
+  });
 
-  const addCustomSubject = (s: Omit<CustomSubject, 'id'>): CustomSubject =>
-    addCustomSubjects([s])[0];
+  const addCustomSubject = useStableCallback((s: Omit<CustomSubject, 'id'>): CustomSubject =>
+    addCustomSubjects([s])[0]);
 
-  const updateCustomSubject = (id: string, patch: Partial<Omit<CustomSubject, 'id'>>) => {
+  const updateCustomSubject = useStableCallback((id: string, patch: Partial<Omit<CustomSubject, 'id'>>) => {
     if (subjectMode !== 'custom') return;
     const existing = customSubjects.find(s => s.id === id);
     if (!existing) return;
@@ -1087,9 +1094,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     saveSubjects(next);
-  };
+  });
 
-  const removeCustomSubject = (id: string) => {
+  const removeCustomSubject = useStableCallback((id: string) => {
     if (subjectMode !== 'custom') return;
     const target = customSubjects.find(s => s.id === id);
     if (!target) return;
@@ -1105,9 +1112,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     saveSubjects(customSubjects.filter(s => !idsToRemove.has(s.id)));
-  };
+  });
 
-  const addCustomWards = (items: Array<Omit<CustomWard, 'id'>>): CustomWard[] => {
+  const addCustomWards = useStableCallback((items: Array<Omit<CustomWard, 'id'>>): CustomWard[] => {
     if (subjectMode !== 'custom') return [];
     const created = items.map(it => ({
       ...it,
@@ -1117,11 +1124,11 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }));
     saveWards([...customWards, ...created]);
     return created;
-  };
+  });
 
-  const addCustomWard = (w: Omit<CustomWard, 'id'>): CustomWard => addCustomWards([w])[0];
+  const addCustomWard = useStableCallback((w: Omit<CustomWard, 'id'>): CustomWard => addCustomWards([w])[0]);
 
-  const updateCustomWard = (id: string, patch: Partial<Omit<CustomWard, 'id'>>) => {
+  const updateCustomWard = useStableCallback((id: string, patch: Partial<Omit<CustomWard, 'id'>>) => {
     if (subjectMode !== 'custom') return;
     const existing = customWards.find(w => w.id === id);
     if (!existing) return;
@@ -1135,20 +1142,20 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     saveWards(customWards.map(w => (w.id === id ? { ...w, ...normalized } : w)));
-  };
+  });
 
-  const removeCustomWard = (id: string) => {
+  const removeCustomWard = useStableCallback((id: string) => {
     if (subjectMode !== 'custom') return;
     saveWards(customWards.filter(w => w.id !== id));
-  };
+  });
 
-  const getCurrentCustomWard = (): CustomWard | null => {
+  const getCurrentCustomWard = useStableCallback((): CustomWard | null => {
     if (subjectMode !== 'custom') return null;
     const today = getCurrentDateStr();
     return customWards.find(w => today >= w.startDate && today <= w.endDate) ?? null;
-  };
+  });
 
-  const addUserAddedSubjects = (
+  const addUserAddedSubjects = useStableCallback((
     items: Array<Omit<UserAddedSubject, 'id'> & { schedules?: ScheduleRowInput[] }>
   ): UserAddedSubject[] => {
     if (subjectMode !== 'preloaded') return [];
@@ -1212,13 +1219,13 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     saveTimetable(nextTimetable);
     saveTotals(nextTotals);
     return created;
-  };
+  });
 
-  const addUserAddedSubject = (
+  const addUserAddedSubject = useStableCallback((
     s: Omit<UserAddedSubject, 'id'> & { schedules?: ScheduleRowInput[] }
-  ): UserAddedSubject => addUserAddedSubjects([s])[0];
+  ): UserAddedSubject => addUserAddedSubjects([s])[0]);
 
-  const updateUserAddedSubject = (
+  const updateUserAddedSubject = useStableCallback((
     id: string,
     patch: Partial<Omit<UserAddedSubject, 'id'> & { schedules?: ScheduleRowInput[] }>
   ) => {
@@ -1314,9 +1321,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       saveTimetable(tt);
       saveTotals(totals);
     }
-  };
+  });
 
-  const removeUserAddedSubject = (id: string) => {
+  const removeUserAddedSubject = useStableCallback((id: string) => {
     if (subjectMode !== 'preloaded') return;
     const target = userAddedSubjects.find(e => e.id === id);
     if (!target) return;
@@ -1346,14 +1353,14 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
     saveTimetable(tt);
     saveTotals(totals);
-  };
+  });
 
-  const isUserAddedName = (name: string): boolean => {
+  const isUserAddedName = useStableCallback((name: string): boolean => {
     const n = name.trim().toLowerCase();
     return userAddedSubjects.some(e => e.name.trim().toLowerCase() === n);
-  };
+  });
 
-  const addPresetWardEntry = (
+  const addPresetWardEntry = useStableCallback((
     entry: Omit<PresetWardEntry, 'addedByUser'> & { addedByUser?: boolean }
   ) => {
     if (subjectMode !== 'preloaded') return;
@@ -1365,9 +1372,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       addedByUser: entry.addedByUser ?? true,
     };
     saveWardSchedule(sortWardEntries([...presetWardSchedule, withDefaults]));
-  };
+  });
 
-  const updatePresetWardEntry = (index: number, patch: Partial<PresetWardEntry>) => {
+  const updatePresetWardEntry = useStableCallback((index: number, patch: Partial<PresetWardEntry>) => {
     if (subjectMode !== 'preloaded' || !presetWardSchedule[index]) return;
 
     const normalized: Partial<PresetWardEntry> = { ...patch };
@@ -1383,14 +1390,14 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
     const updated = presetWardSchedule.map((e, i) => (i === index ? { ...e, ...normalized } : e));
     saveWardSchedule(sortWardEntries(updated));
-  };
+  });
 
-  const removePresetWardEntry = (index: number) => {
+  const removePresetWardEntry = useStableCallback((index: number) => {
     if (subjectMode !== 'preloaded' || !presetWardSchedule[index]) return;
     saveWardSchedule(presetWardSchedule.filter((_, i) => i !== index));
-  };
+  });
 
-  const renamePresetWard = (oldName: string, newName: string) => {
+  const renamePresetWard = useStableCallback((oldName: string, newName: string) => {
     if (subjectMode !== 'preloaded') return;
     const o = oldName.trim();
     const n = newName.trim();
@@ -1399,9 +1406,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     const next = { ...renamedPresetWards };
     next[o] = n;
     saveWardRenames(next);
-  };
+  });
 
-  const updatePresetTimetableSlot = (
+  const updatePresetTimetableSlot = useStableCallback((
     currentDay: number,
     slotIndex: number,
     updatedTime: string,
@@ -1437,16 +1444,16 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     saveTimetable(asTimetable(next));
-  };
+  });
 
-  const addSubjectToSlot = (day: number, time: string, name: string) => {
+  const addSubjectToSlot = useStableCallback((day: number, time: string, name: string) => {
     if (subjectMode !== 'preloaded') return;
     const canon = canonicalizeTimeRange(time);
     const tt = insertSubjectSlot(presetTimetableRef.current, name, DAY_ABBRS[day], canon);
     saveTimetable(tt);
-  };
+  });
 
-  const updatePresetWardSchedule = (
+  const updatePresetWardSchedule = useStableCallback((
     index: number,
     start: string,
     end: string,
@@ -1459,48 +1466,47 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       ...(morningTime !== undefined ? { morningTime } : {}),
       ...(eveningTime !== undefined ? { eveningTime } : {}),
     });
-  };
+  });
 
-  const updatePresetSubjectTotal = (subjectName: string, total: number) => {
+  const updatePresetSubjectTotal = useStableCallback((subjectName: string, total: number) => {
     if (subjectMode !== 'preloaded') return;
     saveTotals({ ...presetSubjectTotals, [subjectName]: total });
-  };
+  });
 
-  const getPresetSubjectDisplayName = (originalName: string): string =>
-    subjectMode === 'preloaded' ? (renamedPresetSubjects[originalName] ?? originalName) : originalName;
+  const getPresetSubjectDisplayName = useStableCallback((originalName: string): string =>
+    subjectMode === 'preloaded' ? (renamedPresetSubjects[originalName] ?? originalName) : originalName);
 
-  const setPresetSubjectRename = (oldName: string, newName: string) => {
+  const setPresetSubjectRename = useStableCallback((oldName: string, newName: string) => {
     if (subjectMode !== 'preloaded') return;
     const nextRenames = { ...renamedPresetSubjects };
     nextRenames[oldName] = newName;
     saveRenames(nextRenames);
-  };
+  });
 
-  const getPresetWardDisplayName = (originalName: string): string =>
-    subjectMode === 'preloaded' ? (renamedPresetWards[originalName] ?? originalName) : originalName;
+  const getPresetWardDisplayName = useStableCallback((originalName: string): string =>
+    subjectMode === 'preloaded' ? (renamedPresetWards[originalName] ?? originalName) : originalName);
 
-  const completeSetup = (mode: SubjectMode, customRoutineName?: string) => {
+  const completeSetup = useStableCallback(async (mode: SubjectMode, customRoutineName?: string) => {
     ensureCurriculumMigration();
     const targetKind = mode === 'custom' ? 'custom' : 'preset';
     const target = getCurriculumForKind(targetKind);
     if (target) {
       if (targetKind === 'custom' && customRoutineName?.trim() && target.name !== customRoutineName.trim()) {
-        renameCurriculum(target.id, customRoutineName.trim());
+        await renameCurriculumChecked(target.id, customRoutineName.trim());
       }
-      void activateCurriculum(target.id);
-    } else {
-      localStorage.setItem(SUBJECT_MODE_KEY, mode);
-      storageSetItem(SUBJECT_MODE_KEY, mode);
+      await activateCurriculum(target.id);
     }
-    localStorage.setItem(SUBJECT_MODE_KEY, mode);
-    storageSetItem(SUBJECT_MODE_KEY, mode);
-    localStorage.setItem(SETUP_DONE_KEY, 'true');
-    storageSetItem(SETUP_DONE_KEY, 'true');
+    await storageSetItemChecked(SUBJECT_MODE_KEY, mode);
+    await storageSetItemChecked(SETUP_DONE_KEY, 'true');
     setSubjectMode(mode);
     setSetupDone(true);
-  };
+  });
 
-  const clearAllStorage = () => {
+  const clearAllStorage = async () => {
+    const durableData = await idbGetAllChecked();
+    const localKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => Boolean(key));
+    const discoveredUserKeys = [...Object.keys(durableData), ...localKeys].filter(key => key !== 'att_idb_migrated_v1' && !INSTALLATION_METADATA_KEYS.has(key));
+    const durableCurriculumBundleKeys = Object.keys(durableData).filter(key => key.startsWith('att_curriculum_bundle_'));
     const keys = [
       CUSTOM_SUBJECTS_KEY,
       CUSTOM_WARDS_KEY,
@@ -1514,15 +1520,11 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       PRESET_RENAMES_KEY,
       PRESET_WARD_RENAMES_KEY,
       SGT_REPAIR_DONE_KEY,
-
-      // Attendance / selections / finished / history
       'attendance_tracker_subjects',
       'attendance_tracker_ward',
       'attendance_tracker_home_selections',
       'attendance_tracker_finished_map',
       'attendance_tracker_preferred_percentage',
-
-      // Mode-specific attendance buckets
       'attendance_tracker_subjects_preset',
       'attendance_tracker_ward_preset',
       'attendance_tracker_home_selections_preset',
@@ -1531,23 +1533,24 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       'attendance_tracker_ward_custom',
       'attendance_tracker_home_selections_custom',
       'attendance_tracker_finished_map_custom',
-
-      // Manage history
+      'attendance_tracker_orphaned_records',
+      'att_history',
       'att_manage_history',
+      'attendenz_snapshots_v1',
+      CURRICULUM_KEYS.CURRICULA_KEY,
+      CURRICULUM_KEYS.ACTIVE_CURRICULUM_KEY,
+      CURRICULUM_KEYS.CURRICULUM_MIGRATION_KEY,
+      ...getCurricula().map(curriculum => `att_curriculum_bundle_${curriculum.id}`),
+      ...durableCurriculumBundleKeys,
+      ...discoveredUserKeys,
     ];
-
-    for (const key of keys) {
-      localStorage.removeItem(key);
-      storageRemoveItem(key);
-    }
-
-    // Prevent migration from empty state on next boot.
-    localStorage.setItem('att_idb_migrated_v1', 'true');
-    storageSetItem('att_idb_migrated_v1', 'true');
+    const results = await Promise.allSettled([...new Set(keys)].map(key => storageRemoveItemChecked(key)));
+    if (results.some(result => result.status === 'rejected')) throw new Error('Some local data could not be deleted. Nothing was reported as complete.');
+    await storageSetItemChecked('att_idb_migrated_v1', 'true');
   };
 
-  const startFresh = () => {
-    clearAllStorage();
+  const startFresh = useStableCallback(async () => {
+    await clearAllStorage();
     setCustomSubjects([]);
     setCustomWards([]);
     setUserAddedSubjects([]);
@@ -1557,19 +1560,19 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     setPresetTimetable(TIMETABLE);
     setPresetWardSchedule(defaultWardSchedule());
     setPresetSubjectTotals({});
-    completeSetup('custom');
-  };
+    await completeSetup('custom');
+  });
 
-  const changeSubjectMode = (mode: SubjectMode) => {
+  const changeSubjectMode = useStableCallback((mode: SubjectMode) => {
     ensureCurriculumMigration();
     const target = getCurriculumForKind(mode === 'custom' ? 'custom' : 'preset');
     if (target) void activateCurriculum(target.id);
     localStorage.setItem(SUBJECT_MODE_KEY, mode);
     storageSetItem(SUBJECT_MODE_KEY, mode);
     setSubjectMode(mode);
-  };
+  });
 
-  const clearRoutineData = (modeToClear: SubjectMode) => {
+  const clearRoutineData = useStableCallback(async (modeToClear: SubjectMode) => {
     if (modeToClear === 'preloaded') {
       const keys = [
         PRESET_TIMETABLE_KEY,
@@ -1580,8 +1583,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
         PRESET_WARD_RENAMES_KEY,
       ];
       for (const key of keys) {
-        localStorage.removeItem(key);
-        storageRemoveItem(key);
+        await storageRemoveItemChecked(key);
       }
       presetTimetableRef.current = TIMETABLE;
       setPresetTimetable(TIMETABLE);
@@ -1591,16 +1593,14 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       setRenamedPresetSubjects({});
       setRenamedPresetWards({});
     } else {
-      localStorage.removeItem(CUSTOM_SUBJECTS_KEY);
-      storageRemoveItem(CUSTOM_SUBJECTS_KEY);
-      localStorage.removeItem(CUSTOM_WARDS_KEY);
-      storageRemoveItem(CUSTOM_WARDS_KEY);
+      await storageRemoveItemChecked(CUSTOM_SUBJECTS_KEY);
+      await storageRemoveItemChecked(CUSTOM_WARDS_KEY);
       setCustomSubjects([]);
       setCustomWards([]);
     }
-  };
+  });
 
-  const getSubjectPlannedTotal = (subjectName: string): number => {
+  const getSubjectPlannedTotal = useStableCallback((subjectName: string): number => {
     if (subjectMode === 'custom') {
       const custom = customSubjects.find(
         s => s.name.trim().toLowerCase() === subjectName.trim().toLowerCase()
@@ -1630,9 +1630,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     if (wardSub) return wardSub.total;
 
     return 40;
-  };
+  });
 
-  const getCurrentPresetWard = (
+  const getCurrentPresetWard = useStableCallback((
     date: Date = new Date()
   ): { ward: string; morningTime?: string; eveningTime?: string } | null => {
     if (subjectMode !== 'preloaded') return null;
@@ -1651,27 +1651,27 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       }
     }
     return null;
-  };
+  });
 
-  const getPresetWardTotalPlanned = (wardName: string): number =>
-    subjectMode === 'preloaded' ? getPresetWardTotalPlannedLocal(wardName) : 0;
+  const getPresetWardTotalPlanned = useStableCallback((wardName: string): number =>
+    subjectMode === 'preloaded' ? getPresetWardTotalPlannedLocal(wardName) : 0);
 
-  const getCustomWardTotalPlanned = (
+  const getCustomWardTotalPlanned = useStableCallback((
     startDateStr: string,
     endDateStr: string,
     vacationPeriods?: Array<{ start: string; end: string }>
   ): number => subjectMode === 'custom'
     ? getCustomWardTotalPlannedLocal(startDateStr, endDateStr, vacationPeriods)
-    : 0;
+    : 0);
 
-  const countSGTPlannedDays = (
+  const countSGTPlannedDays = useStableCallback((
     startDateStr: string,
     endDateStr: string,
     weekdays: string[],
     vacationPeriods?: Array<{ start: string; end: string }>
-  ): number => countSGTPlannedDaysLocal(startDateStr, endDateStr, weekdays, vacationPeriods);
+  ): number => countSGTPlannedDaysLocal(startDateStr, endDateStr, weekdays, vacationPeriods));
 
-  const getParentOptions = (): string[] => {
+  const getParentOptions = useStableCallback((): string[] => {
     const opts: string[] = [];
     const push = (n: string) => {
       const t = n.trim();
@@ -1718,15 +1718,15 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return opts;
-  };
+  });
 
-  const isExistingParent = (name: string): boolean => {
+  const isExistingParent = useStableCallback((name: string): boolean => {
     const n = name.trim().toLowerCase();
     if (!n) return false;
     return getParentOptions().some(o => o.toLowerCase() === n);
-  };
+  });
 
-  const getAlliedChildCount = (parentName: string): number => {
+  const getAlliedChildCount = useStableCallback((parentName: string): number => {
     const p = parentName.trim().toLowerCase();
     if (!p) return 0;
 
@@ -1734,25 +1734,25 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     return store.filter(
       s => s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p
     ).length;
-  };
+  });
 
-  const getCustomAlliedChildren = (parentName: string): CustomSubject[] => {
+  const getCustomAlliedChildren = useStableCallback((parentName: string): CustomSubject[] => {
     if (subjectMode !== 'custom') return [];
     const p = parentName.trim().toLowerCase();
     return customSubjects.filter(
       s => s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p
     );
-  };
+  });
 
-  const getUserAddedAlliedChildren = (parentName: string): UserAddedSubject[] => {
+  const getUserAddedAlliedChildren = useStableCallback((parentName: string): UserAddedSubject[] => {
     if (subjectMode !== 'preloaded') return [];
     const p = parentName.trim().toLowerCase();
     return userAddedSubjects.filter(
       s => s.subjectType === 'allied' && getEffectiveParentName(s)?.toLowerCase() === p
     );
-  };
+  });
 
-  const isSubjectNameTaken = (
+  const isSubjectNameTaken = useStableCallback((
     name: string,
     excludeName?: string,
     domain: SubjectDomain = 'academic'
@@ -1800,9 +1800,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return pool.some(p => p.trim().toLowerCase() === n && p.trim().toLowerCase() !== ex);
-  };
+  });
 
-  const isWardNameTaken = (name: string, excludeWard?: string): boolean => {
+  const isWardNameTaken = useStableCallback((name: string, excludeWard?: string): boolean => {
     const n = name.trim().toLowerCase();
     if (!n) return false;
     const ex = excludeWard?.trim().toLowerCase();
@@ -1825,9 +1825,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     for (const w of customWards) pool.push(w.name);
 
     return pool.some(p => p.trim().toLowerCase() === n && p.trim().toLowerCase() !== ex);
-  };
+  });
 
-  const findSubjectTimeConflicts = (
+  const findSubjectTimeConflicts = useStableCallback((
     days: string[],
     time: string,
     excludeName?: string,
@@ -1945,9 +1945,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return conflicts;
-  };
+  });
 
-  const findWardDateConflicts = (
+  const findWardDateConflicts = useStableCallback((
     startDate: string,
     endDate: string,
     excludeWard?: string
@@ -1964,9 +1964,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       .filter(e => !(ex && e.ward.trim().toLowerCase() === ex))
       .filter(e => startDate <= e.end && e.start <= endDate)
       .map(e => ({ ward: e.ward, start: e.start, end: e.end }));
-  };
+  });
 
-  const bulkUpdateSubjectHierarchy = (
+  const bulkUpdateSubjectHierarchy = useStableCallback((
     moves: Array<{
       id: string;
       store: 'userAdded' | 'custom';
@@ -2089,76 +2089,60 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     saveTotals(totals);
 
     return moves.length;
-  };
+  });
 
-  const exposedCustomSubjects = subjectMode === 'custom' ? customSubjects : [];
-  const exposedCustomWards = subjectMode === 'custom' ? customWards : [];
-  const exposedUserAddedSubjects = subjectMode === 'preloaded' ? userAddedSubjects : [];
-  const exposedPresetTimetable = subjectMode === 'preloaded' ? presetTimetable : ({} as typeof TIMETABLE);
-  const exposedPresetWardSchedule = subjectMode === 'preloaded' ? presetWardSchedule : [];
-  const exposedPresetSubjectTotals = subjectMode === 'preloaded' ? presetSubjectTotals : {};
+  const exposedCustomSubjects = useMemo(
+    () => subjectMode === 'custom' ? customSubjects : [],
+    [subjectMode, customSubjects]
+  );
+  const exposedCustomWards = useMemo(
+    () => subjectMode === 'custom' ? customWards : [],
+    [subjectMode, customWards]
+  );
+  const exposedUserAddedSubjects = useMemo(
+    () => subjectMode === 'preloaded' ? userAddedSubjects : [],
+    [subjectMode, userAddedSubjects]
+  );
+  const exposedPresetTimetable = useMemo(
+    () => subjectMode === 'preloaded' ? presetTimetable : ({} as typeof TIMETABLE),
+    [subjectMode, presetTimetable]
+  );
+  const exposedPresetWardSchedule = useMemo(
+    () => subjectMode === 'preloaded' ? presetWardSchedule : [],
+    [subjectMode, presetWardSchedule]
+  );
+  const exposedPresetSubjectTotals = useMemo(
+    () => subjectMode === 'preloaded' ? presetSubjectTotals : {},
+    [subjectMode, presetSubjectTotals]
+  );
+  const contextValue = useMemo(() => ({
+    customSubjects: exposedCustomSubjects,
+    customWards: exposedCustomWards,
+    addCustomSubject, addCustomSubjects, updateCustomSubject, removeCustomSubject,
+    addCustomWard, addCustomWards, updateCustomWard, removeCustomWard,
+    getCurrentCustomWard, userAddedSubjects: exposedUserAddedSubjects,
+    addUserAddedSubject, addUserAddedSubjects, updateUserAddedSubject, removeUserAddedSubject,
+    isUserAddedName, presetTimetable: exposedPresetTimetable,
+    presetWardSchedule: exposedPresetWardSchedule, presetSubjectTotals: exposedPresetSubjectTotals,
+    addPresetWardEntry, updatePresetWardEntry, removePresetWardEntry, renamePresetWard,
+    updatePresetTimetableSlot, addSubjectToSlot, updatePresetWardSchedule, updatePresetSubjectTotal,
+    getSubjectPlannedTotal, getCurrentPresetWard, getPresetWardTotalPlanned, getCustomWardTotalPlanned,
+    countSGTPlannedDays, getParentOptions, isExistingParent, getAlliedChildCount,
+    getCustomAlliedChildren, getUserAddedAlliedChildren, isSubjectNameTaken, isWardNameTaken,
+    findSubjectTimeConflicts, findWardDateConflicts, bulkUpdateSubjectHierarchy,
+    subjectMode, setupDone, whatsNewOpen, setWhatsNewOpen: handleSetWhatsNewOpen,
+    completeSetup, startFresh, changeSubjectMode, clearRoutineData, getPresetSubjectDisplayName,
+    setPresetSubjectRename, getPresetWardDisplayName, subjectRegistry, getSubjectById, getSubjectIdByName,
+  }), [
+    exposedCustomSubjects, exposedCustomWards, exposedUserAddedSubjects, exposedPresetTimetable,
+    exposedPresetWardSchedule, exposedPresetSubjectTotals, subjectMode, setupDone, whatsNewOpen,
+    subjectRegistry,
+  ]);
 
   return (
     <CustomDataContext.Provider
-      value={{
-        customSubjects: exposedCustomSubjects,
-        customWards: exposedCustomWards,
-        addCustomSubject,
-        addCustomSubjects,
-        updateCustomSubject,
-        removeCustomSubject,
-        addCustomWard,
-        addCustomWards,
-        updateCustomWard,
-        removeCustomWard,
-        getCurrentCustomWard,
-        userAddedSubjects: exposedUserAddedSubjects,
-        addUserAddedSubject,
-        addUserAddedSubjects,
-        updateUserAddedSubject,
-        removeUserAddedSubject,
-        isUserAddedName,
-        presetTimetable: exposedPresetTimetable,
-        presetWardSchedule: exposedPresetWardSchedule,
-        presetSubjectTotals: exposedPresetSubjectTotals,
-        addPresetWardEntry,
-        updatePresetWardEntry,
-        removePresetWardEntry,
-        renamePresetWard,
-        updatePresetTimetableSlot,
-        addSubjectToSlot,
-        updatePresetWardSchedule,
-        updatePresetSubjectTotal,
-        getSubjectPlannedTotal,
-        getCurrentPresetWard,
-        getPresetWardTotalPlanned,
-        getCustomWardTotalPlanned,
-        countSGTPlannedDays,
-        getParentOptions,
-        isExistingParent,
-        getAlliedChildCount,
-        getCustomAlliedChildren,
-        getUserAddedAlliedChildren,
-        isSubjectNameTaken,
-        isWardNameTaken,
-        findSubjectTimeConflicts,
-        findWardDateConflicts,
-        bulkUpdateSubjectHierarchy,
-        subjectMode,
-        setupDone,
-        whatsNewOpen,
-        setWhatsNewOpen: handleSetWhatsNewOpen,
-        completeSetup,
-        startFresh,
-        changeSubjectMode,
-        clearRoutineData,
-        getPresetSubjectDisplayName,
-        setPresetSubjectRename,
-        getPresetWardDisplayName,
-        subjectRegistry,
-        getSubjectById,
-        getSubjectIdByName,
-      }}
+      value={contextValue}
+
     >
       {children}
     </CustomDataContext.Provider>

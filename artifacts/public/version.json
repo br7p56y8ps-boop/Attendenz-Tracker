@@ -1,6 +1,6 @@
 {
-  "version": "1.6.4.2",
-  "summary": "Release v1.6.4.2: Scheduled Notifications, Calendar reliability, and export improvements.",
+  "version": "1.6.5",
+  "summary": "Stable v1.6.5: update reliability, notification improvements, and UI refinements.",
   "releaseType": "minor",
-  "updateMode": "manual"
+  "updateMode": "automatic"
 }

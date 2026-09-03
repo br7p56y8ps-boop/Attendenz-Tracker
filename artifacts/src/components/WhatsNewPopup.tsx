@@ -1,14 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCustomData } from "@/contexts/CustomDataContext";
-import { Wrench, Zap, ChevronDown } from "lucide-react";
+import { Wrench, Zap } from "lucide-react";
 import {
-  APP_VERSION,
   WHATS_NEW_UPGRADES,
   WHATS_NEW_FIXES,
 } from "@/lib/appVersion";
 import type { WhatsNewItem } from "@/lib/appVersion";
-import { lockScroll, unlockScroll } from "@/lib/scrollLock";
+import { useModalAccessibility } from "@/components/ui/dialog";
 
 interface ReleaseItemProps {
   item: WhatsNewItem;
@@ -17,47 +16,14 @@ interface ReleaseItemProps {
 }
 
 function ReleaseItem({ item, titleClass, accentClass }: ReleaseItemProps) {
-  const [expanded, setExpanded] = useState(false);
-
   return (
-    <div className="rounded-2xl border border-border/60 bg-background/75 shadow-sm transition-colors dark:bg-background/45">
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        aria-expanded={expanded}
-        className="w-full flex items-start gap-2.5 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-muted/60 dark:hover:bg-muted/35"
-      >
-        <span className="min-w-0 flex-1">
-          <span
-            className={`block text-[11px] font-extrabold leading-snug ${titleClass}`}
-          >
-            {item.title}
-          </span>
-          <span className="block mt-0.5 text-[10px] leading-snug text-muted-foreground">
-            {item.summary}
-          </span>
-        </span>
-        <ChevronDown
-          className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-        />
-      </button>
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="overflow-hidden"
-          >
-            <p
-              className={`px-3 pb-2.5 text-[10px] leading-relaxed ${accentClass}`}
-            >
-              {item.details}
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="space-y-0.5 text-left">
+      <h4 className={`text-[11px] font-extrabold leading-snug ${titleClass}`}>
+        {item.title}
+      </h4>
+      <p className={`text-[10px] leading-relaxed ${accentClass}`}>
+        {item.summary}
+      </p>
     </div>
   );
 }
@@ -79,21 +45,13 @@ function ReleaseSection({
 }: ReleaseSectionProps) {
   if (items.length === 0) return null;
 
-  const sectionTone = title.startsWith("Upgrades")
-    ? "border-emerald-500/20 bg-emerald-500/10"
-    : "border-amber-500/20 bg-amber-500/10";
-
   return (
-    <section className="space-y-2">
-      <div
-        className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-2 ${sectionTone} ${titleClass}`}
-      >
+    <section className="space-y-2.5">
+      <h3 className={`flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider ${titleClass}`}>
         {icon}
-        <span className="text-[10px] font-extrabold uppercase tracking-wider">
-          {title}
-        </span>
-      </div>
-      <div className="space-y-1.5">
+        <span>{title}</span>
+      </h3>
+      <div className="space-y-2">
         {items.map((item) => (
           <ReleaseItem
             key={item.title}
@@ -110,23 +68,15 @@ function ReleaseSection({
 export function WhatsNewPopup() {
   const { whatsNewOpen, setWhatsNewOpen } = useCustomData();
 
-  useEffect(() => {
-    if (whatsNewOpen) {
-      lockScroll();
-      return () => unlockScroll();
-    }
-    return undefined;
-  }, [whatsNewOpen]);
-
-  const handleClose = () => {
-    setWhatsNewOpen(false);
-  };
+  const handleClose = () => { setWhatsNewOpen(false); };
+  const modalRef = useModalAccessibility(whatsNewOpen, handleClose);
 
   return (
     <AnimatePresence>
       {whatsNewOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 p-3 backdrop-blur-md sm:p-4"
+          ref={modalRef}
+          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/80 p-3 backdrop-blur-md sm:p-4"
           onClick={handleClose}
         >
           <motion.div
@@ -138,7 +88,8 @@ export function WhatsNewPopup() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="whats-new-title"
-            className="modal-sheet-content flex h-auto max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-[0_24px_80px_rgba(0,0,0,0.24)] dark:bg-card/90 dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
+            tabIndex={-1}
+            className="modal-sheet-content flex h-auto max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-[0_24px_80px_rgba(0,0,0,0.24)] dark:bg-card dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
           >
             {/* Fixed header */}
             <div className="flex shrink-0 items-center justify-between border-b border-border/60 bg-card px-4 pb-3 pt-4">
@@ -157,8 +108,8 @@ export function WhatsNewPopup() {
                   >
                     What's New
                   </h2>
-                  <span className="mt-1 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-500">
-                    v{APP_VERSION} (Stable)
+                  <span className="mt-1 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wider text-emerald-500">
+                    Stable release v1.6.5
                   </span>
                 </div>
               </div>

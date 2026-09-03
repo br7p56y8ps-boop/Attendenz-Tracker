@@ -370,6 +370,19 @@ export default function Timetable() {
     offsetRef.current = 0;
     setOffset(0);
   };
+  const moveWheel = (step: number) => {
+    if (totalItems === 0) return;
+    setSettling(true);
+    setActiveIndex(i => wrapIndex(i + step));
+    offsetRef.current = 0;
+    setOffset(0);
+  };
+  const onWheelKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); moveWheel(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); moveWheel(1); }
+    else if (e.key === 'Home') { e.preventDefault(); setSettling(true); setActiveIndex(0); offsetRef.current = 0; setOffset(0); }
+    else if (e.key === 'End') { e.preventDefault(); setSettling(true); setActiveIndex(totalItems - 1); offsetRef.current = 0; setOffset(0); }
+  };
   const onDown = (e: React.PointerEvent) => {
     if (totalItems === 0) return;
     dragging.current = true;
@@ -603,6 +616,11 @@ export default function Timetable() {
               className="relative overflow-hidden select-none py-2"
               style={{ touchAction: 'pan-y' }}
               onPointerDown={onDown}
+              onKeyDown={onWheelKeyDown}
+              tabIndex={0}
+              role="region"
+              aria-label="Clinical and ward rotation wheel"
+              aria-roledescription="carousel"
             >
               <div
                 className="relative h-36"
@@ -626,7 +644,11 @@ export default function Timetable() {
                   );
                 })}
               </div>
-              <p className="text-[9px] text-muted-foreground/60 text-center italic mt-1">Drag to browse · tap outside to return to current rotation</p>
+              <div className="relative mt-1 flex min-h-0 items-center justify-center sm:mt-2">
+                <button type="button" className="rotation-wheel-nav-button hidden action-button action-button--neutral action-button--compact sm:absolute sm:left-0 sm:inline-flex" onPointerDown={e => e.stopPropagation()} onClick={() => moveWheel(-1)} aria-label="Previous rotation">Previous</button>
+                <p className="w-full flex-1 text-center text-[9px] text-muted-foreground/60 italic"><span className="sm:hidden">Swipe to browse</span><span className="hidden sm:inline">Use Previous/Next, arrow keys, or swipe to browse</span></p>
+                <button type="button" className="rotation-wheel-nav-button hidden action-button action-button--neutral action-button--compact sm:absolute sm:right-0 sm:inline-flex" onPointerDown={e => e.stopPropagation()} onClick={() => moveWheel(1)} aria-label="Next rotation">Next</button>
+              </div>
             </div>
           )}
         </section>

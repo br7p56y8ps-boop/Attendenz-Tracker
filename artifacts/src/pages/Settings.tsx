@@ -1,6 +1,6 @@
-import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
+import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell, MoreHorizontal } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
-import { assertBackupSize, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
+import { assertBackupSize, filterStoredData, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
@@ -8,17 +8,19 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
-import { activateCurriculum, createCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculum, setCurriculumStatus as persistCurriculumStatus, CurriculumRecord } from '@/lib/curriculumStore';
-import { idbRemoveMany, idbSetMany, storageClear, storageSetItem, storageRemoveItem, flushStorageWrites } from '@/lib/idb';
+import { activateCurriculum, completeCurriculum, createCurriculumChecked, deleteCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculumChecked, setCurriculumStatusChecked, CurriculumRecord } from '@/lib/curriculumStore';
+import { idbGetAllChecked, storageClearChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
 import { getSoundEnabled, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type VibrationStyle } from '@/lib/feedback';
+import { useModalAccessibility } from '@/components/ui/dialog';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
+import { UpdateProgressSlider } from '@/utils/useUpdateFlow';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport, isStandalonePWA } from '@/lib/exportUtils';
-import { deleteRemoteDevice } from '@/lib/webPushSync';
+import { deleteRemoteDevice, getReminderRegistrationDiagnostics, getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, testRemoteNotification, type ReminderSyncStatus } from '@/lib/webPushSync';
 import {
   disableDirectPush,
   enableDirectPush,
@@ -27,7 +29,6 @@ import {
   getSystemNotificationsEnabled,
   NOTIFICATION_SETTINGS_CHANGED_EVENT,
   setNotificationPreferences,
-  setSystemNotificationsEnabled,
   notifyCurriculumChange,
   notifyDataTransfer,
   type NotificationLeadMinutes,
@@ -65,23 +66,21 @@ type NotificationChildKey = 'needAttentionSummary' | 'needAttentionSubjects' | '
 type NotificationChild = { key: NotificationChildKey; title: string; description: string };
 
 const ATTENDANCE_REMINDER_CHILDREN: NotificationChild[] = [
-  { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'A grouped summary for Subjects that need attendance protection today.' },
+  { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'A grouped summary for Subjects that need attendance protection in upcoming Classes.' },
+  { key: 'beforeClassWarnings', title: 'Before-Class Warnings', description: 'Controls reminders sent before an upcoming Class.' },
   { key: 'needAttentionSubjects', title: 'Need Attention Subjects', description: 'Reminders for Subjects at the target but without the recommended safety margin.' },
   { key: 'safeToMiss', title: 'Safe to Miss a Class', description: 'A lead-time alert when missing the upcoming Class would keep you at or above the preferred percentage.' },
-  { key: 'beforeClassWarnings', title: 'Before-Class Warnings', description: 'Controls reminders sent before an upcoming Class.' },
   { key: 'unmarkedAttendanceToday', title: 'Unmarked Attendance Today', description: 'A late-evening reminder for today’s Classes that still have no attendance status.' },
 ];
-
 const DAILY_SCHEDULE_CHILDREN: NotificationChild[] = [
-  { key: 'lastPlannedClassToday', title: 'Last Planned Class Today', description: 'A reminder when a Subject has its last planned Class today.' },
-  { key: 'firstClassOfDay', title: 'First Class of the Day', description: 'A reminder showing the first Subject and start time scheduled today.' },
-  { key: 'allScheduledClasses', title: 'All Scheduled Classes', description: 'One grouped reminder listing all Classes scheduled today.' },
+  { key: 'lastPlannedClassToday', title: 'Last Planned Class Upcoming', description: 'A reminder when a Subject has its genuine final planned Class tomorrow.' },
+  { key: 'firstClassOfDay', title: 'First Upcoming Class', description: 'A reminder showing the first upcoming Subject and start time.' },
+  { key: 'allScheduledClasses', title: 'All Upcoming Classes', description: 'One grouped reminder listing all upcoming Classes.' },
 ];
-
 const ACTIVITY_CHILDREN: NotificationChild[] = [
   { key: 'manageChanges', title: 'Changes Made in Manage', description: 'A confirmation after a routine change is saved successfully.' },
-  { key: 'curriculumChanges', title: 'Curriculum Changes', description: 'A confirmation after switching, completing, or restoring a curriculum.' },
   { key: 'dataTransfer', title: 'Routine or App Data Transfer', description: 'A confirmation after a routine, settings, backup, or app-data transfer succeeds.' },
+  { key: 'curriculumChanges', title: 'Curriculum Changes', description: 'A confirmation after switching, completing, or restoring a curriculum.' },
 ];
 
 const UPDATE_CHILDREN: NotificationChild[] = [
@@ -173,7 +172,8 @@ export default function Settings() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setNameInput(username); }, [username]);
   useEffect(() => {
-    if (!isEditingName) {
+    const curriculumRenameOpen = pendingCurriculumAction?.type === 'rename';
+    if (!isEditingName && !curriculumRenameOpen) {
       setIdentityKeyboardInset(0);
       return;
     }
@@ -218,7 +218,7 @@ export default function Settings() {
     return APP_VERSION;
   });
 
-  const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
+  const [, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
   useEffect(() => {
     const onReady = () => setPwaReady(true);
@@ -236,17 +236,23 @@ export default function Settings() {
   const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0;
   const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
   const [dots, setDots] = useState(1);
+  const [progressComplete, setProgressComplete] = useState(false);
   useEffect(() => {
     if (updatePhase === 'none') return;
     const t = window.setInterval(() => setDots(d => (d % 3) + 1), 450);
     return () => window.clearInterval(t);
   }, [updatePhase]);
+  useEffect(() => { if (updatePhase === 'none') setProgressComplete(false); }, [updatePhase]);
 
   const [busy, setBusy] = useState<string | null>(null);
+  const operationBusy = busy !== null;
   const [notificationPermission, setNotificationPermission] = useState<ReturnType<typeof getNotificationPermission>>(() => getNotificationPermission());
   const [systemNotificationsEnabled, setSystemNotificationsEnabledState] = useState(() => getSystemNotificationsEnabled());
   const [notificationPreferences, setNotificationPreferencesState] = useState<NotificationPreferences>(() => getNotificationPreferences());
   const [notificationBusy, setNotificationBusy] = useState(false);
+  const [reminderSyncStatus, setReminderSyncStatus] = useState<ReminderSyncStatus>(() => getReminderSyncStatus());
+  const [reminderServiceConfigured, setReminderServiceConfigured] = useState(() => getReminderSyncStatus().state !== 'not-configured');
+  const [notificationRecovery, setNotificationRecovery] = useState<{ title: string; message: string; action?: 'enable' | 'test' | 'settings' } | null>(null);
   const [expandedNotificationGroups, setExpandedNotificationGroups] = useState<Record<string, boolean>>({ attendance: false, dailySchedule: false, activity: false, updates: false });
   const [pendingPct, setPendingPct] = useState<number | null>(null);
   const [confirmMarkComplete, setConfirmMarkComplete] = useState(false);
@@ -262,21 +268,45 @@ export default function Settings() {
   const [newCurriculumName, setNewCurriculumName] = useState('');
   const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
   const [editingCurriculumName, setEditingCurriculumName] = useState('');
+  const [showArchiveFolder, setShowArchiveFolder] = useState(false);
+  const [curriculumToDelete, setCurriculumToDelete] = useState<CurriculumRecord | null>(null);
+  const [pendingCurriculumAction, setPendingCurriculumAction] = useState<{ type: 'complete' | 'switch' | 'reopen' | 'rename'; curriculum: CurriculumRecord } | null>(null);
+  const [openCurriculumMenuId, setOpenCurriculumMenuId] = useState<string | null>(null);
+  const [creationRestriction, setCreationRestriction] = useState(false);
+  const [showCreateCurriculumForm, setShowCreateCurriculumForm] = useState(false);
+  const [showSwitchDialog, setShowSwitchDialog] = useState(false);
   const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
+  const activeCurriculumCount = curricula.filter(c => c.status === 'active').length;
+  const activeCurriculumReadyForNewRoutine = activeCurriculumCount < 2;
+  useEffect(() => {
+    if (pendingCurriculumAction?.type !== 'rename' && !showCreateCurriculumForm) return;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const updateInset = () => setIdentityKeyboardInset(Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop)));
+    updateInset();
+    viewport.addEventListener('resize', updateInset);
+    viewport.addEventListener('scroll', updateInset);
+    return () => { viewport.removeEventListener('resize', updateInset); viewport.removeEventListener('scroll', updateInset); };
+  }, [pendingCurriculumAction?.type, showCreateCurriculumForm]);
 
   const refreshNotificationState = async () => {
     setNotificationPermission(getNotificationPermission());
     setSystemNotificationsEnabledState(getSystemNotificationsEnabled());
     setNotificationPreferencesState(getNotificationPreferences());
+    const diagnostics = await getReminderRegistrationDiagnostics();
+    setReminderServiceConfigured(diagnostics.serviceConfigured);
+    setReminderSyncStatus(getReminderSyncStatus());
   };
 
   useEffect(() => {
     void refreshNotificationState();
     const refresh = () => { void refreshNotificationState(); };
     window.addEventListener(NOTIFICATION_SETTINGS_CHANGED_EVENT, refresh);
+    window.addEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, refresh);
     window.addEventListener('focus', refresh);
     return () => {
       window.removeEventListener(NOTIFICATION_SETTINGS_CHANGED_EVENT, refresh);
+      window.removeEventListener(REMINDER_SYNC_STATUS_CHANGED_EVENT, refresh);
       window.removeEventListener('focus', refresh);
     };
   }, []);
@@ -287,7 +317,7 @@ export default function Settings() {
     setNotificationPreferences(next);
   };
 
-  const notificationControlsDisabled = !systemNotificationsEnabled || notificationPermission !== 'granted';
+  const notificationControlsDisabled = !reminderServiceConfigured || !systemNotificationsEnabled || notificationPermission !== 'granted';
   const setNotificationGroupEnabled = (group: 'attendance' | 'dailySchedule' | 'activity' | 'updates', enabled: boolean) => {
     const key = `${group}GroupEnabled` as keyof NotificationPreferences;
     updateNotificationPreference(key, enabled as NotificationPreferences[typeof key]);
@@ -298,10 +328,42 @@ export default function Settings() {
     setNotificationBusy(true);
     try {
       const result = await enableDirectPush();
-      if (result === 'enabled') notifySuccess('System Notifications are on for this device.');
-      else if (result === 'denied') import('sonner').then(({ toast }) => toast.error('Notifications are blocked on this device. Re-enable them in your device settings, then try again.'));
-      else if (result === 'not-configured') import('sonner').then(({ toast }) => toast.error('Notifications are temporarily unavailable. Please try again later.'));
-      else import('sonner').then(({ toast }) => toast.error('Notifications could not be enabled. Connect to the internet and try again.'));
+      if (result === 'enabled') {
+        setNotificationRecovery(null);
+        notifySuccess('System Notifications are on for this device.');
+      } else if (result === 'denied') {
+        setNotificationRecovery({ title: 'Notifications are blocked', message: 'Allow Notifications for Attendenz in your device or browser settings, then return here and try again.', action: 'settings' });
+      } else if (result === 'not-configured') {
+        setNotificationRecovery({ title: 'Reminders are unavailable', message: 'The reminder service is not configured for this app build. Attendance tracking remains available, but reminders cannot be enabled here.' });
+      } else if (result === 'unavailable') {
+        setNotificationRecovery({ title: 'Notifications are unavailable', message: 'Use the secure Attendenz app in a browser that supports Notifications and Service Workers.' });
+      } else {
+        setNotificationRecovery({ title: 'Notifications could not be enabled', message: 'The browser could not complete push registration. Check your connection and try again.', action: 'enable' });
+      }
+    } finally {
+      setNotificationBusy(false);
+      await refreshNotificationState();
+    }
+  };
+
+  const testSystemNotifications = async () => {
+    if (notificationBusy) return;
+    setNotificationBusy(true);
+    try {
+      const result = await testRemoteNotification();
+      if (result.state === 'sent') {
+        notifySuccess('Test notification sent.');
+      } else if (result.state === 'permission-required') {
+        setNotificationRecovery({ title: 'Allow Notifications first', message: 'Turn on System Notifications before sending a test reminder.', action: 'enable' });
+      } else if (result.state === 'subscription-missing') {
+        setNotificationRecovery({ title: 'Push subscription missing', message: 'Attendenz will try to repair this automatically. If repair fails, turn notifications off and on again, then retry.', action: 'enable' });
+      } else if (result.state === 'not-registered') {
+        setNotificationRecovery({ title: 'Reminder registration expired', message: 'Your device registration was lost. Re-enable System Notifications to register this device again.', action: 'enable' });
+      } else if (result.state === 'not-configured') {
+        setNotificationRecovery({ title: 'Reminders are unavailable', message: 'The reminder service is not configured for this app build.' });
+      } else {
+        setNotificationRecovery({ title: 'Test notification failed', message: 'The reminder service could not deliver the test. Check your connection and try again.', action: 'test' });
+      }
     } finally {
       setNotificationBusy(false);
       await refreshNotificationState();
@@ -312,33 +374,36 @@ export default function Settings() {
     if (notificationBusy) return;
     if (!enabled) {
       setNotificationBusy(true);
-      try { await disableDirectPush(); }
-      finally { setNotificationBusy(false); await refreshNotificationState(); }
+      try {
+        await disableDirectPush();
+        setNotificationRecovery(null);
+      } finally {
+        setNotificationBusy(false);
+        await refreshNotificationState();
+      }
       return;
     }
     await enableSystemNotifications();
   };
 
 
-  const handleToggleCurriculumStatus = () => {
+  const handleToggleCurriculumStatus = async () => {
     const next = curriculumStatus === 'Active' ? 'Completed' : 'Active';
-    if (next === 'Completed') { setConfirmMarkComplete(true); setShowSwitchDialog(true); return; }
-    setCurriculumStatus('Active');
-    localStorage.setItem('att_curriculum_status', 'Active');
-    if (activeCurriculumId) setCurricula(persistCurriculumStatus(activeCurriculumId, 'active'));
-    void notifyCurriculumChange(`The ${getActiveCurriculumName() || 'current'} curriculum is active again.`);
-    import('sonner').then(({ toast }) => toast.info('Curriculum marked as Active.'));
-  };
-  const applyMarkComplete = async () => {
-    setConfirmMarkComplete(false);
-    setCurriculumStatus('Completed');
-    localStorage.setItem('att_curriculum_status', 'Completed');
-    if (activeCurriculumId) setCurricula(persistCurriculumStatus(activeCurriculumId, 'archived'));
-    void notifyCurriculumChange(`The ${getActiveCurriculumName() || 'current'} curriculum was completed and archived.`);
-    const snapshotSaved = await createSnapshot('Curriculum Completed');
-    setSnapshots(getSnapshots());
-    if (snapshotSaved) notifySuccess('Curriculum marked as Completed! Auto-snapshot saved.');
-    else import('sonner').then(({ toast }) => toast.error('Curriculum marked as Completed, but the safety snapshot could not be saved.'));
+    if (next === 'Completed') { if (activeCurriculumId) void handleMarkCurriculumComplete(activeCurriculumId); return; }
+    if (!activeCurriculumId) {
+      import('sonner').then(({ toast }) => toast.error('There is no active curriculum to reactivate. Use Curriculum Management to reopen or create one.'));
+      return;
+    }
+    try {
+      const updated = await setCurriculumStatusChecked(activeCurriculumId, 'active');
+      setCurriculumStatus('Active');
+      localStorage.setItem('att_curriculum_status', 'Active');
+      setCurricula(updated);
+      void notifyCurriculumChange(`The ${getActiveCurriculumName() || 'current'} curriculum is active again.`);
+      import('sonner').then(({ toast }) => toast.info('Curriculum marked as Active.'));
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not reactivate curriculum.'));
+    }
   };
 
   const handleApplyUpdate = async (withBackup: boolean) => {
@@ -359,6 +424,7 @@ export default function Settings() {
       if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
         await storageSetItem('att_pending_update_restore', snaps[0].id);
       }
+      setProgressComplete(true);
     }
 
     await Promise.all([
@@ -383,6 +449,7 @@ export default function Settings() {
       const applyPwa = (window as any).attendenzApplyPwaUpdate;
       if (applyPwa) await applyPwa();
     } catch {}
+    setProgressComplete(true);
 
     const elapsed = Date.now() - start;
     if (elapsed < MIN_UPDATE_DELAY) {
@@ -674,6 +741,9 @@ export default function Settings() {
   };
 
   const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'snapshot' | 'export' | 'dataProtection' | 'identity' | 'feedback' | 'notifications' | 'theme' | null>(null);
+  const settingsModalRef = useModalAccessibility(Boolean(activeSettingModal), () => { setActiveSettingModal(null); setPendingPct(null); });
+  const updatePromptRef = useModalAccessibility(showUpdatePrompt && updatePhase === 'none', () => setShowUpdatePrompt(false));
+  const updateProgressRef = useModalAccessibility(updatePhase !== 'none');
   const [transferImportData, setTransferImportData] = useState<any>(null);
   const transferFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -700,43 +770,39 @@ export default function Settings() {
     reader.readAsText(file);
   };
   const executeTransferImport = async () => {
-    if (!transferImportData) return;
+    if (!transferImportData || operationBusy) return;
+    setBusy('restore');
     if (!await createSnapshot('Pre-Transfer Restore')) {
       import('sonner').then(({ toast }) => toast.error('Transfer stopped — the safety snapshot could not be created.'));
+      setBusy(null);
       return;
     }
 
-    // Clear mode-specific attendance keys BEFORE writing backup data
-    const MODE_SPECIFIC_ATTENDANCE_KEYS = [
-      'attendance_tracker_subjects', 'attendance_tracker_ward', 'attendance_tracker_home_selections', 'attendance_tracker_finished_map',
-      'attendance_tracker_subjects_preset', 'attendance_tracker_ward_preset', 'attendance_tracker_home_selections_preset', 'attendance_tracker_finished_map_preset',
-      'attendance_tracker_subjects_custom', 'attendance_tracker_ward_custom', 'attendance_tracker_home_selections_custom', 'attendance_tracker_finished_map_custom',
-      'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom',
-      'att_mode_separation_done_v1',
-    ];
-    await idbRemoveMany(MODE_SPECIFIC_ATTENDANCE_KEYS);
-    MODE_SPECIFIC_ATTENDANCE_KEYS.forEach(k => localStorage.removeItem(k));
+    try {
+      await flushStorageWrites();
+      const entries = Object.entries(transferImportData).map(([key, value]) => [
+        key,
+        typeof value === 'string' ? value : JSON.stringify(value),
+      ] as [string, string]);
+      const current = await idbGetAllChecked();
+      const keysToRemove = Object.keys(filterStoredData(current)).filter(key => key !== SNAPSHOTS_KEY && !(key in transferImportData));
+      await storageCommitChecked(entries, keysToRemove);
 
-    // Commit the validated backup atomically in IndexedDB, then mirror the cache.
-    const entries = Object.entries(transferImportData).map(([key, value]) => [
-      key,
-      typeof value === 'string' ? value : JSON.stringify(value),
-    ] as [string, string]);
-    await idbSetMany(entries);
-    entries.forEach(([key, stringVal]) => localStorage.setItem(key, stringVal));
+      const migrationFlags = [
+        'att_mode_separation_done_v1',
+        'att_attendance_id_migration_v2_done_preloaded',
+        'att_attendance_id_migration_v2_done_custom',
+      ];
+      await Promise.all(migrationFlags.map(flag => storageRemoveItemChecked(flag)));
 
-    // Remove migration flags so migration can run on next load
-    const migrationFlags = [
-      'att_mode_separation_done_v1',
-      'att_attendance_id_migration_v2_done_preloaded',
-      'att_attendance_id_migration_v2_done_custom',
-    ];
-    await idbRemoveMany(migrationFlags);
-    migrationFlags.forEach(flag => localStorage.removeItem(flag));
-
-    notifySuccess('Data transferred successfully! Reloading...');
-    setLocation('/');
-    setTimeout(() => window.location.reload(), 1500);
+      notifySuccess('Data transferred successfully! Reloading...');
+      setLocation('/');
+      setTimeout(() => window.location.reload(), 1500);
+    } catch {
+      import('sonner').then(({ toast }) => toast.error('Transfer failed. Your safety snapshot is still available; no success was reported.'));
+    } finally {
+      setBusy(null);
+    }
   };
   useEffect(() => { autoSnapshotOnLoad(); setSnapshots(getSnapshots()); }, []);
   const handleTakeSnapshot = async () => {
@@ -752,6 +818,8 @@ export default function Settings() {
     setTimeout(() => setSnapshotMsg(''), 3000);
   };
   const handleRestoreSnapshot = async (id: string) => {
+    if (operationBusy) return;
+    setBusy('restore');
     if (await restoreSnapshot(id)) {
       triggerConfirmationFeedback('success');
       setSnapshotMsg('✓ Snapshot restored! Refreshing page...');
@@ -761,18 +829,23 @@ export default function Settings() {
       setSnapshotMsg('✗ Failed to restore snapshot.');
       setTimeout(() => setSnapshotMsg(''), 3000);
     }
+    setBusy(null);
   };
-  const handleDeleteSnapshot = () => {
+  const handleDeleteSnapshot = async () => {
     if (!snapshotToDelete) return;
     const remaining = getSnapshots().filter(s => s.id !== snapshotToDelete.id);
     const json = JSON.stringify(remaining);
-    localStorage.setItem(SNAPSHOTS_KEY, json);
-    storageSetItem(SNAPSHOTS_KEY, json);
-    setSnapshots(remaining);
-    triggerConfirmationFeedback('danger');
-    setSnapshotToDelete(null);
-    setSnapshotMsg('✓ Snapshot deleted.');
-    setTimeout(() => setSnapshotMsg(''), 3000);
+    try {
+      await storageSetItemChecked(SNAPSHOTS_KEY, json);
+      setSnapshots(remaining);
+      triggerConfirmationFeedback('danger');
+      setSnapshotToDelete(null);
+      setSnapshotMsg('✓ Snapshot deleted.');
+      setTimeout(() => setSnapshotMsg(''), 3000);
+    } catch {
+      setSnapshotMsg('✗ Snapshot could not be deleted.');
+      setTimeout(() => setSnapshotMsg(''), 3000);
+    }
   };
   const handleClearCache = () => {
     const cleared = clearLocalCache();
@@ -781,20 +854,27 @@ export default function Settings() {
     setTimeout(() => setSnapshotMsg(''), 4000);
   };
   const handleDeleteAllData = async () => {
-    await deleteRemoteDevice();
+    if (operationBusy) return;
+    setBusy('Deleting app data…');
     try {
-      const registration = await navigator.serviceWorker?.ready;
-      const subscription = await registration?.pushManager.getSubscription();
-      await subscription?.unsubscribe();
-    } catch {}
-    await storageClear();
-    try { localStorage.clear(); } catch {}
-    localStorage.setItem('att_idb_migrated_v1', 'true');
-    storageSetItem('att_idb_migrated_v1', 'true');
-    window.location.reload();
+      const remoteRemoved = await deleteRemoteDevice();
+      if (!remoteRemoved) throw new Error(navigator.onLine ? 'Could not remove this device from the reminder service. Try again before deleting app data.' : 'Connect to the internet before deleting app data so remote reminders can be removed too.');
+      const unsubscribed = await disableDirectPush();
+      if (!unsubscribed) throw new Error('Could not unregister browser notifications. Try again before deleting app data.');
+      await storageSetItemChecked(PENDING_DELETE_ALL_KEY, 'true');
+      await storageClearChecked([PENDING_DELETE_ALL_KEY]);
+      await storageRemoveItemChecked(PENDING_DELETE_ALL_KEY);
+      setShowDeleteDataDialog(false);
+      triggerConfirmationFeedback('danger');
+      notifySuccess('All app data deleted. Returning to Welcome and Setup…');
+      window.setTimeout(() => window.location.reload(), 700);
+    } catch (error) {
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not delete all app data. Nothing was cleared.'));
+    } finally {
+      setBusy(null);
+    }
   };
 
-  const [showSwitchDialog, setShowSwitchDialog] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference());
   const [vibrationEnabled, setVibrationEnabledState] = useState(() => getVibrationEnabled());
   const [vibrationStyle, setVibrationStyleState] = useState<VibrationStyle>(() => getVibrationStyle());
@@ -809,14 +889,27 @@ export default function Settings() {
 
   const openCurriculumManager = () => {
     setConfirmMarkComplete(false);
+    setShowArchiveFolder(false);
+    setShowCreateCurriculumForm(false);
+    setCreationRestriction(false);
     setCurricula(getCurricula());
     setActiveCurriculumIdState(getActiveCurriculumId() || '');
     setShowSwitchDialog(true);
   };
-  const handleCreateCurriculum = () => {
+  const handleCreateCurriculum = async () => {
+    if (!activeCurriculumReadyForNewRoutine) {
+      setShowCreateCurriculumForm(false);
+      setCreationRestriction(true);
+      return;
+    }
     try {
-      const created = createCurriculum(newCurriculumName);
+      const created = await createCurriculumChecked(newCurriculumName);
       setNewCurriculumName('');
+      setShowCreateCurriculumForm(false);
+      setCreationRestriction(false);
+      const currentActiveId = getActiveCurriculumId();
+      setActiveCurriculumIdState(currentActiveId || '');
+      if (currentActiveId === created.id) setCurriculumStatus('Active');
       setCurricula(getCurricula());
       notifySuccess(`${created.name} created empty. Use Manage Import if you want to bring in a routine structure.`);
     } catch (error) {
@@ -824,6 +917,8 @@ export default function Settings() {
     }
   };
   const handleActivateCurriculum = async (id: string) => {
+    if (operationBusy) return;
+    setBusy('curriculum');
     if (id === activeCurriculumId) return;
     try {
       await activateCurriculum(id);
@@ -833,25 +928,73 @@ export default function Settings() {
       notifySuccess('Curriculum switched.');
       setLocation('/');
       window.location.reload();
-    } catch {
-      import('sonner').then(({ toast }) => toast.error('Could not switch curriculum.'));
+    } catch (error) {
+      setBusy(null);
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not switch curriculum.'));
     }
   };
-  const handleRenameCurriculum = (id: string) => {
+  const confirmCurriculumAction = async () => {
+    if (!pendingCurriculumAction) return;
+    const { type, curriculum } = pendingCurriculumAction;
+    setPendingCurriculumAction(null);
+    if (type === 'switch' || type === 'reopen') { await handleActivateCurriculum(curriculum.id); return; }
+    if (type === 'complete') { await handleMarkCurriculumComplete(curriculum.id); return; }
+    handleRenameCurriculum(curriculum.id);
+  };
+  const handleRenameCurriculum = async (id: string) => {
     try {
-      setCurricula(renameCurriculum(id, editingCurriculumName));
+      setCurricula(await renameCurriculumChecked(id, editingCurriculumName));
       setEditingCurriculumId(null);
       setEditingCurriculumName('');
     } catch (error) {
       import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not rename curriculum.'));
     }
   };
-  const handleArchiveCurriculum = (id: string) => {
-    if (id === activeCurriculumId) {
-      import('sonner').then(({ toast }) => toast.info('Switch to another curriculum before archiving this one.'));
-      return;
+  const handleMarkCurriculumComplete = async (id: string) => {
+    if (operationBusy) return;
+    setBusy('curriculum');
+    try {
+      const completingActive = id === activeCurriculumId;
+      if (completingActive && !await createSnapshot('Curriculum Completed')) {
+        throw new Error('Could not create a safety snapshot. The curriculum was not archived.');
+      }
+      const targetName = curricula.find(c => c.id === id)?.name || 'curriculum';
+      const result = await completeCurriculum(id);
+      setCurricula(result.curricula);
+      if (completingActive) {
+        if (result.replacement) {
+          setActiveCurriculumIdState(result.replacement.id);
+          setCurriculumStatus('Active');
+        } else {
+          setActiveCurriculumIdState('');
+          setCurriculumStatus('Completed');
+        }
+      }
+      void notifyCurriculumChange(`The ${targetName} was completed and archived.`);
+      notifySuccess('Curriculum marked as complete.');
+      if (completingActive) window.location.reload();
+      setBusy(null);
+    } catch (error) {
+      setBusy(null);
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not complete curriculum.'));
     }
-    setCurricula(persistCurriculumStatus(id, 'archived'));
+  };
+  const handleDeleteCurriculum = async () => {
+    if (operationBusy) return;
+    setBusy('curriculum');
+    if (!curriculumToDelete || curriculumToDelete.kind === 'preset' || curriculumToDelete.id === 'curriculum_custom_routine') return;
+    try {
+      const deletingActive = curriculumToDelete.id === activeCurriculumId;
+      const remaining = await deleteCurriculum(curriculumToDelete.id);
+      setCurricula(remaining);
+      setCurriculumToDelete(null);
+      notifySuccess('Curriculum permanently deleted.');
+      if (deletingActive) window.location.reload();
+      setBusy(null);
+    } catch (error) {
+      setBusy(null);
+      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not delete curriculum.'));
+    }
   };
   const detectGender = (name: string): 'male' | 'female' | 'neutral' => {
     if (!name || name.length < 2) return 'neutral';
@@ -981,7 +1124,7 @@ export default function Settings() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden"
+                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden"
                 onClick={() => setBackupTransferOpen(false)}
               >
                 <motion.div
@@ -989,14 +1132,17 @@ export default function Settings() {
                   animate={{ y: 0, opacity: 1 }}
                   exit={{ y: 48, opacity: 0 }}
                   transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                  className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-lg max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
+                  className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-lg max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex items-center justify-between border-b border-border/50 pb-3">
+                  <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3">
                     <div>
                       <h3 className="text-sm font-bold text-foreground">Backup / Transfer</h3>
                       <p className="text-[10px] text-muted-foreground">Complete app backup keeps both Preset and Custom workspaces. Routine bundles use the active mode only.</p>
                     </div>
+                    <button type="button" onClick={() => setBackupTransferOpen(false)} className="action-button action-button--close action-button--icon shrink-0" aria-label="Close Backup / Transfer">
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
 
                   {busy && <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{busy}</p>}
@@ -1013,15 +1159,17 @@ export default function Settings() {
                         <Send className="w-4 h-4" /> Send to Another Device
                       </button>
                       <button
-                        onClick={() => {
-                          setBusy('Backing up…');
-                          setTimeout(() => {
-                            exportDataAsJSON();
+                          onClick={async () => {
+                            setBusy('Backing up…');
+                            const exported = await exportDataAsJSON();
                             setBusy(null);
-                            void notifyDataTransfer('Your app data backup was downloaded.');
-                            notifySuccess('Backup downloaded.');
-                          }, 400);
-                        }}
+                            if (exported === true) {
+                              void notifyDataTransfer('Your app data backup was downloaded.');
+                              notifySuccess('Backup downloaded.');
+                            } else {
+                              import('sonner').then(({ toast }) => toast.error('Backup failed. No download was completed.'));
+                            }
+                          }}
                         className="action-button action-button--save w-full"
                       >
                         <Upload className="w-4 h-4" /> Export Backup (.json)
@@ -1118,7 +1266,7 @@ export default function Settings() {
                         <AlertCircle className="w-4 h-4 shrink-0" />
                         <p className="text-xs font-bold">Import Data Confirmation</p>
                       </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">You are about to replace the complete app backup on this device, including both Preset and Custom workspaces. We recommend creating a Full App Backup before continuing.</p>
+                      <p className="text-xs text-muted-foreground leading-relaxed">The selected backup will be merged with the data already on this device, including both Preset and Custom workspaces. Existing data is not removed. We recommend creating a Full App Backup before continuing.</p>
                       <div className="bg-background rounded-xl border border-border/60 p-2.5 space-y-1.5 mt-2">
                         <div className="flex justify-between text-xs"><span className="text-muted-foreground">App Version</span><span className="font-bold text-foreground">{transferImportData.att_app_version || 'Unknown'}</span></div>
                         <div className="flex justify-between text-xs"><span className="text-muted-foreground">Routine Mode</span><span className="font-bold text-foreground">{transferImportData.att_subject_mode === 'preloaded' ? 'MBBS 5th Year' : 'Custom Routine'}</span></div>
@@ -1126,20 +1274,11 @@ export default function Settings() {
                       </div>
                       <div className="grid grid-cols-2 gap-2 pt-2">
                         <button onClick={() => setTransferImportData(null)} className="action-button action-button--cancel w-full">Cancel</button>
-                        <button onClick={executeTransferImport} className="action-button action-button--danger w-full">Replace & Import</button>
+                        <button onClick={executeTransferImport} className="action-button action-button--danger w-full">Merge & Import</button>
                       </div>
                     </div>
                   )}
 
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setBackupTransferOpen(false)}
-                      className="action-button action-button--close"
-                    >
-                      Close
-                    </button>
-                  </div>
                 </motion.div>
               </motion.div>
             )}
@@ -1147,8 +1286,8 @@ export default function Settings() {
 
           <AnimatePresence>
             {activeSettingModal && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden" onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
-                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} role="dialog" aria-modal="true" aria-label="Settings dialog" className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-h-[min(70dvh,48rem)] shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} ref={settingsModalRef} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden" onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
+                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} role="dialog" aria-modal="true" aria-labelledby="settings-modal-title" tabIndex={-1} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-h-[min(70dvh,48rem)] shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
                                       <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3 shrink-0">
                       <div className="flex min-w-0 flex-1 items-start gap-3">
                         {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
@@ -1161,7 +1300,7 @@ export default function Settings() {
                       {activeSettingModal === 'notifications' && (<div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 border border-blue-500/20"><Bell className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'theme' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><Info className="w-5 h-5" /></div>)}
                       <div className="min-w-0 flex-1">
-                        <h3 className="break-words text-sm font-bold text-foreground sm:text-base">
+                        <h3 id="settings-modal-title" className="break-words text-sm font-bold text-foreground sm:text-base">
                           {activeSettingModal === 'preferredPc' && 'Curriculum Percentage'}
                           {activeSettingModal === 'curriculum' && 'Curriculum Management'}
                           {activeSettingModal === 'snapshot' && 'Snapshots & Storage'}
@@ -1222,8 +1361,8 @@ export default function Settings() {
                         </div>
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5">
                           <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 min-w-0"><Volume2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-xs font-bold text-foreground">Confirmation Sound</span></div><SettingToggle checked={soundEnabled} onChange={updateSoundEnabled} label="Confirmation Sound" /></div>
-                          <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">Play a short confirmation sound after you save or mark attendance. Your iPhone’s Silent mode, volume, and sound settings still control what you hear.</p>
-                          <label className="mt-3 flex items-center gap-3 text-xs font-semibold text-foreground"><span className="shrink-0 text-muted-foreground">Volume</span><input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={e => updateSoundVolume(Number(e.target.value))} disabled={!soundEnabled} className="min-w-0 flex-1 accent-blue-500 disabled:opacity-50" aria-label="Confirmation sound volume" /><output className="w-10 text-right text-xs font-bold text-blue-500">{Math.round(soundVolume * 100)}%</output></label>
+                          <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">Short sound after saving or marking attendance. Phone silent mode and volume still apply.</p>
+                          <label className="mt-3 flex items-center gap-3 text-xs font-semibold text-foreground"><span className="shrink-0 text-muted-foreground">Volume</span><input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={e => updateSoundVolume(Number(e.target.value))} disabled={!soundEnabled} className="compact-range flex-1" style={{ '--range-progress': `${soundVolume * 100}%` } as React.CSSProperties} aria-label="Confirmation sound volume" /><output className="w-10 text-right text-xs font-bold text-blue-500">{Math.round(soundVolume * 100)}%</output></label>
                         </div>
                         <button type="button" onClick={testConfirmationFeedback} className="action-button action-button--update w-full">Test Feedback</button>
                       </div>
@@ -1241,7 +1380,18 @@ export default function Settings() {
                           {notificationPermission === 'default' && <p className="text-[10px] leading-relaxed text-muted-foreground">Allow Notifications to use the reminder choices below.</p>}
                           {notificationPermission !== 'granted' && notificationPermission !== 'denied' && notificationPermission !== 'unsupported' && notificationPermission !== 'insecure' && <button type="button" onClick={enableSystemNotifications} disabled={notificationBusy} className="action-button action-button--update action-button--compact w-full disabled:opacity-50">{notificationBusy ? 'Setting Up…' : 'Allow Notifications'}</button>}
                           {notificationPermission === 'granted' && !systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Permission is allowed, but System Notifications are off. Turn on the switch to use reminders.</p>}
-                          {notificationPermission === 'granted' && systemNotificationsEnabled && <p className="text-[10px] font-bold text-emerald-500">On for this device</p>}
+                          {notificationPermission === 'granted' && systemNotificationsEnabled && reminderServiceConfigured && <p className="text-[10px] font-bold text-emerald-500">On for this device</p>}
+                          {!reminderServiceConfigured && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">The reminder service is not configured for this app build, so reminder choices are disabled.</p>}
+                          {reminderServiceConfigured && notificationControlsDisabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Reminder choices are disabled until Notifications are supported, allowed, and turned on for this device.</p>}
+                          {systemNotificationsEnabled && notificationPermission === 'granted' && (
+                            <>
+                              {reminderServiceConfigured && reminderSyncStatus.state === 'synced' && <p className="text-[10px] font-bold text-emerald-500">Reminders synced for this device.</p>}
+                              {reminderSyncStatus.state === 'offline' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">You are offline. Reminders will sync automatically when the connection returns.</p>}
+                              {reminderSyncStatus.state === 'subscription-missing' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">The browser push subscription is missing. Attendenz will try to repair it automatically.</p>}
+                              {reminderSyncStatus.state === 'error' && <p className="text-[10px] leading-relaxed text-destructive">Reminder sync failed. Check your connection and use Test Notifications to retry.</p>}
+                              <button type="button" onClick={testSystemNotifications} disabled={notificationBusy} className="action-button action-button--neutral action-button--compact w-full disabled:opacity-50">{notificationBusy ? 'Testing…' : 'Test Notifications'}</button>
+                            </>
+                          )}
                         </div>
                         <NotificationGroupCard title="Attendance & Risk Reminders" description="Choose which attendance-related reminders are useful to you." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, attendance: !prev.attendance }))} enabled={notificationPreferences.attendanceGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('attendance', value)} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
                         <NotificationGroupCard title="Daily Schedule Reminders" description="Choose reminders about the Classes scheduled for your day." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, dailySchedule: !prev.dailySchedule }))} enabled={notificationPreferences.dailyScheduleGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('dailySchedule', value)} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
@@ -1513,6 +1663,20 @@ export default function Settings() {
             )}
           </AnimatePresence>
 
+          <AnimatePresence>
+            {notificationRecovery && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[170] flex items-end justify-center p-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} onClick={() => setNotificationRecovery(null)}>
+                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content !min-h-0 bg-card backdrop-blur-2xl border border-blue-500/30 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-start gap-2"><AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><div><h3 className="text-sm font-bold text-foreground">{notificationRecovery.title}</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{notificationRecovery.message}</p></div></div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setNotificationRecovery(null)} className="action-button action-button--cancel flex-1 min-h-10">Close</button>
+                    {notificationRecovery.action && <button type="button" onClick={() => { const action = notificationRecovery.action; setNotificationRecovery(null); if (action === 'enable') void enableSystemNotifications(); else if (action === 'test') void testSystemNotifications(); }} className="action-button action-button--update flex-1 min-h-10">{notificationRecovery.action === 'settings' ? 'I’ll Check Settings' : 'Try Again'}</button>}
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* 5. Danger Zone */}
           <div className="contents">
             <StickySectionLabel label="Danger Zone" stackIndex={4} zClass="z-30" />
@@ -1524,12 +1688,12 @@ export default function Settings() {
       {/* All dialogs remain as before */}
       <AnimatePresence>
         {showUpdatePrompt && isUpdateAvailable && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowUpdatePrompt(false); }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} ref={updatePromptRef} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowUpdatePrompt(false); }}>
+            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} role="dialog" aria-modal="true" aria-labelledby="settings-update-title" tabIndex={-1} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20"><Download className="w-5 h-5 text-amber-500" /></div>
                 <div className="text-left">
-                  <h3 className="text-base font-bold text-foreground leading-tight">Update to <span className="text-emerald-400">v{serverVersion}</span> (Stable)</h3>
+                  <h3 id="settings-update-title" className="text-base font-bold text-foreground leading-tight">Update to <span className="text-emerald-400">v{serverVersion}</span> (Stable)</h3>
                   <p className="text-[11px] text-muted-foreground font-medium">Full App Backup Recommended</p>
                 </div>
               </div>
@@ -1548,18 +1712,18 @@ export default function Settings() {
 
       <AnimatePresence>
         {updatePhase !== 'none' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-end justify-center p-4">
-            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} ref={updateProgressRef} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[140] flex items-end justify-center p-4">
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} role="dialog" aria-modal="true" aria-labelledby="settings-progress-title" tabIndex={-1} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
               {updatePhase === 'backing' ? (
                 <>
-                  <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin" />
-                  <p className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
+                  <UpdateProgressSlider phase="backing" complete={progressComplete} />
+                  <p id="settings-progress-title" className="text-sm font-extrabold text-foreground">Backing Up your Data{'.'.repeat(dots)}</p>
                   <p className="text-[10px] text-muted-foreground text-center">Securing your attendance records & preferences...</p>
                 </>
               ) : (
                 <>
-                  <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-                  <p className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
+                  <UpdateProgressSlider phase="updating" complete={progressComplete} />
+                  <p id="settings-progress-title" className="text-sm font-extrabold text-foreground">Just Updating{'.'.repeat(dots)}</p>
                   <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
                 </>
               )}
@@ -1570,10 +1734,10 @@ export default function Settings() {
 
       <AnimatePresence>
         {showDeleteDataDialog && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/65 backdrop-blur-md z-[150] flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
-            <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} transition={{ type: 'spring', damping: 26, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-destructive/30 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[150] flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
+            <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} transition={{ type: 'spring', damping: 26, stiffness: 300 }} className="modal-sheet-content bg-card backdrop-blur-2xl border border-destructive/30 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
               <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-destructive/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div><div><h3 className="text-base font-bold text-foreground">Delete All App Data?</h3><p className="text-[11px] text-destructive font-semibold">Irreversible Action</p></div></div>
-              <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases attendance records, routines, snapshots, profile data, target settings, and setup state. Export a backup first if you are unsure.</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases <strong className="text-foreground">attendance records, routines, all curriculum data, snapshots, profile data, target settings, and setup state</strong>. Export a backup first if you are unsure.</p>
               <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
             </motion.div>
           </motion.div>
@@ -1582,62 +1746,111 @@ export default function Settings() {
 
       <AnimatePresence>
         {showSwitchDialog && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
+                <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} className="modal-sheet-content relative bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <div className="h-10 w-10 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="h-5 w-5 shrink-0 text-primary" /></div>
-                  <div className="min-w-0 flex-1 text-left"><h3 className="break-words text-sm font-bold text-foreground sm:text-base">Curriculum Management</h3><p className="text-[10px] leading-relaxed text-muted-foreground sm:text-[11px]">Switch between saved routines. Each keeps its own Subjects, SGTs, wards, schedules, and attendance.</p></div>
+                  <div className="min-w-0 flex-1 text-left"><h3 className="break-words text-sm font-bold text-foreground sm:text-base">Curriculum Management</h3><p className="text-[10px] leading-relaxed text-muted-foreground sm:text-[11px]">Manage your active and archived curricula.</p></div>
                 </div>
-                <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); }} className="action-button action-button--close mt-0.5 shrink-0 px-2.5 text-xs sm:px-3">Close</button>
+                <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} className="action-button action-button--close action-button--icon mt-0.5 shrink-0" aria-label="Close Curriculum Management"><X className="w-4 h-4" /></button>
               </div>
-              {confirmMarkComplete ? (
-                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left space-y-3">
-                  <h4 className="text-sm font-bold text-foreground">Mark Curriculum as Completed?</h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">An auto-snapshot of the current records will be saved first, so nothing is lost.</p>
-                  <div className="flex gap-2 pt-1">
-                    <button type="button" onClick={() => setConfirmMarkComplete(false)} className="action-button action-button--cancel flex-1">Cancel</button>
-                    <button type="button" onClick={applyMarkComplete} className="action-button action-button--save flex-1">Mark Completed</button>
-                  </div>
-                </div>
-              ) : (
-              <>
-              <div className="space-y-2">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Active Curricula</p>
-                {curricula.filter(c => c.status === 'active').sort((a, b) => Number(b.id === activeCurriculumId) - Number(a.id === activeCurriculumId)).map(c => (
-                  <div key={c.id} className={cn('rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60')}>
-                    <div className="flex items-center justify-between gap-2">
-                      <button type="button" onClick={() => handleActivateCurriculum(c.id)} className="min-w-0 flex-1 text-left cursor-pointer">
-                        <p className="text-sm font-bold text-foreground truncate">{c.name} <span className="text-[9px] font-extrabold uppercase tracking-wider text-primary">{c.kind === 'preset' ? 'Preset' : 'Custom'}</span></p>
-                        <p className="text-[10px] text-muted-foreground">{c.id === activeCurriculumId ? 'Currently selected' : c.kind === 'preset' ? 'Editable 5th Year / Final Phase reference routine' : 'Separate Custom routine with its own data'}</p>
-                      </button>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button type="button" onClick={() => { setEditingCurriculumId(c.id); setEditingCurriculumName(c.name); }} className="action-button action-button--edit shrink-0" aria-label={`Rename ${c.name}`}>Rename</button>
-                        {c.id !== activeCurriculumId && <button type="button" onClick={() => handleArchiveCurriculum(c.id)} className="action-button action-button--warning shrink-0" aria-label={`Archive ${c.name}`}>Archive</button>}
-                        {editingCurriculumId === c.id && <button type="button" onClick={() => handleRenameCurriculum(c.id)} className="action-button action-button--save">Save</button>}
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => { setShowArchiveFolder(!showArchiveFolder); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} style={{ borderColor: '#d97706', color: '#d97706', backgroundColor: 'rgba(217, 119, 6, 0.10)' }} className="action-button action-button--neutral w-full min-h-10">{showArchiveFolder ? 'Back to Active' : 'Archive Folder'}</button>
+                <button type="button" onClick={() => activeCurriculumReadyForNewRoutine ? (setShowCreateCurriculumForm(true), setCreationRestriction(false)) : setCreationRestriction(true)} className="action-button action-button--edit w-full min-h-10">Create New Curricula</button>
+              </div>
+              <div className="relative z-20 space-y-2">
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">{showArchiveFolder ? 'Archive Folder' : 'Active Curricula'}</p>
+                {(showArchiveFolder ? curricula.filter(c => c.status === 'archived') : curricula.filter(c => c.status === 'active').sort((a, b) => Number(b.id === activeCurriculumId) - Number(a.id === activeCurriculumId))).map(c => {
+                  const expanded = true;
+                  const canDelete = c.kind === 'custom' && c.id !== 'curriculum_custom_routine';
+                  return (
+                    <div key={c.id} className={cn('relative rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60', openCurriculumMenuId === c.id && 'z-30')}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate text-base font-extrabold text-foreground">{c.name}</span>
+                          <span className="block text-[10px] font-semibold text-muted-foreground">{c.status === 'active' ? (c.id === activeCurriculumId ? 'In Use' : 'Available') : 'Archived'} · {c.kind === 'preset' ? 'Preset' : 'New Curriculum'}</span>
+                        </div>
+                        {c.status === 'archived' && <button type="button" onClick={() => setOpenCurriculumMenuId(openCurriculumMenuId === c.id ? null : c.id)} className="action-button action-button--icon shrink-0" aria-label={`More actions for ${c.name}`} aria-expanded={openCurriculumMenuId === c.id}><MoreHorizontal className="h-5 w-5" /></button>}
                       </div>
+                      {openCurriculumMenuId === c.id && (
+                        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm" onClick={() => setOpenCurriculumMenuId(null)}>
+                          <div className="absolute bottom-0 left-0 right-0 mx-auto w-full max-w-md rounded-t-3xl border border-border/80 bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
+                            <div className="mb-3 flex items-center justify-between"><p className="text-sm font-bold text-foreground">{c.name}</p><button type="button" onClick={() => setOpenCurriculumMenuId(null)} className="text-xl leading-none text-muted-foreground" aria-label="Close menu">×</button></div>
+                            <button type="button" onClick={() => { setEditingCurriculumName(c.name); setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs"><span><span className="block">Rename</span><span className="block text-[10px] font-normal text-muted-foreground">Change the display name of this archived curriculum.</span></span></button>
+                            {canDelete && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setCurriculumToDelete(c); }} className="action-button action-button--danger w-full justify-start px-3 py-2 text-left text-xs"><span><span className="block">Delete</span><span className="block text-[10px] font-normal text-muted-foreground">Permanently remove this archived curriculum.</span></span></button>}
+                          </div>
+                        </div>
+                      )}
+                      {expanded && <AnimatePresence initial={false}><motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="overflow-hidden"><div className="mt-3 pt-3">
+                        {c.status === 'active' && c.id === activeCurriculumId && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'complete', curriculum: c })} className="action-button action-button--save w-full min-h-11 px-3">Mark as Complete</button>}
+                        {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'switch', curriculum: c })} className="action-button action-button--edit w-full min-h-11 px-3">Switch to this Curriculum</button>}
+                        {c.status === 'archived' && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'reopen', curriculum: c })} className="action-button action-button--edit w-full min-h-11 px-3">Reopen Curriculum</button>}
+                      </div></motion.div></AnimatePresence>}
+                      {editingCurriculumId === c.id && <input autoFocus value={editingCurriculumName} onChange={e => setEditingCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRenameCurriculum(c.id); }} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary" />}
                     </div>
-                    {editingCurriculumId === c.id && <input autoFocus value={editingCurriculumName} onChange={e => setEditingCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRenameCurriculum(c.id); }} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary" />}
-                  </div>
-                ))}
+                  );
+                })}
+                {((showArchiveFolder && !curricula.some(c => c.status === 'archived')) || (!showArchiveFolder && !curricula.some(c => c.status === 'active'))) && <div className="min-h-[8rem] flex items-center justify-center text-center"><p className="text-sm font-semibold text-muted-foreground">{showArchiveFolder ? 'No Archived Curricula' : 'No Active Curricula'}</p></div>}
               </div>
-              {curricula.some(c => c.status === 'archived') && <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Archived Curricula</p>{curricula.filter(c => c.status === 'archived').map(c => <div key={c.id} className="rounded-2xl border border-border/60 p-3 flex items-center gap-2"><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="flex-1 min-w-0 text-left cursor-pointer"><p className="text-sm font-bold text-foreground truncate">{c.name} <span className="text-[9px] font-extrabold uppercase tracking-wider text-primary">{c.kind === 'preset' ? 'Preset' : 'Custom'}</span></p><p className="text-[10px] text-muted-foreground">Reopen this curriculum with all its saved data</p></button><button type="button" onClick={() => handleActivateCurriculum(c.id)} className="action-button action-button--edit shrink-0">Reopen</button></div>)}</div>}
-              <div className="border-t border-border/50 pt-4 space-y-2">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">Create Another Custom Routine</p>
-                <p className="text-[10px] text-muted-foreground text-left leading-relaxed">Create a separate routine for another year or phase. It starts empty and will not change your other routines.</p>
-                <div className="flex gap-2"><input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} placeholder="e.g. 2nd Year / Second Phase" className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary" /><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--edit shrink-0">Create Custom Routine</button></div>
-              </div>
-              </>
-              )}
+              <AnimatePresence>
+                {showCreateCurriculumForm && activeCurriculumReadyForNewRoutine && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[155] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }} onClick={() => { setShowCreateCurriculumForm(false); setCreationRestriction(false); }}>
+                    <motion.div initial={{ scale: 0.96, y: 18, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.96, y: 18, opacity: 0 }} transition={{ type: 'spring', damping: 28, stiffness: 300 }} className="modal-sheet-content !min-h-0 w-full max-w-sm rounded-3xl bg-card p-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
+                      <h3 className="text-base font-bold text-foreground">Create New Curriculum</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">Create a curriculum for your academic, clinical, and SGT planning.</p>
+                      <div className="mt-4 space-y-3">
+                        <input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} onFocus={() => window.setTimeout(() => setIdentityKeyboardInset(Math.max(0, Math.round(window.innerHeight - (window.visualViewport?.height ?? window.innerHeight) - (window.visualViewport?.offsetTop ?? 0)))), 80)} placeholder="Curriculum name" className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary" />
+
+                        <div className="grid grid-cols-2 gap-2 pt-1"><button type="button" onClick={() => setShowCreateCurriculumForm(false)} className="action-button action-button--cancel w-full min-h-10">Cancel</button><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--save w-full min-h-10">Save</button></div>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
+        {creationRestriction && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[155] flex items-end justify-center px-4 pb-[calc(0.5rem+env(safe-area-inset-bottom))]" onClick={() => setCreationRestriction(false)}>
+            <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content !min-h-0 bg-card backdrop-blur-2xl border border-amber-500/30 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-md shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-bold text-foreground">New Curriculum Restricted</h3>
+              <p className="text-xs leading-relaxed text-muted-foreground">You already have the maximum number of Active Curricula. Mark Complete, or Delete one before creating a New Curriculum.</p>
+              <button type="button" onClick={() => setCreationRestriction(false)} className="action-button action-button--cancel w-full min-h-10">Close</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {pendingCurriculumAction && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[145] flex items-end justify-center p-0" style={{ paddingBottom: `env(safe-area-inset-bottom)` }} onClick={() => { setPendingCurriculumAction(null); setCreationRestriction(false); }}>
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content !min-h-0 bg-card backdrop-blur-2xl border border-border/80 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-bold text-foreground">{pendingCurriculumAction.type === 'switch' ? 'Switch curriculum?' : pendingCurriculumAction.type === 'reopen' ? 'Reopen curriculum?' : pendingCurriculumAction.type === 'complete' ? 'Mark as Complete?' : 'Rename curriculum?'}</h3>
+              <p className="text-xs leading-relaxed text-muted-foreground">{pendingCurriculumAction.type === 'switch' ? 'This curriculum will become your active workspace.' : pendingCurriculumAction.type === 'reopen' ? 'This curriculum will return to Active Curricula.' : pendingCurriculumAction.type === 'complete' ? 'This curriculum will move to the Archive Folder.' : 'You can update the curriculum name next.'}</p>
+              {pendingCurriculumAction.type === 'rename' && <input value={editingCurriculumName || pendingCurriculumAction.curriculum.name} onChange={e => setEditingCurriculumName(e.target.value)} onFocus={() => window.setTimeout(() => setIdentityKeyboardInset(Math.max(0, Math.round(window.innerHeight - (window.visualViewport?.height ?? window.innerHeight) - (window.visualViewport?.offsetTop ?? 0)))), 80)} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary" />}
+              <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => { setPendingCurriculumAction(null); setCreationRestriction(false); }} className="action-button action-button--cancel w-full min-h-10">Cancel</button><button type="button" onClick={confirmCurriculumAction} className="action-button action-button--save w-full min-h-10">Confirm</button></div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {curriculumToDelete && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[150] flex items-end justify-center p-0" onClick={e => { if (e.target === e.currentTarget) setCurriculumToDelete(null); }}>
+            <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} className="modal-sheet-content !min-h-0 bg-card backdrop-blur-2xl border border-destructive/30 rounded-3xl p-4 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-bold text-foreground">Delete this curriculum?</h3>
+              <p className="text-xs leading-relaxed text-muted-foreground">All data associated with this curriculum will be permanently deleted and cannot be recovered.</p>
+              <div className="flex gap-2"><button type="button" onClick={() => setCurriculumToDelete(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteCurriculum} className="action-button action-button--danger flex-1">Delete Permanently</button></div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
         {isEditingName && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[130] flex items-end justify-center p-4" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }} onClick={() => setIsEditingName(false)}>
-            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[130] flex items-end justify-center p-4" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }} onClick={() => setIsEditingName(false)}>
+            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="modal-sheet-content !min-h-0 bg-card backdrop-blur-2xl border border-border/80 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
               <div>
                 <h3 className="text-base font-bold text-foreground">Edit Name</h3>
                 <p className="text-[11px] text-muted-foreground">Update your display name.</p>

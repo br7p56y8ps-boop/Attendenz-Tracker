@@ -277,13 +277,11 @@ export async function generatePDFReport(options: ExportReportOptions) {
     routineMode,
     targetPct,
     filterTitle,
-    items,
-    overallAttended,
-    overallTotal,
-    overallPct,
+    items: rawItems,
   } = options;
 
-  const { academic: academicItems, clinical: clinicalItems } = reportItemsByKind(items);
+  const exportItems = rawItems.filter(item => item.name.trim().replace(/\s+\((ward|sgt)\)$/i, '').toLowerCase() !== 'holiday');
+  const { academic: academicItems, clinical: clinicalItems } = reportItemsByKind(exportItems);
   const clinicalDisplayItems = clinicalItems.map(item => ({
     ...item,
     name: item.name.replace(/ \(Ward\)$/i, ''),
@@ -294,6 +292,9 @@ export async function generatePDFReport(options: ExportReportOptions) {
   const clinicalAttended = clinicalItems.reduce((sum, item) => sum + item.attended, 0);
   const clinicalTotal = clinicalItems.reduce((sum, item) => sum + item.total, 0);
   const clinicalPct = clinicalTotal > 0 ? (clinicalAttended / clinicalTotal) * 100 : 0;
+  const overallAttended = academicAttended + clinicalAttended;
+  const overallTotal = academicTotal + clinicalTotal;
+  const overallPct = overallTotal > 0 ? (overallAttended / overallTotal) * 100 : 0;
 
   let logoBase64 = '';
   let logoFormat: 'PNG' | 'JPEG' = 'PNG';
@@ -486,7 +487,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
       { label: 'Status / Remarks', width: contentWidth - 131 },
     ];
     const drawTableHeader = () => {
-      doc.setFillColor(...sectionAccent);
+      doc.setFillColor(sectionAccent[0], sectionAccent[1], sectionAccent[2]);
       doc.rect(margin, y, contentWidth, 10, 'F');
       let x = margin;
       doc.setTextColor(255, 255, 255);
@@ -571,7 +572,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
     name: 'Overall Attendance',
     attended: overallAttended,
     total: overallTotal,
-    plannedTotal: items.reduce((sum, item) => sum + item.plannedTotal, 0),
+    plannedTotal: exportItems.reduce((sum, item) => sum + item.plannedTotal, 0),
     pct: overallPct,
     neededForTarget: '',
   };
@@ -772,8 +773,6 @@ export function generateCSVReport(options: ExportReportOptions) {
     name: item.name.replace(/ \(Ward\)$/, '')
   }));
 
-  const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
-  const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
   const combinedAttended = overallAttended;
   const combinedTotal = overallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;

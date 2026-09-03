@@ -11,36 +11,6 @@ import { pctColor, cn } from '@/lib/utils';
 import { useLocation } from 'wouter';
 import { ClipboardList, GraduationCap, Stethoscope } from 'lucide-react';
 
-// ── SVG Circular Progress Component ──
-const CircularProgress = ({
-  percentage,
-  color,
-  size = 56,
-  strokeWidth = 5,
-}: {
-  percentage: number;
-  color: string;
-  size?: number;
-  strokeWidth?: number;
-}) => {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (Math.min(100, Math.max(0, percentage)) / 100) * circumference;
-  return (
-    <div className="relative flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="transform -rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} stroke="currentColor" strokeWidth={strokeWidth} className="text-muted/20" fill="transparent" />
-        <circle cx={size / 2} cy={size / 2} r={radius} stroke={color} strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" fill="transparent" className="transition-all duration-500 ease-out" />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span className="text-xs font-extrabold leading-none" style={{ color }}>
-          {percentage === undefined || isNaN(percentage) ? '--' : `${percentage.toFixed(0)}%`}
-        </span>
-      </div>
-    </div>
-  );
-};
-
 const SectionHeading = ({ icon, label }: { icon?: React.ReactNode; label: string }) => (
   <StickySectionLabel icon={icon} label={label} />
 );
@@ -108,7 +78,7 @@ const CategoryCard = ({
       className={cn(
         'border rounded-2xl shadow-sm transition-all overflow-hidden p-4 sm:p-5 space-y-3.5',
         cardBgColor,
-        isOpen ? 'hover:shadow-md' : 'hover:shadow-md'
+        isOpen ? 'border-border/90 ring-1 ring-border/40 shadow-md' : 'hover:shadow-md'
       )}
       initial={false}
       animate={{
@@ -119,7 +89,9 @@ const CategoryCard = ({
     >
       <button type="button" onClick={onToggle} className="w-full text-left transition-all active:scale-[0.99] cursor-pointer">
         <div className="flex items-center gap-4 min-w-0">
-          <CircularProgress percentage={summary.pct} color={overallColor} size={56} strokeWidth={5} />
+          <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
+            <span className="text-xs font-extrabold leading-none" style={{ color: overallColor }}>{summary.pct === undefined || isNaN(summary.pct) ? '--' : `${summary.pct.toFixed(0)}%`}</span>
+          </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg sm:text-xl font-bold text-foreground truncate">{title}</h2>
@@ -143,7 +115,7 @@ const CategoryCard = ({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="overflow-hidden bg-background/40 rounded-xl p-2 space-y-1.5"
+            className="overflow-hidden bg-background/40 rounded-xl border border-border/50 p-2 space-y-1.5"
           >
             {renderChildren()}
           </motion.div>
@@ -379,7 +351,7 @@ export default function Subjects() {
               onClick={() => setLocation('/add-new')}
               className="action-button action-button--edit"
             >
-              Go to Add New
+              Go to Manage Tab
             </button>
           </div>
         )}

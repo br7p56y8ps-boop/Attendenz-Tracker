@@ -3,7 +3,7 @@ import { HomeCard } from '@/components/HomeCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { useAttendance } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSessionId, getCustomSubjectSessionId } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
@@ -61,8 +61,8 @@ export default function Home() {
   const today = new Date();
   const todayStr = toDateString(today);
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
-  const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, getCurrentPresetWard } = useCustomData();
-  const { homeSelections } = useAttendance();
+  const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
+  const { homeSelections, finishedMap, subjects, wards } = useAttendance();
   const [, setLocation] = useLocation();
 
   /* ── Update notice ── */
@@ -71,7 +71,7 @@ export default function Home() {
     return APP_VERSION;
   });
 
-  const [pwaReady, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
+  const [, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
   const [serverSummary, setServerSummary] = useState<string>(() => localStorage.getItem('att_pwa_update_summary') || '');
   useEffect(() => {
@@ -417,6 +417,34 @@ export default function Home() {
   ]);
 
   const cardMode: 'today' | 'past' | 'future' = isTodaySelected ? 'today' : isPast ? 'past' : 'future';
+  const isCompletedPlannedEntry = (entry: DayEntry): boolean => {
+    if (entry.kind !== 'card' || !entry.card) return false;
+    const c = entry.card;
+    const id = c.isSGT && c.sgtId
+      ? getSGTKey(c.sgtId)
+      : (() => {
+          const resolved = getSubjectIdByName(c.isWard ? (c.subtitle || c.subject) : c.subject, c.isWard ? 'clinical' : 'academic');
+          return resolved ? (c.isWard ? getWardAttendanceKey(resolved) : getAcademicAttendanceKey(resolved)) : null;
+        })();
+    if (!id) return false;
+    const record = c.isWard ? wards[id] : subjects[id];
+    const conducted = (record?.attended || 0) + (record?.missed || 0);
+    const planned = c.isWard
+      ? subjectMode === 'custom'
+        ? (() => { const ward = customWards.find(w => w.name.toLowerCase() === (c.subtitle || c.subject).toLowerCase()); return ward ? getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods) : 0; })()
+        : getPresetWardTotalPlanned(c.subtitle || c.subject)
+      : c.isSGT && c.sgtId
+        ? (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects).find((item: any) => item.id === c.sgtId)?.plannedClasses || 0
+        : getSubjectPlannedTotal(c.subject);
+    return !!finishedMap[id] || (planned > 0 && conducted >= planned);
+  };
+  const visibleEntries = useMemo(() => {
+    if (!isTodaySelected) return { pending: dayEntries, completed: [] as DayEntry[] };
+    const pending: DayEntry[] = [];
+    const completed: DayEntry[] = [];
+    dayEntries.forEach(entry => (isCompletedPlannedEntry(entry) ? completed : pending).push(entry));
+    return { pending, completed };
+  }, [dayEntries, isTodaySelected, finishedMap, subjects, wards, subjectMode, customWards, customSubjects, userAddedSubjects]);
 
   const dateWheel = (
     <div className="pt-1 pb-1">
@@ -581,7 +609,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="space-y-4 pt-1">
-            {dayEntries.map(entry => {
+            {visibleEntries.pending.map(entry => {
               if (entry.kind === 'holiday') {
                 return (
                   <div key={entry.id} className="bg-card rounded-2xl p-5 border border-border">
@@ -611,6 +639,18 @@ export default function Home() {
                 />
               );
             })}
+            {visibleEntries.completed.length > 0 && (
+              <section className="space-y-3 pt-2">
+                <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">Completed Planned Class</h2>
+                <div className="space-y-4 opacity-75">
+                  {visibleEntries.completed.map(entry => {
+                    if (entry.kind === 'holiday') return null;
+                    const c = entry.card!;
+                    return <HomeCard key={entry.id} subject={c.subject} time={c.time} isWard={c.isWard} title={c.title} subtitle={c.subtitle} tag={c.tag} tagColor={c.tagColor} sessionId={c.sessionId} dateStr={selectedDateStr} mode={cardMode} isSGT={c.isSGT} sgtId={c.sgtId} />;
+                  })}
+                </div>
+              </section>
+            )}
           </div>
         )}
         </div>
@@ -637,8 +677,8 @@ export default function Home() {
         {/* ── Update notice modal ── */}
         <AnimatePresence>
           {updateInfoOpen && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] flex items-end justify-center p-4" onClick={() => setUpdateInfoOpen(false)}>
-              <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[120] flex items-end justify-center p-4" onClick={() => setUpdateInfoOpen(false)}>
+              <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold text-foreground">New Version Available <span className="text-emerald-400">(v{serverVersion})</span></h3>
                   <button type="button" onClick={() => setUpdateInfoOpen(false)} className="action-button action-button--close action-button--icon"><X className="w-3.5 h-3.5" /></button>

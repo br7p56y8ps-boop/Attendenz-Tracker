@@ -1,11 +1,13 @@
+import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
-import { APP_VERSION, RELEASE_TYPE, UPDATE_MODE, type ReleaseType, type UpdateMode } from '@/lib/appVersion';
+import { APP_VERSION, PWA_CACHE_NAME, RELEASE_TYPE, UPDATE_MODE, type ReleaseType, type UpdateMode } from '@/lib/appVersion';
 
 const base = import.meta.env.BASE_URL || '/';
 const BUILD_REVISION_KEY = 'att_pwa_build_revision';
 let silentBuildUpdateInFlight = false;
+let serviceWorkerRegistrationPromise: Promise<ServiceWorkerRegistration> | null = null;
 function isVersionNewer(candidate: string, current: string): boolean {
   const a = String(candidate).split('.').map(n => parseInt(n, 10) || 0);
   const b = String(current).split('.').map(n => parseInt(n, 10) || 0);
@@ -28,7 +30,7 @@ function clearUpdateState(): void {
 
 async function refreshCachedShell(): Promise<boolean> {
   try {
-    const cache = await caches.open('attendenz-shell-v1');
+    const cache = await caches.open(PWA_CACHE_NAME);
     const indexUrl = `${base}index.html`;
     const fresh = await fetch(`${indexUrl}?refresh=${Date.now()}`, { cache: 'no-store' });
     if (!fresh.ok) return false;
@@ -58,7 +60,42 @@ async function refreshCachedShell(): Promise<boolean> {
   }
 }
 
+async function activateApprovedServiceWorker(): Promise<void> {
+  const registration = await (serviceWorkerRegistrationPromise || navigator.serviceWorker.getRegistration(base));
+  if (!registration) return;
+  await registration.update().catch(() => {});
+  let waiting = registration.waiting;
+  if (!waiting && registration.installing) {
+    await new Promise<void>((resolve) => {
+      const worker = registration.installing;
+      if (!worker) return resolve();
+      const timeout = window.setTimeout(resolve, 10000);
+      const onStateChange = () => {
+        if (worker.state === 'installed' || worker.state === 'redundant') {
+          window.clearTimeout(timeout);
+          worker.removeEventListener('statechange', onStateChange);
+          resolve();
+        }
+      };
+      worker.addEventListener('statechange', onStateChange);
+    });
+    waiting = registration.waiting;
+  }
+  if (!waiting) return;
+  await new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, 5000);
+    const onControllerChange = () => {
+      window.clearTimeout(timeout);
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      resolve();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+    waiting.postMessage({ type: 'SKIP_WAITING' });
+  });
+}
+
 async function checkForSilentBuildUpdate(): Promise<void> {
+  if (UPDATE_MODE !== 'automatic') return;
   try {
     const res = await fetch(`${base}build-revision.json?ts=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return;
@@ -87,13 +124,23 @@ async function checkForSilentBuildUpdate(): Promise<void> {
 
 /* ── Manual version updates + silent same-version build refresh ── */
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register(`${base}sw.js`).catch(() => {});
-  });
-
-  const checkForUpdate = async () => {
+  const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
     try {
-      const res = await fetch(`${base}version.json?ts=${Date.now()}`, { cache: 'no-store' });
+      serviceWorkerRegistrationPromise ||= navigator.serviceWorker.register(`${base}sw.js`);
+      return await serviceWorkerRegistrationPromise;
+    } catch {
+      serviceWorkerRegistrationPromise = null;
+      return null;
+    }
+  };
+
+  let updateCheckInFlight: AbortController | null = null;
+  const checkForUpdate = async () => {
+    if (document.visibilityState === 'hidden' || updateCheckInFlight) return;
+    const controller = new AbortController();
+    updateCheckInFlight = controller;
+    try {
+      const res = await fetch(`${base}version.json?ts=${Date.now()}`, { cache: 'no-store', signal: controller.signal });
       if (!res.ok) return;
       const j = await res.json() as { version?: unknown; summary?: unknown; releaseType?: unknown; updateMode?: unknown };
       if (j && typeof j.version === 'string') {
@@ -103,6 +150,7 @@ if ('serviceWorker' in navigator) {
           if (updateMode === 'automatic') {
             const refreshed = await refreshCachedShell();
             if (refreshed) {
+              await activateApprovedServiceWorker();
               clearUpdateState();
               window.location.reload();
               return;
@@ -119,22 +167,29 @@ if ('serviceWorker' in navigator) {
           if (j.version === APP_VERSION) void checkForSilentBuildUpdate();
         }
       }
-    } catch { /* offline — ignore */ }
+    } catch { /* offline or hidden/aborted — ignore */ }
+    finally {
+      if (updateCheckInFlight === controller) updateCheckInFlight = null;
+    }
   };
 
   window.addEventListener('load', () => {
-    void checkForUpdate();
+    void registerServiceWorker().finally(() => { void checkForUpdate(); });
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) void checkForUpdate();
+    if (document.visibilityState === 'hidden') updateCheckInFlight?.abort();
+    else void checkForUpdate();
   });
-  window.setInterval(() => { void checkForUpdate(); }, 60000);
+  window.setInterval(() => {
+    if (document.visibilityState !== 'hidden') void checkForUpdate();
+  }, 60000);
 }
 
 /* Account's visible Update button calls this: updates the cached shell directly. */
 (window as any).attendenzApplyPwaUpdate = async (): Promise<boolean> => {
   const refreshed = await refreshCachedShell();
   if (!refreshed) return false;
+  await activateApprovedServiceWorker();
   clearUpdateState();
   window.location.reload();
   return true;

@@ -1,8 +1,16 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 
 export function Background({ scene }: { scene: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReducedMotion(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -11,6 +19,7 @@ export function Background({ scene }: { scene: number }) {
     if (!ctx) return;
 
     let animationFrameId: number;
+    let visible = document.visibilityState !== 'hidden';
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
 
@@ -36,8 +45,7 @@ export function Background({ scene }: { scene: number }) {
 
       for (let i = 0; i < particleCount; i++) {
         const p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
+        if (!reducedMotion && visible) { p.x += p.vx; p.y += p.vy; }
 
         if (p.x < 0) p.x = width;
         if (p.x > width) p.x = 0;
@@ -68,16 +76,22 @@ export function Background({ scene }: { scene: number }) {
         }
       }
 
-      animationFrameId = requestAnimationFrame(render);
+      if (!reducedMotion && visible) animationFrameId = requestAnimationFrame(render);
     };
-
+    const onVisibilityChange = () => {
+      visible = document.visibilityState !== 'hidden';
+      if (visible && !reducedMotion) { cancelAnimationFrame(animationFrameId); render(); }
+      else if (!visible) cancelAnimationFrame(animationFrameId);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     render();
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       cancelAnimationFrame(animationFrameId);
     };
-  }, []);
+  }, [reducedMotion]);
 
   return (
     <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-neutral-900">
@@ -88,11 +102,11 @@ export function Background({ scene }: { scene: number }) {
         style={{
           background: 'radial-gradient(circle, rgba(59, 130, 246, 0.35) 0%, rgba(147, 51, 234, 0.15) 50%, rgba(0,0,0,0) 70%)',
         }}
-        animate={{
+        animate={reducedMotion ? { scale: scene === 2 ? 0.85 : 1, opacity: scene === 2 ? 0.35 : 0.5 } : {
           scale: scene === 2 ? 0.85 : [1, 1.15, 1],
           opacity: scene === 2 ? 0.35 : [0.5, 0.75, 0.5],
         }}
-        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+        transition={reducedMotion ? { duration: 0 } : { duration: 6, repeat: Infinity, ease: 'easeInOut' }}
       />
 
       <motion.div
@@ -100,11 +114,11 @@ export function Background({ scene }: { scene: number }) {
         style={{
           background: 'radial-gradient(circle, rgba(16, 185, 129, 0.25) 0%, rgba(59, 130, 246, 0.15) 50%, rgba(0,0,0,0) 70%)',
         }}
-        animate={{
+        animate={reducedMotion ? { scale: 1, opacity: 0.3 } : {
           scale: [1, 1.2, 1],
           opacity: [0.3, 0.6, 0.3],
         }}
-        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+        transition={reducedMotion ? { duration: 0 } : { duration: 8, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
       />
     </div>
   );

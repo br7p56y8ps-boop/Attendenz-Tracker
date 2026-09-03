@@ -4,7 +4,8 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, pctColor, getSubjectColor } from '@/lib/utils';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
-import { ChevronRight, Info, Plus, Minus, X } from 'lucide-react';
+import { CountStepper } from '@/components/CountStepper';
+import { Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SubjectCardProps {
@@ -107,11 +108,6 @@ export const SubjectCard = ({
     return true;
   };
 
-  const handleTap = (e: React.MouseEvent, field: 'attended' | 'missed', change: number) => {
-    e.stopPropagation();
-    handleStep(field, change);
-  };
-
   const attendedNum = data.attended;
   const missedNum = data.missed;
   const totalConducted = attendedNum + missedNum;
@@ -142,62 +138,41 @@ export const SubjectCard = ({
   ) : null;
 
   const headerContent = (
-    <div className="flex justify-between items-center gap-3">
-      <div className="min-w-0 flex-1">
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0 flex-1 pr-2">
         <div className="flex items-center gap-2 flex-wrap">
            <h4 className="font-semibold text-sm sm:text-base leading-tight truncate" style={{ color: subjectColor }}>
             {displayName}
           </h4>
           {ongoingBadge}
         </div>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-1 font-medium">
-          <span>Planned: <strong className="text-foreground font-semibold">{totalPlanned}</strong></span>
-          <span className="opacity-40">·</span>
-          <span>Attended: <strong className="text-foreground font-semibold">{attendedNum}</strong></span>
-          <span className="opacity-40">·</span>
-          <span>Missed: <strong className="text-foreground font-semibold">{missedNum}</strong></span>
-          <span className="opacity-40">·</span>
-          <span>Remaining: <strong className="text-foreground font-semibold">{remaining}</strong></span>
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px] sm:text-xs text-muted-foreground font-medium" aria-label="Subject attendance summary">
+          <span className="min-w-0 truncate">Planned: <strong className="text-foreground font-semibold">{totalPlanned}</strong></span>
+          <span className="min-w-0 truncate">Conducted: <strong className="text-foreground font-semibold">{totalConducted}</strong></span>
+          <span className="min-w-0 truncate">Attended: <strong className="text-foreground font-semibold">{attendedNum}</strong></span>
+          <span className="min-w-0 truncate">Remaining: <strong className="text-foreground font-semibold">{remaining}</strong></span>
         </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <div className="text-base sm:text-lg font-extrabold tracking-tight" style={{ color: percentageColor }}>
+      <div className="flex shrink-0 items-center">
+        <div className="flex h-14 w-20 items-center justify-center rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
+          <div className="text-base sm:text-lg font-extrabold tracking-tight" style={{ color: percentageColor }}>
           {`${percentage.toFixed(0)}%`}
-        </div>
-        <div className="text-muted-foreground hover:text-foreground p-0.5">
-          <ChevronRight className="w-4 h-4" />
+          </div>
         </div>
       </div>
     </div>
   );
 
   const Stepper = ({ field, value }: { field: 'attended' | 'missed', value: number }) => (
-    <div className="flex items-center justify-between bg-muted/30 border border-border/50 rounded-xl p-1.5 shadow-sm">
-      <span className="text-[11px] font-semibold text-muted-foreground pl-2 uppercase tracking-wide">
-        {field}
-      </span>
-      <div className="flex items-center gap-2 pr-0.5">
-        <button
-          type="button"
-          onClick={(e) => handleTap(e, field, -1)}
-          disabled={value <= 0}
-          className="w-8 h-8 rounded-lg bg-background border border-border flex items-center justify-center text-foreground hover:bg-muted active:scale-95 disabled:opacity-50 disabled:active:scale-100 transition-all select-none cursor-pointer"
-        >
-          <Minus className="w-4 h-4" />
-        </button>
-        <span className="w-6 text-center font-bold text-sm select-none">
-          {value}
-        </span>
-        <button
-          type="button"
-          onClick={(e) => handleTap(e, field, 1)}
-          disabled={isMaxReached}
-          className="w-8 h-8 rounded-lg bg-background border border-border flex items-center justify-center text-foreground hover:bg-muted active:scale-95 disabled:opacity-50 disabled:active:scale-100 transition-all select-none cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-      </div>
-    </div>
+    <CountStepper
+      label={field}
+      value={value}
+      onDecrement={() => { handleStep(field, -1); }}
+      onIncrement={() => { handleStep(field, 1); }}
+      decrementDisabled={value <= 0}
+      incrementDisabled={isMaxReached}
+      ariaLabel={field}
+    />
   );
 
   const modalDetailsContent = (
@@ -359,7 +334,7 @@ export const SubjectCard = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end justify-center p-4 overflow-hidden"
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end justify-center p-4 overflow-hidden"
               onClick={closeModal}
             >
               <motion.div
@@ -370,7 +345,7 @@ export const SubjectCard = ({
                 role="dialog"
                 aria-modal="true"
                 aria-label={`${displayName} details`}
-                className="modal-sheet-content bg-card/90 backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
+                className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">
