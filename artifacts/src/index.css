@@ -374,10 +374,19 @@
 @layer base {
   * {
     @apply border-border;
+    -webkit-user-select: none;
+    user-select: none;
   }
   body {
     @apply font-sans antialiased bg-background text-foreground;
     -webkit-tap-highlight-color: transparent;
+  }
+  input,
+  textarea,
+  select,
+  [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
   }
 }
 
@@ -398,6 +407,10 @@
   background-image: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+.fixed.inset-0:has(> .modal-sheet-content),
+.fixed.inset-0:has(> [role="dialog"]) {
+  isolation: isolate;
 }
 [class~="rounded-3xl"] { border-radius: 1rem !important; }
 [class~="rounded-2xl"] { border-radius: 0.875rem !important; }

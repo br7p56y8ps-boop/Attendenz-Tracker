@@ -645,9 +645,9 @@ export default function Timetable() {
                 })}
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
-                <button type="button" className="action-button action-button--neutral action-button--compact" onPointerDown={e => e.stopPropagation()} onClick={() => moveWheel(-1)} aria-label="Previous rotation">Previous</button>
-                <p className="text-[9px] text-muted-foreground/60 text-center italic">Drag to browse · use arrow keys or Home/End</p>
-                <button type="button" className="action-button action-button--neutral action-button--compact" onPointerDown={e => e.stopPropagation()} onClick={() => moveWheel(1)} aria-label="Next rotation">Next</button>
+                <button type="button" className="hidden sm:inline-flex action-button action-button--neutral action-button--compact" onPointerDown={e => e.stopPropagation()} onClick={() => moveWheel(-1)} aria-label="Previous rotation">Previous</button>
+                <p className="text-[9px] text-muted-foreground/60 text-center italic"><span className="sm:hidden">Swipe to browse</span><span className="hidden sm:inline">Use Previous/Next, arrow keys, or swipe to browse</span></p>
+                <button type="button" className="hidden sm:inline-flex action-button action-button--neutral action-button--compact" onPointerDown={e => e.stopPropagation()} onClick={() => moveWheel(1)} aria-label="Next rotation">Next</button>
               </div>
             </div>
           )}

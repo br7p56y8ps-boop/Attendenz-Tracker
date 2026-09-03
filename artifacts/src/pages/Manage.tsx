@@ -265,7 +265,7 @@ function ClinicalGroupCard({
     : 'No dates';
   const sameRange = rotationRange === sgtRange;
   return (
-    <div className="overflow-hidden border border-border/60 bg-background/30">
+    <div className="overflow-hidden rounded-xl border border-border/60 bg-background/30">
       <div className="flex min-h-9 items-center justify-center bg-card px-3 py-2 text-center">
         <p className="truncate text-sm font-extrabold" style={{ color: getSubjectColor(name) }}>{name}</p>
       </div>
@@ -279,9 +279,9 @@ function ClinicalGroupCard({
           {sgtRange}<span className="ml-1.5 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-purple-500">SGT</span>
         </div>
       )}
-      <div className="space-y-2 p-3">
+      <div className="space-y-0 p-3">
         {hasRotation ? (
-          <div className="flex min-h-14 items-center justify-between gap-2 rounded-xl border border-border/40 bg-background/50 p-2.5">
+          <div className="flex min-h-14 items-center justify-between gap-2 rounded-t-xl border border-border/40 bg-background/50 p-2.5">
             <p className="min-w-0 flex-1 truncate text-xs font-bold text-foreground">Clinical Rotation</p>
             <div className="flex shrink-0 items-center gap-1"><button type="button" onClick={onEditRotation} className="action-button action-button--edit shrink-0">Edit</button>{canDeleteRotation && <button type="button" onClick={onDeleteRotation} className="action-button action-button--danger shrink-0">Delete</button>}</div>
           </div>
@@ -289,9 +289,9 @@ function ClinicalGroupCard({
           <button type="button" onClick={onAddRotation} className="w-full py-2 text-xs font-medium text-primary hover:underline flex items-center justify-center gap-1"><Plus className="w-3 h-3" /> Add Rotation</button>
         )}
         {hasSGT ? (
-          <div className="flex min-h-14 items-center justify-between gap-2 rounded-xl border border-border/40 bg-background/50 p-2.5">
+          <div className="flex min-h-14 items-center justify-between gap-2 rounded-b-xl border border-border/40 bg-background/50 p-2.5">
             <p className="min-w-0 flex-1 truncate text-xs font-bold text-foreground">Small Group Teaching</p>
-            <div className="flex shrink-0 items-center gap-1"><button type="button" onClick={onEditSGT} className="action-button action-button--edit shrink-0">Edit</button><button type="button" onClick={onDeleteSGT} className="action-button action-button--danger shrink-0">Delete</button></div>
+            <div className="flex shrink-0 items-center gap-1"><button type="button" onClick={onDeleteSGT} className="action-button action-button--danger shrink-0">Delete</button><button type="button" onClick={onEditSGT} className="action-button action-button--edit shrink-0">Edit</button></div>
           </div>
         ) : (
           <button type="button" onClick={onAddSGT} className="w-full py-2 text-xs font-medium text-purple-500 hover:underline flex items-center justify-center gap-1"><Plus className="w-3 h-3" /> Add SGT</button>

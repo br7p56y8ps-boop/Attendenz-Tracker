@@ -16,6 +16,7 @@ const NAV_ITEMS = [
 export const Layout = ({ children, headerRight, headerBottom, mainClassName, contentClassName, bottomNavClassName }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode; mainClassName?: string; contentClassName?: string; bottomNavClassName?: string }) => {
   const [location, setLocation] = useLocation();
   const headerRef = useRef<HTMLElement>(null);
+  const navTouchStartX = useRef<number | null>(null);
   const [headerHeight, setHeaderHeight] = useState(72);
 
   useLayoutEffect(() => {
@@ -29,6 +30,11 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
   }, []);
 
   const currentItem = NAV_ITEMS.find((item) => item.path === location) || NAV_ITEMS[0];
+  const currentNavIndex = NAV_ITEMS.findIndex((item) => item.path === location);
+  const changeBySwipe = (direction: number) => {
+    const nextIndex = Math.max(0, Math.min(NAV_ITEMS.length - 1, currentNavIndex + direction));
+    if (nextIndex !== currentNavIndex) setLocation(NAV_ITEMS[nextIndex].path);
+  };
 
   return (
     <div
@@ -63,14 +69,15 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
           'transition-all duration-300', bottomNavClassName
         )}
       >
-        <nav aria-label="Primary navigation" className="flex justify-around items-center h-14">
+        <nav aria-label="Primary navigation" className="flex justify-around items-center h-14" onTouchStart={e => { navTouchStartX.current = e.changedTouches[0]?.clientX ?? null; }} onTouchEnd={e => { const start = navTouchStartX.current; navTouchStartX.current = null; const end = e.changedTouches[0]?.clientX; if (start !== null && end !== undefined && Math.abs(end - start) >= 48) changeBySwipe(end < start ? 1 : -1); }}>
           {NAV_ITEMS.map(({ path, label, Icon }) => {
             const active = location === path;
             return (
               <button type="button" key={path} onClick={() => setLocation(path)} className={cn(
                 'flex flex-col items-center justify-center flex-1 h-full space-y-1 transition-all duration-300 relative rounded-2xl active:scale-90',
-                active ? 'text-primary filter drop-shadow-[0_0_8px_rgba(10,132,255,0.4)]' : 'text-muted-foreground/60 hover:text-foreground'
+                active ? 'text-primary bg-primary/10 ring-1 ring-primary/25 filter drop-shadow-[0_0_8px_rgba(10,132,255,0.4)]' : 'text-muted-foreground/60 hover:text-foreground'
               )}>
+                {active && <motion.span layoutId="selected-tab-indicator" className="absolute inset-0 -z-10 rounded-2xl bg-primary/10" transition={{ type: 'spring', stiffness: 420, damping: 32 }} />}
                 <Icon className={cn('w-6 h-6 transition-transform duration-300', active ? 'scale-110' : 'scale-100')} strokeWidth={active ? 2.5 : 2} />
                 <span className={cn('text-[10px] font-medium tracking-wide transition-all duration-300', active ? 'font-bold text-primary' : 'text-muted-foreground/60')}>{label}</span>
               </button>

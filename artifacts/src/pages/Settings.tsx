@@ -1791,7 +1791,7 @@ export default function Settings() {
                     </div>
                   );
                 })}
-                {((showArchiveFolder && !curricula.some(c => c.status === 'archived')) || (!showArchiveFolder && !curricula.some(c => c.status === 'active'))) && <div className="min-h-[18rem] flex items-center justify-center text-center"><p className="text-sm font-semibold text-muted-foreground">{showArchiveFolder ? 'No Archived Curricula' : 'No Active Curricula'}</p></div>}
+                {((showArchiveFolder && !curricula.some(c => c.status === 'archived')) || (!showArchiveFolder && !curricula.some(c => c.status === 'active'))) && <div className="min-h-[8rem] flex items-center justify-center text-center"><p className="text-sm font-semibold text-muted-foreground">{showArchiveFolder ? 'No Archived Curricula' : 'No Active Curricula'}</p></div>}
               </div>
               <AnimatePresence>
                 {showCreateCurriculumForm && activeCurriculumReadyForNewRoutine && (
