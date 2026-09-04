@@ -1,16 +1,13 @@
+import releaseConfig from '../../release.config.json';
+
 export type ReleaseType = 'major' | 'minor';
 export type UpdateMode = 'manual' | 'automatic';
 
-export const APP_VERSION = "1.6.5";
+export const APP_VERSION = releaseConfig.version;
 export const PWA_CACHE_NAME = `attendenz-shell-v${APP_VERSION}-r2`;
 export const LATEST_VERSION = APP_VERSION;
-
-// Developer release reference: RELEASE_TYPE accepts only 'major' or 'minor'.
-// UPDATE_MODE accepts only 'manual' or 'automatic'. Set both here before publication;
-// keep artifacts/public/version.json on the same version, release type, and update mode.
-// These controls are developer-only and are never presented as user settings.
-export const RELEASE_TYPE: ReleaseType = 'minor';
-export const UPDATE_MODE: UpdateMode = 'automatic';
+export const RELEASE_TYPE: ReleaseType = releaseConfig.releaseType as ReleaseType;
+export const UPDATE_MODE: UpdateMode = releaseConfig.updateMode as UpdateMode;
 export interface WhatsNewItem {
   title: string;
   summary: string;
@@ -54,5 +51,5 @@ export const FEATURES_UPDATED = [
 ];
 export const RELEASE_NOTES = {
   version: APP_VERSION,
-  summary: "Stable v1.6.5: update reliability, notification improvements, and UI refinements.",
+  summary: "Stable v1.6.6: update reliability, notification improvements, and UI refinements.",
 };

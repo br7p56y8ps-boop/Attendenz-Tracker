@@ -300,6 +300,39 @@ function subjectRowSessionId(subject: CustomSubject | UserAddedSubject, row: { d
   return isSGT ? getCustomSubjectSessionId(subject.id, row.day, row.time, true, subject.id) : getCustomSubjectSessionId(subject.id, row.day, row.time);
 }
 
+function hasCustomClinicalOrAcademicClass(
+  localDate: string,
+  day: string,
+  customSubjects: CustomSubject[],
+  customWards: CustomWard[],
+): boolean {
+  const hasClinicalOrAcademicClass = customSubjects.some(subject => {
+    if (subject.subjectType === 'allied-parent') return false;
+    if (!isWithinDates(localDate, subject.startDate, subject.endDate, subject.vacationPeriods)) return false;
+    return rowsForSubject(subject).some(row => row.day === day && Boolean(parseTime(row.time)));
+  });
+  if (hasClinicalOrAcademicClass) return true;
+
+  return customWards.some(ward =>
+    isWithinDates(localDate, ward.startDate, ward.endDate, ward.vacationPeriods)
+    && Boolean(parseTime(ward.morningTime || '') || parseTime(ward.eveningTime || ''))
+  );
+}
+
+function isRoutineHoliday(
+  subjectMode: ReturnType<typeof useCustomData>['subjectMode'],
+  date: Date,
+  localDate: string,
+  day: string,
+  customSubjects: CustomSubject[],
+  customWards: CustomWard[],
+): boolean {
+  // Friday is a holiday only for the built-in 5th Year / Final Phase routine.
+  if (subjectMode === 'preloaded') return date.getDay() === 5;
+  // Other routines have a holiday when no Clinical or Academic class is scheduled.
+  return !hasCustomClinicalOrAcademicClass(localDate, day, customSubjects, customWards);
+}
+
 function buildOccurrences(input: {
   subjectMode: ReturnType<typeof useCustomData>['subjectMode'];
   customSubjects: CustomSubject[];
@@ -336,6 +369,7 @@ function buildOccurrences(input: {
     date.setDate(date.getDate() + offset);
     const localDate = localDateString(date);
     const day = dayAbbreviation(date);
+    if (isRoutineHoliday(input.subjectMode, date, localDate, day, input.customSubjects, input.customWards)) continue;
 
     if (input.subjectMode === 'custom') {
       for (const subject of input.customSubjects) {

@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'push-service/**'
-      - 'artifacts/public/version.json'
+      - 'artifacts/release.config.json'
       - '.github/workflows/deploy-push-service.yml'
   workflow_dispatch:
 
@@ -37,11 +37,11 @@ jobs:
         working-directory: push-service
         run: npm install --no-audit --no-fund
 
-      - name: Read release version
+      - name: Read release configuration
         id: release
         shell: bash
         run: |
-          version=$(node -e "const fs=require('fs'); const v=JSON.parse(fs.readFileSync('artifacts/public/version.json','utf8')).version; if(!/^\\d+\\.\\d+\\.\\d+$/.test(v)) process.exit(1); process.stdout.write(v)")
+          version=$(node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('artifacts/release.config.json','utf8')); if(!/^\\d+\\.\\d+\\.\\d+$/.test(c.version)) process.exit(1); process.stdout.write(c.version)")
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Deploying release $version"
 

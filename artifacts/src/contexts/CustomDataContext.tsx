@@ -887,8 +887,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     vacationPeriods?: Array<{ start: string; end: string }>,
     includePresetHolidays = subjectMode === 'preloaded',
   ): boolean => {
-    if (d.getDay() === 5) return true;
-
+    if (includePresetHolidays && d.getDay() === 5) return true;
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
