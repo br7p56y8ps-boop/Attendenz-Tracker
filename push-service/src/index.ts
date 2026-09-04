@@ -619,8 +619,8 @@ async function runScheduled(env: Env, scheduledAt: number): Promise<void> {
   ).bind(new Date(scheduledAt).toISOString()).all<DeviceRow>();
   for (const device of devices.results || []) {
     try {
-      const releaseVersion = env.RELEASE_VERSION || '1.6.6';
-      if (device.update_available && device.app_version !== releaseVersion) {
+      const releaseVersion = env.RELEASE_VERSION;
+      if (device.update_available && releaseVersion && device.app_version !== releaseVersion) {
         await deliverIfNew(env, device, `${device.device_id}:update-available:${releaseVersion}`, 'Update Available', `A new version ${releaseVersion} is ready. Open the app to review and update.`, DEFAULT_ALLOWED_ORIGIN);
       }
       await processDevice(env, device, scheduledAt);

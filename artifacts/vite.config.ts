@@ -5,12 +5,45 @@ import type { Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
+type ReleaseConfig = {
+  version: string;
+  releaseType: 'major' | 'minor';
+  updateMode: 'manual' | 'automatic';
+  summary: string;
+};
+
 const port = Number(process.env.PORT ?? 3000);
 
 if (Number.isNaN(port) || port <= 0) {
+  throw new Error('PORT must be a positive number.');
 }
 
-const basePath = process.env.BASE_PATH ?? "/";
+const basePath = process.env.BASE_PATH ?? '/';
+const releaseConfigPath = path.resolve(import.meta.dirname, 'release.config.json');
+const serviceWorkerTemplatePath = path.resolve(import.meta.dirname, 'sw.template.js');
+
+function readReleaseConfig(): ReleaseConfig {
+  let config: Partial<ReleaseConfig>;
+  try {
+    config = JSON.parse(fs.readFileSync(releaseConfigPath, 'utf8')) as Partial<ReleaseConfig>;
+  } catch (cause) {
+    throw new Error(`Unable to read ${releaseConfigPath}: ${cause instanceof Error ? cause.message : 'invalid JSON'}`);
+  }
+
+  if (!config.version || !/^\d+\.\d+\.\d+$/.test(config.version)) {
+    throw new Error(`Release version must use three numeric parts, for example 1.6.6; received ${config.version || 'missing'}.`);
+  }
+  if (config.releaseType !== 'major' && config.releaseType !== 'minor') {
+    throw new Error(`Release type must be major or minor; received ${config.releaseType || 'missing'}.`);
+  }
+  if (config.updateMode !== 'manual' && config.updateMode !== 'automatic') {
+    throw new Error(`Update mode must be manual or automatic; received ${config.updateMode || 'missing'}.`);
+  }
+  if (!config.summary || !config.summary.trim()) {
+    throw new Error('Release summary must not be empty.');
+  }
+  return config as ReleaseConfig;
+}
 
 function silentBuildRevision(): Plugin {
   const revision = process.env.ATTENDENZ_BUILD_REVISION || process.env.CF_PAGES_COMMIT_SHA || process.env.GITHUB_SHA || `local-${Date.now()}`;
@@ -26,17 +59,32 @@ function silentBuildRevision(): Plugin {
   };
 }
 
-function validateReleaseMetadata(): Plugin {
+function generateReleaseArtifacts(): Plugin {
   return {
-    name: 'attendenz-validate-release-metadata',
+    name: 'attendenz-generate-release-artifacts',
     buildStart() {
-      const source = fs.readFileSync(path.resolve(import.meta.dirname, 'src/lib/appVersion.ts'), 'utf8');
-      const appVersion = source.match(/APP_VERSION\s*=\s*["']([^"']+)["']/)?.[1];
-      const metadata = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, 'public/version.json'), 'utf8')) as { version?: string };
-      const worker = fs.readFileSync(path.resolve(import.meta.dirname, 'public/sw.js'), 'utf8');
-      if (!appVersion || metadata.version !== appVersion || !worker.includes(`VERSION = '${appVersion}'`)) {
-        this.error(`Release metadata mismatch: app=${appVersion || 'missing'}, version.json=${metadata.version || 'missing'}, service worker version marker missing.`);
+      readReleaseConfig();
+      if (!fs.existsSync(serviceWorkerTemplatePath)) {
+        this.error(`Missing service-worker template: ${serviceWorkerTemplatePath}`);
       }
+    },
+    generateBundle() {
+      const release = readReleaseConfig();
+      const template = fs.readFileSync(serviceWorkerTemplatePath, 'utf8');
+      const serviceWorker = template.replaceAll('__ATTENDENZ_VERSION__', release.version);
+      if (serviceWorker === template) {
+        this.error('Service-worker template is missing the __ATTENDENZ_VERSION__ marker.');
+      }
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: `${JSON.stringify(release, null, 2)}\n`,
+      });
+      this.emitFile({
+        type: 'asset',
+        fileName: 'sw.js',
+        source: serviceWorker,
+      });
     },
   };
 }
@@ -47,8 +95,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     silentBuildRevision(),
-    validateReleaseMetadata(),
-
+    generateReleaseArtifacts(),
   ],
   resolve: {
     alias: {
