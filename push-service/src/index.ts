@@ -604,7 +604,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
     }
   }
 
-  if (!nightlyWindow && device.pre_class_need_attention) {
+  if (device.pre_class_need_attention) {
     const due = occurrences.filter(item => isBeforeClassDue(currentMinute, item.startMinute, device.lead_minutes));
     const dueMust = due.filter(item => item.attentionLevel === 'mustAttend');
     const dueNeed = device.need_attention_subjects ? due.filter(item => item.attentionLevel === 'needAttention') : [];
