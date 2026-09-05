@@ -22,6 +22,7 @@ export const WHATS_NEW_UPGRADES: WhatsNewItem[] = [
   { title: "Improved Notifications", summary: "More specific categories (Must Attend, Need Attention, Safe to Miss), correct subject-type labels, and accurate final planned class detection.", details: "" },
   { title: "Enhanced Export Controls", summary: "Export PDF, Excel, or CSV with subject, custom-date, or semester scope from Settings.", details: "" },
   { title: "Reliable PWA Updates", summary: "Service worker and version metadata stay in sync.", details: "" },
+  { title: "v1.6.7 Recovery Safeguards", summary: "Reliable nightly reminders, durable pending-restore markers, replacement restores, and safer manual update activation.", details: "" },
   { title: "Start Fresh & Delete All Data", summary: "Completely wipe user data and return to the Welcome screen.", details: "" },
 ];
 export const WHATS_NEW_FIXES: WhatsNewItem[] = [
@@ -51,5 +52,5 @@ export const FEATURES_UPDATED = [
 ];
 export const RELEASE_NOTES = {
   version: APP_VERSION,
-  summary: "Stable v1.6.6: update reliability, notification improvements, and UI refinements.",
+  summary: "Recovery v1.6.7: reliable nightly reminders and data recovery safeguards.",
 };
