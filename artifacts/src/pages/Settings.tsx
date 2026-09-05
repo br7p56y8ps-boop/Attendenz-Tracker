@@ -449,12 +449,12 @@ export default function Settings() {
     }
 
     if (withBackup) {
-      await new Promise(r => setTimeout(r, 5500));
+      await new Promise(r => setTimeout(r, 5000));
     }
 
     setUpdatePhase('updating');
 
-    const MIN_UPDATE_DELAY = 6500;
+    const MIN_UPDATE_DELAY = 5000;
     const start = Date.now();
 
     let applied = false;

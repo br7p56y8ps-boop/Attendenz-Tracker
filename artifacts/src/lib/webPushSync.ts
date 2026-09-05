@@ -72,9 +72,42 @@ function setReminderSyncStatus(status: ReminderSyncStatus): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(REMINDER_SYNC_STATUS_CHANGED_EVENT));
 }
 
+function maybeShowMissedNightlyReminder(payload: ReminderSyncPayload, occurrences: ReminderOccurrence[], previousSync: ReminderSyncStatus): void {
+  if (typeof window === 'undefined') return;
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: payload.timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+  const get = (type: string) => parts.find(part => part.type === type)?.value || '0';
+  const localDate = `${get('year')}-${get('month')}-${get('day')}`;
+  const currentMinute = Number(get('hour')) * 60 + Number(get('minute'));
+  const [hour, minute] = payload.preferences.nightlyReminderTime.split(':').map(Number);
+  const dueMinute = hour * 60 + minute;
+  const elapsed = (currentMinute - dueMinute + 1440) % 1440;
+  if (elapsed >= 180) return;
+  const reminderDate = currentMinute >= dueMinute ? localDate : (() => {
+    const previous = new Date(`${localDate}T00:00:00Z`);
+    previous.setUTCDate(previous.getUTCDate() - 1);
+    return previous.toISOString().slice(0, 10);
+  })();
+  const dueKey = `att_nightly_catchup_shown_${reminderDate}_${payload.preferences.nightlyReminderTime}`;
+  if (localStorage.getItem(dueKey) === 'true') return;
+  const syncedAt = previousSync.state === 'synced' ? Date.parse(previousSync.at) : NaN;
+  const dueAt = new Date(`${reminderDate}T00:00:00`).getTime() + dueMinute * 60_000;
+  if (Number.isFinite(syncedAt) && syncedAt >= dueAt) return;
+  const mustAttend = occurrences.filter(item => item.attentionLevel === 'mustAttend');
+  const needAttention = occurrences.filter(item => item.attentionLevel === 'needAttention');
+  const summary = mustAttend.length > 0
+    ? `Missed nightly reminder: ${mustAttend.length} class${mustAttend.length === 1 ? '' : 'es'} need attendance protection.`
+    : needAttention.length > 0
+      ? `Missed nightly reminder: ${needAttention.length} subject${needAttention.length === 1 ? '' : 's'} need attention.`
+      : 'A nightly reminder was missed while this device was unavailable.';
+  localStorage.setItem(dueKey, 'true');
+  void import('sonner').then(({ toast }) => toast.info(summary));
+}
+
 type ReminderCategory = 'academic' | 'clinical' | 'sgt' | 'ward';
 
 export type ReminderAttentionLevel = 'mustAttend' | 'needAttention' | 'safeToMiss' | 'onTrack' | 'neutral';
+export type ReminderAttendanceStatus = 'unmarked' | 'attended' | 'missed' | 'off' | 'completed';
 
 type ReminderOccurrence = {
   id: string;
@@ -86,6 +119,7 @@ type ReminderOccurrence = {
   needsAttention: boolean;
   attentionLevel: ReminderAttentionLevel;
   attendanceMarked: boolean;
+  status: ReminderAttendanceStatus;
   isFinalForSubject: boolean;
 };
 
@@ -278,16 +312,38 @@ function attendanceKeyForName(name: string, subjectRegistry: ReturnType<typeof u
   return reference ? subjectAttendanceKey(reference) : name;
 }
 
-function selectionIsMarked(selections: Record<string, string>, localDate: string, attendanceKey: string, sessionId?: string, label?: string): boolean {
+function selectionValue(selections: Record<string, string>, localDate: string, attendanceKey: string, sessionId?: string, label?: string): string | undefined {
   const normalizedSession = sessionId ? String(sessionId).toLowerCase() : '';
   const tokens = [attendanceKey, label].filter(Boolean).map(token => String(token).toLowerCase());
-  return Object.entries(selections).some(([key, value]) => {
-    if ((value !== 'attended' && value !== 'missed') || key.slice(0, 10) !== localDate) return false;
+  for (const [key, value] of Object.entries(selections)) {
+    if (!['attended', 'missed', 'off'].includes(value) || key.slice(0, 10) !== localDate) continue;
     const rest = key.slice(11).toLowerCase();
-    if (normalizedSession && (rest === normalizedSession || rest.endsWith(`-${normalizedSession}`) || rest.endsWith(`_${normalizedSession}`))) return true;
-    if (normalizedSession) return false;
-    return tokens.some(token => rest === token || rest.startsWith(`${token}-`) || rest.startsWith(`${token}_`));
-  });
+    if (normalizedSession && (rest === normalizedSession || rest.endsWith(`-${normalizedSession}`) || rest.endsWith(`_${normalizedSession}`))) return value;
+    if (normalizedSession) continue;
+    if (tokens.some(token => rest === token || rest.startsWith(`${token}-`) || rest.startsWith(`${token}_`))) return value;
+  }
+  return undefined;
+}
+
+function selectionIsMarked(selections: Record<string, string>, localDate: string, attendanceKey: string, sessionId?: string, label?: string): boolean {
+  return selectionValue(selections, localDate, attendanceKey, sessionId, label) === 'attended' || selectionValue(selections, localDate, attendanceKey, sessionId, label) === 'missed';
+}
+
+function occurrenceStatus(
+  selections: Record<string, string>,
+  localDate: string,
+  attendanceKey: string,
+  sessionId: string | undefined,
+  label: string | undefined,
+  attendance: AttendanceData | undefined,
+  finished: boolean,
+  planned: number,
+): ReminderAttendanceStatus {
+  const selected = selectionValue(selections, localDate, attendanceKey, sessionId, label);
+  if (selected === 'off') return 'off';
+  if (selected === 'attended' || selected === 'missed') return selected;
+  const conducted = (attendance?.attended || 0) + (attendance?.missed || 0);
+  return finished || (planned > 0 && conducted >= planned) ? 'completed' : 'unmarked';
 }
 
 function subjectRowSessionId(subject: CustomSubject | UserAddedSubject, row: { day: string; time: string }): string {
@@ -391,6 +447,7 @@ function buildOccurrences(input: {
             startMinute: parsed.startMinute,
             endMinute: parsed.endMinute,
             attendanceMarked: selectionIsMarked(input.homeSelections, localDate, registryItem ? subjectAttendanceKey(registryItem) : attendanceKeyForName(subject.name, input.subjectRegistry), subjectRowSessionId(subject, row), subject.name),
+            status: occurrenceStatus(input.homeSelections, localDate, registryItem ? subjectAttendanceKey(registryItem) : attendanceKeyForName(subject.name, input.subjectRegistry), subjectRowSessionId(subject, row), subject.name, registryItem && (registryItem.kind === 'sgt' || registryItem.domain === 'academic') ? input.subjects[subjectAttendanceKey(registryItem)] : registryItem ? input.wards[subjectAttendanceKey(registryItem)] : undefined, Boolean(registryItem && input.finishedMap[subjectAttendanceKey(registryItem)]), planned),
             subjectLabel: label,
             category,
             ...reminderFlags(subjectAttentionForReference(registryItem, input.subjects, input.wards, input.finishedMap, planned, input.preferredPercentage)),
@@ -411,6 +468,7 @@ function buildOccurrences(input: {
             startMinute: parsed.startMinute,
             endMinute: parsed.endMinute,
             attendanceMarked: selectionIsMarked(input.homeSelections, localDate, attendanceKeyForName(ward.name, input.subjectRegistry), slot === 'morning' ? 'custom-ward-am' : 'custom-ward-pm', ward.name),
+            status: occurrenceStatus(input.homeSelections, localDate, attendanceKeyForName(ward.name, input.subjectRegistry), slot === 'morning' ? 'custom-ward-am' : 'custom-ward-pm', ward.name, input.wards[attendanceKeyForName(ward.name, input.subjectRegistry)], Boolean(input.finishedMap[attendanceKeyForName(ward.name, input.subjectRegistry)]), input.getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods)),
             subjectLabel: subjectDisplayLabel(ward.name, input.subjectRegistry.find(item => item.id === ward.id), 'ward'),
             category: 'ward',
             ...reminderFlags(subjectAttentionForReference(input.subjectRegistry.find(item => item.id === ward.id), input.subjects, input.wards, input.finishedMap, input.getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods), input.preferredPercentage)),
@@ -437,6 +495,7 @@ function buildOccurrences(input: {
             startMinute: parsed.startMinute,
             endMinute: parsed.endMinute,
             attendanceMarked: selectionIsMarked(input.homeSelections, localDate, registryItem ? subjectAttendanceKey(registryItem) : attendanceKeyForName(name, input.subjectRegistry), getPresetAcademicSessionId(input.presetTimetable[date.getDay()]?.indexOf(slot) ?? 0, slot.subjects?.indexOf(name) ?? 0), label),
+            status: occurrenceStatus(input.homeSelections, localDate, registryItem ? subjectAttendanceKey(registryItem) : attendanceKeyForName(name, input.subjectRegistry), getPresetAcademicSessionId(input.presetTimetable[date.getDay()]?.indexOf(slot) ?? 0, slot.subjects?.indexOf(name) ?? 0), label, registryItem && (registryItem.kind === 'sgt' || registryItem.domain === 'academic') ? input.subjects[subjectAttendanceKey(registryItem)] : registryItem ? input.wards[subjectAttendanceKey(registryItem)] : undefined, Boolean(registryItem && input.finishedMap[subjectAttendanceKey(registryItem)]), registryItem?.planned ?? input.getSubjectPlannedTotal(name)),
             subjectLabel: displayLabel,
             category,
             ...reminderFlags(subjectAttentionForReference(registryItem, input.subjects, input.wards, input.finishedMap, registryItem?.planned ?? input.getSubjectPlannedTotal(name), input.preferredPercentage)),
@@ -459,6 +518,7 @@ function buildOccurrences(input: {
             startMinute: parsed.startMinute,
             endMinute: parsed.endMinute,
             attendanceMarked: selectionIsMarked(input.homeSelections, localDate, getSGTKey(subject.id), subjectRowSessionId(subject, row), subject.name),
+            status: occurrenceStatus(input.homeSelections, localDate, getSGTKey(subject.id), subjectRowSessionId(subject, row), subject.name, input.subjects[getSGTKey(subject.id)], Boolean(input.finishedMap[getSGTKey(subject.id)]), subject.plannedClasses),
             subjectLabel: subjectDisplayLabel(subject.name, input.subjectRegistry.find(item => item.id === subject.id), 'sgt'),
             category: 'sgt',
             ...reminderFlags(subjectAttentionForReference(input.subjectRegistry.find(item => item.id === subject.id), input.subjects, input.wards, input.finishedMap, subject.plannedClasses, input.preferredPercentage)),
@@ -479,6 +539,7 @@ function buildOccurrences(input: {
             startMinute: parsed.startMinute,
             endMinute: parsed.endMinute,
             attendanceMarked: selectionIsMarked(input.homeSelections, localDate, attendanceKeyForName(ward.ward, input.subjectRegistry), getPresetWardSessionId((input.presetTimetable[date.getDay()] || []).findIndex(candidate => candidate.type === (slot === 'morning' ? 'ward' : 'ward_replacement'))), input.getPresetWardDisplayName(ward.ward)),
+            status: occurrenceStatus(input.homeSelections, localDate, attendanceKeyForName(ward.ward, input.subjectRegistry), getPresetWardSessionId((input.presetTimetable[date.getDay()] || []).findIndex(candidate => candidate.type === (slot === 'morning' ? 'ward' : 'ward_replacement'))), input.getPresetWardDisplayName(ward.ward), input.wards[attendanceKeyForName(ward.ward, input.subjectRegistry)], Boolean(input.finishedMap[attendanceKeyForName(ward.ward, input.subjectRegistry)]), input.getPresetWardTotalPlanned(ward.ward)),
             subjectLabel: subjectDisplayLabel(input.getPresetWardDisplayName(ward.ward), input.subjectRegistry.find(item => item.name.trim().toLowerCase() === ward.ward.trim().toLowerCase() && item.kind === 'preset-ward'), 'ward'),
             category: 'ward',
             ...reminderFlags(subjectAttentionForReference(input.subjectRegistry.find(item => item.name.trim().toLowerCase() === ward.ward.trim().toLowerCase() && item.kind === 'preset-ward'), input.subjects, input.wards, input.finishedMap, input.getPresetWardTotalPlanned(ward.ward), input.preferredPercentage)),
@@ -534,7 +595,9 @@ async function syncReminderState(payload: ReminderSyncPayload): Promise<void> {
       setReminderSyncStatus({ state: 'error', at: new Date().toISOString(), details: responseBody?.error || `http_${response.status}` });
       return;
     }
+    const previousSync = getReminderSyncStatus();
     setReminderSyncStatus({ state: 'synced', at: new Date().toISOString(), occurrenceCount: responseBody?.occurrenceCount });
+    maybeShowMissedNightlyReminder(payload, payload.occurrences, previousSync);
   } catch {
     setReminderSyncStatus({ state: 'error', at: new Date().toISOString() });
     // Reminder sync must never interrupt offline attendance use.
@@ -720,4 +783,4 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
   return children;
 }
 
-export const __test = { attentionFor, buildOccurrences, parseTime, selectionIsMarked, subjectRowSessionId };
+export const __test = { attentionFor, buildOccurrences, parseTime, selectionIsMarked, selectionValue, occurrenceStatus, subjectRowSessionId };

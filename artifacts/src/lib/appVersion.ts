@@ -26,6 +26,7 @@ export const WHATS_NEW_UPGRADES: WhatsNewItem[] = [
   { title: "Start Fresh & Delete All Data", summary: "Completely wipe user data and return to the Welcome screen.", details: "" },
 ];
 export const WHATS_NEW_FIXES: WhatsNewItem[] = [
+  { title: 'Recovery release v1.6.8', summary: 'Fixed false reminders for Holiday/Off and Completed Planned classes, improved upcoming class filtering, more reliable nightly reminders, and a clearer backup/update progress indicator.', details: '' },
   { title: "Home & Subject Cards", summary: "Fixed long status text overflow, separated completed classes, aligned percentage containers, and removed the unwanted vertical divider.", details: "" },
   { title: "Manage Tab Layout", summary: "Academic schedule full-width time rows; Clinical and SGT entries separated with their own actions; improved spacing and scrolling.", details: "" },
   { title: "Settings Organization", summary: "Clearer sections with consistent theme colors and borders.", details: "" },

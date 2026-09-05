@@ -1,6 +1,6 @@
 {
-  "version": "1.6.7",
+  "version": "1.6.8",
   "releaseType": "minor",
   "updateMode": "manual",
-  "summary": "Recovery v1.6.7: reliable nightly reminders and data recovery safeguards."
+  "summary": "Recovery release v1.6.8: notification accuracy, reliability, and clearer update progress."
 }

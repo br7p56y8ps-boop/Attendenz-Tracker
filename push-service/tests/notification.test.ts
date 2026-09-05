@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { __test } from '../src/index.ts';
 
-const { cleanLabel, isBeforeClassDue, isValidNightlyReminderTime, parseReminderTime, isWithinFiveMinuteWindow, isWithinNightlyWindow } = __test;
+const { cleanLabel, isBeforeClassDue, isValidNightlyReminderTime, parseReminderTime, isWithinFiveMinuteWindow, isWithinNightlyWindow, nightlyScheduleDate } = __test;
 
 assert.equal(isValidNightlyReminderTime('23:30'), true);
 assert.equal(isValidNightlyReminderTime('00:00'), true);
@@ -11,7 +11,10 @@ assert.equal(isWithinFiveMinuteWindow(1410, 1410), true);
 assert.equal(isWithinNightlyWindow(1410, 1410), true);
 assert.equal(isWithinNightlyWindow(1424, 1410), true);
 assert.equal(isWithinNightlyWindow(1425, 1410), false);
-assert.equal(isWithinNightlyWindow(0, 1410), false);
+assert.equal(isWithinNightlyWindow(0, 1410), true);
+assert.equal(isWithinNightlyWindow(30, 1410), true);
+assert.equal(nightlyScheduleDate('2026-09-06', 30, 1410), '2026-09-05');
+assert.equal(nightlyScheduleDate('2026-09-06', 210, 1410), '2026-09-06');
 assert.equal(isWithinFiveMinuteWindow(1414, 1410), true);
 assert.equal(isWithinFiveMinuteWindow(1415, 1410), false);
 
