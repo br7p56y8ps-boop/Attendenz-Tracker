@@ -60,9 +60,9 @@ async function refreshCachedShell(): Promise<boolean> {
   }
 }
 
-async function activateApprovedServiceWorker(): Promise<void> {
+async function activateApprovedServiceWorker(): Promise<boolean> {
   const registration = await (serviceWorkerRegistrationPromise || navigator.serviceWorker.getRegistration(base));
-  if (!registration) return;
+  if (!registration) return false;
   await registration.update().catch(() => {});
   let waiting = registration.waiting;
   if (!waiting && registration.installing) {
@@ -81,14 +81,17 @@ async function activateApprovedServiceWorker(): Promise<void> {
     });
     waiting = registration.waiting;
   }
-  if (!waiting) return;
-  await new Promise<void>((resolve) => {
-    const timeout = window.setTimeout(resolve, 5000);
+  if (!waiting) return false;
+  return await new Promise<boolean>((resolve) => {
     const onControllerChange = () => {
       window.clearTimeout(timeout);
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-      resolve();
+      resolve(true);
     };
+    const timeout = window.setTimeout(() => {
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      resolve(false);
+    }, 5000);
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
     waiting.postMessage({ type: 'SKIP_WAITING' });
   });
@@ -150,7 +153,8 @@ if ('serviceWorker' in navigator) {
           if (updateMode === 'automatic') {
             const refreshed = await refreshCachedShell();
             if (refreshed) {
-              await activateApprovedServiceWorker();
+              const activated = await activateApprovedServiceWorker();
+              if (!activated) return;
               clearUpdateState();
               window.location.reload();
               return;
@@ -189,7 +193,8 @@ if ('serviceWorker' in navigator) {
 (window as any).attendenzApplyPwaUpdate = async (): Promise<boolean> => {
   const refreshed = await refreshCachedShell();
   if (!refreshed) return false;
-  await activateApprovedServiceWorker();
+  const activated = await activateApprovedServiceWorker();
+  if (!activated) return false;
   clearUpdateState();
   window.location.reload();
   return true;

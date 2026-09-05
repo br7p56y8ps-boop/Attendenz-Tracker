@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS devices (
   pre_class_need_attention INTEGER NOT NULL DEFAULT 1,
   all_scheduled_digest INTEGER NOT NULL DEFAULT 0,
   lead_minutes INTEGER NOT NULL DEFAULT 30,
+  nightly_reminder_time TEXT NOT NULL DEFAULT '23:30',
   need_attention_subjects INTEGER NOT NULL DEFAULT 1,
   safe_to_miss INTEGER NOT NULL DEFAULT 0,
   unmarked_attendance_today INTEGER NOT NULL DEFAULT 1,

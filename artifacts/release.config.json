@@ -1,6 +1,6 @@
 {
-  "version": "1.6.6",
+  "version": "1.6.7",
   "releaseType": "minor",
   "updateMode": "manual",
-  "summary": "Stable v1.6.6: update reliability, notification improvements, and UI refinements."
+  "summary": "Recovery v1.6.7: reliable nightly reminders and data recovery safeguards."
 }

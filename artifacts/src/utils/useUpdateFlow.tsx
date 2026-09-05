@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createSnapshot, getSnapshots } from '@/utils/snapshotUtils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
-import { storageRemoveItem, storageSetItem } from '@/lib/idb';
+import { storageSetItemChecked, storageRemoveItemChecked, storageCommitChecked } from '@/lib/idb';
 import { notifyUpdateAvailable } from '@/lib/webPush';
 import { cn } from '@/lib/utils';
 
@@ -78,21 +78,27 @@ export function useUpdateFlow() {
       }
       const snaps = getSnapshots();
       if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
-        await storageSetItem('att_pending_update_restore', snaps[0].id);
+        try {
+          await storageSetItemChecked('att_pending_update_restore', snaps[0].id);
+        } catch {
+          setUpdatePhase('none');
+          return;
+        }
       }
       await new Promise(r => setTimeout(r, Math.max(0, 5500 - (Date.now() - backupStarted))));
       setProgressComplete(true);
       await new Promise(r => setTimeout(r, 500));
     }
 
-    await Promise.all([
-      storageRemoveItem('att_pwa_update_ready'),
-      storageRemoveItem('att_pwa_latest_version'),
-      storageRemoveItem('att_pwa_update_summary'),
-      storageSetItem('att_just_updated', 'true'),
-      storageRemoveItem('att_has_seen_welcome_v1'),
-      storageRemoveItem('att_app_version'),
-    ]);
+    try {
+      await storageCommitChecked(
+        [['att_just_updated', 'true']],
+        ['att_has_seen_welcome_v1', 'att_app_version'],
+      );
+    } catch {
+      setUpdatePhase('none');
+      return;
+    }
     setUpdatePhase('updating');
     const MIN = 8000; const start = Date.now();
     let applied = false;
@@ -103,6 +109,17 @@ export function useUpdateFlow() {
       applied = false;
     }
     if (!applied) {
+      await storageRemoveItemChecked('att_just_updated').catch(() => undefined);
+      setUpdatePhase('none');
+      return;
+    }
+    try {
+      await Promise.all([
+        storageRemoveItemChecked('att_pwa_update_ready'),
+        storageRemoveItemChecked('att_pwa_latest_version'),
+        storageRemoveItemChecked('att_pwa_update_summary'),
+      ]);
+    } catch {
       setUpdatePhase('none');
       return;
     }

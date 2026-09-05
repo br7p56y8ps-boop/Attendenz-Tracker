@@ -9,7 +9,7 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
 import { activateCurriculum, completeCurriculum, createCurriculumChecked, deleteCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculumChecked, setCurriculumStatusChecked, CurriculumRecord } from '@/lib/curriculumStore';
-import { idbGetAllChecked, storageClearChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
+import { idbGetAllChecked, storageClearChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
@@ -99,6 +99,8 @@ function NotificationGroupCard({
   disabled,
   leadMinutes,
   onLeadMinutesChange,
+  nightlyReminderTime,
+  onNightlyReminderTimeChange,
   getChildChecked,
   onChildChange,
 }: {
@@ -112,6 +114,8 @@ function NotificationGroupCard({
   disabled: boolean;
   leadMinutes?: NotificationLeadMinutes;
   onLeadMinutesChange?: (value: NotificationLeadMinutes) => void;
+  nightlyReminderTime?: string;
+  onNightlyReminderTimeChange?: (value: string) => void;
   getChildChecked: (key: NotificationChildKey) => boolean;
   onChildChange: (key: NotificationChildKey, enabled: boolean) => void;
 }) {
@@ -138,6 +142,12 @@ function NotificationGroupCard({
               <select value={leadMinutes} onChange={event => onLeadMinutesChange(Number(event.target.value) as NotificationLeadMinutes)} disabled={!enabled || disabled} className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground">
                 <option value={15}>15 Minutes</option><option value={30}>30 Minutes</option><option value={60}>60 Minutes</option>
               </select>
+            </label>
+          )}
+          {nightlyReminderTime !== undefined && onNightlyReminderTimeChange && (
+            <label className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', (!enabled || disabled) && 'opacity-50')}>
+              <span><span className="block text-[11px] font-semibold text-foreground">Nightly Risk Reminder</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Send the upcoming must-attend batch at this local time. This is separate from before-class warnings.</span></span>
+              <input type="time" value={nightlyReminderTime} onChange={event => onNightlyReminderTimeChange(event.target.value)} disabled={!enabled || disabled} className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" />
             </label>
           )}
         </div>
@@ -416,19 +426,27 @@ export default function Settings() {
       }
       const snaps = getSnapshots();
       if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
-        await storageSetItem('att_pending_update_restore', snaps[0].id);
+        try {
+          await storageSetItemChecked('att_pending_update_restore', snaps[0].id);
+        } catch {
+          setUpdatePhase('none');
+          import('sonner').then(({ toast }) => toast.error('Update stopped — the pending restore marker could not be saved safely.'));
+          return;
+        }
       }
       setProgressComplete(true);
     }
 
-    await Promise.all([
-      storageRemoveItem('att_pwa_update_ready'),
-      storageRemoveItem('att_pwa_latest_version'),
-      storageRemoveItem('att_pwa_update_summary'),
-      storageSetItem('att_just_updated', 'true'),
-      storageRemoveItem('att_has_seen_welcome_v1'),
-      storageRemoveItem('att_app_version'),
-    ]);
+    try {
+      await storageCommitChecked(
+        [['att_just_updated', 'true']],
+        ['att_has_seen_welcome_v1', 'att_app_version'],
+      );
+    } catch {
+      setUpdatePhase('none');
+      import('sonner').then(({ toast }) => toast.error('Update stopped — the update state could not be saved safely.'));
+      return;
+    }
 
     if (withBackup) {
       await new Promise(r => setTimeout(r, 5500));
@@ -439,10 +457,27 @@ export default function Settings() {
     const MIN_UPDATE_DELAY = 6500;
     const start = Date.now();
 
+    let applied = false;
     try {
-      const applyPwa = (window as any).attendenzApplyPwaUpdate;
-      if (applyPwa) await applyPwa();
+      const applyPwa = (window as any).attendenzApplyPwaUpdate as (() => Promise<boolean>) | undefined;
+      applied = applyPwa ? (await applyPwa()) !== false : false;
     } catch {}
+    if (!applied) {
+      await storageRemoveItemChecked('att_just_updated').catch(() => undefined);
+      setUpdatePhase('none');
+      import('sonner').then(({ toast }) => toast.error('Update could not be activated. Your update choice is still saved for retry.'));
+      return;
+    }
+    try {
+      await Promise.all([
+        storageRemoveItemChecked('att_pwa_update_ready'),
+        storageRemoveItemChecked('att_pwa_latest_version'),
+        storageRemoveItemChecked('att_pwa_update_summary'),
+      ]);
+    } catch {
+      setUpdatePhase('none');
+      return;
+    }
     setProgressComplete(true);
 
     const elapsed = Date.now() - start;
@@ -1388,7 +1423,7 @@ export default function Settings() {
                           )}
                         </div>
                         <NotificationGroupCard title="Attendance & Risk Reminders" description="Choose which attendance-related reminders are useful to you." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, attendance: !prev.attendance }))} enabled={notificationPreferences.attendanceGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('attendance', value)} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
-                        <NotificationGroupCard title="Daily Schedule Reminders" description="Choose reminders about the Classes scheduled for your day." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, dailySchedule: !prev.dailySchedule }))} enabled={notificationPreferences.dailyScheduleGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('dailySchedule', value)} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
+                        <NotificationGroupCard title="Daily Schedule Reminders" description="Choose reminders about the Classes scheduled for your day." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, dailySchedule: !prev.dailySchedule }))} enabled={notificationPreferences.dailyScheduleGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('dailySchedule', value)} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} nightlyReminderTime={notificationPreferences.nightlyReminderTime} onNightlyReminderTimeChange={value => updateNotificationPreference('nightlyReminderTime', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
                         <NotificationGroupCard title="Activity & Data Changes" description="Choose confirmations for routine, curriculum, and data changes." expanded={Boolean(expandedNotificationGroups.activity)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, activity: !prev.activity }))} enabled={notificationPreferences.activityGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('activity', value)} children={ACTIVITY_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
                         <NotificationGroupCard title="App Updates" description="Choose notices when an Attendenz update is available or completed." expanded={Boolean(expandedNotificationGroups.updates)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, updates: !prev.updates }))} enabled={notificationPreferences.updatesGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('updates', value)} children={UPDATE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
                       </div>
