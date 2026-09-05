@@ -1,4 +1,4 @@
-import { idbGetAllChecked, storageCommitChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites } from '@/lib/idb';
+import { idbGetAllChecked, storageClearChecked, storageCommitChecked, storageRemoveItem, storageRemoveItemChecked, flushStorageWrites, INSTALLATION_METADATA_KEYS } from '@/lib/idb';
 import { getActiveCurriculumName } from '@/lib/curriculumStore';
 import { APP_VERSION } from '@/lib/appVersion';
 import { assertBackupSize, filterStoredData, makeBackupEnvelope, validateBackupPayload, MAX_BACKUP_BYTES } from '@/utils/dataTransferSecurity';
@@ -12,6 +12,13 @@ export interface Snapshot {
 
 const SNAPSHOTS_KEY = 'attendenz_snapshots_v1';
 const MAX_SNAPSHOTS = 5;
+const RESTORE_PRESERVED_KEYS = [
+  ...INSTALLATION_METADATA_KEYS,
+  SNAPSHOTS_KEY,
+  'att_auth',
+  'att_session',
+  'att_idb_migrated_v1',
+];
 
 async function collectUserData(includeSnapshots = false): Promise<Record<string, string>> {
   const localData: Record<string, string> = {};
@@ -185,6 +192,7 @@ export async function restoreSnapshot(snapshotId: string): Promise<boolean> {
     if (!await prepareRestoreEnvironment()) return false;
 
     const entries = Object.entries(target.data);
+    await storageClearChecked(RESTORE_PRESERVED_KEYS);
     await storageCommitChecked([...entries, ['att_app_version', APP_VERSION]]);
 
     await flushStorageWrites();
@@ -316,6 +324,7 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
 
       await flushStorageWrites();
       const entries = Object.entries(validatedData);
+      await storageClearChecked(RESTORE_PRESERVED_KEYS);
       await storageCommitChecked([...entries, ['att_app_version', APP_VERSION]]);
 
       // Force startup migration after any uploaded backup restore.

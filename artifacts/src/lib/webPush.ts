@@ -25,6 +25,8 @@ export interface NotificationPreferences {
   dataTransfer: boolean;
   unmarkedAttendanceToday: boolean;
   leadMinutes: NotificationLeadMinutes;
+  /** Nightly risk/upcoming batch trigger, stored as local HH:MM. */
+  nightlyReminderTime: string;
   /** Legacy aliases retained for stored-data compatibility. */
   midnightNeedAttention: boolean;
   finalClassToday: boolean;
@@ -67,6 +69,7 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   dataTransfer: true,
   unmarkedAttendanceToday: false,
   leadMinutes: 30,
+  nightlyReminderTime: '23:30',
   midnightNeedAttention: true,
   finalClassToday: true,
   firstClassToday: false,
@@ -115,6 +118,9 @@ export function getNotificationPreferences(): NotificationPreferences {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(PREFS_KEY) || '{}') as Partial<NotificationPreferences>;
     const leadMinutes = parsed.leadMinutes === 15 || parsed.leadMinutes === 60 ? parsed.leadMinutes : 30;
+    const nightlyReminderTime = typeof parsed.nightlyReminderTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(parsed.nightlyReminderTime)
+      ? parsed.nightlyReminderTime
+      : DEFAULT_PREFERENCES.nightlyReminderTime;
     const needAttentionSummary = parsed.needAttentionSummary ?? parsed.midnightNeedAttention !== false;
     const lastPlannedClassToday = parsed.lastPlannedClassToday ?? parsed.finalClassToday !== false;
     const firstClassOfDay = parsed.firstClassOfDay ?? parsed.firstClassToday === true;
@@ -142,6 +148,7 @@ export function getNotificationPreferences(): NotificationPreferences {
       dataTransfer: parsed.dataTransfer === true,
       unmarkedAttendanceToday: parsed.unmarkedAttendanceToday ?? DEFAULT_PREFERENCES.unmarkedAttendanceToday,
       leadMinutes,
+      nightlyReminderTime,
       midnightNeedAttention: needAttentionSummary,
       finalClassToday: lastPlannedClassToday,
       firstClassToday: firstClassOfDay,

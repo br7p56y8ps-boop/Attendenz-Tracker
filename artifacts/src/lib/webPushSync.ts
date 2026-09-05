@@ -97,7 +97,7 @@ type ReminderSyncPayload = {
   subscription: DirectPushSubscription;
   timezone: string;
   notificationsEnabled: boolean;
-  preferences: Pick<NotificationPreferences, 'needAttentionSummary' | 'needAttentionSubjects' | 'safeToMiss' | 'lastPlannedClassToday' | 'firstClassOfDay' | 'beforeClassWarnings' | 'allScheduledClasses' | 'unmarkedAttendanceToday' | 'updateAvailable' | 'leadMinutes'>;
+  preferences: Pick<NotificationPreferences, 'needAttentionSummary' | 'needAttentionSubjects' | 'safeToMiss' | 'lastPlannedClassToday' | 'firstClassOfDay' | 'beforeClassWarnings' | 'allScheduledClasses' | 'unmarkedAttendanceToday' | 'updateAvailable' | 'leadMinutes' | 'nightlyReminderTime'>;
   occurrences: ReminderOccurrence[];
 };
 
@@ -670,6 +670,7 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
           unmarkedAttendanceToday: preferences.unmarkedAttendanceToday && preferences.attendanceGroupEnabled,
           updateAvailable: preferences.updateAvailable && preferences.updatesGroupEnabled,
           leadMinutes: preferences.leadMinutes,
+          nightlyReminderTime: preferences.nightlyReminderTime,
         },
         occurrences: buildOccurrences({
           subjectMode: custom.subjectMode,

@@ -35,6 +35,7 @@ export interface A1Preferences {
   unmarkedAttendanceToday: boolean;
   updateAvailable?: boolean;
   leadMinutes: 15 | 30 | 60;
+  nightlyReminderTime: string;
 }
 
 export interface ReminderOccurrence {
@@ -77,6 +78,7 @@ type DeviceRow = {
   pre_class_need_attention: number;
   all_scheduled_digest: number;
   lead_minutes: number;
+  nightly_reminder_time: string;
   need_attention_subjects: number;
   safe_to_miss: number;
   unmarked_attendance_today: number;
@@ -132,6 +134,10 @@ function isValidId(value: unknown, min = 8, max = 128): value is string {
 
 function isValidDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+}
+
+function isValidNightlyReminderTime(value: unknown): value is string {
+  return typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
 function isValidTimezone(value: unknown): value is string {
@@ -200,7 +206,8 @@ function isValidPreferences(value: unknown): value is A1Preferences {
     typeof prefs.allScheduledClasses === 'boolean' &&
     typeof prefs.unmarkedAttendanceToday === 'boolean' &&
     (prefs.updateAvailable === undefined || typeof prefs.updateAvailable === 'boolean') &&
-    (prefs.leadMinutes === 15 || prefs.leadMinutes === 30 || prefs.leadMinutes === 60)
+    (prefs.leadMinutes === 15 || prefs.leadMinutes === 30 || prefs.leadMinutes === 60) &&
+    isValidNightlyReminderTime(prefs.nightlyReminderTime)
   );
 }
 
@@ -296,9 +303,9 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       device_id, token_hash, subscription_json, timezone, notifications_enabled,
       midnight_need_attention, final_class_today, first_class_today,
       pre_class_need_attention, all_scheduled_digest,
-      lead_minutes, need_attention_subjects, safe_to_miss, unmarked_attendance_today,
+      lead_minutes, nightly_reminder_time, need_attention_subjects, safe_to_miss, unmarked_attendance_today,
       app_version, update_available, last_sync_at, expires_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
     ON CONFLICT(device_id) DO UPDATE SET
       token_hash = excluded.token_hash,
       subscription_json = excluded.subscription_json,
@@ -310,6 +317,7 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       pre_class_need_attention = excluded.pre_class_need_attention,
       all_scheduled_digest = excluded.all_scheduled_digest,
       lead_minutes = excluded.lead_minutes,
+      nightly_reminder_time = excluded.nightly_reminder_time,
       need_attention_subjects = excluded.need_attention_subjects,
       safe_to_miss = excluded.safe_to_miss,
       unmarked_attendance_today = excluded.unmarked_attendance_today,
@@ -329,6 +337,7 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
     boolInt(payload.preferences.beforeClassWarnings),
     boolInt(payload.preferences.allScheduledClasses),
     payload.preferences.leadMinutes,
+    payload.preferences.nightlyReminderTime,
     boolInt(payload.preferences.needAttentionSubjects),
     boolInt(payload.preferences.safeToMiss),
     boolInt(payload.preferences.unmarkedAttendanceToday),
@@ -453,7 +462,7 @@ function cleanLabel(value: string, category: OccurrenceRow['category']): string 
       ? 'Clinical'
       : existingKind === 'integrated'
         ? 'Integrated'
-        : 'Lecture/Integrated';
+        : 'Lecture';
   return `${base} (${kind})`;
 }
 
@@ -465,14 +474,17 @@ function formatMinute(totalMinutes: number): string {
   return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`;
 }
 
-function nextLocalDate(date: string): string {
-  const [year, month, day] = date.split('-').map(Number);
-  const value = new Date(Date.UTC(year, month - 1, day + 1));
-  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`;
-}
-
 function isWithinFiveMinuteWindow(currentMinute: number, dueMinute: number): boolean {
   return currentMinute >= dueMinute && currentMinute < dueMinute + 5;
+}
+
+function parseReminderTime(value: string): number {
+  const [hour, minute] = value.split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+function isWithinNightlyWindow(currentMinute: number, dueMinute: number): boolean {
+  return currentMinute >= dueMinute && currentMinute < dueMinute + 15;
 }
 
 function isBeforeClassDue(currentMinute: number, startMinute: number, leadMinutes: number): boolean {
@@ -541,10 +553,11 @@ function listLeadNames(rows: OccurrenceRow[], limit = 6): string {
 
 async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): Promise<void> {
   const clock = localClock(scheduledAt, device.timezone);
-  const midnightWindow = (clock.hour === 23 && clock.minute >= 30) || (clock.hour === 0 && clock.minute < 5);
-  // Midnight reminders always describe tomorrow, including the first few
-  // minutes after midnight. Lead-time reminders are handled separately.
-  const scheduleDate = midnightWindow ? nextLocalDate(clock.date) : clock.date;
+  const nightlyReminderMinute = parseReminderTime(device.nightly_reminder_time || '23:30');
+  const nightlyWindow = isWithinNightlyWindow(clock.hour * 60 + clock.minute, nightlyReminderMinute);
+  // The nightly batch is independent of before-class lead reminders and never
+  // crosses midnight. A 23:30 default is used only for legacy rows.
+  const scheduleDate = clock.date;
   const rows = await env.DB.prepare(
     `SELECT occurrence_id as id, device_id, local_date as localDate,
       start_minute as startMinute, end_minute as endMinute, subject_label as subjectLabel,
@@ -559,7 +572,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
 
   const currentMinute = clock.hour * 60 + clock.minute;
 
-  if (midnightWindow) {
+  if (nightlyWindow) {
     const mustAttend = device.midnight_need_attention ? occurrences.filter(item => item.attentionLevel === 'mustAttend') : [];
     const needAttention = device.need_attention_subjects ? occurrences.filter(item => item.attentionLevel === 'needAttention') : [];
     const finalClasses = device.final_class_today ? occurrences.filter(item => item.isFinalForSubject) : [];
@@ -591,7 +604,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
     }
   }
 
-  if (!midnightWindow && device.pre_class_need_attention) {
+  if (!nightlyWindow && device.pre_class_need_attention) {
     const due = occurrences.filter(item => isBeforeClassDue(currentMinute, item.startMinute, device.lead_minutes));
     const dueMust = due.filter(item => item.attentionLevel === 'mustAttend');
     const dueNeed = device.need_attention_subjects ? due.filter(item => item.attentionLevel === 'needAttention') : [];
@@ -612,7 +625,7 @@ async function runScheduled(env: Env, scheduledAt: number): Promise<void> {
   const devices = await env.DB.prepare(
     `SELECT device_id, subscription_json, timezone, notifications_enabled,
             midnight_need_attention, final_class_today, first_class_today,
-      pre_class_need_attention, all_scheduled_digest, lead_minutes,
+      pre_class_need_attention, all_scheduled_digest, lead_minutes, nightly_reminder_time,
       need_attention_subjects, safe_to_miss, unmarked_attendance_today,
       app_version, update_available
       FROM devices WHERE notifications_enabled = 1 AND expires_at > ?1`,
@@ -654,4 +667,15 @@ export default {
   },
 };
 
-export const __test = { localClock, validatePayload, isValidTimezone, isBeforeClassDue, formatMinute, isWithinFiveMinuteWindow };
+export const __test = {
+  localClock,
+  validatePayload,
+  isValidTimezone,
+  isValidNightlyReminderTime,
+  isBeforeClassDue,
+  formatMinute,
+  isWithinFiveMinuteWindow,
+  isWithinNightlyWindow,
+  parseReminderTime,
+  cleanLabel,
+};
