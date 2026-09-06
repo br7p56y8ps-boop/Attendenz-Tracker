@@ -4,7 +4,6 @@ import { createSnapshot, getSnapshots } from '@/utils/snapshotUtils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { storageSetItemChecked, storageRemoveItemChecked, storageCommitChecked } from '@/lib/idb';
 import { notifyUpdateAvailable } from '@/lib/webPush';
-import { cn } from '@/lib/utils';
 
 function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -63,7 +62,7 @@ export function useUpdateFlow() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
 
-  const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
+  const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'downloading' | 'installing' | 'completed'>('none');
   const [progressComplete, setProgressComplete] = useState(false);
   useEffect(() => { if (updatePhase === 'none') setProgressComplete(false); }, [updatePhase]);
 
@@ -85,9 +84,9 @@ export function useUpdateFlow() {
           return;
         }
       }
-      await new Promise(r => setTimeout(r, Math.max(0, 5500 - (Date.now() - backupStarted))));
+      await new Promise(r => setTimeout(r, Math.max(0, 8000 - (Date.now() - backupStarted))));
       setProgressComplete(true);
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 350));
     }
 
     try {
@@ -99,12 +98,20 @@ export function useUpdateFlow() {
       setUpdatePhase('none');
       return;
     }
-    setUpdatePhase('updating');
-    const MIN = 8000; const start = Date.now();
+    setProgressComplete(false);
+    setUpdatePhase('downloading');
     let applied = false;
     try {
-      const applyPwa = (window as any).attendenzApplyPwaUpdate as (() => Promise<boolean>) | undefined;
-      applied = applyPwa ? (await applyPwa()) !== false : false;
+      const applyPwa = (window as any).attendenzApplyPwaUpdate as ((onPhase: (phase: 'installing' | 'completed') => void) => Promise<boolean>) | undefined;
+      applied = applyPwa ? (await applyPwa(phase => {
+        if (phase === 'installing') {
+          setProgressComplete(false);
+          setUpdatePhase('installing');
+        } else {
+          setProgressComplete(true);
+          setUpdatePhase('completed');
+        }
+      })) !== false : false;
     } catch {
       applied = false;
     }
@@ -123,18 +130,15 @@ export function useUpdateFlow() {
       setUpdatePhase('none');
       return;
     }
-    setProgressComplete(true);
-    const elapsed = Date.now() - start;
-    if (elapsed < MIN) await new Promise(r => setTimeout(r, MIN - elapsed));
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 1200));
     window.location.href = import.meta.env.BASE_URL || '/';
   };
 
   return { isUpdateAvailable, serverVersion, serverSummary, online, updatePhase, progressComplete, applyUpdate };
 }
 
-export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'backing' | 'updating'; complete?: boolean }) => {
-  const duration = phase === 'backing' ? 5000 : 5000;
+export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'backing' | 'downloading' | 'installing' | 'completed'; complete?: boolean }) => {
+  const duration = phase === 'backing' ? 8000 : 5000;
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     setProgress(0);
@@ -148,27 +152,22 @@ export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'back
     return () => window.clearInterval(timer);
   }, [phase, duration, complete]);
   return (
-    <div className={cn('release-progress w-full', phase === 'backing' ? 'release-progress--backup' : 'release-progress--update')}>
-      <div className="release-progress__steps" role="progressbar" aria-label={`${phase === 'backing' ? 'Backup' : 'Update'} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+    <div className="release-progress flex w-full flex-col items-center justify-center text-center">
+      <div className="release-progress__steps flex items-center justify-center" role="progressbar" aria-label="Update progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
         <div className="relative h-24 w-24" aria-hidden="true"><svg viewBox="0 0 100 100" className="h-24 w-24 -rotate-90"><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" className="text-muted/40" /><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" className="text-primary transition-all duration-300" strokeDasharray={264} strokeDashoffset={264 - (264 * Math.max(0, progress)) / 100} /></svg><span className="absolute inset-0 flex items-center justify-center text-sm font-extrabold text-foreground">{Math.round(progress)}%</span></div>
       </div>
-      <p className="release-progress__label text-xs font-bold text-foreground">{complete ? (phase === 'backing' ? 'Backup complete' : 'Update ready') : phase === 'backing' ? 'Backing up…' : progress < 55 ? 'Downloading…' : 'Installing…'}</p>
+      <p className="release-progress__label mt-2 text-xs font-bold text-foreground">{phase === 'completed' ? 'Completed' : complete && phase === 'backing' ? 'Backup complete' : phase === 'backing' ? 'Backing Up…' : phase === 'downloading' ? 'Downloading Updates…' : 'Installing…'}</p>
     </div>
   );
 };
 
-export const UpdateOverlay = ({ phase, progressComplete }: { phase: 'none' | 'backing' | 'updating'; progressComplete?: boolean }) => (
+export const UpdateOverlay = ({ phase, progressComplete }: { phase: 'none' | 'backing' | 'downloading' | 'installing' | 'completed'; progressComplete?: boolean }) => (
   <AnimatePresence>
     {phase !== 'none' && (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[140] flex items-end justify-center p-4">
-        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
-          {phase === 'backing' ? (<>
-            <UpdateProgressSlider phase="backing" complete={progressComplete} />
-            <p className="text-[10px] text-muted-foreground text-center">Securing your attendance records & preferences...</p>
-          </>) : (<>
-            <UpdateProgressSlider phase="updating" complete={progressComplete} />
-            <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
-          </>)}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[140] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content flex w-full max-w-xs flex-col items-center justify-center gap-4 rounded-3xl border border-border/80 bg-card p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.42)]">
+          <UpdateProgressSlider phase={phase} complete={progressComplete} />
+          <p className="text-[10px] text-muted-foreground">{phase === 'backing' ? 'Securing your attendance records & preferences…' : phase === 'completed' ? 'The app will load the Welcome Screen shortly.' : 'Please keep the app open while the update completes.'}</p>
         </motion.div>
       </motion.div>
     )}

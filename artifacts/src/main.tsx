@@ -196,20 +196,25 @@ if ('serviceWorker' in navigator) {
 }
 
 /* Account's visible Update button calls this: updates the cached shell directly. */
-(window as any).attendenzApplyPwaUpdate = async (): Promise<boolean> => {
+(window as any).attendenzApplyPwaUpdate = async (onPhase?: (phase: 'installing' | 'completed') => void): Promise<boolean> => {
   const approvedVersion = localStorage.getItem('att_pwa_latest_version');
   if (!approvedVersion || !isVersionNewer(approvedVersion, APP_VERSION)) return false;
+  const downloadingStarted = Date.now();
   const refreshed = await refreshCachedShell(approvedVersion);
   if (!refreshed) return false;
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, 5000 - (Date.now() - downloadingStarted))));
+  onPhase?.('installing');
   try {
     await storageSetItemChecked('att_pwa_approved_version', approvedVersion);
   } catch {
     return false;
   }
+  const installingStarted = Date.now();
   const activated = await activateApprovedServiceWorker();
   if (!activated) return false;
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, 5000 - (Date.now() - installingStarted))));
   clearUpdateState();
-  window.location.reload();
+  onPhase?.('completed');
   return true;
 };
 

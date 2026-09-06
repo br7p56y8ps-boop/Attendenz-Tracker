@@ -244,7 +244,7 @@ export default function Settings() {
     };
   }, []);
   const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0;
-  const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'updating'>('none');
+  const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'downloading' | 'installing' | 'completed'>('none');
   const [progressComplete, setProgressComplete] = useState(false);
   useEffect(() => { if (updatePhase === 'none') setProgressComplete(false); }, [updatePhase]);
 
@@ -401,6 +401,7 @@ export default function Settings() {
 
     if (withBackup) {
       setUpdatePhase('backing');
+      const backupStarted = Date.now();
       const snapshotSaved = await createSnapshot('Pre-Update Backup');
       if (!snapshotSaved) {
         setUpdatePhase('none');
@@ -417,7 +418,9 @@ export default function Settings() {
           return;
         }
       }
+      await new Promise(r => setTimeout(r, Math.max(0, 8000 - (Date.now() - backupStarted))));
       setProgressComplete(true);
+      await new Promise(r => setTimeout(r, 350));
     }
 
     try {
@@ -435,15 +438,21 @@ export default function Settings() {
       await new Promise(r => setTimeout(r, 5000));
     }
 
-    setUpdatePhase('updating');
-
-    const MIN_UPDATE_DELAY = 5000;
-    const start = Date.now();
+    setProgressComplete(false);
+    setUpdatePhase('downloading');
 
     let applied = false;
     try {
-      const applyPwa = (window as any).attendenzApplyPwaUpdate as (() => Promise<boolean>) | undefined;
-      applied = applyPwa ? (await applyPwa()) !== false : false;
+      const applyPwa = (window as any).attendenzApplyPwaUpdate as ((onPhase: (phase: 'installing' | 'completed') => void) => Promise<boolean>) | undefined;
+      applied = applyPwa ? (await applyPwa(phase => {
+        if (phase === 'installing') {
+          setProgressComplete(false);
+          setUpdatePhase('installing');
+        } else {
+          setProgressComplete(true);
+          setUpdatePhase('completed');
+        }
+      })) !== false : false;
     } catch {}
     if (!applied) {
       await storageRemoveItemChecked('att_just_updated').catch(() => undefined);
@@ -463,11 +472,7 @@ export default function Settings() {
     }
     setProgressComplete(true);
 
-    const elapsed = Date.now() - start;
-    if (elapsed < MIN_UPDATE_DELAY) {
-      await new Promise(r => setTimeout(r, MIN_UPDATE_DELAY - elapsed));
-    }
-
+    await new Promise(r => setTimeout(r, 1200));
     window.location.href = import.meta.env.BASE_URL || '/';
   };
 
@@ -1724,18 +1729,9 @@ export default function Settings() {
       <AnimatePresence>
         {updatePhase !== 'none' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} ref={updateProgressRef} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[140] flex items-end justify-center p-4">
-            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} role="dialog" aria-modal="true" aria-labelledby="settings-progress-title" tabIndex={-1} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-8 w-full max-w-xs max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] flex flex-col items-center gap-4">
-              {updatePhase === 'backing' ? (
-                <>
-                  <UpdateProgressSlider phase="backing" complete={progressComplete} />
-                  <p className="text-[10px] text-muted-foreground text-center">Securing your attendance records & preferences...</p>
-                </>
-              ) : (
-                <>
-                  <UpdateProgressSlider phase="updating" complete={progressComplete} />
-                  <p className="text-[10px] text-muted-foreground text-center">Hold on — the new version is being installed. The app reloads at <strong className="text-foreground">Welcome Screen</strong></p>
-                </>
-              )}
+          <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} role="dialog" aria-modal="true" aria-labelledby="settings-progress-title" tabIndex={-1} className="modal-sheet-content flex w-full max-w-xs flex-col items-center justify-center gap-4 rounded-3xl border border-border/80 bg-card p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.42)]">
+              <UpdateProgressSlider phase={updatePhase} complete={progressComplete} />
+              <p className="text-[10px] text-muted-foreground">{updatePhase === 'backing' ? 'Securing your attendance records & preferences…' : updatePhase === 'completed' ? 'The app will load the Welcome Screen shortly.' : 'Please keep the app open while the update completes.'}</p>
             </motion.div>
           </motion.div>
         )}
