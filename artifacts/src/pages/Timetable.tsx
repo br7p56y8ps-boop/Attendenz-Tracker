@@ -3,7 +3,7 @@ import { Layout } from '@/components/Layout';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData, parseDayList } from '@/contexts/CustomDataContext';
-import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, canonicalizeTimeRange, pctColor, getAttendanceStatus } from '@/lib/utils';
+import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, canonicalizeTimeRange, pctColor, getAttendanceStatus, formatPercentage } from '@/lib/utils';
 import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 
 const DEFAULT_DAYS_ORDER = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -666,7 +666,7 @@ export default function Timetable() {
                     <circle cx="22" cy="22" r="18" strokeWidth="4" className="text-muted/20" stroke="currentColor" fill="transparent" />
                     <circle cx="22" cy="22" r="18" strokeWidth="4" stroke={overallHex} strokeDasharray={2 * Math.PI * 18} strokeDashoffset={(2 * Math.PI * 18) * (1 - Math.min(100, overall.pct) / 100)} strokeLinecap="round" fill="transparent" />
                   </svg>
-                  <span className={cn('absolute inset-0 flex items-center justify-center text-[9px] font-extrabold', overallColor)}>{overall.pct.toFixed(2)}%</span>
+                  <span className={cn('absolute inset-0 flex items-center justify-center text-[9px] font-extrabold', overallColor)}>{formatPercentage(overall.pct)}</span>
                 </div>
                 <div className="flex-1 min-w-0 text-left">
                   <p className="text-[10px] text-muted-foreground font-medium">
@@ -705,7 +705,7 @@ export default function Timetable() {
               </div>
               {monthSel !== null && months[monthSel] && (
                 <p className="text-[10px] text-foreground font-semibold text-center mt-2">
-                  {months[monthSel].label}: {months[monthSel].pct === null ? 'no classes' : `${months[monthSel].pct.toFixed(2)}% (${months[monthSel].att}/${months[monthSel].att + months[monthSel].mis})`}
+                  {months[monthSel].label}: {months[monthSel].pct === null ? 'no classes' : `${formatPercentage(months[monthSel].pct)} (${months[monthSel].att}/${months[monthSel].att + months[monthSel].mis})`}
                 </p>
               )}
             </div>
@@ -720,7 +720,7 @@ export default function Timetable() {
                     <button key={a.name} type="button" onClick={() => setAttnOpen(o => !o)} className="action-button action-button--danger px-2 py-1 text-[9px]">
                       <span className="mr-1">{shortenSubject(a.name)}</span>
                       <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider', categoryBadgeClass(a.category))}>{a.category}</span>
-                      <span className="ml-1">{a.pct.toFixed(2)}%</span>
+                      <span className="ml-1">{formatPercentage(a.pct)}</span>
                     </button>
                   ))}
                 </div>
@@ -750,9 +750,9 @@ export default function Timetable() {
                       <div key={item.name} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 bg-muted/20 rounded-lg px-3 py-1.5">
                         <span className="min-w-0 text-xs font-bold text-foreground truncate" style={{ color: getSubjectColor(item.name) }}>{shortenSubject(item.name)} <span className={cn('ml-1 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider align-middle', categoryBadgeClass(item.category))}>{item.category}</span></span>
                         <div className="contents">
-                          <span className="text-[10px] text-muted-foreground">Now {item.currentPct.toFixed(2)}%</span>
+                          <span className="text-[10px] text-muted-foreground">Now {formatPercentage(item.currentPct)}</span>
                           <span className="text-[10px] text-muted-foreground">Left {item.remaining}</span>
-                          <span className={cn('text-xs font-extrabold', maxColor)}>Max {item.maxPossiblePct.toFixed(2)}%</span>
+                          <span className={cn('text-xs font-extrabold', maxColor)}>Max {formatPercentage(item.maxPossiblePct)}</span>
                         </div>
                       </div>
                     );

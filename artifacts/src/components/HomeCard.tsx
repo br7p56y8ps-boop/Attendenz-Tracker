@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey, type SelectionType } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { cn, getCurrentDateStr, getSubjectColor, pctColor, getAttendanceStatus, getPresetWardSessionId } from '@/lib/utils';
+import { cn, getCurrentDateStr, getSubjectColor, pctColor, getAttendanceStatus, getPresetWardSessionId, formatPercentage } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
@@ -433,13 +433,13 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
               {effectiveMode === 'future' && !isFinished ? (
                 isTomorrow ? <ThreeDContainer className="min-h-14 min-w-24 max-w-[11rem] items-center justify-center px-1 text-center"><span className={cn('text-[10px] font-extrabold uppercase', futureMsg.sev === 'must' ? 'text-rose-500' : futureMsg.sev === 'can' ? 'text-amber-500' : 'text-emerald-500')}>{futureMsg.sev === 'must' ? 'Must Attend' : futureMsg.sev === 'can' ? 'Can Bunk' : 'Safe Bunk'}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
               ) : effectiveMode === 'future' && isFinished ? (
-                isTomorrow ? <ThreeDContainer className="min-h-14 min-w-24 max-w-[11rem] items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(2)}%`}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
+                isTomorrow ? <ThreeDContainer className="min-h-14 min-w-24 max-w-[11rem] items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{formatPercentage(percentage)}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
               ) : effectiveMode === 'today' && currentSelection ? (
-                <ThreeDContainer className="h-14 w-24 items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(2)}%`}</span></ThreeDContainer>
+                <ThreeDContainer className="h-14 w-24 items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : formatPercentage(percentage)}</span></ThreeDContainer>
               ) : effectiveMode === 'today' && isFinished ? (
-                <ThreeDContainer className="min-h-14 min-w-24 max-w-[10rem] items-center justify-center px-2"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(2)}%`}</span></ThreeDContainer>
+                <ThreeDContainer className="min-h-14 min-w-24 max-w-[10rem] items-center justify-center px-2"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : formatPercentage(percentage)}</span></ThreeDContainer>
               ) : effectiveMode === 'today' && !currentSelection && total > 0 ? (
-                <div className={cn('min-w-0 text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(2)}%`}</div>
+                <div className={cn('min-w-0 text-lg font-bold', getPercentageColor(percentage))}>{formatPercentage(percentage)}</div>
               ) : null}
             </div>
           </div>

@@ -11,7 +11,7 @@ import { useLocation } from 'wouter';
 import { activateCurriculum, completeCurriculum, createCurriculumChecked, deleteCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculumChecked, setCurriculumStatusChecked, CurriculumRecord } from '@/lib/curriculumStore';
 import { idbGetAllChecked, storageClearChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, formatPercentage } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
 import { getSoundEnabled, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type VibrationStyle } from '@/lib/feedback';
 import { useModalAccessibility } from '@/components/ui/dialog';
@@ -1441,7 +1441,7 @@ export default function Settings() {
                           <p className="text-xs text-muted-foreground leading-relaxed">Select your target attendance threshold. This percentage is used to compute required and missable classes across all subjects.</p>
                           <div className="flex items-center justify-between pt-1">
                             <span className="text-xs font-medium text-muted-foreground">Current Target:</span>
-                            <span className="text-sm font-extrabold text-primary">{preferredPercentage}%</span>
+                            <span className="text-sm font-extrabold text-primary">{formatPercentage(preferredPercentage)}</span>
                           </div>
                         </div>
                         <div>
@@ -1449,14 +1449,14 @@ export default function Settings() {
                           <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                             {[50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].map((pct) => (
                               <button key={pct} type="button" onClick={() => setPendingPct(pct)} className={cn("action-button action-button--compact w-full", (pendingPct ?? preferredPercentage) === pct ? "action-button--update" : "action-button--neutral")}>
-                                {pct}%
+                                {formatPercentage(pct)}
                               </button>
                             ))}
                           </div>
                         </div>
                         {pendingPct !== null && (
                           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-left space-y-2">
-                            <p className="text-xs font-bold text-foreground">Apply {pendingPct}% target?</p>
+                            <p className="text-xs font-bold text-foreground">Apply {formatPercentage(pendingPct)} target?</p>
                             <p className="text-[11px] text-muted-foreground">All subjects and wards in this curriculum will use this threshold.</p>
                             <div className="flex gap-2"><button type="button" onClick={() => setPendingPct(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={() => { setPreferredPercentage(pendingPct); setPendingPct(null); }} className="action-button action-button--save flex-1">Apply</button></div>
                           </div>

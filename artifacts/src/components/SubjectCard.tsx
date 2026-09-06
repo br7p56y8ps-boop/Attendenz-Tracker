@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
-import { cn, pctColor, getSubjectColor } from '@/lib/utils';
+import { cn, pctColor, getSubjectColor, formatPercentage } from '@/lib/utils';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { CountStepper } from '@/components/CountStepper';
 import { Info, X } from 'lucide-react';
@@ -156,7 +156,7 @@ export const SubjectCard = ({
       <div className="flex shrink-0 items-center">
         <div className="percentage-3d-container flex h-14 w-20 items-center justify-center rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
           <div className="text-base sm:text-lg font-extrabold tracking-tight" style={{ color: percentageColor }}>
-          {`${percentage.toFixed(2)}%`}
+          {formatPercentage(percentage)}
           </div>
         </div>
       </div>
@@ -273,16 +273,16 @@ export const SubjectCard = ({
                   </>
                 )}
                 {activeStatInfo === 'missable' && (
-                  <p className="text-foreground font-medium">Maximum total classes that may be missed across the entire planned curriculum while still achieving {preferredPercentage}% attendance.</p>
+                    <p className="text-foreground font-medium">Maximum total classes that may be missed across the entire planned curriculum while still achieving {formatPercentage(preferredPercentage)} attendance.</p>
                 )}
                 {activeStatInfo === 'canMiss' && (
                   <>
-                    <p className="text-foreground font-medium mb-1">Maximum additional remaining classes that can still be missed while achieving {preferredPercentage}%.</p>
+                    <p className="text-foreground font-medium mb-1">Maximum additional remaining classes that can still be missed while achieving {formatPercentage(preferredPercentage)}.</p>
                     <p className="text-[10px] text-muted-foreground italic">Already conducted Classes are not included.</p>
                   </>
                 )}
                 {activeStatInfo === 'required' && (
-                  <p className="text-foreground font-medium">Minimum number of remaining classes that must be attended to reach or maintain {preferredPercentage}% attendance.</p>
+                    <p className="text-foreground font-medium">Minimum number of remaining classes that must be attended to reach or maintain {formatPercentage(preferredPercentage)} attendance.</p>
                 )}
               </div>
             </div>
@@ -363,7 +363,7 @@ export const SubjectCard = ({
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <div className="text-xl font-bold" style={{ color: percentageColor }}>
-                      {`${percentage.toFixed(2)}%`}
+                      {formatPercentage(percentage)}
                     </div>
                     <button
                       type="button"
