@@ -134,7 +134,7 @@ export function useUpdateFlow() {
 }
 
 export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'backing' | 'updating'; complete?: boolean }) => {
-  const duration = phase === 'backing' ? 5500 : 8000;
+  const duration = phase === 'backing' ? 5000 : 5000;
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     setProgress(0);
@@ -150,10 +150,9 @@ export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'back
   return (
     <div className={cn('release-progress w-full', phase === 'backing' ? 'release-progress--backup' : 'release-progress--update')}>
       <div className="release-progress__steps" role="progressbar" aria-label={`${phase === 'backing' ? 'Backup' : 'Update'} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
-        <div className="release-progress__track"><div className="release-progress__fill" style={{ transform: `scaleX(${Math.max(0, progress) / 100})` }} /></div>
-        <div className="release-progress__markers" aria-hidden="true"><span /><span /><span /><span /></div>
+        <div className="relative h-24 w-24" aria-hidden="true"><svg viewBox="0 0 100 100" className="h-24 w-24 -rotate-90"><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" className="text-muted/40" /><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" className="text-primary transition-all duration-300" strokeDasharray={264} strokeDashoffset={264 - (264 * Math.max(0, progress)) / 100} /></svg><span className="absolute inset-0 flex items-center justify-center text-sm font-extrabold text-foreground">{Math.round(progress)}%</span></div>
       </div>
-      <p className="release-progress__label">{complete ? (phase === 'backing' ? 'Complete' : 'Updated') : phase === 'backing' ? (progress < 25 ? 'Creating Backup' : progress < 55 ? 'Taking Snapshot' : 'Validating') : (progress < 45 ? 'Initialising' : progress < 78 ? 'Downloading' : 'Installing')}</p>
+      <p className="release-progress__label text-xs font-bold text-foreground">{complete ? (phase === 'backing' ? 'Backup complete' : 'Update ready') : phase === 'backing' ? 'Backing up…' : progress < 55 ? 'Downloading…' : 'Installing…'}</p>
     </div>
   );
 };

@@ -5,6 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function formatPercentage(value: number): string {
+  return `${value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1')}%`;
+}
+
 export function getCurrentDateStr(date: Date = new Date()) {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');

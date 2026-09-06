@@ -7,7 +7,7 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData, getEffectiveParentName } from '@/contexts/CustomDataContext';
 import type { CustomSubject, UserAddedSubject } from '@/contexts/CustomDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { pctColor, cn } from '@/lib/utils';
+import { pctColor, cn, formatPercentage } from '@/lib/utils';
 import { useLocation } from 'wouter';
 import { ClipboardList, GraduationCap, Stethoscope } from 'lucide-react';
 
@@ -90,7 +90,7 @@ const CategoryCard = ({
       <button type="button" onClick={onToggle} className="w-full text-left transition-all active:scale-[0.99] cursor-pointer">
         <div className="flex items-center gap-4 min-w-0">
           <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
-            <span className="text-xs font-extrabold leading-none" style={{ color: overallColor }}>{summary.pct === undefined || isNaN(summary.pct) ? '--' : `${summary.pct.toFixed(0)}%`}</span>
+            <span className="text-xs font-extrabold leading-none" style={{ color: overallColor }}>{summary.pct === undefined || isNaN(summary.pct) ? '--' : formatPercentage(summary.pct)}</span>
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">

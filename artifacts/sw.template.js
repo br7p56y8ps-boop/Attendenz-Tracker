@@ -28,7 +28,7 @@ self.addEventListener('push', (e) => {
   try { payload = e.data ? e.data.json() : {}; } catch {}
   const title = typeof payload.title === 'string' && payload.title.trim() ? payload.title : 'Scheduled Reminder';
   const options = {
-    body: typeof payload.body === 'string' && payload.body.trim() ? payload.body : 'You have a scheduled reminder.',
+    body: typeof payload.body === 'string' ? payload.body : '',
     tag: typeof payload.tag === 'string' ? payload.tag : 'attendenz-reminder',
     data: { url: typeof payload.url === 'string' ? payload.url : '/' },
   };
