@@ -1,5 +1,5 @@
 {
-  "1.6.10": {
+  "1.6.11": {
     "upgrades": [
       { "title": "Better update experience", "summary": "Updates now guide you clearly through backing up, downloading, installing, and finishing." },
       { "title": "Safer data protection", "summary": "Your attendance records and preferences are better protected during app updates." },
