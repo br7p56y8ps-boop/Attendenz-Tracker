@@ -1,7 +1,57 @@
 /* Attendenz guard worker — generated from release.config.json. */
 const VERSION = '__ATTENDENZ_VERSION__';
+const UPDATE_MODE = '__ATTENDENZ_UPDATE_MODE__';
 const SHELL = `attendenz-shell-v${VERSION}-r2`;
+const DB_NAME = 'AttendenzDatabase';
+const STORE_NAME = 'key_value_store';
+const APPROVED_VERSION_KEY = 'att_pwa_approved_version';
+const ACTIVE_VERSION_KEY = 'att_pwa_active_version';
 let activationApproved = false;
+
+function readStoredValue(key) {
+  return new Promise((resolve) => {
+    if (!self.indexedDB) return resolve(null);
+    let request;
+    try { request = self.indexedDB.open(DB_NAME, 1); } catch { return resolve(null); }
+    request.onerror = () => resolve(null);
+    request.onsuccess = () => {
+      const db = request.result;
+      try {
+        const get = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(key);
+        get.onsuccess = () => resolve(get.result && typeof get.result.value === 'string' ? get.result.value : null);
+        get.onerror = () => resolve(null);
+      } catch { resolve(null); }
+    };
+  });
+}
+
+function versionParts(version) {
+  return String(version).split('.').map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function compareVersions(a, b) {
+  const left = versionParts(a), right = versionParts(b);
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    if ((left[index] || 0) !== (right[index] || 0)) return (left[index] || 0) - (right[index] || 0);
+  }
+  return 0;
+}
+
+async function activeCacheName() {
+  if (UPDATE_MODE === 'automatic') return SHELL;
+  const approved = await readStoredValue(APPROVED_VERSION_KEY);
+  if (approved === VERSION) return SHELL;
+  const active = await readStoredValue(ACTIVE_VERSION_KEY);
+  if (active && active !== VERSION) {
+    const activeCache = `attendenz-shell-v${active}-r2`;
+    if (await caches.has(activeCache)) return activeCache;
+  }
+  const names = await caches.keys();
+  const candidates = names
+    .filter((name) => name.startsWith('attendenz-shell-v') && name.endsWith('-r2') && name !== SHELL)
+    .sort((a, b) => compareVersions(b.slice(17, -3), a.slice(17, -3)));
+  return candidates[0] || SHELL;
+}
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -65,7 +115,7 @@ self.addEventListener('fetch', (e) => {
   // Navigations: serve the cached shell, refreshed by the app after a detected update.
   if (req.mode === 'navigate') {
     e.respondWith(
-      caches.open(SHELL).then(async (cache) => {
+      activeCacheName().then(async (cacheName) => caches.open(cacheName).then(async (cache) => {
         const cacheKey = `${self.registration.scope}index.html`;
         const cached = await cache.match(cacheKey);
 
@@ -95,19 +145,19 @@ self.addEventListener('fetch', (e) => {
 
         // Final fallback: return cached or offline.
         return cached || new Response('Offline', { status: 503, statusText: 'Offline' });
-      })
+      }))
     );
     return;
   }
 
   // Hashed assets: cache-first, fill in background.
   e.respondWith(
-    caches.match(req).then((hit) => hit || fetch(req).then((res) => {
+    activeCacheName().then((cacheName) => caches.open(cacheName).then((cache) => cache.match(req).then((hit) => hit || fetch(req).then((res) => {
       if (res.ok && res.status === 200 && !res.redirected) {
         const clone = res.clone();
-        caches.open(SHELL).then((c) => c.put(req, clone));
+        cache.put(req, clone);
       }
       return res;
-    }))
+    }))))
   );
 });

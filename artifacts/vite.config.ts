@@ -71,9 +71,11 @@ function generateReleaseArtifacts(): Plugin {
     generateBundle() {
       const release = readReleaseConfig();
       const template = fs.readFileSync(serviceWorkerTemplatePath, 'utf8');
-      const serviceWorker = template.replaceAll('__ATTENDENZ_VERSION__', release.version);
+      const serviceWorker = template
+        .replaceAll('__ATTENDENZ_VERSION__', release.version)
+        .replaceAll('__ATTENDENZ_UPDATE_MODE__', release.updateMode);
       if (serviceWorker === template) {
-        this.error('Service-worker template is missing the __ATTENDENZ_VERSION__ marker.');
+        this.error('Service-worker template is missing a release marker.');
       }
       this.emitFile({
         type: 'asset',

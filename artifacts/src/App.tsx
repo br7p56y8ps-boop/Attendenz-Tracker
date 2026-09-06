@@ -25,12 +25,16 @@ const NotFound = lazy(() => import('@/pages/not-found'));
 const PageFallback = () => <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Initialising…</div>;
 
 const HAS_SEEN_WELCOME_KEY = 'att_has_seen_welcome_v1';
+const UPDATE_GATE_DISMISSED_VERSION_KEY = 'att_update_gate_dismissed_version';
 
 function AuthGate() {
   const { isLoggedIn } = useAuth();
   const { setupDone } = useCustomData();
   const { isUpdateAvailable, online, serverVersion, serverSummary, updatePhase, progressComplete, applyUpdate } = useUpdateFlow();
-  const [gateDismissed, setGateDismissed] = useState<boolean>(() => sessionStorage.getItem('att_update_gate_dismissed') === 'true');
+  const [gateDismissed, setGateDismissed] = useState<boolean>(() => localStorage.getItem(UPDATE_GATE_DISMISSED_VERSION_KEY) === localStorage.getItem('att_pwa_latest_version'));
+  useEffect(() => {
+    setGateDismissed(localStorage.getItem(UPDATE_GATE_DISMISSED_VERSION_KEY) === serverVersion);
+  }, [serverVersion]);
 
   if (!isLoggedIn) return <Suspense fallback={<PageFallback />}><Login /></Suspense>;
   if (!setupDone) return <Suspense fallback={<PageFallback />}><SetupScreen /></Suspense>;
@@ -47,7 +51,7 @@ function AuthGate() {
             open={updatePhase === 'none'}
             serverVersion={serverVersion}
             summary={serverSummary}
-            onRemind={() => { sessionStorage.setItem('att_update_gate_dismissed', 'true'); setGateDismissed(true); }}
+            onRemind={() => { localStorage.setItem(UPDATE_GATE_DISMISSED_VERSION_KEY, serverVersion); setGateDismissed(true); }}
             onUpdate={(b) => applyUpdate(b)}
           />
           <UpdateOverlay phase={updatePhase} progressComplete={progressComplete} />

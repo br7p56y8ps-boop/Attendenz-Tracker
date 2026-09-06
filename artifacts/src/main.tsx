@@ -2,12 +2,14 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
-import { APP_VERSION, PWA_CACHE_NAME, RELEASE_TYPE, UPDATE_MODE, type ReleaseType, type UpdateMode } from '@/lib/appVersion';
+import { APP_VERSION, RELEASE_TYPE, UPDATE_MODE, type ReleaseType, type UpdateMode } from '@/lib/appVersion';
+import { storageSetItemChecked } from '@/lib/idb';
 
 const base = import.meta.env.BASE_URL || '/';
 const BUILD_REVISION_KEY = 'att_pwa_build_revision';
 let silentBuildUpdateInFlight = false;
 let serviceWorkerRegistrationPromise: Promise<ServiceWorkerRegistration> | null = null;
+void storageSetItemChecked('att_pwa_active_version', APP_VERSION);
 function isVersionNewer(candidate: string, current: string): boolean {
   const a = String(candidate).split('.').map(n => parseInt(n, 10) || 0);
   const b = String(current).split('.').map(n => parseInt(n, 10) || 0);
@@ -28,9 +30,9 @@ function clearUpdateState(): void {
   window.dispatchEvent(new CustomEvent('attendenz:update-cleared'));
 }
 
-async function refreshCachedShell(): Promise<boolean> {
+async function refreshCachedShell(version = APP_VERSION): Promise<boolean> {
   try {
-    const cache = await caches.open(PWA_CACHE_NAME);
+    const cache = await caches.open(`attendenz-shell-v${version}-r2`);
     const indexUrl = `${base}index.html`;
     const fresh = await fetch(`${indexUrl}?refresh=${Date.now()}`, { cache: 'no-store' });
     if (!fresh.ok) return false;
@@ -81,7 +83,10 @@ async function activateApprovedServiceWorker(): Promise<boolean> {
     });
     waiting = registration.waiting;
   }
-  if (!waiting) return false;
+  // A newer worker may already have activated while the PWA was closed. The
+  // approval marker still controls which cache it serves, so a reload is
+  // sufficient in that case.
+  if (!waiting) return Boolean(registration.active);
   return await new Promise<boolean>((resolve) => {
     const onControllerChange = () => {
       window.clearTimeout(timeout);
@@ -151,7 +156,8 @@ if ('serviceWorker' in navigator) {
           const releaseType: ReleaseType = j.releaseType === 'major' || j.releaseType === 'minor' ? j.releaseType : RELEASE_TYPE;
           const updateMode: UpdateMode = j.updateMode === 'automatic' || j.updateMode === 'manual' ? j.updateMode : UPDATE_MODE;
           if (updateMode === 'automatic') {
-            const refreshed = await refreshCachedShell();
+            await storageSetItemChecked('att_pwa_approved_version', j.version).catch(() => undefined);
+            const refreshed = await refreshCachedShell(j.version);
             if (refreshed) {
               const activated = await activateApprovedServiceWorker();
               if (!activated) return;
@@ -191,8 +197,15 @@ if ('serviceWorker' in navigator) {
 
 /* Account's visible Update button calls this: updates the cached shell directly. */
 (window as any).attendenzApplyPwaUpdate = async (): Promise<boolean> => {
-  const refreshed = await refreshCachedShell();
+  const approvedVersion = localStorage.getItem('att_pwa_latest_version');
+  if (!approvedVersion || !isVersionNewer(approvedVersion, APP_VERSION)) return false;
+  const refreshed = await refreshCachedShell(approvedVersion);
   if (!refreshed) return false;
+  try {
+    await storageSetItemChecked('att_pwa_approved_version', approvedVersion);
+  } catch {
+    return false;
+  }
   const activated = await activateApprovedServiceWorker();
   if (!activated) return false;
   clearUpdateState();
