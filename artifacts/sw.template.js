@@ -5,6 +5,7 @@ const SHELL = `attendenz-shell-v${VERSION}-r2`;
 const DB_NAME = 'AttendenzDatabase';
 const STORE_NAME = 'key_value_store';
 const APPROVED_VERSION_KEY = 'att_pwa_approved_version';
+const EXPLICIT_APPROVAL_KEY = 'att_pwa_explicit_approval_version';
 const ACTIVE_VERSION_KEY = 'att_pwa_active_version';
 let activationApproved = false;
 
@@ -37,11 +38,38 @@ function compareVersions(a, b) {
   return 0;
 }
 
+function writeStoredValues(entries) {
+  return new Promise((resolve, reject) => {
+    if (!self.indexedDB) return reject(new Error('IndexedDB unavailable'));
+    let request;
+    try { request = self.indexedDB.open(DB_NAME, 1); } catch (error) { return reject(error); }
+    request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        entries.forEach(([key, value]) => store.put({ key, value }));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('IndexedDB write failed'));
+        tx.onabort = () => reject(tx.error || new Error('IndexedDB write aborted'));
+      } catch (error) { reject(error); }
+    };
+  });
+}
+
 async function activeCacheName() {
   if (UPDATE_MODE === 'automatic') return SHELL;
-  const approved = await readStoredValue(APPROVED_VERSION_KEY);
-  if (approved === VERSION) return SHELL;
+  // A user-approved worker may serve its pre-cached shell during the one reload
+  // that follows activation. The durable active flag is committed by the new
+  // page only after that reload has actually happened.
+  if (activationApproved) return SHELL;
   const active = await readStoredValue(ACTIVE_VERSION_KEY);
+  if (active === VERSION) return SHELL;
   if (active && active !== VERSION) {
     const activeCache = `attendenz-shell-v${active}-r2`;
     if (await caches.has(activeCache)) return activeCache;
@@ -54,18 +82,40 @@ async function activeCacheName() {
 }
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(SHELL)
-      .then((c) => c.addAll([`${self.registration.scope}index.html`]))
-      .catch(() => {})
-      // Manual releases remain waiting until the application explicitly approves activation.
-  );
+  e.waitUntil((async () => {
+    const cache = await caches.open(SHELL);
+    const indexUrl = `${self.registration.scope}index.html`;
+    const response = await fetch(indexUrl, { cache: 'no-store', redirect: 'follow' });
+    if (!response.ok) return;
+    await cache.put(indexUrl, response.clone());
+    const html = await response.text();
+    const assets = new Set([indexUrl]);
+    for (const match of html.matchAll(/(?:src|href)=["']([^"']+)["']/g)) {
+      try {
+        const url = new URL(match[1], self.registration.scope);
+        if (url.origin === self.location.origin) assets.add(url.href);
+      } catch {}
+    }
+    await Promise.all(Array.from(assets).map(async (url) => {
+      if (url === indexUrl) return;
+      try {
+        const asset = await fetch(url, { cache: 'no-store' });
+        if (asset.ok && asset.status === 200) await cache.put(url, asset);
+      } catch {}
+    }));
+  })().catch(() => {}));
 });
 
 self.addEventListener('message', (e) => {
-  if (e.data && e.data.type === 'SKIP_WAITING') {
+  if (e.data && e.data.type === 'APPROVE_UPDATE' && e.data.version === VERSION) {
     activationApproved = true;
-    self.skipWaiting();
+    e.waitUntil(writeStoredValues([
+      [APPROVED_VERSION_KEY, VERSION],
+      [EXPLICIT_APPROVAL_KEY, VERSION],
+    ]).then(() => {
+      e.ports[0]?.postMessage({ type: 'UPDATE_APPROVED', version: VERSION });
+      return self.skipWaiting();
+    }));
   }
 });
 

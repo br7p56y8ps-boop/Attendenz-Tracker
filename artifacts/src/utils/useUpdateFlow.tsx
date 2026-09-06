@@ -89,15 +89,6 @@ export function useUpdateFlow() {
       await new Promise(r => setTimeout(r, 350));
     }
 
-    try {
-      await storageCommitChecked(
-        [['att_just_updated', 'true']],
-        ['att_has_seen_welcome_v1', 'att_app_version'],
-      );
-    } catch {
-      setUpdatePhase('none');
-      return;
-    }
     setProgressComplete(false);
     setUpdatePhase('downloading');
     let applied = false;
@@ -121,6 +112,10 @@ export function useUpdateFlow() {
       return;
     }
     try {
+      await storageCommitChecked(
+        [['att_just_updated', 'true']],
+        ['att_has_seen_welcome_v1', 'att_app_version'],
+      );
       await Promise.all([
         storageRemoveItemChecked('att_pwa_update_ready'),
         storageRemoveItemChecked('att_pwa_latest_version'),
@@ -191,6 +186,7 @@ export const UpdateModal = ({ open, serverVersion, summary, onRemind, onUpdate }
           <p className="text-muted-foreground text-xs leading-relaxed text-left">{summary || 'Bug fixes and refinements are ready to install.'}</p>
           <div className="flex flex-col gap-2 pt-1">
             <button type="button" onClick={() => onUpdate(true)} className="action-button action-button--transfer w-full">Backup & Update</button>
+            <button type="button" onClick={() => onUpdate(false)} className="action-button action-button--update w-full">Update</button>
             <button type="button" onClick={onRemind} className="action-button action-button--neutral w-full">Remind Later</button>
           </div>
         </motion.div>

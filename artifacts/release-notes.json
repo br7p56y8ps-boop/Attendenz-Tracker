@@ -1,0 +1,20 @@
+{
+  "1.6.11": {
+    "upgrades": [
+      { "title": "Better update experience", "summary": "Updates now guide you clearly through backing up, downloading, installing, and finishing." },
+      { "title": "Safer data protection", "summary": "Your attendance records and preferences are better protected during app updates." },
+      { "title": "More reliable offline use", "summary": "The app is better prepared to keep working when your internet connection is unavailable." },
+      { "title": "Clearer progress feedback", "summary": "You can easily see what the app is doing while a backup or update is in progress." },
+      { "title": "Simpler choices", "summary": "You can update with a backup for extra peace of mind or update directly when you prefer." },
+      { "title": "A more polished experience", "summary": "Everyday screens and recovery steps feel smoother, clearer, and easier to follow." }
+    ],
+    "fixes": [
+      { "title": "Smarter reminders", "summary": "Reminders now avoid false alerts for holidays, days off, and completed classes." },
+      { "title": "More accurate upcoming classes", "summary": "Upcoming views now focus on classes that still need your attention." },
+      { "title": "More dependable updates", "summary": "The app stays on your current version until you choose to install an available update." },
+      { "title": "Safer reopening", "summary": "Closing the app during an available update keeps your current version ready when you return." },
+      { "title": "More trustworthy recovery", "summary": "The app does a better job of helping you return safely after an interrupted update or restore." },
+      { "title": "Smoother daily use", "summary": "Progress screens and common actions now feel more consistent and predictable." }
+    ]
+  }
+}
