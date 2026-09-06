@@ -54,5 +54,5 @@ export const FEATURES_UPDATED = [
 ];
 export const RELEASE_NOTES = {
   version: APP_VERSION,
-  summary: "Recovery v1.6.9: strict manual updates and notification reliability.",
+  summary: "Recovery v1.6.10: centered multi-phase update progress.",
 };
