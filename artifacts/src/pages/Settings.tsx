@@ -66,26 +66,26 @@ type NotificationChildKey = 'needAttentionSummary' | 'needAttentionSubjects' | '
 type NotificationChild = { key: NotificationChildKey; title: string; description: string };
 
 const ATTENDANCE_REMINDER_CHILDREN: NotificationChild[] = [
-  { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'Nightly batch' },
-  { key: 'beforeClassWarnings', title: 'Before-Class Warnings', description: 'Before class with selected lead time' },
-  { key: 'needAttentionSubjects', title: 'Need Attention Subjects', description: 'Nightly batch and before class with selected lead time' },
-  { key: 'safeToMiss', title: 'Safe to Miss a Class', description: 'Before class with selected lead time' },
-  { key: 'unmarkedAttendanceToday', title: 'Unmarked Attendance Today', description: '9:30 PM or 11:00 PM based on last class' },
+  { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'Remote push during your nightly reminder window for must-attend classes.' },
+  { key: 'beforeClassWarnings', title: 'Before-Class Warnings', description: 'Remote push before class using your selected lead time.' },
+  { key: 'needAttentionSubjects', title: 'Need Attention Subjects', description: 'Remote push at night and before class for subjects needing attention.' },
+  { key: 'safeToMiss', title: 'Safe to Miss a Class', description: 'Remote push before class with your selected lead time when missing is safe.' },
+  { key: 'unmarkedAttendanceToday', title: 'Unmarked Attendance Today', description: 'Remote evening check for classes that still have no attendance status.' },
 ];
 const DAILY_SCHEDULE_CHILDREN: NotificationChild[] = [
-  { key: 'lastPlannedClassToday', title: 'Last Planned Class Upcoming', description: 'Nightly batch' },
-  { key: 'firstClassOfDay', title: 'First Upcoming Class', description: 'Nightly batch' },
-  { key: 'allScheduledClasses', title: 'All Upcoming Classes', description: 'Nightly batch' },
+  { key: 'lastPlannedClassToday', title: 'Last Planned Class Upcoming', description: 'Remote nightly reminder for your last planned class coming up.' },
+  { key: 'firstClassOfDay', title: 'First Upcoming Class', description: 'Remote nightly reminder for your first upcoming class.' },
+  { key: 'allScheduledClasses', title: 'All Upcoming Classes', description: 'Remote nightly summary of your upcoming classes.' },
 ];
 const ACTIVITY_CHILDREN: NotificationChild[] = [
-  { key: 'manageChanges', title: 'Changes Made in Manage', description: 'Local confirmation after a routine change is saved' },
-  { key: 'dataTransfer', title: 'Routine or App Data Transfer', description: 'Local confirmation after data transfer succeeds' },
-  { key: 'curriculumChanges', title: 'Curriculum Changes', description: 'Local confirmation after a curriculum change' },
+  { key: 'manageChanges', title: 'Changes Made in Manage', description: 'Local in-app notification after a change in Manage is saved.' },
+  { key: 'dataTransfer', title: 'Routine or App Data Transfer', description: 'Local in-app notification after routine or app data transfer completes.' },
+  { key: 'curriculumChanges', title: 'Curriculum Changes', description: 'Local in-app notification after a curriculum change is saved.' },
 ];
 
 const UPDATE_CHILDREN: NotificationChild[] = [
-  { key: 'updateAvailable', title: 'Update Available', description: 'Local notice when an update is ready' },
-  { key: 'updateCompleted', title: 'Update Completed', description: 'Local confirmation after an update completes' },
+  { key: 'updateAvailable', title: 'Update Available', description: 'Remote push notification to your device when a new app update is available.' },
+  { key: 'updateCompleted', title: 'Update Completed', description: 'Local in-app notification after the app finishes updating.' },
 ];
 
 function NotificationGroupCard({
