@@ -53,5 +53,5 @@ export const FEATURES_UPDATED = [
 ];
 export const RELEASE_NOTES = {
   version: APP_VERSION,
-  summary: "Recovery v1.6.7: reliable nightly reminders and data recovery safeguards.",
+  summary: "Recovery v1.6.8: reliable nightly reminders and data recovery safeguards.",
 };

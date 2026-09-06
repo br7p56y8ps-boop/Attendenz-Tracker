@@ -68,6 +68,14 @@ const db = {
         id: 'medicine-2026-09-07', device_id: 'device-test-123456', localDate: '2026-09-07', startMinute: 600, endMinute: 630,
         subjectLabel: 'Medicine (Lecture)', category: 'academic', needsAttention: true, attentionLevel: 'needAttention',
         attendanceMarked: false, status: 'unmarked', isFinalForSubject: false,
+      }, {
+        id: 'holiday-2026-09-07', device_id: 'device-test-123456', localDate: '2026-09-07', startMinute: 700, endMinute: 730,
+        subjectLabel: 'Holiday Subject', category: 'academic', needsAttention: true, attentionLevel: 'mustAttend',
+        attendanceMarked: false, status: 'off', isFinalForSubject: false,
+      }, {
+        id: 'completed-2026-09-07', device_id: 'device-test-123456', localDate: '2026-09-07', startMinute: 800, endMinute: 830,
+        subjectLabel: 'Completed Subject', category: 'academic', needsAttention: true, attentionLevel: 'mustAttend',
+        attendanceMarked: true, status: 'completed', isFinalForSubject: false,
       }] } : { results: [] }; },
       async run() { if (query.includes('INSERT OR IGNORE INTO deliveries')) deliveryKeys.add(String(values[0])); return {}; },
     };

@@ -586,7 +586,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
   const url = DEFAULT_ALLOWED_ORIGIN;
 
   if (nightlyWindow) {
-    const future = nightlyOccurrences.filter(item => item.localDate > clock.date || (item.localDate === clock.date && item.startMinute > currentMinute));
+    const future = nightlyOccurrences.filter(item => item.status === 'unmarked' && (item.localDate > clock.date || (item.localDate === clock.date && item.startMinute > currentMinute)));
     const mustAttend = device.midnight_need_attention ? future.filter(item => item.attentionLevel === 'mustAttend') : [];
     const needAttention = device.need_attention_subjects ? future.filter(item => item.attentionLevel === 'needAttention') : [];
     const finalClasses = device.final_class_today ? future.filter(item => item.isFinalForSubject) : [];
