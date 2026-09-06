@@ -20,7 +20,7 @@ import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { UpdateProgressSlider } from '@/utils/useUpdateFlow';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport, isStandalonePWA } from '@/lib/exportUtils';
-import { deleteRemoteDevice, getReminderRegistrationDiagnostics, getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, testRemoteNotification, type ReminderSyncStatus } from '@/lib/webPushSync';
+import { deleteRemoteDevice, getReminderRegistrationDiagnostics, getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, type ReminderSyncStatus } from '@/lib/webPushSync';
 import {
   disableDirectPush,
   enableDirectPush,
@@ -66,26 +66,26 @@ type NotificationChildKey = 'needAttentionSummary' | 'needAttentionSubjects' | '
 type NotificationChild = { key: NotificationChildKey; title: string; description: string };
 
 const ATTENDANCE_REMINDER_CHILDREN: NotificationChild[] = [
-  { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'A grouped summary for Subjects that need attendance protection in upcoming Classes.' },
-  { key: 'beforeClassWarnings', title: 'Before-Class Warnings', description: 'Controls reminders sent before an upcoming Class.' },
-  { key: 'needAttentionSubjects', title: 'Need Attention Subjects', description: 'Reminders for Subjects at the target but without the recommended safety margin.' },
-  { key: 'safeToMiss', title: 'Safe to Miss a Class', description: 'A lead-time alert when missing the upcoming Class would keep you at or above the preferred percentage.' },
-  { key: 'unmarkedAttendanceToday', title: 'Unmarked Attendance Today', description: 'A late-evening reminder for today’s Classes that still have no attendance status.' },
+  { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'Nightly batch' },
+  { key: 'beforeClassWarnings', title: 'Before-Class Warnings', description: 'Before class with selected lead time' },
+  { key: 'needAttentionSubjects', title: 'Need Attention Subjects', description: 'Nightly batch and before class with selected lead time' },
+  { key: 'safeToMiss', title: 'Safe to Miss a Class', description: 'Before class with selected lead time' },
+  { key: 'unmarkedAttendanceToday', title: 'Unmarked Attendance Today', description: '9:30 PM or 11:00 PM based on last class' },
 ];
 const DAILY_SCHEDULE_CHILDREN: NotificationChild[] = [
-  { key: 'lastPlannedClassToday', title: 'Last Planned Class Upcoming', description: 'A reminder when a Subject has its genuine final planned Class tomorrow.' },
-  { key: 'firstClassOfDay', title: 'First Upcoming Class', description: 'A reminder showing the first upcoming Subject and start time.' },
-  { key: 'allScheduledClasses', title: 'All Upcoming Classes', description: 'One grouped reminder listing all upcoming Classes.' },
+  { key: 'lastPlannedClassToday', title: 'Last Planned Class Upcoming', description: 'Nightly batch' },
+  { key: 'firstClassOfDay', title: 'First Upcoming Class', description: 'Nightly batch' },
+  { key: 'allScheduledClasses', title: 'All Upcoming Classes', description: 'Nightly batch' },
 ];
 const ACTIVITY_CHILDREN: NotificationChild[] = [
-  { key: 'manageChanges', title: 'Changes Made in Manage', description: 'A confirmation after a routine change is saved successfully.' },
-  { key: 'dataTransfer', title: 'Routine or App Data Transfer', description: 'A confirmation after a routine, settings, backup, or app-data transfer succeeds.' },
-  { key: 'curriculumChanges', title: 'Curriculum Changes', description: 'A confirmation after switching, completing, or restoring a curriculum.' },
+  { key: 'manageChanges', title: 'Changes Made in Manage', description: 'Local confirmation after a routine change is saved' },
+  { key: 'dataTransfer', title: 'Routine or App Data Transfer', description: 'Local confirmation after data transfer succeeds' },
+  { key: 'curriculumChanges', title: 'Curriculum Changes', description: 'Local confirmation after a curriculum change' },
 ];
 
 const UPDATE_CHILDREN: NotificationChild[] = [
-  { key: 'updateAvailable', title: 'Update Available', description: 'A notice when a new Attendenz version is ready.' },
-  { key: 'updateCompleted', title: 'Update Completed', description: 'A confirmation after the new version becomes active.' },
+  { key: 'updateAvailable', title: 'Update Available', description: 'Local notice when an update is ready' },
+  { key: 'updateCompleted', title: 'Update Completed', description: 'Local confirmation after an update completes' },
 ];
 
 function NotificationGroupCard({
@@ -256,7 +256,7 @@ export default function Settings() {
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [reminderSyncStatus, setReminderSyncStatus] = useState<ReminderSyncStatus>(() => getReminderSyncStatus());
   const [reminderServiceConfigured, setReminderServiceConfigured] = useState(() => getReminderSyncStatus().state !== 'not-configured');
-  const [notificationRecovery, setNotificationRecovery] = useState<{ title: string; message: string; action?: 'enable' | 'test' | 'settings' } | null>(null);
+  const [notificationRecovery, setNotificationRecovery] = useState<{ title: string; message: string; action?: 'enable' | 'settings' } | null>(null);
   const [expandedNotificationGroups, setExpandedNotificationGroups] = useState<Record<string, boolean>>({ attendance: false, dailySchedule: false, activity: false, updates: false });
   const [pendingPct, setPendingPct] = useState<number | null>(null);
   const [confirmMarkComplete, setConfirmMarkComplete] = useState(false);
@@ -322,9 +322,16 @@ export default function Settings() {
   };
 
   const notificationControlsDisabled = !reminderServiceConfigured || !systemNotificationsEnabled || notificationPermission !== 'granted';
+  const updateNotificationToggle = (key: NotificationChildKey, enabled: boolean) => {
+    updateNotificationPreference(key, enabled as NotificationPreferences[typeof key]);
+    const child = [...ATTENDANCE_REMINDER_CHILDREN, ...DAILY_SCHEDULE_CHILDREN, ...ACTIVITY_CHILDREN, ...UPDATE_CHILDREN].find(item => item.key === key);
+    notifySuccess(`${child?.title || 'Notification'} ${enabled ? 'enabled' : 'disabled'}`);
+  };
   const setNotificationGroupEnabled = (group: 'attendance' | 'dailySchedule' | 'activity' | 'updates', enabled: boolean) => {
     const key = `${group}GroupEnabled` as keyof NotificationPreferences;
     updateNotificationPreference(key, enabled as NotificationPreferences[typeof key]);
+    const title = group === 'attendance' ? 'Attendance & Risk Reminders' : group === 'dailySchedule' ? 'Daily Schedule Reminders' : group === 'activity' ? 'Activity & Data Changes' : 'App Updates';
+    notifySuccess(`${title} ${enabled ? 'enabled' : 'disabled'}`);
   };
 
   const enableSystemNotifications = async () => {
@@ -343,30 +350,6 @@ export default function Settings() {
         setNotificationRecovery({ title: 'Notifications are unavailable', message: 'Use the secure Attendenz app in a browser that supports Notifications and Service Workers.' });
       } else {
         setNotificationRecovery({ title: 'Notifications could not be enabled', message: 'The browser could not complete push registration. Check your connection and try again.', action: 'enable' });
-      }
-    } finally {
-      setNotificationBusy(false);
-      await refreshNotificationState();
-    }
-  };
-
-  const testSystemNotifications = async () => {
-    if (notificationBusy) return;
-    setNotificationBusy(true);
-    try {
-      const result = await testRemoteNotification();
-      if (result.state === 'sent') {
-        notifySuccess('Test notification sent.');
-      } else if (result.state === 'permission-required') {
-        setNotificationRecovery({ title: 'Allow Notifications first', message: 'Turn on System Notifications before sending a test reminder.', action: 'enable' });
-      } else if (result.state === 'subscription-missing') {
-        setNotificationRecovery({ title: 'Push subscription missing', message: 'Attendenz will try to repair this automatically. If repair fails, turn notifications off and on again, then retry.', action: 'enable' });
-      } else if (result.state === 'not-registered') {
-        setNotificationRecovery({ title: 'Reminder registration expired', message: 'Your device registration was lost. Re-enable System Notifications to register this device again.', action: 'enable' });
-      } else if (result.state === 'not-configured') {
-        setNotificationRecovery({ title: 'Reminders are unavailable', message: 'The reminder service is not configured for this app build.' });
-      } else {
-        setNotificationRecovery({ title: 'Test notification failed', message: 'The reminder service could not deliver the test. Check your connection and try again.', action: 'test' });
       }
     } finally {
       setNotificationBusy(false);
@@ -1417,15 +1400,14 @@ export default function Settings() {
                               {reminderServiceConfigured && reminderSyncStatus.state === 'synced' && <p className="text-[10px] font-bold text-emerald-500">Reminders synced for this device.</p>}
                               {reminderSyncStatus.state === 'offline' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">You are offline. Reminders will sync automatically when the connection returns.</p>}
                               {reminderSyncStatus.state === 'subscription-missing' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">The browser push subscription is missing. Attendenz will try to repair it automatically.</p>}
-                              {reminderSyncStatus.state === 'error' && <p className="text-[10px] leading-relaxed text-destructive">Reminder sync failed. Check your connection and use Test Notifications to retry.</p>}
-                              <button type="button" onClick={testSystemNotifications} disabled={notificationBusy} className="action-button action-button--neutral action-button--compact w-full disabled:opacity-50">{notificationBusy ? 'Testing…' : 'Test Notifications'}</button>
+                              {reminderSyncStatus.state === 'error' && <p className="text-[10px] leading-relaxed text-destructive">Reminder sync failed. Check your connection and reopen System Notifications to retry.</p>}
                             </>
                           )}
                         </div>
-                        <NotificationGroupCard title="Attendance & Risk Reminders" description="Choose which attendance-related reminders are useful to you." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, attendance: !prev.attendance }))} enabled={notificationPreferences.attendanceGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('attendance', value)} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
-                        <NotificationGroupCard title="Daily Schedule Reminders" description="Choose reminders about the Classes scheduled for your day." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, dailySchedule: !prev.dailySchedule }))} enabled={notificationPreferences.dailyScheduleGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('dailySchedule', value)} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} nightlyReminderTime={notificationPreferences.nightlyReminderTime} onNightlyReminderTimeChange={value => updateNotificationPreference('nightlyReminderTime', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
-                        <NotificationGroupCard title="Activity & Data Changes" description="Choose confirmations for routine, curriculum, and data changes." expanded={Boolean(expandedNotificationGroups.activity)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, activity: !prev.activity }))} enabled={notificationPreferences.activityGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('activity', value)} children={ACTIVITY_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
-                        <NotificationGroupCard title="App Updates" description="Choose notices when an Attendenz update is available or completed." expanded={Boolean(expandedNotificationGroups.updates)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, updates: !prev.updates }))} enabled={notificationPreferences.updatesGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('updates', value)} children={UPDATE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationPreference(key, value)} />
+                        <NotificationGroupCard title="Attendance & Risk Reminders" description="Nightly, before-class, and unmarked-attendance alerts." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, attendance: !prev.attendance }))} enabled={notificationPreferences.attendanceGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('attendance', value)} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
+                        <NotificationGroupCard title="Daily Schedule Reminders" description="Nightly batch for upcoming schedule reminders." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, dailySchedule: !prev.dailySchedule }))} enabled={notificationPreferences.dailyScheduleGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('dailySchedule', value)} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} nightlyReminderTime={notificationPreferences.nightlyReminderTime} onNightlyReminderTimeChange={value => updateNotificationPreference('nightlyReminderTime', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
+                        <NotificationGroupCard title="Activity & Data Changes" description="Local confirmations for routine and data changes." expanded={Boolean(expandedNotificationGroups.activity)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, activity: !prev.activity }))} enabled={notificationPreferences.activityGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('activity', value)} children={ACTIVITY_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
+                        <NotificationGroupCard title="App Updates" description="Local update notices and confirmations." expanded={Boolean(expandedNotificationGroups.updates)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, updates: !prev.updates }))} enabled={notificationPreferences.updatesGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('updates', value)} children={UPDATE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
                       </div>
                     )}
 
@@ -1699,7 +1681,7 @@ export default function Settings() {
                   <div className="flex items-start gap-2"><AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><div><h3 className="text-sm font-bold text-foreground">{notificationRecovery.title}</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{notificationRecovery.message}</p></div></div>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setNotificationRecovery(null)} className="action-button action-button--cancel flex-1 min-h-10">Close</button>
-                    {notificationRecovery.action && <button type="button" onClick={() => { const action = notificationRecovery.action; setNotificationRecovery(null); if (action === 'enable') void enableSystemNotifications(); else if (action === 'test') void testSystemNotifications(); }} className="action-button action-button--update flex-1 min-h-10">{notificationRecovery.action === 'settings' ? 'I’ll Check Settings' : 'Try Again'}</button>}
+                    {notificationRecovery.action && <button type="button" onClick={() => { const action = notificationRecovery.action; setNotificationRecovery(null); if (action === 'enable') void enableSystemNotifications(); }} className="action-button action-button--update flex-1 min-h-10">{notificationRecovery.action === 'settings' ? 'I’ll Check Settings' : 'Try Again'}</button>}
                   </div>
                 </motion.div>
               </motion.div>
