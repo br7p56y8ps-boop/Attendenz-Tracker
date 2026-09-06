@@ -29,7 +29,7 @@ async function reconcileActiveVersionAfterReload(): Promise<void> {
     // The service worker will continue serving the prior durable cache if this check fails.
   }
 }
-void reconcileActiveVersionAfterReload();
+const activeVersionReady = reconcileActiveVersionAfterReload();
 function isVersionNewer(candidate: string, current: string): boolean {
   const a = String(candidate).split('.').map(n => parseInt(n, 10) || 0);
   const b = String(current).split('.').map(n => parseInt(n, 10) || 0);
@@ -222,4 +222,49 @@ if ('serviceWorker' in navigator) {
   return true;
 };
 
-createRoot(document.getElementById('root')!).render(<App />);
+async function enforceManualReleaseGate(): Promise<boolean> {
+  if (UPDATE_MODE !== 'manual') return true;
+  const storedAppVersion = localStorage.getItem('att_app_version');
+  let initialValues: Record<string, string> = {};
+  try {
+    initialValues = await idbGetAllChecked();
+  } catch {
+    return false;
+  }
+  const priorVersion = initialValues[ACTIVE_VERSION_KEY] || storedAppVersion;
+  const approvedVersion = initialValues[APPROVED_VERSION_KEY];
+  await activeVersionReady;
+
+  if (!priorVersion) {
+    const accepted = window.confirm(`Attendenz ${APP_VERSION} is ready. Choose OK to open this release.`);
+    if (!accepted) {
+      document.body.innerHTML = '<main style="font:16px system-ui;padding:24px">This manual release was not approved.</main>';
+      return false;
+    }
+    await storageSetItemChecked(APPROVED_VERSION_KEY, APP_VERSION);
+    return true;
+  }
+  if (priorVersion === APP_VERSION && approvedVersion === APP_VERSION) return true;
+  if (priorVersion === APP_VERSION) return true;
+
+  const accepted = window.confirm(`Attendenz ${APP_VERSION} is ready. Choose OK to update now, or Cancel to keep your current version.`);
+  if (!accepted) {
+    document.body.innerHTML = '<main style="font:16px system-ui;padding:24px">This update was not approved. Reopen the app when you are ready.</main>';
+    return false;
+  }
+
+  localStorage.setItem(ACTIVATION_PENDING_KEY, APP_VERSION);
+  const activated = await activateApprovedServiceWorker(APP_VERSION);
+  if (!activated) {
+    localStorage.removeItem(ACTIVATION_PENDING_KEY);
+    window.alert('The update could not be activated. Your current version will remain in place.');
+    document.body.innerHTML = '<main style="font:16px system-ui;padding:24px">The update could not be activated. Your current version remains in place.</main>';
+    return false;
+  }
+  window.location.reload();
+  return false;
+}
+
+void enforceManualReleaseGate().then((allowed) => {
+  if (allowed) createRoot(document.getElementById('root')!).render(<App />);
+});
