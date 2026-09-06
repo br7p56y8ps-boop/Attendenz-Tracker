@@ -5,7 +5,7 @@ const IDB_OPERATION_TIMEOUT_MS = 8000;
 export const INSTALLATION_METADATA_KEYS = new Set([
   'att_pwa_build_revision', 'att_pwa_release_type', 'att_pwa_update_mode',
   'att_pwa_update_ready', 'att_pwa_latest_version', 'att_pwa_update_summary',
-  'att_pending_update_restore', 'att_just_updated', 'att_app_version',
+  'att_pending_update_restore', 'att_just_updated', 'att_app_version', 'att_pwa_active_version', 'att_pwa_approved_version',
 ]);
 
 let dbInstance: IDBDatabase | null = null;
