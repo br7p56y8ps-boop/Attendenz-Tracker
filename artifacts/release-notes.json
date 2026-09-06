@@ -1,20 +1,20 @@
 {
   "1.6.10": {
     "upgrades": [
-      { "title": "Strict manual updates", "summary": "The app stays on the installed version until you explicitly choose Update." },
-      { "title": "Safer versioned caches", "summary": "Each release uses its own offline cache so an unopened update cannot replace the active app." },
-      { "title": "Backup & Update flow", "summary": "A staged circular progress flow protects attendance records before installation." },
-      { "title": "Update without backup", "summary": "You can install an available release directly when a fresh backup is not needed." },
-      { "title": "Dynamic release notes", "summary": "What’s New content now follows the installed or available release automatically." },
-      { "title": "Improved recovery safeguards", "summary": "Pending restore markers and welcome-screen recovery continue to protect user data." }
+      { "title": "Better update experience", "summary": "Updates now guide you clearly through backing up, downloading, installing, and finishing." },
+      { "title": "Safer data protection", "summary": "Your attendance records and preferences are better protected during app updates." },
+      { "title": "More reliable offline use", "summary": "The app is better prepared to keep working when your internet connection is unavailable." },
+      { "title": "Clearer progress feedback", "summary": "You can easily see what the app is doing while a backup or update is in progress." },
+      { "title": "Simpler choices", "summary": "You can update with a backup for extra peace of mind or update directly when you prefer." },
+      { "title": "A more polished experience", "summary": "Everyday screens and recovery steps feel smoother, clearer, and easier to follow." }
     ],
     "fixes": [
-      { "title": "Activation ordering", "summary": "The active-version marker is written only after the approved worker controls the reloaded page." },
-      { "title": "Closed-app behavior", "summary": "Closing with a waiting worker keeps the previous version active and shows the update prompt again." },
-      { "title": "No same-version upgrades", "summary": "An unchanged version no longer triggers a silent build refresh." },
-      { "title": "Notification exclusions", "summary": "Off and Completed classes remain excluded from inappropriate reminders." },
-      { "title": "Upcoming class filters", "summary": "Upcoming views continue to omit completed and excluded class states correctly." },
-      { "title": "Progress feedback", "summary": "Backup, download, installation, and completion stages retain realistic non-instant progress." }
+      { "title": "Smarter reminders", "summary": "Reminders now avoid false alerts for holidays, days off, and completed classes." },
+      { "title": "More accurate upcoming classes", "summary": "Upcoming views now focus on classes that still need your attention." },
+      { "title": "More dependable updates", "summary": "The app stays on your current version until you choose to install an available update." },
+      { "title": "Safer reopening", "summary": "Closing the app during an available update keeps your current version ready when you return." },
+      { "title": "More trustworthy recovery", "summary": "The app does a better job of helping you return safely after an interrupted update or restore." },
+      { "title": "Smoother daily use", "summary": "Progress screens and common actions now feel more consistent and predictable." }
     ]
   }
 }
