@@ -423,17 +423,6 @@ export default function Settings() {
       await new Promise(r => setTimeout(r, 350));
     }
 
-    try {
-      await storageCommitChecked(
-        [['att_just_updated', 'true']],
-        ['att_has_seen_welcome_v1', 'att_app_version'],
-      );
-    } catch {
-      setUpdatePhase('none');
-      import('sonner').then(({ toast }) => toast.error('Update stopped — the update state could not be saved safely.'));
-      return;
-    }
-
     if (withBackup) {
       await new Promise(r => setTimeout(r, 5000));
     }
@@ -461,6 +450,10 @@ export default function Settings() {
       return;
     }
     try {
+      await storageCommitChecked(
+        [['att_just_updated', 'true']],
+        ['att_has_seen_welcome_v1', 'att_app_version'],
+      );
       await Promise.all([
         storageRemoveItemChecked('att_pwa_update_ready'),
         storageRemoveItemChecked('att_pwa_latest_version'),

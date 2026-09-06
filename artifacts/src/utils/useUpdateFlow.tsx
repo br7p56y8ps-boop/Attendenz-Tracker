@@ -89,15 +89,6 @@ export function useUpdateFlow() {
       await new Promise(r => setTimeout(r, 350));
     }
 
-    try {
-      await storageCommitChecked(
-        [['att_just_updated', 'true']],
-        ['att_has_seen_welcome_v1', 'att_app_version'],
-      );
-    } catch {
-      setUpdatePhase('none');
-      return;
-    }
     setProgressComplete(false);
     setUpdatePhase('downloading');
     let applied = false;
@@ -121,6 +112,10 @@ export function useUpdateFlow() {
       return;
     }
     try {
+      await storageCommitChecked(
+        [['att_just_updated', 'true']],
+        ['att_has_seen_welcome_v1', 'att_app_version'],
+      );
       await Promise.all([
         storageRemoveItemChecked('att_pwa_update_ready'),
         storageRemoveItemChecked('att_pwa_latest_version'),
