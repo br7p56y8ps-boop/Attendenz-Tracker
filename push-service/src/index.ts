@@ -511,17 +511,18 @@ async function sendPush(env: Env, subscription: WebPushSubscription, heading: st
     publicKey: env.VAPID_SERVER_PUBLIC_KEY,
     privateKey: env.VAPID_SERVER_PRIVATE_KEY,
   };
-  const hasStructuredRows = body.includes('\n');
-  const combinedTitle = hasStructuredRows
-    ? heading
-    : `${heading}${body.trim() ? ` — ${body.trim().replace(/[.!?]+\s*$/u, '')}` : ''}`;
+  const notification = buildNotificationData(heading, body, url);
   const payload = await buildPushPayload({
-    data: JSON.stringify({ title: combinedTitle, body: hasStructuredRows ? body.trim() : '', url }),
+    data: JSON.stringify(notification),
     options: { ttl: 300, urgency: 'high', topic: collapseId.slice(0, 32) },
   }, subscription, vapid);
   const response = await fetch(subscription.endpoint, payload as RequestInit);
   if (!response.ok) throw new Error(`push_${response.status}`);
   return crypto.randomUUID();
+}
+
+function buildNotificationData(title: string, body: string, url: string): { title: string; body: string; url: string } {
+  return { title, body: body.trim(), url };
 }
 
 async function deliverIfNew(env: Env, device: DeviceRow, deliveryKey: string, heading: string, body: string, url: string): Promise<boolean> {
@@ -576,16 +577,16 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
       attendance_marked as attendanceMarked,
       status,
       is_final_for_subject as isFinalForSubject
-     FROM occurrences WHERE device_id = ?1 AND local_date IN (?2, ?3)
+     FROM occurrences WHERE device_id = ?1 AND local_date >= ?2
      ORDER BY local_date ASC, start_minute ASC`,
-  ).bind(device.device_id, scheduleDate, nightlyDate).all<OccurrenceRow>();
+  ).bind(device.device_id, scheduleDate).all<OccurrenceRow>();
   const allOccurrences = rows.results || [];
   const occurrences = allOccurrences.filter(item => item.localDate === scheduleDate);
-  const nightlyOccurrences = allOccurrences.filter(item => item.localDate === nightlyDate);
+  const nightlyOccurrences = allOccurrences;
   const url = DEFAULT_ALLOWED_ORIGIN;
 
   if (nightlyWindow) {
-    const future = nightlyOccurrences.filter(item => nightlyDate !== clock.date || item.startMinute > currentMinute);
+    const future = nightlyOccurrences.filter(item => item.localDate > clock.date || (item.localDate === clock.date && item.startMinute > currentMinute));
     const mustAttend = device.midnight_need_attention ? future.filter(item => item.attentionLevel === 'mustAttend') : [];
     const needAttention = device.need_attention_subjects ? future.filter(item => item.attentionLevel === 'needAttention') : [];
     const finalClasses = device.final_class_today ? future.filter(item => item.isFinalForSubject) : [];
@@ -601,10 +602,10 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
       if (needAttention.length > 0) parts.push(`Need Attention: ${listNames(needAttention)}`);
       if (finalClasses.length > 0) parts.push(`Upcoming Last Planned Class: ${listNames(finalClasses)}`);
       const body = parts.join('\n');
-      await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${scheduleDate}`, 'Urgent Schedule Alert', body, url);
+      await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${nightlyDate}`, 'Urgent Schedule Alert', body, url);
     } else if (hasInfo) {
       const body = first ? `First Upcoming Class: ${cleanLabel(first.subjectLabel, first.category)} at ${formatMinute(first.startMinute)}.` : `Upcoming: ${listNames(digest)}.`;
-      await deliverIfNew(env, device, `${device.device_id}:info-midnight:${scheduleDate}`, 'Upcoming Schedule', body, url);
+      await deliverIfNew(env, device, `${device.device_id}:info-midnight:${nightlyDate}`, 'Upcoming Schedule', body, url);
     }
   }
 
@@ -692,4 +693,6 @@ export const __test = {
   parseReminderTime,
   cleanLabel,
   nightlyScheduleDate,
+  processDevice,
+  buildNotificationData,
 };
