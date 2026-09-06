@@ -1,6 +1,6 @@
 {
-  "version": "1.6.8",
+  "version": "1.6.9",
   "releaseType": "minor",
   "updateMode": "manual",
-  "summary": "Recovery release v1.6.8: notification accuracy, reliability, and clearer update progress."
+  "summary": "Recovery release v1.6.9: strict manual updates and notification reliability."
 }
