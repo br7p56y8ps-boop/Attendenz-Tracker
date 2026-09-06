@@ -2,11 +2,7 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCustomData } from "@/contexts/CustomDataContext";
 import { Wrench, Zap } from "lucide-react";
-import {
-  APP_VERSION,
-  WHATS_NEW_UPGRADES,
-  WHATS_NEW_FIXES,
-} from "@/lib/appVersion";
+import { APP_VERSION, getReleaseNotes } from "@/lib/appVersion";
 import type { WhatsNewItem } from "@/lib/appVersion";
 import { useModalAccessibility } from "@/components/ui/dialog";
 
@@ -66,8 +62,20 @@ function ReleaseSection({
   );
 }
 
+function compareVersions(a: string, b: string): number {
+  const left = a.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const right = b.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    if ((left[index] || 0) !== (right[index] || 0)) return (left[index] || 0) - (right[index] || 0);
+  }
+  return 0;
+}
+
 export function WhatsNewPopup() {
   const { whatsNewOpen, setWhatsNewOpen } = useCustomData();
+  const availableVersion = typeof window !== 'undefined' ? localStorage.getItem('att_pwa_latest_version') || '' : '';
+  const notesVersion = compareVersions(availableVersion, APP_VERSION) > 0 ? availableVersion : APP_VERSION;
+  const notes = getReleaseNotes(notesVersion);
 
   const handleClose = () => { setWhatsNewOpen(false); };
   const modalRef = useModalAccessibility(whatsNewOpen, handleClose);
@@ -110,7 +118,7 @@ export function WhatsNewPopup() {
                     What's New
                   </h2>
                   <span className="mt-1 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wider text-emerald-500">
-                    Recovery release v{APP_VERSION}
+                    Version {notesVersion}
                   </span>
                 </div>
               </div>
@@ -128,14 +136,14 @@ export function WhatsNewPopup() {
                   <ReleaseSection
                     title="Upgrades / New Features"
                     icon={<Zap className="h-3.5 w-3.5 shrink-0" />}
-                    items={WHATS_NEW_UPGRADES}
+                    items={notes.upgrades}
                     titleClass="text-emerald-500"
                     accentClass="text-muted-foreground"
                   />
                   <ReleaseSection
                     title="Fixes & Refinements"
                     icon={<Wrench className="h-3.5 w-3.5 shrink-0" />}
-                    items={WHATS_NEW_FIXES}
+                    items={notes.fixes}
                     titleClass="text-amber-500"
                     accentClass="text-muted-foreground"
                   />

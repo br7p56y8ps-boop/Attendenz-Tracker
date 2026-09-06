@@ -3,13 +3,33 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
 import { APP_VERSION, RELEASE_TYPE, UPDATE_MODE, type ReleaseType, type UpdateMode } from '@/lib/appVersion';
-import { storageSetItemChecked } from '@/lib/idb';
+import { idbGetAllChecked, storageRemoveItemChecked, storageSetItemChecked } from '@/lib/idb';
 
 const base = import.meta.env.BASE_URL || '/';
-const BUILD_REVISION_KEY = 'att_pwa_build_revision';
-let silentBuildUpdateInFlight = false;
+const ACTIVE_VERSION_KEY = 'att_pwa_active_version';
+const APPROVED_VERSION_KEY = 'att_pwa_approved_version';
+const ACTIVATION_PENDING_KEY = 'att_pwa_activation_pending_version';
 let serviceWorkerRegistrationPromise: Promise<ServiceWorkerRegistration> | null = null;
-void storageSetItemChecked('att_pwa_active_version', APP_VERSION);
+
+async function reconcileActiveVersionAfterReload(): Promise<void> {
+  try {
+    const values = await idbGetAllChecked();
+    const activeVersion = values[ACTIVE_VERSION_KEY];
+    const approvedVersion = values[APPROVED_VERSION_KEY];
+    const pendingVersion = localStorage.getItem(ACTIVATION_PENDING_KEY);
+    if (!activeVersion) {
+      await storageSetItemChecked(ACTIVE_VERSION_KEY, APP_VERSION);
+      return;
+    }
+    if (pendingVersion === APP_VERSION && approvedVersion === APP_VERSION && activeVersion !== APP_VERSION) {
+      await storageSetItemChecked(ACTIVE_VERSION_KEY, APP_VERSION);
+      await storageRemoveItemChecked(ACTIVATION_PENDING_KEY);
+    }
+  } catch {
+    // The service worker will continue serving the prior durable cache if this check fails.
+  }
+}
+void reconcileActiveVersionAfterReload();
 function isVersionNewer(candidate: string, current: string): boolean {
   const a = String(candidate).split('.').map(n => parseInt(n, 10) || 0);
   const b = String(current).split('.').map(n => parseInt(n, 10) || 0);
@@ -119,35 +139,7 @@ async function activateApprovedServiceWorker(version: string): Promise<boolean> 
   });
 }
 
-async function checkForSilentBuildUpdate(): Promise<void> {
-  if (UPDATE_MODE !== 'automatic') return;
-  try {
-    const res = await fetch(`${base}build-revision.json?ts=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) return;
-    const payload = await res.json() as { revision?: unknown };
-    if (typeof payload.revision !== 'string' || payload.revision.length === 0) return;
-
-    const installedRevision = localStorage.getItem(BUILD_REVISION_KEY);
-    if (!installedRevision) {
-      localStorage.setItem(BUILD_REVISION_KEY, payload.revision);
-      return;
-    }
-    if (installedRevision === payload.revision || silentBuildUpdateInFlight) return;
-
-    silentBuildUpdateInFlight = true;
-    try {
-      const refreshed = await refreshCachedShell();
-      if (!refreshed) return;
-      localStorage.setItem(BUILD_REVISION_KEY, payload.revision);
-      clearUpdateState();
-      window.location.reload();
-    } finally {
-      silentBuildUpdateInFlight = false;
-    }
-  } catch { /* offline or unsupported cache API — retry on the next check */ }
-}
-
-/* ── Manual version updates + silent same-version build refresh ── */
+/* ── Manual version updates ── */
 if ('serviceWorker' in navigator) {
   const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
     try {
@@ -191,7 +183,6 @@ if ('serviceWorker' in navigator) {
           window.dispatchEvent(new CustomEvent('attendenz:update-ready'));
         } else {
           clearUpdateState();
-          if (j.version === APP_VERSION) void checkForSilentBuildUpdate();
         }
       }
     } catch { /* offline or hidden/aborted — ignore */ }
@@ -217,6 +208,7 @@ if ('serviceWorker' in navigator) {
   const approvedVersion = localStorage.getItem('att_pwa_latest_version');
   if (!approvedVersion || !isVersionNewer(approvedVersion, APP_VERSION)) return false;
   const downloadingStarted = Date.now();
+  localStorage.setItem(ACTIVATION_PENDING_KEY, approvedVersion);
   const refreshed = await refreshCachedShell(approvedVersion);
   if (!refreshed) return false;
   await new Promise(resolve => setTimeout(resolve, Math.max(0, 5000 - (Date.now() - downloadingStarted))));

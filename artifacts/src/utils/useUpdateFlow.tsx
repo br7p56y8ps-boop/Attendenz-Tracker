@@ -191,6 +191,7 @@ export const UpdateModal = ({ open, serverVersion, summary, onRemind, onUpdate }
           <p className="text-muted-foreground text-xs leading-relaxed text-left">{summary || 'Bug fixes and refinements are ready to install.'}</p>
           <div className="flex flex-col gap-2 pt-1">
             <button type="button" onClick={() => onUpdate(true)} className="action-button action-button--transfer w-full">Backup & Update</button>
+            <button type="button" onClick={() => onUpdate(false)} className="action-button action-button--update w-full">Update</button>
             <button type="button" onClick={onRemind} className="action-button action-button--neutral w-full">Remind Later</button>
           </div>
         </motion.div>

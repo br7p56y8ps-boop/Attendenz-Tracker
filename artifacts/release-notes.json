@@ -1,0 +1,20 @@
+{
+  "1.6.10": {
+    "upgrades": [
+      { "title": "Strict manual updates", "summary": "The app stays on the installed version until you explicitly choose Update." },
+      { "title": "Safer versioned caches", "summary": "Each release uses its own offline cache so an unopened update cannot replace the active app." },
+      { "title": "Backup & Update flow", "summary": "A staged circular progress flow protects attendance records before installation." },
+      { "title": "Update without backup", "summary": "You can install an available release directly when a fresh backup is not needed." },
+      { "title": "Dynamic release notes", "summary": "What’s New content now follows the installed or available release automatically." },
+      { "title": "Improved recovery safeguards", "summary": "Pending restore markers and welcome-screen recovery continue to protect user data." }
+    ],
+    "fixes": [
+      { "title": "Activation ordering", "summary": "The active-version marker is written only after the approved worker controls the reloaded page." },
+      { "title": "Closed-app behavior", "summary": "Closing with a waiting worker keeps the previous version active and shows the update prompt again." },
+      { "title": "No same-version upgrades", "summary": "An unchanged version no longer triggers a silent build refresh." },
+      { "title": "Notification exclusions", "summary": "Off and Completed classes remain excluded from inappropriate reminders." },
+      { "title": "Upcoming class filters", "summary": "Upcoming views continue to omit completed and excluded class states correctly." },
+      { "title": "Progress feedback", "summary": "Backup, download, installation, and completion stages retain realistic non-instant progress." }
+    ]
+  }
+}
