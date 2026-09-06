@@ -1,5 +1,5 @@
 {
-  "version": "1.6.11",
+  "version": "1.6.12",
   "releaseType": "minor",
   "updateMode": "manual",
   "summary": "Safer manual updates with staged backup, download, installation, and recovery progress."
