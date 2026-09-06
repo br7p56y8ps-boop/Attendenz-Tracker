@@ -27,7 +27,7 @@ const shortenSubject = (name: string) => ({
 } as Record<string, string>)[name] || name;
 
 const ThreeDContainer = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-  <div className={cn('flex rounded-xl border border-border/70 bg-background/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]', className)}>{children}</div>
+  <div className={cn('percentage-3d-container flex rounded-xl border border-border/70 bg-background/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]', className)}>{children}</div>
 );
 
 const TypedLine = ({ selection, classNumber, planned, animate, onStatusTap }: {
@@ -433,13 +433,13 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
               {effectiveMode === 'future' && !isFinished ? (
                 isTomorrow ? <ThreeDContainer className="min-h-14 min-w-24 max-w-[11rem] items-center justify-center px-1 text-center"><span className={cn('text-[10px] font-extrabold uppercase', futureMsg.sev === 'must' ? 'text-rose-500' : futureMsg.sev === 'can' ? 'text-amber-500' : 'text-emerald-500')}>{futureMsg.sev === 'must' ? 'Must Attend' : futureMsg.sev === 'can' ? 'Can Bunk' : 'Safe Bunk'}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
               ) : effectiveMode === 'future' && isFinished ? (
-                isTomorrow ? <ThreeDContainer className="min-h-14 min-w-24 max-w-[11rem] items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(0)}%`}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
+                isTomorrow ? <ThreeDContainer className="min-h-14 min-w-24 max-w-[11rem] items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(2)}%`}</span></ThreeDContainer> : <div className="w-14 h-14" aria-hidden="true" />
               ) : effectiveMode === 'today' && currentSelection ? (
-                <ThreeDContainer className="h-14 w-24 items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(0)}%`}</span></ThreeDContainer>
+                <ThreeDContainer className="h-14 w-24 items-center justify-center"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(2)}%`}</span></ThreeDContainer>
               ) : effectiveMode === 'today' && isFinished ? (
-                <ThreeDContainer className="min-h-14 min-w-24 max-w-[10rem] items-center justify-center px-2"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(0)}%`}</span></ThreeDContainer>
+                <ThreeDContainer className="min-h-14 min-w-24 max-w-[10rem] items-center justify-center px-2"><span className={cn('text-lg font-bold', getPercentageColor(percentage))}>{total === 0 ? '--' : `${percentage.toFixed(2)}%`}</span></ThreeDContainer>
               ) : effectiveMode === 'today' && !currentSelection && total > 0 ? (
-                <div className={cn('min-w-0 text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(0)}%`}</div>
+                <div className={cn('min-w-0 text-lg font-bold', getPercentageColor(percentage))}>{`${percentage.toFixed(2)}%`}</div>
               ) : null}
             </div>
           </div>

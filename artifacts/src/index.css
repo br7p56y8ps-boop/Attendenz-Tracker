@@ -634,3 +634,21 @@ input[type="time"] {
   .app-shell .p-4 { padding: 0.875rem; }
   .app-shell .px-4 { padding-inline: 0.875rem; }
 }
+
+
+/* Dark surfaces: distinct edges and restrained depth without pseudo-elements. */
+.dark {
+  --border: #39414d;
+}
+.dark .glass-panel,
+.dark .glass-card,
+.dark .modal-sheet-content {
+  border-color: #39414d;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(148, 163, 184, 0.06);
+}
+.dark .percentage-3d-container {
+  border-color: #46515f;
+  background: linear-gradient(145deg, rgba(40, 48, 58, 0.92), rgba(18, 22, 28, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 4px rgba(0, 0, 0, 0.28), 0 4px 9px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
