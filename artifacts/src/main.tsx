@@ -62,7 +62,19 @@ async function refreshCachedShell(version = APP_VERSION): Promise<boolean> {
   }
 }
 
-async function activateApprovedServiceWorker(): Promise<boolean> {
+async function approveServiceWorker(worker: ServiceWorker, version: string): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    const channel = new MessageChannel();
+    const timeout = window.setTimeout(() => resolve(false), 5000);
+    channel.port1.onmessage = (event) => {
+      window.clearTimeout(timeout);
+      resolve(event.data?.type === 'UPDATE_APPROVED' && event.data.version === version);
+    };
+    worker.postMessage({ type: 'APPROVE_UPDATE', version }, [channel.port2]);
+  });
+}
+
+async function activateApprovedServiceWorker(version: string): Promise<boolean> {
   const registration = await (serviceWorkerRegistrationPromise || navigator.serviceWorker.getRegistration(base));
   if (!registration) return false;
   await registration.update().catch(() => {});
@@ -83,10 +95,9 @@ async function activateApprovedServiceWorker(): Promise<boolean> {
     });
     waiting = registration.waiting;
   }
-  // A newer worker may already have activated while the PWA was closed. The
-  // approval marker still controls which cache it serves, so a reload is
-  // sufficient in that case.
-  if (!waiting) return Boolean(registration.active);
+  if (!waiting) {
+    return registration.active ? approveServiceWorker(registration.active, version) : false;
+  }
   return await new Promise<boolean>((resolve) => {
     const onControllerChange = () => {
       window.clearTimeout(timeout);
@@ -98,7 +109,13 @@ async function activateApprovedServiceWorker(): Promise<boolean> {
       resolve(false);
     }, 5000);
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-    waiting.postMessage({ type: 'SKIP_WAITING' });
+    approveServiceWorker(waiting, version).then((approved) => {
+      if (!approved) {
+        window.clearTimeout(timeout);
+        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+        resolve(false);
+      }
+    });
   });
 }
 
@@ -159,7 +176,7 @@ if ('serviceWorker' in navigator) {
             await storageSetItemChecked('att_pwa_approved_version', j.version).catch(() => undefined);
             const refreshed = await refreshCachedShell(j.version);
             if (refreshed) {
-              const activated = await activateApprovedServiceWorker();
+              const activated = await activateApprovedServiceWorker(j.version);
               if (!activated) return;
               clearUpdateState();
               window.location.reload();
@@ -204,13 +221,8 @@ if ('serviceWorker' in navigator) {
   if (!refreshed) return false;
   await new Promise(resolve => setTimeout(resolve, Math.max(0, 5000 - (Date.now() - downloadingStarted))));
   onPhase?.('installing');
-  try {
-    await storageSetItemChecked('att_pwa_approved_version', approvedVersion);
-  } catch {
-    return false;
-  }
   const installingStarted = Date.now();
-  const activated = await activateApprovedServiceWorker();
+  const activated = await activateApprovedServiceWorker(approvedVersion);
   if (!activated) return false;
   await new Promise(resolve => setTimeout(resolve, Math.max(0, 5000 - (Date.now() - installingStarted))));
   clearUpdateState();

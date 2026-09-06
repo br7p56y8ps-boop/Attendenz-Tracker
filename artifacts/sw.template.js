@@ -5,6 +5,7 @@ const SHELL = `attendenz-shell-v${VERSION}-r2`;
 const DB_NAME = 'AttendenzDatabase';
 const STORE_NAME = 'key_value_store';
 const APPROVED_VERSION_KEY = 'att_pwa_approved_version';
+const EXPLICIT_APPROVAL_KEY = 'att_pwa_explicit_approval_version';
 const ACTIVE_VERSION_KEY = 'att_pwa_active_version';
 let activationApproved = false;
 
@@ -37,11 +38,36 @@ function compareVersions(a, b) {
   return 0;
 }
 
+function writeStoredValues(entries) {
+  return new Promise((resolve, reject) => {
+    if (!self.indexedDB) return reject(new Error('IndexedDB unavailable'));
+    let request;
+    try { request = self.indexedDB.open(DB_NAME, 1); } catch (error) { return reject(error); }
+    request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        entries.forEach(([key, value]) => store.put({ key, value }));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('IndexedDB write failed'));
+        tx.onabort = () => reject(tx.error || new Error('IndexedDB write aborted'));
+      } catch (error) { reject(error); }
+    };
+  });
+}
+
 async function activeCacheName() {
   if (UPDATE_MODE === 'automatic') return SHELL;
-  const approved = await readStoredValue(APPROVED_VERSION_KEY);
-  if (approved === VERSION) return SHELL;
   const active = await readStoredValue(ACTIVE_VERSION_KEY);
+  if (activationApproved) return SHELL;
+  const approved = await readStoredValue(EXPLICIT_APPROVAL_KEY);
+  if (approved === VERSION && active === VERSION) return SHELL;
   if (active && active !== VERSION) {
     const activeCache = `attendenz-shell-v${active}-r2`;
     if (await caches.has(activeCache)) return activeCache;
@@ -63,9 +89,16 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('message', (e) => {
-  if (e.data && e.data.type === 'SKIP_WAITING') {
+  if (e.data && e.data.type === 'APPROVE_UPDATE' && e.data.version === VERSION) {
     activationApproved = true;
-    self.skipWaiting();
+    e.waitUntil(writeStoredValues([
+      [APPROVED_VERSION_KEY, VERSION],
+      [EXPLICIT_APPROVAL_KEY, VERSION],
+      [ACTIVE_VERSION_KEY, VERSION],
+    ]).then(() => {
+      e.ports[0]?.postMessage({ type: 'UPDATE_APPROVED', version: VERSION });
+      return self.skipWaiting();
+    }));
   }
 });
 
