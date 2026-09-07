@@ -3,18 +3,24 @@ import { __test } from '../src/index.ts';
 
 const { cleanLabel, isBeforeClassDue, isValidNightlyReminderTime, parseReminderTime, isWithinFiveMinuteWindow, isWithinNightlyWindow, nightlyScheduleDate } = __test;
 
-assert.equal(isValidNightlyReminderTime('23:30'), true);
+assert.equal(isValidNightlyReminderTime('21:00'), true);
+assert.equal(isValidNightlyReminderTime('23:59'), true);
 assert.equal(isValidNightlyReminderTime('00:00'), true);
+assert.equal(isValidNightlyReminderTime('04:00'), true);
+assert.equal(isValidNightlyReminderTime('20:59'), false);
+assert.equal(isValidNightlyReminderTime('04:01'), false);
 assert.equal(isValidNightlyReminderTime('24:00'), false);
 assert.equal(parseReminderTime('23:30'), 1410);
 assert.equal(isWithinFiveMinuteWindow(1410, 1410), true);
 assert.equal(isWithinNightlyWindow(1410, 1410), true);
 assert.equal(isWithinNightlyWindow(1424, 1410), true);
-assert.equal(isWithinNightlyWindow(150, 1410), false);
+assert.equal(isWithinNightlyWindow(300, 1410), false);
 assert.equal(isWithinNightlyWindow(0, 1410), true);
 assert.equal(isWithinNightlyWindow(30, 1410), true);
-assert.equal(nightlyScheduleDate('2026-09-06', 30, 1410), '2026-09-05');
-assert.equal(nightlyScheduleDate('2026-09-06', 210, 1410), '2026-09-06');
+assert.equal(nightlyScheduleDate('2026-09-06', 30), '2026-09-06');
+assert.equal(nightlyScheduleDate('2026-09-06', 239), '2026-09-06');
+assert.equal(nightlyScheduleDate('2026-09-06', 240), '2026-09-07');
+assert.equal(nightlyScheduleDate('2026-09-06', 300), '2026-09-07');
 assert.equal(isWithinFiveMinuteWindow(1414, 1410), true);
 assert.equal(isWithinFiveMinuteWindow(1415, 1410), false);
 
@@ -87,15 +93,15 @@ globalThis.fetch = async () => { pushCount += 1; return new Response('', { statu
 try {
   const device = {
     device_id: 'device-test-123456', subscription_json: JSON.stringify({ endpoint: 'https://fcm.googleapis.com/fcm/send/test', expirationTime: null, keys: { p256dh: base64Url(clientPublic), auth: base64Url(crypto.getRandomValues(new Uint8Array(16))) } }),
-    timezone: 'America/New_York', notifications_enabled: 1, midnight_need_attention: 1, final_class_today: 0, first_class_today: 0,
+    timezone: 'America/New_York', notifications_enabled: 1, midnight_need_attention: 1, final_class_today: 0, first_class_today: 1,
     pre_class_need_attention: 0, all_scheduled_digest: 0, lead_minutes: 30, nightly_reminder_time: '23:30', need_attention_subjects: 1,
     safe_to_miss: 0, unmarked_attendance_today: 0, app_version: '1.6.8', update_available: 0,
   };
   assert.deepEqual(localClock(Date.parse('2026-09-07T03:30:00Z'), 'America/New_York'), { date: '2026-09-06', hour: 23, minute: 30 });
   await processDevice({ DB: db, VAPID_SUBJECT: 'https://benz-attendance-tracker.pages.dev', VAPID_SERVER_PUBLIC_KEY: base64Url(vapidPublic), VAPID_SERVER_PRIVATE_KEY: vapidJwk.d! }, device, Date.parse('2026-09-07T03:30:00Z'));
-  assert.equal(pushCount, 1, 'configured 23:30 local nightly batch should send one push');
-  await processDevice({ DB: db, VAPID_SUBJECT: 'https://benz-attendance-tracker.pages.dev', VAPID_SERVER_PUBLIC_KEY: base64Url(vapidPublic), VAPID_SERVER_PRIVATE_KEY: vapidJwk.d! }, device, Date.parse('2026-09-07T04:00:00Z'));
-  assert.equal(pushCount, 1, 'cross-midnight retry must remain idempotent after the initial send');
+  assert.equal(pushCount, 2, 'nightly attendance and daily schedule groups should send separate pushes');
+  await processDevice({ DB: db, VAPID_SUBJECT: 'https://benz-attendance-tracker.pages.dev', VAPID_SERVER_PUBLIC_KEY: base64Url(vapidPublic), VAPID_SERVER_PRIVATE_KEY: vapidJwk.d! }, device, Date.parse('2026-09-07T08:00:00Z'));
+  assert.equal(pushCount, 2, 'nightly batch should not send after the 4 AM cutoff');
 } finally {
   globalThis.fetch = originalFetch;
 }

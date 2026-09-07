@@ -65,6 +65,15 @@ type NotificationChildKey = 'needAttentionSummary' | 'needAttentionSubjects' | '
 
 type NotificationChild = { key: NotificationChildKey; title: string; description: string };
 
+const NIGHTLY_REMINDER_OPTIONS = Array.from({ length: 421 }, (_, index) => {
+  const totalMinutes = (21 * 60 + index) % 1440;
+  const hour24 = Math.floor(totalMinutes / 60);
+  const minute = totalMinutes % 60;
+  const hour12 = hour24 % 12 || 12;
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  return { value: `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`, label: `${hour12}:${String(minute).padStart(2, '0')} ${suffix}` };
+});
+
 const ATTENDANCE_REMINDER_CHILDREN: NotificationChild[] = [
   { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'Remote push during your nightly reminder window for must-attend classes.' },
   { key: 'beforeClassWarnings', title: 'Before-Class Warnings', description: 'Remote push before class using your selected lead time.' },
@@ -147,7 +156,7 @@ function NotificationGroupCard({
           {nightlyReminderTime !== undefined && onNightlyReminderTimeChange && (
             <label className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', (!enabled || disabled) && 'opacity-50')}>
               <span><span className="block text-[11px] font-semibold text-foreground">Nightly Risk Reminder</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Send the upcoming must-attend batch at this local time. This is separate from before-class warnings.</span></span>
-              <input type="time" value={nightlyReminderTime} onChange={event => onNightlyReminderTimeChange(event.target.value)} disabled={!enabled || disabled} className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" />
+              <select value={nightlyReminderTime} onChange={event => onNightlyReminderTimeChange(event.target.value)} disabled={!enabled || disabled} className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground">{NIGHTLY_REMINDER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
             </label>
           )}
         </div>
