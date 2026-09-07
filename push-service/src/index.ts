@@ -138,7 +138,10 @@ function isValidDate(value: unknown): value is string {
 }
 
 function isValidNightlyReminderTime(value: unknown): value is string {
-  return typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+  if (typeof value !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return false;
+  const [hour, minute] = value.split(':').map(Number);
+  const total = hour * 60 + minute;
+  return total >= 21 * 60 || total <= 4 * 60;
 }
 
 function isValidTimezone(value: unknown): value is string {
@@ -486,16 +489,18 @@ function parseReminderTime(value: string): number {
   return hour * 60 + minute;
 }
 
-function nightlyScheduleDate(localDate: string, currentMinute: number, dueMinute: number): string {
-  const elapsed = (currentMinute - dueMinute + 1440) % 1440;
-  if (elapsed >= 180 || currentMinute >= dueMinute) return localDate;
+function nightlyScheduleDate(localDate: string, currentMinute: number): string {
+  if (currentMinute < 4 * 60) return localDate;
   const date = new Date(`${localDate}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - 1);
+  date.setUTCDate(date.getUTCDate() + 1);
   return date.toISOString().slice(0, 10);
 }
 
 function isWithinNightlyWindow(currentMinute: number, dueMinute: number): boolean {
-  return (currentMinute - dueMinute + 1440) % 1440 < 180;
+  if (currentMinute > 4 * 60 && currentMinute < 21 * 60) return false;
+  const elapsed = (currentMinute - dueMinute + 1440) % 1440;
+  const windowLength = (4 * 60 - dueMinute + 1440) % 1440;
+  return elapsed <= windowLength;
 }
 
 function isBeforeClassDue(currentMinute: number, startMinute: number, leadMinutes: number): boolean {
@@ -568,7 +573,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
   const nightlyReminderMinute = parseReminderTime(device.nightly_reminder_time || '23:30');
   const currentMinute = clock.hour * 60 + clock.minute;
   const nightlyWindow = isWithinNightlyWindow(currentMinute, nightlyReminderMinute);
-  const nightlyDate = nightlyWindow ? nightlyScheduleDate(clock.date, currentMinute, nightlyReminderMinute) : clock.date;
+  const nightlyDate = nightlyScheduleDate(clock.date, currentMinute);
   const scheduleDate = clock.date;
   const rows = await env.DB.prepare(
     `SELECT occurrence_id as id, device_id, local_date as localDate,
@@ -586,26 +591,26 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
   const url = DEFAULT_ALLOWED_ORIGIN;
 
   if (nightlyWindow) {
-    const future = nightlyOccurrences.filter(item => item.status === 'unmarked' && (item.localDate > clock.date || (item.localDate === clock.date && item.startMinute > currentMinute)));
+    const future = nightlyOccurrences.filter(item => item.localDate === nightlyDate && item.status === 'unmarked' && (nightlyDate !== clock.date || item.startMinute > currentMinute));
     const mustAttend = device.midnight_need_attention ? future.filter(item => item.attentionLevel === 'mustAttend') : [];
     const needAttention = device.need_attention_subjects ? future.filter(item => item.attentionLevel === 'needAttention') : [];
     const finalClasses = device.final_class_today ? future.filter(item => item.isFinalForSubject) : [];
     const first = device.first_class_today && future.length > 0 ? future[0] : null;
     const digest = device.all_scheduled_digest && future.length > 0 ? future : [];
 
-    const hasUrgent = mustAttend.length > 0 || needAttention.length > 0 || finalClasses.length > 0;
-    const hasInfo = first || digest.length > 0;
-
-    if (hasUrgent) {
+    if (mustAttend.length > 0 || needAttention.length > 0) {
       const parts: string[] = [];
       if (mustAttend.length > 0) parts.push(`Must Attend: ${listNames(mustAttend)}`);
       if (needAttention.length > 0) parts.push(`Need Attention: ${listNames(needAttention)}`);
+      await deliverIfNew(env, device, `${device.device_id}:risk-midnight:${nightlyDate}`, 'Urgent Schedule Alert', parts.join('\\n'), url);
+    }
+
+    if (finalClasses.length > 0 || first || digest.length > 0) {
+      const parts: string[] = [];
       if (finalClasses.length > 0) parts.push(`Upcoming Last Planned Class: ${listNames(finalClasses)}`);
-      const body = parts.join('\n');
-      await deliverIfNew(env, device, `${device.device_id}:urgent-midnight:${nightlyDate}`, 'Urgent Schedule Alert', body, url);
-    } else if (hasInfo) {
-      const body = first ? `First Upcoming Class: ${cleanLabel(first.subjectLabel, first.category)} at ${formatMinute(first.startMinute)}.` : `Upcoming: ${listNames(digest)}.`;
-      await deliverIfNew(env, device, `${device.device_id}:info-midnight:${nightlyDate}`, 'Upcoming Schedule', body, url);
+      if (first) parts.push(`First Upcoming Class: ${cleanLabel(first.subjectLabel, first.category)} at ${formatMinute(first.startMinute)}.`);
+      else if (digest.length > 0) parts.push(`Upcoming: ${listNames(digest)}.`);
+      await deliverIfNew(env, device, `${device.device_id}:schedule-midnight:${nightlyDate}`, 'Upcoming Schedule', parts.join('\\n'), url);
     }
   }
 
