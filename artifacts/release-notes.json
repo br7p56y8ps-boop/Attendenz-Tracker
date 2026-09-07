@@ -1,5 +1,5 @@
 {
-  "1.6.12": {
+  "1.6.13": {
     "upgrades": [
       { "title": "Better update experience", "summary": "Updates now guide you clearly through backing up, downloading, installing, and finishing." },
       { "title": "Safer data protection", "summary": "Your attendance records and preferences are better protected during app updates." },
@@ -14,7 +14,8 @@
       { "title": "More dependable updates", "summary": "The app stays on your current version until you choose to install an available update." },
       { "title": "Safer reopening", "summary": "Closing the app during an available update keeps your current version ready when you return." },
       { "title": "More trustworthy recovery", "summary": "The app does a better job of helping you return safely after an interrupted update or restore." },
-      { "title": "Smoother daily use", "summary": "Progress screens and common actions now feel more consistent and predictable." }
+      { "title": "Smoother daily use", "summary": "Progress screens and common actions now feel more consistent and predictable." },
+      { "title": "Improved nightly reminders", "summary": "Nightly summaries now show the correct day's schedule and keep risk and schedule alerts separate." }
     ]
   }
 }
