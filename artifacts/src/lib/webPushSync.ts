@@ -54,10 +54,6 @@ export type ReminderRegistrationDiagnostics = {
   sync: ReminderSyncStatus;
 };
 
-export type RemoteNotificationTestResult =
-  | { state: 'sent' }
-  | { state: 'preview-blocked' | 'not-configured' | 'permission-required' | 'subscription-missing' | 'not-registered' | 'error'; details?: string };
-
 export function getReminderSyncStatus(): ReminderSyncStatus {
   if (typeof window === 'undefined') return { state: 'not-configured' };
   try {
@@ -626,38 +622,6 @@ export async function getReminderRegistrationDiagnostics(): Promise<ReminderRegi
     subscription,
     sync: getReminderSyncStatus(),
   };
-}
-
-export async function testRemoteNotification(): Promise<RemoteNotificationTestResult> {
-  if (!SERVICE_URL) return { state: 'not-configured' };
-  if (getNotificationPermission() !== 'granted' || !getSystemNotificationsEnabled()) {
-    return { state: 'permission-required' };
-  }
-  const subscription = await getDirectPushSubscription();
-  if (!subscription) return { state: 'subscription-missing' };
-  const deviceId = getDeviceId();
-  const deviceToken = getDeviceToken();
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 8_000);
-  try {
-    const response = await fetch(`${SERVICE_URL}/v1/device/test`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${deviceToken}`,
-      },
-      body: JSON.stringify({ deviceId }),
-      signal: controller.signal,
-    });
-    const body = await response.json().catch(() => null) as { error?: string } | null;
-    if (response.ok) return { state: 'sent' };
-    if (body?.error === 'device_not_registered') return { state: 'not-registered' };
-    return { state: 'error', details: body?.error || `http_${response.status}` };
-  } catch (cause) {
-    return { state: 'error', details: cause instanceof DOMException && cause.name === 'AbortError' ? 'request_timeout' : 'network_error' };
-  } finally {
-    window.clearTimeout(timeout);
-  }
 }
 
 export async function deleteRemoteDevice(): Promise<boolean> {

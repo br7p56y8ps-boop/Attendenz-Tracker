@@ -141,7 +141,7 @@ function isValidNightlyReminderTime(value: unknown): value is string {
   if (typeof value !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return false;
   const [hour, minute] = value.split(':').map(Number);
   const total = hour * 60 + minute;
-  return total >= 21 * 60 || total <= 4 * 60;
+  return total >= 22 * 60 + 30 || total <= 2 * 60;
 }
 
 function isValidTimezone(value: unknown): value is string {
@@ -381,43 +381,6 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
   return json({ ok: true, expiresAt: expiryIso(), occurrenceCount: payload.occurrences.length }, 200, origin);
 }
 
-async function testDevice(request: Request, env: Env): Promise<Response> {
-  const origin = allowedOrigin(request, env);
-  if (!hasAllowedOrigin(request, env)) return error('origin_not_allowed', 403, origin);
-  const token = authToken(request);
-  if (!token || token.length < 32) return error('authorization_required', 401, origin);
-
-  let payload: unknown;
-  try {
-    payload = await readJson(request);
-  } catch (cause) {
-    return error(cause instanceof Error && cause.message === 'payload_too_large' ? 'payload_too_large' : 'invalid_json', 400, origin);
-  }
-  if (!payload || typeof payload !== 'object') return error('invalid_test_payload', 400, origin);
-  const item = payload as { deviceId?: unknown };
-  if (!isValidId(item.deviceId, 16, 96)) return error('invalid_test_payload', 400, origin);
-  if (!consumeRateLimit(request, item.deviceId)) return error('rate_limited', 429, origin);
-
-  const existing = await env.DB.prepare(
-    'SELECT device_id, token_hash, subscription_json FROM devices WHERE device_id = ?1',
-  ).bind(item.deviceId).first<{ device_id: string; token_hash: string; subscription_json: string }>();
-  if (!existing) return error('device_not_registered', 404, origin);
-  const tokenHash = await hashToken(token);
-  if (existing.token_hash !== tokenHash) return error('device_authorization_failed', 401, origin);
-  let subscription: WebPushSubscription;
-  try { subscription = JSON.parse(existing.subscription_json) as WebPushSubscription; } catch { return error('subscription_invalid', 409, origin); }
-
-  const messageId = await sendPush(
-    env,
-    subscription,
-    'Test Notification',
-    'System Notifications are enabled on this device.',
-    DEFAULT_ALLOWED_ORIGIN,
-    `${existing.device_id}:remote-test:${Date.now()}`,
-  );
-  return json({ ok: true, sent: Boolean(messageId) }, 200, origin);
-}
-
 async function deleteDevice(request: Request, env: Env): Promise<Response> {
   const origin = allowedOrigin(request, env);
   if (!hasAllowedOrigin(request, env)) return error('origin_not_allowed', 403, origin);
@@ -490,17 +453,15 @@ function parseReminderTime(value: string): number {
 }
 
 function nightlyScheduleDate(localDate: string, currentMinute: number): string {
-  if (currentMinute < 4 * 60) return localDate;
+  if (currentMinute <= 2 * 60) return localDate;
   const date = new Date(`${localDate}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 1);
   return date.toISOString().slice(0, 10);
 }
 
 function isWithinNightlyWindow(currentMinute: number, dueMinute: number): boolean {
-  if (currentMinute > 4 * 60 && currentMinute < 21 * 60) return false;
-  const elapsed = (currentMinute - dueMinute + 1440) % 1440;
-  const windowLength = (4 * 60 - dueMinute + 1440) % 1440;
-  return elapsed <= windowLength;
+  if (dueMinute >= 22 * 60 + 30) return currentMinute >= dueMinute && currentMinute < dueMinute + 5;
+  return currentMinute >= dueMinute && currentMinute < dueMinute + 5 && currentMinute <= 2 * 60;
 }
 
 function isBeforeClassDue(currentMinute: number, startMinute: number, leadMinutes: number): boolean {
@@ -568,6 +529,12 @@ function listLeadNames(rows: OccurrenceRow[], limit = 6): string {
   return `${visible.join(', ')}${suffix}`;
 }
 
+function leadReminderDetails(item: OccurrenceRow): { title: string; description: string } {
+  if (item.attentionLevel === 'mustAttend') return { title: 'Must Attend Reminder', description: 'This class is important for your attendance.\nAttending it is advised to keep you on track.' };
+  if (item.attentionLevel === 'needAttention') return { title: 'Need Attention Reminder', description: 'This class needs your attention.\nAttending it helps keep your attendance at a safe level.' };
+  return { title: 'Safe to Miss Reminder', description: 'You are currently on track.\nMissing this class should still be okay and keep you on track.' };
+}
+
 async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): Promise<void> {
   const clock = localClock(scheduledAt, device.timezone);
   const nightlyReminderMinute = parseReminderTime(device.nightly_reminder_time || '23:30');
@@ -598,25 +565,25 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
     const first = device.first_class_today && future.length > 0 ? future[0] : null;
     const digest = device.all_scheduled_digest && future.length > 0 ? future : [];
 
-    if (mustAttend.length > 0 || needAttention.length > 0) {
+    const safeToMiss = device.safe_to_miss ? future.filter(item => item.attentionLevel === 'safeToMiss') : [];
+    if (mustAttend.length > 0 || needAttention.length > 0 || safeToMiss.length > 0) {
       const parts: string[] = [];
       if (mustAttend.length > 0) parts.push(`Must Attend: ${listNames(mustAttend)}`);
       if (needAttention.length > 0) parts.push(`Need Attention: ${listNames(needAttention)}`);
-      await deliverIfNew(env, device, `${device.device_id}:risk-midnight:${nightlyDate}`, 'Urgent Schedule Alert', parts.join('\\n'), url);
+      if (safeToMiss.length > 0) parts.push(`Safe to Miss: ${listNames(safeToMiss)}`);
+      await deliverIfNew(env, device, `${device.device_id}:risk-midnight:${nightlyDate}`, 'Attendance & Risk Reminder', parts.join('\n'), url);
     }
 
     if (finalClasses.length > 0 || first || digest.length > 0) {
       const parts: string[] = [];
-      if (finalClasses.length > 0) parts.push(`Upcoming Last Planned Class: ${listNames(finalClasses)}`);
-      if (first) parts.push(`First Upcoming Class: ${cleanLabel(first.subjectLabel, first.category)} at ${formatMinute(first.startMinute)}.`);
-      else if (digest.length > 0) parts.push(`Upcoming: ${listNames(digest)}.`);
-      await deliverIfNew(env, device, `${device.device_id}:schedule-midnight:${nightlyDate}`, 'Upcoming Schedule', parts.join('\\n'), url);
+      if (first) parts.push(`First Upcoming: ${cleanLabel(first.subjectLabel, first.category)} at ${formatMinute(first.startMinute)}`);
+      if (digest.length > 0) parts.push(`All Upcoming: ${listNames(digest)}`);
+      if (finalClasses.length > 0) parts.push(`Last Planned: ${listNames(finalClasses)}`);
+      await deliverIfNew(env, device, `${device.device_id}:schedule-midnight:${nightlyDate}`, 'Upcoming Classes', parts.join('\n'), url);
     }
   }
 
-  const latestEndMinute = occurrences.reduce((latest, item) => Math.max(latest, item.endMinute), 0);
-  const unmarkedReminderMinute = latestEndMinute >= 21 * 60 ? 23 * 60 : 21 * 60 + 30;
-  if (scheduleDate === clock.date && device.unmarked_attendance_today && isWithinFiveMinuteWindow(currentMinute, unmarkedReminderMinute)) {
+  if (scheduleDate === clock.date && device.unmarked_attendance_today && isWithinFiveMinuteWindow(currentMinute, 22 * 60)) {
     const unmarked = occurrences.filter(item => item.startMinute < currentMinute && item.status === 'unmarked' && !item.isFinalForSubject);
     if (unmarked.length > 0) {
       await deliverIfNew(env, device, `${device.device_id}:unmarked:${clock.date}`, 'Attendance Still Unmarked', `${unmarked.length} Class${unmarked.length === 1 ? '' : 'es'} from today still need an attendance status: ${listNames(unmarked)}.`, url);
@@ -629,13 +596,16 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
     const dueNeed = device.need_attention_subjects ? due.filter(item => item.attentionLevel === 'needAttention') : [];
     const dueSafe = device.safe_to_miss ? due.filter(item => item.attentionLevel === 'safeToMiss') : [];
     for (const item of dueMust) {
-      await deliverIfNew(env, device, `${device.device_id}:before-must:${clock.date}:${item.id}:${device.lead_minutes}`, 'Must Attend', `${listLeadNames([item])} start in ${device.lead_minutes} minutes. Attend these Classes to protect your attendance percentage.`, url);
+      const details = leadReminderDetails(item);
+      await deliverIfNew(env, device, `${device.device_id}:before-must:${clock.date}:${item.id}:${device.lead_minutes}`, details.title, `${cleanLabel(item.subjectLabel, item.category)} starts in ${device.lead_minutes} minutes.\n${details.description}`, url);
     }
     for (const item of dueNeed) {
-      await deliverIfNew(env, device, `${device.device_id}:before-attention:${clock.date}:${item.id}:${device.lead_minutes}`, 'Need Attention', `${listLeadNames([item])} start in ${device.lead_minutes} minutes. Your attendance is at the preferred percentage without the recommended safety margin.`, url);
+      const details = leadReminderDetails(item);
+      await deliverIfNew(env, device, `${device.device_id}:before-attention:${clock.date}:${item.id}:${device.lead_minutes}`, details.title, `${cleanLabel(item.subjectLabel, item.category)} starts in ${device.lead_minutes} minutes.\n${details.description}`, url);
     }
     for (const item of dueSafe) {
-      await deliverIfNew(env, device, `${device.device_id}:before-safe:${clock.date}:${item.id}:${device.lead_minutes}`, 'Safe to Miss a Class', `${listLeadNames([item])} start in ${device.lead_minutes} minutes. Missing these Classes would keep you at or above the preferred percentage.`, url);
+      const details = leadReminderDetails(item);
+      await deliverIfNew(env, device, `${device.device_id}:before-safe:${clock.date}:${item.id}:${device.lead_minutes}`, details.title, `${cleanLabel(item.subjectLabel, item.category)} starts in ${device.lead_minutes} minutes.\n${details.description}`, url);
     }
   }
 }
@@ -677,7 +647,6 @@ export default {
     } });
     const url = new URL(request.url);
     if (url.pathname === '/v1/device/reminder-state' && request.method === 'POST') return syncDevice(request, env);
-    if (url.pathname === '/v1/device/test' && request.method === 'POST') return testDevice(request, env);
     if (url.pathname === '/v1/device/reminder-state' && request.method === 'DELETE') return deleteDevice(request, env);
     return error('not_found', 404, origin);
   },

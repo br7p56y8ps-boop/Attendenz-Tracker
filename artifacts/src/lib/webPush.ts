@@ -119,7 +119,7 @@ export function getNotificationPreferences(): NotificationPreferences {
     const parsed = JSON.parse(window.localStorage.getItem(PREFS_KEY) || '{}') as Partial<NotificationPreferences>;
     const leadMinutes = parsed.leadMinutes === 15 || parsed.leadMinutes === 60 ? parsed.leadMinutes : 30;
     const nightlyReminderTime = typeof parsed.nightlyReminderTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(parsed.nightlyReminderTime)
-      && ((Number(parsed.nightlyReminderTime.slice(0, 2)) * 60 + Number(parsed.nightlyReminderTime.slice(3))) >= 21 * 60 || (Number(parsed.nightlyReminderTime.slice(0, 2)) * 60 + Number(parsed.nightlyReminderTime.slice(3))) <= 4 * 60)
+      && ((Number(parsed.nightlyReminderTime.slice(0, 2)) * 60 + Number(parsed.nightlyReminderTime.slice(3))) >= 22 * 60 + 30 || (Number(parsed.nightlyReminderTime.slice(0, 2)) * 60 + Number(parsed.nightlyReminderTime.slice(3))) <= 2 * 60)
       ? parsed.nightlyReminderTime
       : DEFAULT_PREFERENCES.nightlyReminderTime;
     const needAttentionSummary = parsed.needAttentionSummary ?? parsed.midnightNeedAttention !== false;

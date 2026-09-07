@@ -3,24 +3,23 @@ import { __test } from '../src/index.ts';
 
 const { cleanLabel, isBeforeClassDue, isValidNightlyReminderTime, parseReminderTime, isWithinFiveMinuteWindow, isWithinNightlyWindow, nightlyScheduleDate } = __test;
 
-assert.equal(isValidNightlyReminderTime('21:00'), true);
+assert.equal(isValidNightlyReminderTime('22:30'), true);
 assert.equal(isValidNightlyReminderTime('23:59'), true);
 assert.equal(isValidNightlyReminderTime('00:00'), true);
-assert.equal(isValidNightlyReminderTime('04:00'), true);
-assert.equal(isValidNightlyReminderTime('20:59'), false);
-assert.equal(isValidNightlyReminderTime('04:01'), false);
+assert.equal(isValidNightlyReminderTime('02:00'), true);
+assert.equal(isValidNightlyReminderTime('22:29'), false);
+assert.equal(isValidNightlyReminderTime('02:01'), false);
 assert.equal(isValidNightlyReminderTime('24:00'), false);
 assert.equal(parseReminderTime('23:30'), 1410);
 assert.equal(isWithinFiveMinuteWindow(1410, 1410), true);
 assert.equal(isWithinNightlyWindow(1410, 1410), true);
-assert.equal(isWithinNightlyWindow(1424, 1410), true);
+assert.equal(isWithinNightlyWindow(1414, 1410), true);
 assert.equal(isWithinNightlyWindow(300, 1410), false);
-assert.equal(isWithinNightlyWindow(0, 1410), true);
-assert.equal(isWithinNightlyWindow(30, 1410), true);
+assert.equal(isWithinNightlyWindow(0, 30), false);
+assert.equal(isWithinNightlyWindow(30, 30), true);
 assert.equal(nightlyScheduleDate('2026-09-06', 30), '2026-09-06');
-assert.equal(nightlyScheduleDate('2026-09-06', 239), '2026-09-06');
-assert.equal(nightlyScheduleDate('2026-09-06', 240), '2026-09-07');
-assert.equal(nightlyScheduleDate('2026-09-06', 300), '2026-09-07');
+assert.equal(nightlyScheduleDate('2026-09-06', 120), '2026-09-06');
+assert.equal(nightlyScheduleDate('2026-09-06', 1350), '2026-09-07');
 assert.equal(isWithinFiveMinuteWindow(1414, 1410), true);
 assert.equal(isWithinFiveMinuteWindow(1415, 1410), false);
 
@@ -40,13 +39,13 @@ console.log('notification regression tests passed');
 
 
 const { processDevice, buildNotificationData, localClock } = __test;
-assert.deepEqual(buildNotificationData('Need Attention', 'Medicine (Lecture) starts in 30 minutes.', '/'), {
-  title: 'Need Attention',
-  body: 'Medicine (Lecture) starts in 30 minutes.',
+assert.deepEqual(buildNotificationData('Need Attention Reminder', 'Medicine (Lecture) starts in 30 minutes.\nThis class needs extra attention to help you stay on track.', '/'), {
+  title: 'Need Attention Reminder',
+  body: 'Medicine (Lecture) starts in 30 minutes.\nThis class needs extra attention to help you stay on track.',
   url: '/',
 });
-assert.deepEqual(buildNotificationData('Urgent Schedule Alert', 'Must Attend: Anatomy (Lecture)\nNeed Attention: Medicine (Lecture)', '/'), {
-  title: 'Urgent Schedule Alert',
+assert.deepEqual(buildNotificationData('Attendance & Risk Reminder', 'Must Attend: Anatomy (Lecture)\nNeed Attention: Medicine (Lecture)', '/'), {
+  title: 'Attendance & Risk Reminder',
   body: 'Must Attend: Anatomy (Lecture)\nNeed Attention: Medicine (Lecture)',
   url: '/',
 });

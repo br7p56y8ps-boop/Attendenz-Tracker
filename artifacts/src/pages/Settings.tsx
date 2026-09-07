@@ -65,14 +65,12 @@ type NotificationChildKey = 'needAttentionSummary' | 'needAttentionSubjects' | '
 
 type NotificationChild = { key: NotificationChildKey; title: string; description: string };
 
-const NIGHTLY_REMINDER_OPTIONS = Array.from({ length: 421 }, (_, index) => {
-  const totalMinutes = (21 * 60 + index) % 1440;
-  const hour24 = Math.floor(totalMinutes / 60);
-  const minute = totalMinutes % 60;
-  const hour12 = hour24 % 12 || 12;
-  const suffix = hour24 >= 12 ? 'PM' : 'AM';
-  return { value: `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`, label: `${hour12}:${String(minute).padStart(2, '0')} ${suffix}` };
-});
+function isValidNightlyReminderTime(value: string): boolean {
+  if (!/^\d{2}:\d{2}$/.test(value)) return false;
+  const [hour, minute] = value.split(':').map(Number);
+  const totalMinutes = hour * 60 + minute;
+  return totalMinutes >= 22 * 60 + 30 || totalMinutes <= 2 * 60;
+}
 
 const ATTENDANCE_REMINDER_CHILDREN: NotificationChild[] = [
   { key: 'needAttentionSummary', title: 'Must Attend Summary', description: 'Remote push during your nightly reminder window for must-attend classes.' },
@@ -156,7 +154,7 @@ function NotificationGroupCard({
           {nightlyReminderTime !== undefined && onNightlyReminderTimeChange && (
             <label className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', (!enabled || disabled) && 'opacity-50')}>
               <span><span className="block text-[11px] font-semibold text-foreground">Nightly Risk Reminder</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Send the upcoming must-attend batch at this local time. This is separate from before-class warnings.</span></span>
-              <select value={nightlyReminderTime} onChange={event => onNightlyReminderTimeChange(event.target.value)} disabled={!enabled || disabled} className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground">{NIGHTLY_REMINDER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+              <input type="time" min="00:00" max="23:59" value={nightlyReminderTime} onChange={event => onNightlyReminderTimeChange(event.target.value)} disabled={!enabled || disabled} aria-label="Nightly Risk Reminder time" className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" />
             </label>
           )}
         </div>
@@ -325,6 +323,10 @@ export default function Settings() {
   }, []);
 
   const updateNotificationPreference = <K extends keyof NotificationPreferences>(key: K, value: NotificationPreferences[K]) => {
+    if (key === 'nightlyReminderTime' && (typeof value !== 'string' || !isValidNightlyReminderTime(value))) {
+      import('sonner').then(({ toast }) => toast.error('Choose a nightly reminder time from 10:30 PM through 2:00 AM.'));
+      return;
+    }
     const next = { ...notificationPreferences, [key]: value };
     setNotificationPreferencesState(next);
     setNotificationPreferences(next);

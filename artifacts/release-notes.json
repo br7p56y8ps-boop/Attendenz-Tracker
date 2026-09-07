@@ -1,6 +1,7 @@
 {
-  "1.6.13": {
+  "1.6.14": {
     "upgrades": [
+      { "title": "Better night reminders", "summary": "Nightly summaries now arrive at your chosen time and are split into clear groups." },
       { "title": "Better update experience", "summary": "Updates now guide you clearly through backing up, downloading, installing, and finishing." },
       { "title": "Safer data protection", "summary": "Your attendance records and preferences are better protected during app updates." },
       { "title": "More reliable offline use", "summary": "The app is better prepared to keep working when your internet connection is unavailable." },
@@ -9,6 +10,7 @@
       { "title": "A more polished experience", "summary": "Everyday screens and recovery steps feel smoother, clearer, and easier to follow." }
     ],
     "fixes": [
+      { "title": "More accurate nightly alerts", "summary": "Reminders for the next day are now correctly scheduled around midnight." },
       { "title": "Smarter reminders", "summary": "Reminders now avoid false alerts for holidays, days off, and completed classes." },
       { "title": "More accurate upcoming classes", "summary": "Upcoming views now focus on classes that still need your attention." },
       { "title": "More dependable updates", "summary": "The app stays on your current version until you choose to install an available update." },
