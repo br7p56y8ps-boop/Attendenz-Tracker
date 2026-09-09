@@ -890,3 +890,121 @@ body,
   -webkit-backdrop-filter: none !important;
   filter: none !important;
 }
+
+/* v1.6.15 final visual pass: crisp controls, iOS blue accents, and clean sheets. */
+:root,
+.dark {
+  --primary: #007aff;
+  --primary-foreground: #ffffff;
+}
+
+/* Keep every control crisp: one border, no glow, no blur, and no layered shadow. */
+.app-shell button,
+.app-shell [role="button"],
+.app-shell [role="switch"] {
+  border-style: solid !important;
+  border-color: var(--border) !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: 2px 2px 4px var(--neo-dark), -2px -2px 4px var(--neo-light) !important;
+}
+.app-shell button::before,
+.app-shell button::after,
+.app-shell [role="button"]::before,
+.app-shell [role="button"]::after,
+.app-shell [role="switch"]::before,
+.app-shell [role="switch"]::after {
+  filter: none !important;
+}
+.app-shell button:active:not(:disabled),
+.app-shell [role="button"]:active:not(:disabled) {
+  box-shadow: var(--neo-inset) !important;
+}
+
+/* Subject detail modal close control is intentionally omitted visually. */
+.subject-details-modal > div:first-child > div:last-child > button[title="Close"] {
+  display: none !important;
+}
+
+/* Clean bottom navigation and selected item: no doubled surface or drop-shadow. */
+.bottom-nav-surface {
+  border: 1px solid var(--border) !important;
+  border-bottom: 0 !important;
+  box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.bottom-nav-surface button {
+  box-shadow: none !important;
+  border-color: transparent !important;
+  filter: none !important;
+}
+.bottom-nav-surface button .absolute.inset-0 {
+  background: color-mix(in srgb, var(--primary) 12%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  box-shadow: none !important;
+}
+.bottom-nav-surface button.text-primary,
+.bottom-nav-surface button:has(.text-primary) {
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+/* Consistent modern Day/Date/Time fields in every modal. */
+.modal-sheet-content input,
+.modal-sheet-content select,
+.modal-sheet-content textarea,
+.modal-sheet-content input[type="date"],
+.modal-sheet-content input[type="time"] {
+  min-height: 2.5rem;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  background: var(--background) !important;
+  color: var(--foreground) !important;
+  box-shadow: var(--neo-inset) !important;
+  color-scheme: light;
+}
+.dark .modal-sheet-content input,
+.dark .modal-sheet-content select,
+.dark .modal-sheet-content textarea,
+.dark .modal-sheet-content input[type="date"],
+.dark .modal-sheet-content input[type="time"] {
+  color-scheme: dark;
+}
+.modal-sheet-content input:focus,
+.modal-sheet-content select:focus,
+.modal-sheet-content textarea:focus {
+  outline: none !important;
+  border-color: color-mix(in srgb, var(--primary) 58%, var(--border)) !important;
+  box-shadow: var(--neo-inset), 0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent) !important;
+}
+
+/* Bottom sheets retain a sharp content surface while the overlay supplies backdrop blur. */
+.modal-sheet-content {
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  transition: transform 250ms ease, opacity 250ms ease !important;
+  box-shadow: 3px 3px 6px rgba(0, 0, 0, 0.28), -2px -2px 4px var(--neo-light) !important;
+}
+.fixed.inset-0 > .modal-sheet-content,
+.fixed.inset-0 > div > .modal-sheet-content {
+  animation: sheet-slide-up 250ms ease-out both;
+}
+@keyframes sheet-slide-up {
+  from { transform: translate3d(0, 28px, 0); opacity: 0.96; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fixed.inset-0 > .modal-sheet-content,
+  .fixed.inset-0 > div > .modal-sheet-content { animation: none; }
+}
+
+/* Keep the light theme soft without bright doubled edges. */
+:root .glass-panel,
+:root .glass-card,
+:root .modal-sheet-content,
+:root .bottom-nav-surface,
+:root .subject-card-surface {
+  border-color: rgba(28, 39, 54, 0.16) !important;
+}
