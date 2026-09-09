@@ -1689,7 +1689,7 @@ export default function Manage() {
                 )}
               </div>
               <div className="shrink-0 px-3 py-2">
-                      <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="action-button action-button--edit w-full items-center justify-center py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40">
+                <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
                   <Plus className="h-3.5 w-3.5" /> Add Slot
                 </button>
               </div>
