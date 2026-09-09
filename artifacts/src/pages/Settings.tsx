@@ -153,7 +153,7 @@ function NotificationGroupCard({
           )}
           {nightlyReminderTime !== undefined && onNightlyReminderTimeChange && (
             <label className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', (!enabled || disabled) && 'opacity-50')}>
-              <span><span className="block text-[11px] font-semibold text-foreground">Nightly Risk Reminder</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Send the upcoming must-attend batch at this local time. This is separate from before-class warnings.</span></span>
+              <span><span className="block text-[11px] font-semibold text-foreground">Nightly Risk Reminder</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Choose a time from 10:30 PM–2:00 AM. A time after midnight targets today’s schedule. This is separate from before-class warnings.</span></span>
               <input type="time" min="00:00" max="23:59" value={nightlyReminderTime} onChange={event => onNightlyReminderTimeChange(event.target.value)} disabled={!enabled || disabled} aria-label="Nightly Risk Reminder time" className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" />
             </label>
           )}
@@ -264,6 +264,7 @@ export default function Settings() {
   const [reminderSyncStatus, setReminderSyncStatus] = useState<ReminderSyncStatus>(() => getReminderSyncStatus());
   const [reminderServiceConfigured, setReminderServiceConfigured] = useState(() => getReminderSyncStatus().state !== 'not-configured');
   const [notificationRecovery, setNotificationRecovery] = useState<{ title: string; message: string; action?: 'enable' | 'settings' } | null>(null);
+  const [nightlyReminderNotice, setNightlyReminderNotice] = useState(false);
   const [expandedNotificationGroups, setExpandedNotificationGroups] = useState<Record<string, boolean>>({ attendance: false, dailySchedule: false, activity: false, updates: false });
   const [pendingPct, setPendingPct] = useState<number | null>(null);
   const [confirmMarkComplete, setConfirmMarkComplete] = useState(false);
@@ -330,6 +331,7 @@ export default function Settings() {
     const next = { ...notificationPreferences, [key]: value };
     setNotificationPreferencesState(next);
     setNotificationPreferences(next);
+    if (key === 'nightlyReminderTime' && value !== notificationPreferences.nightlyReminderTime) setNightlyReminderNotice(true);
   };
 
   const notificationControlsDisabled = !reminderServiceConfigured || !systemNotificationsEnabled || notificationPermission !== 'granted';
@@ -1692,6 +1694,17 @@ export default function Settings() {
                     <button type="button" onClick={() => setNotificationRecovery(null)} className="action-button action-button--cancel flex-1 min-h-10">Close</button>
                     {notificationRecovery.action && <button type="button" onClick={() => { const action = notificationRecovery.action; setNotificationRecovery(null); if (action === 'enable') void enableSystemNotifications(); }} className="action-button action-button--update flex-1 min-h-10">{notificationRecovery.action === 'settings' ? 'I’ll Check Settings' : 'Try Again'}</button>}
                   </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {nightlyReminderNotice && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/55 backdrop-blur-sm z-[175] flex items-end justify-center p-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} onClick={() => setNightlyReminderNotice(false)}>
+                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ duration: 0.25, ease: 'easeOut' }} className="modal-sheet-content !min-h-0 bg-card border border-primary/30 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-start gap-2"><Bell className="w-4 h-4 text-primary shrink-0 mt-0.5" /><div><h3 className="text-sm font-bold text-foreground">Nightly reminder time updated</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Your new time will apply from the next nightly reminder. Only one nightly reminder is sent each night.</p></div></div>
+                  <button type="button" onClick={() => setNightlyReminderNotice(false)} className="action-button action-button--cancel w-full min-h-10">Got it</button>
                 </motion.div>
               </motion.div>
             )}

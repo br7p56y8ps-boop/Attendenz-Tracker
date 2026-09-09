@@ -84,7 +84,7 @@ export function useUpdateFlow() {
           return;
         }
       }
-      await new Promise(r => setTimeout(r, Math.max(0, 8000 - (Date.now() - backupStarted))));
+      await new Promise(r => setTimeout(r, Math.max(0, 5000 - (Date.now() - backupStarted))));
       setProgressComplete(true);
       await new Promise(r => setTimeout(r, 350));
     }
@@ -133,7 +133,7 @@ export function useUpdateFlow() {
 }
 
 export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'backing' | 'downloading' | 'installing' | 'completed'; complete?: boolean }) => {
-  const duration = phase === 'backing' ? 8000 : 5000;
+  const duration = phase === 'backing' ? 5000 : phase === 'downloading' ? 8000 : 5000;
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     setProgress(0);
@@ -149,9 +149,9 @@ export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'back
   return (
     <div className="release-progress flex w-full flex-col items-center justify-center text-center">
       <div className="release-progress__steps flex items-center justify-center" role="progressbar" aria-label="Update progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
-        <div className="relative h-24 w-24" aria-hidden="true"><svg viewBox="0 0 100 100" className="h-24 w-24 -rotate-90"><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" className="text-muted/40" /><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" className="text-primary transition-all duration-300" strokeDasharray={264} strokeDashoffset={264 - (264 * Math.max(0, progress)) / 100} /></svg><span className="absolute inset-0 flex items-center justify-center text-sm font-extrabold text-foreground">{Math.round(progress)}%</span></div>
+        <div className="relative h-24 w-24" aria-hidden="true"><svg viewBox="0 0 100 100" className="h-24 w-24 -rotate-90"><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" className="text-muted/40" /><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" className="text-primary transition-all duration-300" strokeDasharray={264} strokeDashoffset={264 - (264 * Math.max(0, progress)) / 100} /></svg>{phase === 'completed' ? <span className="update-progress-checkmark absolute inset-0 flex items-center justify-center text-4xl font-black text-primary" aria-label="Completed">✓</span> : <span className="absolute inset-0 flex items-center justify-center text-sm font-extrabold text-foreground">{Math.round(progress)}%</span>}</div>
       </div>
-      <p className="release-progress__label mt-2 text-xs font-bold text-foreground">{phase === 'completed' ? 'Completed' : complete && phase === 'backing' ? 'Backup complete' : phase === 'backing' ? 'Backing Up…' : phase === 'downloading' ? 'Downloading Updates…' : 'Installing…'}</p>
+      <p className="release-progress__label mt-2 text-xs font-bold text-foreground">{phase === 'completed' ? 'Completed!' : complete && phase === 'backing' ? 'Backup complete' : phase === 'backing' ? 'Backing Up…' : phase === 'downloading' ? 'Downloading Updates…' : 'Installing Updates…'}</p>
     </div>
   );
 };

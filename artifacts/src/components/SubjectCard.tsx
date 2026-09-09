@@ -318,7 +318,7 @@ export const SubjectCard = ({
         onClick={openModal}
         style={cardStyle}
         className={cn(
-          "rounded-2xl border transition-all cursor-pointer select-none hover:shadow-sm",
+          "subject-card-surface rounded-2xl border transition-all duration-250 ease-out cursor-pointer select-none hover:shadow-sm",
           !isNested && "p-4 sm:p-5 shadow-sm",
           isNested && "p-3.5 sm:p-4 my-1 mx-2 sm:mx-3 rounded-xl hover:brightness-95",
           isActiveWard && !isNested && "ring-1 ring-emerald-500/40"

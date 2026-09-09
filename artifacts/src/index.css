@@ -652,3 +652,120 @@ input[type="time"] {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 4px rgba(0, 0, 0, 0.28), 0 4px 9px rgba(0, 0, 0, 0.3);
   transform: translateY(-1px);
 }
+
+/* v1.6.15 soft neumorphic surfaces and focused motion polish. */
+:root {
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --background: #e7ebf1;
+  --card: #e7ebf1;
+  --muted: #dfe4eb;
+  --border: #d1d7e0;
+  --neo-light: rgba(255, 255, 255, 0.88);
+  --neo-dark: rgba(163, 174, 190, 0.48);
+  --neo-raised: 7px 7px 16px var(--neo-dark), -7px -7px 16px var(--neo-light);
+  --neo-inset: inset 5px 5px 11px rgba(163, 174, 190, 0.36), inset -5px -5px 11px rgba(255, 255, 255, 0.72);
+}
+
+.dark {
+  --background: #1d2026;
+  --card: #252930;
+  --muted: #2a2e36;
+  --border: #3a414d;
+  --primary: #818cf8;
+  --neo-light: rgba(65, 72, 84, 0.58);
+  --neo-dark: rgba(10, 12, 16, 0.72);
+  --neo-raised: 7px 7px 16px var(--neo-dark), -7px -7px 16px var(--neo-light);
+  --neo-inset: inset 5px 5px 11px rgba(10, 12, 16, 0.48), inset -5px -5px 11px rgba(65, 72, 84, 0.34);
+}
+
+.glass-panel,
+.glass-card,
+.modal-sheet-content,
+.bottom-nav-surface,
+.subject-card-surface {
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: var(--neo-raised);
+}
+
+.glass-card-hover,
+.subject-card-surface {
+  transition: transform 250ms ease, box-shadow 250ms ease, border-color 250ms ease, background-color 250ms ease;
+}
+.glass-card-hover:hover,
+.subject-card-surface:hover {
+  transform: translateY(-1px);
+  box-shadow: 9px 9px 18px var(--neo-dark), -9px -9px 18px var(--neo-light);
+}
+
+.action-button,
+.glass-button {
+  border-radius: 10px;
+  box-shadow: var(--neo-raised);
+  transition: transform 220ms ease, box-shadow 220ms ease, background-color 220ms ease, border-color 220ms ease, color 220ms ease;
+}
+.action-button:active:not(:disabled),
+.glass-button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+  box-shadow: var(--neo-inset);
+}
+
+.app-shell input,
+.app-shell select,
+.app-shell textarea {
+  border-radius: 10px;
+  box-shadow: var(--neo-inset);
+  transition: box-shadow 220ms ease, border-color 220ms ease, background-color 220ms ease;
+}
+.app-shell input:focus,
+.app-shell select:focus,
+.app-shell textarea:focus {
+  border-color: color-mix(in srgb, var(--primary) 62%, var(--border));
+  box-shadow: var(--neo-inset), 0 0 0 2px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.modal-sheet-content {
+  border-radius: 20px 20px 10px 10px;
+}
+
+.update-progress-checkmark {
+  animation: update-checkmark-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes update-checkmark-in {
+  from { opacity: 0; transform: scale(0.45) rotate(-18deg); }
+  to { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+.attendance-mark-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: transparent !important;
+  box-shadow: var(--neo-raised);
+}
+.attendance-mark-button::before {
+  content: '';
+  position: absolute;
+  inset: -45%;
+  z-index: -2;
+  background: conic-gradient(from 0deg, transparent 0 60%, var(--attendance-border) 68%, color-mix(in srgb, var(--attendance-border) 30%, transparent) 78%, transparent 86% 100%);
+  animation: attendance-border-spin 2.8s linear infinite;
+}
+.attendance-mark-button::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: 8px;
+  background: var(--background);
+}
+.attendance-mark-button--attended { --attendance-border: #22c55e; }
+.attendance-mark-button--missed { --attendance-border: #ef4444; }
+.attendance-mark-button--off { --attendance-border: #eab308; }
+.attendance-mark-button > * { position: relative; z-index: 1; }
+@keyframes attendance-border-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .attendance-mark-button::before,
+  .update-progress-checkmark { animation: none; }
+}
