@@ -769,3 +769,124 @@ input[type="time"] {
   .attendance-mark-button::before,
   .update-progress-checkmark { animation: none; }
 }
+
+/* v1.6.15 visual correction pass: crisp surfaces on dark and light themes. */
+:root {
+  --background: #e7ebf1;
+  --card: #e7ebf1;
+  --muted: #dfe4eb;
+  --border: rgba(28, 39, 54, 0.16);
+  --neo-light: rgba(255, 255, 255, 0.64);
+  --neo-dark: rgba(129, 143, 162, 0.24);
+  --neo-raised: 4px 4px 6px var(--neo-dark), -4px -4px 6px var(--neo-light);
+  --neo-inset: inset 3px 3px 5px rgba(129, 143, 162, 0.2), inset -3px -3px 5px rgba(255, 255, 255, 0.54);
+}
+.dark {
+  --background: #0a0a0a;
+  --card: #1a1a1a;
+  --muted: #151515;
+  --border: #2a2a2a;
+  --foreground: #f5f5f5;
+  --card-foreground: #f5f5f5;
+  --muted-foreground: #a7a7a7;
+  --neo-light: rgba(255, 255, 255, 0.045);
+  --neo-dark: rgba(0, 0, 0, 0.48);
+  --neo-raised: 4px 4px 6px var(--neo-dark), -4px -4px 6px var(--neo-light);
+  --neo-inset: inset 3px 3px 5px rgba(0, 0, 0, 0.42), inset -3px -3px 5px rgba(255, 255, 255, 0.035);
+}
+html,
+body,
+#root {
+  background: var(--background);
+}
+
+.glass-panel,
+.glass-card,
+.modal-sheet-content,
+.bottom-nav-surface,
+.subject-card-surface {
+  border: 1px solid var(--border);
+  box-shadow: var(--neo-raised);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+}
+.glass-card-hover:hover,
+.subject-card-surface:hover {
+  box-shadow: 5px 5px 8px var(--neo-dark), -5px -5px 8px var(--neo-light);
+}
+.action-button,
+.glass-button,
+.attendance-mark-button {
+  border: 1px solid var(--border);
+  box-shadow: var(--neo-raised);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+}
+.action-button:active:not(:disabled),
+.glass-button:active:not(:disabled) {
+  box-shadow: var(--neo-inset);
+}
+.app-shell [role="switch"] {
+  border-color: var(--border);
+  box-shadow: var(--neo-raised);
+  backdrop-filter: none !important;
+  filter: none !important;
+}
+.app-shell [role="switch"][aria-checked="true"] {
+  background-color: var(--primary) !important;
+  border-color: color-mix(in srgb, var(--primary) 72%, var(--border)) !important;
+  box-shadow: none;
+}
+
+.modal-sheet-content {
+  will-change: transform, opacity;
+  animation-duration: 250ms;
+  border-radius: 18px 18px 10px 10px;
+}
+/* Keep the sheet sharp; only the fixed overlay backdrop may use backdrop blur. */
+.modal-sheet-content[class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Subject-tab child groups: stable compositing prevents flicker during height animation. */
+.app-shell .overflow-hidden.rounded-xl.border-border\/50 {
+  will-change: height, opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* A compact, high-contrast 30–40% rotating border segment with no glow. */
+.attendance-mark-button {
+  border-color: transparent !important;
+  box-shadow: 3px 3px 6px rgba(0, 0, 0, 0.22), -2px -2px 5px var(--neo-light);
+}
+.attendance-mark-button::before {
+  inset: -55%;
+  background: conic-gradient(from 0deg, transparent 0 58%, var(--attendance-border) 63% 96%, transparent 101% 100%);
+  animation: attendance-border-spin 2.5s linear infinite;
+}
+.attendance-mark-button::after {
+  inset: 2px;
+  border-radius: 8px;
+  background: var(--background);
+}
+.dark .attendance-mark-button::after {
+  background: #0a0a0a;
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-sheet-content,
+  .attendance-mark-button::before { animation: none; }
+}
+
+/* Do not blur controls or card surfaces; backdrop blur remains available only on fixed overlays. */
+.app-shell button,
+.app-shell [role="button"],
+.app-shell [role="switch"],
+.app-shell [class*="bg-card"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+}
