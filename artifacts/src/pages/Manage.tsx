@@ -1403,7 +1403,7 @@ export default function Manage() {
       if (subjectMode === 'preloaded') {
         const seenWards = new Set<string>();
         WARD_SUBJECTS.forEach(w => { seenWards.add(w.name); presetItems.push({ id: `ward:${w.name}`, name: w.name, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(w.name) }); });
-        presetWardSchedule.forEach(e => { if (!seenWards.has(e.ward)) { seenWards.add(e.ward); presetItems.push({ id: `ward:${e.ward}`, name: e.ward, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(e.ward) }); } });
+        presetWardSchedule.forEach(e => { if (e.ward.trim().toLowerCase() !== 'holiday' && !seenWards.has(e.ward)) { seenWards.add(e.ward); presetItems.push({ id: `ward:${e.ward}`, name: e.ward, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(e.ward) }); } });
         userAddedSubjects.filter(s => isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'sgt' as const, category: 'SGT' as const, deletable: true, planned: s.plannedClasses }));
       } else {
         customWards.forEach(w => addedItems.push({ id: w.id, name: w.name, store: 'custom-ward' as const, category: 'Clinical' as const, deletable: true, planned: getCustomWardTotalPlanned(w.startDate, w.endDate, w.vacationPeriods) }));
@@ -1948,7 +1948,7 @@ export default function Manage() {
                   <h3 className="text-sm font-bold text-foreground">Edit {section === 'academic' ? 'Academic' : 'Clinical'} Data</h3>
                   <p className="text-[10px] text-muted-foreground">
                     {section === 'clinical'
-                      ? 'Planned for clinical items are auto-calculated and cannot be edited.'
+                      ? 'Planned for clinical items are auto-calculated and cannot be edited. Vacation or exam periods can be edited from the clinical edit window.'
                       : subjectMode === 'custom' ? 'Edit planned classes or delete Custom routine items.' : 'Edit planned classes or delete user-added items.'}
                   </p>
                 </div>

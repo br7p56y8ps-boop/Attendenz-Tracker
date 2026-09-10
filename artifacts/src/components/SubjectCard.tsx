@@ -30,7 +30,7 @@ export const SubjectCard = ({
   isSGT = false,
   sgtId,
 }: SubjectCardProps) => {
-  const { subjects, wards, finishedMap, updateSubject, updateWard, toggleFinished, preferredPercentage } = useAttendance();
+  const { subjects, wards, updateSubject, updateWard, preferredPercentage } = useAttendance();
   const { subjectMode, getPresetSubjectDisplayName, getSubjectIdByName } = useCustomData();
 
   const displayName = subjectMode === 'preloaded' ? getPresetSubjectDisplayName(subject) : subject;
@@ -45,7 +45,6 @@ export const SubjectCard = ({
   const dataStore = isWard ? wards : subjects;
   const updateFn = isWard ? updateWard : updateSubject;
   const data = attendanceKey ? dataStore[attendanceKey] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-  const isMarkedFinished = attendanceKey ? finishedMap?.[attendanceKey] || false : false;
 
   const currentDataRef = useRef({ attended: data.attended, missed: data.missed });
   useEffect(() => {
@@ -120,7 +119,7 @@ export const SubjectCard = ({
   const requiredToAttend = rawRequired > remaining ? "Not possible" : rawRequired;
   const isMaxReached = totalConducted >= totalPlanned;
   const percentageColor = pctColor(percentage, preferredPercentage, {
-    isFinished: isMarkedFinished || isMaxReached,
+    isFinished: isMaxReached,
     hasPlannedClasses: totalPlanned > 0,
   });
 
@@ -289,26 +288,6 @@ export const SubjectCard = ({
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Mark Completed Button */}
-      {isWard && (
-        <div className="pt-2">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (attendanceKey) toggleFinished(attendanceKey);
-            }}
-            className={cn(
-              "action-button w-full",
-              isMarkedFinished
-                ? "action-button--warning"
-                : "action-button--edit"
-            )}
-          >
-            <span>{isMarkedFinished ? 'Finished Early (Click to Re-open)' : 'Mark as Finished'}</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 
