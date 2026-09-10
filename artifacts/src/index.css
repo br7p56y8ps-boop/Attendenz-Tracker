@@ -331,6 +331,21 @@
   gap: 0.5rem;
 }
 
+.modal-sheet-footer {
+  padding-block: 0.65rem;
+}
+
+.modal-sheet-header h2,
+.modal-sheet-header h3,
+.modal-sheet-header p {
+  text-align: center;
+}
+
+.modal-sheet-header > .flex.items-start.justify-between,
+.modal-sheet-header > .flex.items-center.justify-between {
+  justify-content: center !important;
+}
+
 .modal-sheet-footer > * > *,
 .modal-sheet-footer > button {
   flex: 1 1 0 !important;
@@ -343,6 +358,10 @@
   flex: 0 1 65% !important;
   max-width: 70%;
   margin-inline: auto;
+}
+
+.modal-sheet-footer > *:has(> :only-child) {
+  justify-content: center !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

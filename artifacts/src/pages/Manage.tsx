@@ -1694,7 +1694,7 @@ export default function Manage() {
           maxW="max-w-lg"
           heightClass="!max-h-[80dvh]"
           dense
-          bodyClassName={section === 'academic' ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}
+          bodyClassName={section === 'academic' ? 'flex min-h-0 flex-col overflow-y-auto' : 'overflow-y-auto'}
           header={
             <div>
               <div className="flex items-center justify-between">

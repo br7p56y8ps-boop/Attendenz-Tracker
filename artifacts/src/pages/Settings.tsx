@@ -1111,7 +1111,8 @@ export default function Settings() {
                   )}
         </ModalSheet>
 
-          <ModalSheet open={Boolean(activeSettingModal)} onClose={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }} ariaLabel="Settings dialog" labelledBy="settings-modal-title" maxWidth="max-w-2xl" bodyClassName="p-4 sm:p-6 space-y-4 text-left">
+          <ModalSheet open={Boolean(activeSettingModal)} onClose={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }} ariaLabel="Settings dialog" labelledBy="settings-modal-title" maxWidth="max-w-2xl" bodyClassName="p-4 sm:p-6 space-y-4 text-left"
+            footer={activeSettingModal === 'preferredPc' && pendingPct === null ? <button type="button" onClick={() => setActiveSettingModal(null)} className="action-button action-button--save">Save &amp; Close</button> : undefined}>
                                       <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3 shrink-0">
                       <div className="flex min-w-0 flex-1 items-start gap-3">
                         {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
@@ -1249,7 +1250,6 @@ export default function Settings() {
                             <div className="flex gap-2"><button type="button" onClick={() => setPendingPct(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={() => { setPreferredPercentage(pendingPct); setPendingPct(null); }} className="action-button action-button--save flex-1">Apply</button></div>
                           </div>
                         )}
-                        {pendingPct === null && <div className="pt-2 flex justify-end"><button type="button" onClick={() => setActiveSettingModal(null)} className="action-button action-button--save">Save & Close</button></div>}
                       </div>
                     )}
                     {activeSettingModal === 'snapshot' && (
