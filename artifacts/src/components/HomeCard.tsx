@@ -205,8 +205,8 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const percentage = total === 0 ? 100 : (attended / total) * 100;
 
   const todayStr = getCurrentDateStr();
+  const tomorrowDate = addDays(new Date(todayStr + 'T12:00:00'), 1);
   const daysFromToday = Math.round((new Date(activeDateStr + 'T12:00:00').getTime() - new Date(todayStr + 'T12:00:00').getTime()) / 86400000);
-  const isTomorrow = daysFromToday === 1;
 
   const isScheduledOn = useCallback((d: Date): boolean => {
     const ds = toStr(d); const abbr = DAY_ABBRS[d.getDay()]; const dow = d.getDay();
@@ -236,6 +236,25 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     if (cs.days && cs.days.split(',').map((t: string) => t.trim()).includes(abbr)) return true;
     return false;
   }, [isWard, subjectMode, customWards, getCurrentPresetWard, isSGT, sgtId, userAddedSubjects, customSubjects, presetTimetable, subject]);
+  const isRoutineHoliday = useCallback((d: Date): boolean => {
+    if (d.getDay() === 0 || d.getDay() === 6) return false;
+    if (subjectMode === 'preloaded') return getCurrentPresetWard(d)?.ward === 'Holiday';
+    const day = DAY_ABBRS[d.getDay()];
+    const hasSubject = customSubjects?.some((item: any) => {
+      if ((item.startDate && toStr(d) < item.startDate) || (item.endDate && toStr(d) > item.endDate)) return false;
+      return (item.schedules || []).some((schedule: any) => schedule.day === day)
+        || (item.days && item.days.split(',').map((value: string) => value.trim()).includes(day));
+    });
+    const hasWard = customWards?.some(ward => toStr(d) >= ward.startDate && toStr(d) <= ward.endDate);
+    const hasHolidayWard = customWards?.some(ward => ward.name.toLowerCase() === 'holiday' && toStr(d) >= ward.startDate && toStr(d) <= ward.endDate);
+    return Boolean(hasHolidayWard || (!hasSubject && !hasWard));
+  }, [subjectMode, getCurrentPresetWard, customSubjects, customWards]);
+  const holidaySkipDate = isRoutineHoliday(tomorrowDate) ? addDays(tomorrowDate, 1) : null;
+  const isHolidaySkippedPrediction = Boolean(holidaySkipDate && toStr(holidaySkipDate) === activeDateStr);
+  const isTomorrow = daysFromToday === 1 || isHolidaySkippedPrediction;
+  const predictionClassLabel = isHolidaySkippedPrediction
+    ? `${holidaySkipDate!.toLocaleDateString('en-US', { weekday: 'long' })}'s class`
+    : 'this Class';
   const k = useMemo(() => {
     if (effectiveMode !== 'future') return 1;
     let count = 0;
@@ -251,16 +270,16 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     if (percentage < preferredPercentage) {
       const N = needToAttend;
       if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this <span className="whitespace-nowrap">(+{N - k}) more {cls(N - k)}!!</span></span> };
-      if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this Class!!</span> };
+      if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend {predictionClassLabel}!!</span> };
       return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
     }
     if (canMissCount > 0) {
       const M = canMissCount;
       if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can bunk this <span className="whitespace-nowrap">(+{M - k}) {cls(M - k)}!!</span></span> };
-      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk this Class</span> };
+      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk {predictionClassLabel}</span> };
       return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
     }
-    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this Class</span> };
+    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk {predictionClassLabel}</span> };
     return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this <span className="whitespace-nowrap">(+{k - 1}) {cls(k - 1)}</span></span> };
   })();
   const futureTag = (() => {

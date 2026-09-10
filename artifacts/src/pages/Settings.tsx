@@ -288,8 +288,10 @@ export default function Settings() {
   const [showCreateCurriculumForm, setShowCreateCurriculumForm] = useState(false);
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
   const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
-  const activeCurriculumCount = curricula.filter(c => c.status === 'active').length;
-  const activeCurriculumReadyForNewRoutine = activeCurriculumCount < 2;
+  const builtInCurricula = curricula.filter(c => c.id === 'curriculum_final_phase_5th_year' || c.id === 'curriculum_custom_routine');
+  const bothBuiltInCurriculaComplete = builtInCurricula.length === 2 && builtInCurricula.every(c => c.status === 'archived');
+  const unfinishedNewCurriculum = curricula.some(c => c.kind === 'custom' && c.id !== 'curriculum_custom_routine' && c.status === 'active');
+  const activeCurriculumReadyForNewRoutine = bothBuiltInCurriculaComplete && !unfinishedNewCurriculum;
   useEffect(() => {
     if (pendingCurriculumAction?.type !== 'rename' && !showCreateCurriculumForm) return;
     const viewport = window.visualViewport;

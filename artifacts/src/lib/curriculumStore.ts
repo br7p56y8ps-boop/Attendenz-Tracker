@@ -138,6 +138,9 @@ export function getCurriculumBundle(id: string): CurriculumBundle {
 const defaultCurriculumId = (kind: CurriculumKind): string =>
   kind === 'preset' ? 'curriculum_final_phase_5th_year' : 'curriculum_custom_routine';
 
+const isBuiltInCurriculum = (curriculum: CurriculumRecord): boolean =>
+  curriculum.id === defaultCurriculumId('preset') || curriculum.id === defaultCurriculumId('custom');
+
 export function getCurriculumForKind(kind: CurriculumKind): CurriculumRecord | null {
   const curricula = getCurricula();
   const active = getActiveCurriculum();
@@ -219,6 +222,12 @@ function buildNewCurriculum(name: string): CurriculumRecord {
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Curriculum name is required.');
   const curricula = getCurricula();
+  const builtInsComplete = curricula.filter(isBuiltInCurriculum).length === 2
+    && curricula.filter(isBuiltInCurriculum).every(curriculum => curriculum.status === 'archived');
+  if (!builtInsComplete) throw new Error('Complete both preset curricula before creating a new curriculum.');
+  if (curricula.some(curriculum => !isBuiltInCurriculum(curriculum) && curriculum.kind === 'custom' && curriculum.status === 'active')) {
+    throw new Error('Complete the current new curriculum before creating another.');
+  }
   if (curricula.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
     throw new Error('A curriculum with this name already exists.');
   }
@@ -400,7 +409,7 @@ export async function activateCurriculum(id: string): Promise<void> {
   const target = curricula.find(c => c.id === id);
   if (!target) throw new Error('Curriculum not found.');
   const activeCount = curricula.filter(c => c.status === 'active').length;
-  if (target.status === 'archived' && activeCount >= 2) {
+  if (target.status === 'archived' && activeCount >= 2 && !isBuiltInCurriculum(target)) {
     throw new Error('You already have the maximum number of Active Curricula. Mark one Complete before reopening another.');
   }
   const currentId = getActiveCurriculumId();
