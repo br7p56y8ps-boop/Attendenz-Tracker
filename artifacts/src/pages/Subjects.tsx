@@ -288,7 +288,7 @@ export default function Subjects() {
     for (const e of presetWardSchedule) {
       if (!seen.has(norm(e.ward))) {
         seen.add(norm(e.ward));
-        out.push(e.ward);
+        if (norm(e.ward) !== 'holiday') out.push(e.ward);
       }
     }
     return out;
@@ -596,7 +596,7 @@ export default function Subjects() {
         {(subjectMode === 'preloaded' || customWards.length > 0) && (() => {
           const wardList = subjectMode === 'preloaded'
             ? [
-                ...WARD_SUBJECTS.map(w => ({ name: w.name, id: getSubjectIdByName(w.name, 'clinical') })),
+                ...WARD_SUBJECTS.filter(w => norm(w.name) !== 'holiday').map(w => ({ name: w.name, id: getSubjectIdByName(w.name, 'clinical') })),
                 ...extraWardNames.map(n => ({ name: n, id: getSubjectIdByName(n, 'clinical') })),
               ]
             : customWards.map(w => ({ name: w.name, id: w.id, total: getCustomWardTotalPlanned(w.startDate, w.endDate, w.vacationPeriods) }));
@@ -612,7 +612,7 @@ export default function Subjects() {
               preferredPercentage={preferredPercentage}
               renderChildren={() => (
                 <>
-                  {subjectMode === 'preloaded' && WARD_SUBJECTS.map((ward) => (
+                  {subjectMode === 'preloaded' && WARD_SUBJECTS.filter(ward => norm(ward.name) !== 'holiday').map((ward) => (
                     <SubjectCard
                       key={ward.name}
                       subject={ward.name}
