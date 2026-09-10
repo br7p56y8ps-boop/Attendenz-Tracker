@@ -293,9 +293,12 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   })();
   const futureTag = (() => {
     if (isFinished) return { text: 'No more Scheduled/Planned Class', color: 'text-muted-foreground' };
-    if (futureMsg.sev === 'must') return { text: needToAttend === 1 ? 'Tomorrow’s Class Only' : `Attend = ${needToAttend} ${cls(needToAttend)}`, color: 'text-rose-500' };
-    if (futureMsg.sev === 'can') return { text: canMissCount === 1 ? 'Tomorrow’s Class Only' : `Bunkable Class = ${canMissCount} ${cls(canMissCount)}`, color: 'text-amber-500' };
-    return { text: canMissCount === 1 ? 'Tomorrow’s Class Only' : `Safely Bunkable = ${canMissCount} ${cls(canMissCount)}`, color: 'text-emerald-500' };
+    const onlyClassLabel = isHolidaySkippedPrediction
+      ? `${holidaySkipDate!.toLocaleDateString('en-US', { weekday: 'long' })}'s class Only`
+      : 'Tomorrow’s Class Only';
+    if (futureMsg.sev === 'must') return { text: needToAttend === 1 ? onlyClassLabel : `Attend = ${needToAttend} ${cls(needToAttend)}`, color: 'text-rose-500' };
+    if (futureMsg.sev === 'can') return { text: canMissCount === 1 ? onlyClassLabel : `Bunkable Class = ${canMissCount} ${cls(canMissCount)}`, color: 'text-amber-500' };
+    return { text: canMissCount === 1 ? onlyClassLabel : `Safely Bunkable = ${canMissCount} ${cls(canMissCount)}`, color: 'text-emerald-500' };
   })();
   const futureStatusText = isTomorrow ? futureTag.text : isFinished ? 'No more Scheduled/Planned Class' : 'Yet to be Conducted';
 
