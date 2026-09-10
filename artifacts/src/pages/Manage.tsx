@@ -55,14 +55,14 @@ const splitRange = (range: string): { start: string; end: string } => {
   if (m) return { start: m[1], end: m[2] };
   return { start: '09:00 AM', end: '10:00 AM' };
 };
-function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, footer, heightClass = 'max-h-[85vh]', bodyClassName = 'overflow-y-auto', dense = false }: {
+function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, footer, heightClass = 'max-h-[80dvh]', bodyClassName = 'overflow-y-auto', dense = false }: {
   open: boolean; onClose: () => void; children: React.ReactNode; maxW?: string;
   header?: React.ReactNode; footer?: React.ReactNode; heightClass?: string; bodyClassName?: string; dense?: boolean;
 }) {
   return (
     <ModalSheet open={open} onClose={onClose} maxWidth={maxW} className={heightClass} bodyClassName={bodyClassName} ariaLabel="Manage dialog"
-      header={header && <div className={cn('shrink-0 border-b border-border/40', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
-      footer={footer && <div className={cn('shrink-0 border-t border-border/40', dense ? 'px-3 sm:px-4 pb-2.5 sm:pb-3 pt-1.5' : 'px-4 sm:px-5 pb-4 sm:pb-5 pt-3')}>{footer}</div>}>
+      header={header && <div className={cn('shrink-0', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
+      footer={footer && <div className={cn('shrink-0', dense ? 'px-3 sm:px-4 pb-2.5 sm:pb-3 pt-1.5' : 'px-4 sm:px-5 pb-4 sm:pb-5 pt-3')}>{footer}</div>}>
       <div className="min-h-0">{children}</div>
     </ModalSheet>
   );

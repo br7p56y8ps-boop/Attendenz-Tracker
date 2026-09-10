@@ -1114,7 +1114,7 @@ export default function Settings() {
                   )}
         </ModalSheet>
 
-          <ModalSheet open={Boolean(activeSettingModal)} onClose={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }} ariaLabel="Settings dialog" labelledBy="settings-modal-title" maxWidth="max-w-2xl" bodyClassName="overflow-hidden p-4 sm:p-6 space-y-4 text-left">
+          <ModalSheet open={Boolean(activeSettingModal)} onClose={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }} ariaLabel="Settings dialog" labelledBy="settings-modal-title" maxWidth="max-w-2xl" bodyClassName="p-4 sm:p-6 space-y-4 text-left">
                                       <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3 shrink-0">
                       <div className="flex min-w-0 flex-1 items-start gap-3">
                         {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
