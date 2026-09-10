@@ -238,7 +238,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   }, [isWard, subjectMode, customWards, getCurrentPresetWard, isSGT, sgtId, userAddedSubjects, customSubjects, presetTimetable, subject]);
   const isRoutineHoliday = useCallback((d: Date): boolean => {
     if (d.getDay() === 0 || d.getDay() === 6) return false;
-    if (subjectMode === 'preloaded') return getCurrentPresetWard(d)?.ward === 'Holiday';
+    if (subjectMode === 'preloaded') return d.getDay() === 5 || getCurrentPresetWard(d)?.ward === 'Holiday';
     const day = DAY_ABBRS[d.getDay()];
     const hasSubject = customSubjects?.some((item: any) => {
       if ((item.startDate && toStr(d) < item.startDate) || (item.endDate && toStr(d) > item.endDate)) return false;
@@ -270,16 +270,25 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     if (percentage < preferredPercentage) {
       const N = needToAttend;
       if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this <span className="whitespace-nowrap">(+{N - k}) more {cls(N - k)}!!</span></span> };
-      if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend {predictionClassLabel}!!</span> };
+      if (k === N) {
+        if (isHolidaySkippedPrediction) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend {predictionClassLabel}!!</span> };
+        return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this Class!!</span> };
+      }
       return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
     }
     if (canMissCount > 0) {
       const M = canMissCount;
       if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can bunk this <span className="whitespace-nowrap">(+{M - k}) {cls(M - k)}!!</span></span> };
-      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk {predictionClassLabel}</span> };
+      if (k === M) {
+        if (isHolidaySkippedPrediction) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk {predictionClassLabel}</span> };
+        return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk this Class</span> };
+      }
       return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
     }
-    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk {predictionClassLabel}</span> };
+    if (k === 1) {
+      if (isHolidaySkippedPrediction) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk {predictionClassLabel}</span> };
+      return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this Class</span> };
+    }
     return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this <span className="whitespace-nowrap">(+{k - 1}) {cls(k - 1)}</span></span> };
   })();
   const futureTag = (() => {

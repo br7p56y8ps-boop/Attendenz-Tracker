@@ -60,7 +60,7 @@ function SettingRow({ icon, title, description, onClick, tone = 'primary' }: { i
   );
 }
 
-type NotificationChildKey = 'needAttentionSummary' | 'needAttentionSubjects' | 'safeToMiss' | 'beforeClassWarnings' | 'unmarkedAttendanceToday' | 'lastPlannedClassToday' | 'firstClassOfDay' | 'allScheduledClasses' | 'manageChanges' | 'curriculumChanges' | 'dataTransfer' | 'updateAvailable' | 'updateCompleted';
+type NotificationChildKey = 'needAttentionSummary' | 'needAttentionSubjects' | 'safeToMiss' | 'beforeClassWarnings' | 'unmarkedAttendanceToday' | 'lastPlannedClassToday' | 'firstClassOfDay' | 'allScheduledClasses' | 'manageChanges' | 'dataTransfer' | 'updateAvailable' | 'updateCompleted';
 
 type NotificationChild = { key: NotificationChildKey; title: string; description: string };
 
@@ -86,7 +86,6 @@ const DAILY_SCHEDULE_CHILDREN: NotificationChild[] = [
 const ACTIVITY_CHILDREN: NotificationChild[] = [
   { key: 'manageChanges', title: 'Changes Made in Manage', description: 'Local in-app notification after a change in Manage is saved.' },
   { key: 'dataTransfer', title: 'Routine or App Data Transfer', description: 'Local in-app notification after routine or app data transfer completes.' },
-  { key: 'curriculumChanges', title: 'Curriculum Changes', description: 'Local in-app notification after a curriculum change is saved.' },
 ];
 
 const UPDATE_CHILDREN: NotificationChild[] = [
