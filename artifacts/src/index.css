@@ -327,7 +327,7 @@
   display: flex !important;
   width: 100%;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 0.5rem;
 }
 
@@ -338,10 +338,11 @@
   width: auto !important;
 }
 
-.modal-sheet-footer > * > :only-child,
+.modal-sheet-footer > *:has(> :only-child) > :only-child,
 .modal-sheet-footer > :only-child:is(button) {
-  flex: 0 1 50% !important;
-  max-width: 50%;
+  flex: 0 1 65% !important;
+  max-width: 70%;
+  margin-inline: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {

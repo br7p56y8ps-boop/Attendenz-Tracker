@@ -679,7 +679,6 @@ export default function Home() {
         <ModalSheet open={updateInfoOpen} onClose={() => setUpdateInfoOpen(false)} ariaLabel="Update information" maxWidth="max-w-sm" bodyClassName="p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold text-foreground">New Version Available <span className="text-emerald-400">(v{serverVersion})</span></h3>
-                  <button type="button" onClick={() => setUpdateInfoOpen(false)} className="action-button action-button--close action-button--icon"><X className="w-3.5 h-3.5" /></button>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p>
                 {!online && (

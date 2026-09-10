@@ -1,4 +1,4 @@
-import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, X, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
+import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import { assertBackupSize, filterStoredData, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
 import React, { useRef, useState, useEffect } from 'react';
@@ -974,9 +974,6 @@ export default function Settings() {
                       <h3 className="text-sm font-bold text-foreground">Backup / Transfer</h3>
                       <p className="text-[10px] text-muted-foreground">Complete app backup keeps both Preset and Custom workspaces. Routine bundles use the active mode only.</p>
                     </div>
-                    <button type="button" onClick={() => setBackupTransferOpen(false)} className="action-button action-button--close action-button--icon shrink-0" aria-label="Close Backup / Transfer">
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
 
                   {busy && <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{busy}</p>}
@@ -1148,9 +1145,6 @@ export default function Settings() {
                         </p>
                       </div>
                     </div>
-                    <button type="button" onClick={() => { setActiveSettingModal(null); setPendingPct(null); }} className="action-button action-button--close action-button--icon mt-0.5 shrink-0" title="Close">
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
                   <div className="pt-1 flex-1 min-h-0 overflow-y-auto">
                     {activeSettingModal === 'identity' && (

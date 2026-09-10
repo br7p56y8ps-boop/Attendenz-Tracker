@@ -69,8 +69,10 @@ export function ModalSheet({
             dragListener={false}
             dragConstraints={{ top: 0, bottom: 700 }}
             dragElastic={{ top: 0, bottom: 0.18 }}
+            dragSnapToOrigin
             onDragEnd={(_, info) => {
-              if (info.offset.y > 100 || info.velocity.y > 650) onClose();
+              const dismissThreshold = Math.max(80, window.innerHeight * 0.2);
+              if (info.offset.y > dismissThreshold) onClose();
             }}
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
@@ -93,6 +95,7 @@ export function ModalSheet({
             >
               <span className="h-1 w-10 rounded-full bg-muted-foreground/35" />
             </div>
+            <div className="modal-sheet-divider shrink-0" aria-hidden="true" />
             {header && <div className="modal-sheet-header shrink-0">{header}</div>}
             <div className="modal-sheet-divider shrink-0" aria-hidden="true" />
             <div className={cn('min-h-0 flex-1 overflow-y-auto overscroll-contain', bodyClassName)}>{children}</div>

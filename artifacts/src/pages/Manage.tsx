@@ -1699,7 +1699,6 @@ export default function Manage() {
             <div>
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-foreground">{section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}</h3>
-                <button type="button" onClick={closeAddModal} className="action-button action-button--close action-button--icon" aria-label="Close Add New"><X className="w-4 h-4" /></button>
               </div>
 
               {/* Static type selector */}
@@ -1930,7 +1929,6 @@ export default function Manage() {
                       : subjectMode === 'custom' ? 'Edit planned classes or delete Custom routine items.' : 'Edit planned classes or delete user-added items.'}
                   </p>
                 </div>
-                <button type="button" onClick={closeEditData} className="action-button action-button--close action-button--icon" aria-label="Close Edit Data"><X className="w-4 h-4" /></button>
               </div>
 
               {/* Active-mode data selector */}
@@ -2111,7 +2109,6 @@ export default function Manage() {
           header={
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
-              <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
             </div>
           }
           footer={
@@ -2152,7 +2149,6 @@ export default function Manage() {
         <OverlayModal open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} maxW="max-w-md" header={
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-foreground">More</h3>
-            <button type="button" onClick={() => setMoreMenuOpen(false)} className="action-button action-button--close action-button--icon" aria-label="Close More Menu"><X className="w-4 h-4" /></button>
           </div>
         }>
           <div className="p-4 sm:p-5 space-y-2">
@@ -2176,7 +2172,6 @@ export default function Manage() {
           <div className="p-4 sm:p-5 space-y-3.5">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">Recent Activity</h3>
-              <button type="button" onClick={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
             </div>
             <div className="space-y-2">
               {historyEntries.length === 0 ? (
@@ -2322,9 +2317,6 @@ export default function Manage() {
                 <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
                 <p className="text-[10px] text-muted-foreground mt-1">Change dates, session times, or vacations. Rename is disabled.</p>
               </div>
-              <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="action-button action-button--close action-button--icon shrink-0" aria-label="Close Edit Rotation">
-                <X className="w-4 h-4" />
-              </button>
             </div>
           }
           footer={
