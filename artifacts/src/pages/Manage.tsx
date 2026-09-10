@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { CountStepper } from '@/components/CountStepper';
 import {
@@ -19,7 +17,7 @@ import {
   getSubjectColor,
 } from '@/lib/utils';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
-import { useModalAccessibility } from '@/components/ui/dialog';
+import { ModalSheet } from '@/components/ui/modal-sheet';
 import { storageSetItem } from '@/lib/idb';
 import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
@@ -61,32 +59,12 @@ function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, foot
   open: boolean; onClose: () => void; children: React.ReactNode; maxW?: string;
   header?: React.ReactNode; footer?: React.ReactNode; heightClass?: string; bodyClassName?: string; dense?: boolean;
 }) {
-  const modalRef = useModalAccessibility(open, onClose);
-
-  if (!open) return null;
-  if (typeof document === 'undefined') return null;
-  return createPortal(
-    <div ref={modalRef} className="fixed inset-0 z-[120] flex items-end justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, y: 48 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 48 }}
-        layout
-        transition={{ type: 'spring', damping: 26, stiffness: 320, layout: { type: 'spring', damping: 28, stiffness: 300 } }}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Manage dialog"
-        tabIndex={-1}
-        className={cn('modal-sheet-content relative bg-card backdrop-blur-2xl border border-border/80 rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.42)] w-full max-h-[min(70dvh,48rem)] min-h-[12rem] flex flex-col overflow-hidden', maxW, heightClass)}
-        onClick={e => e.stopPropagation()}
-      >
-        {header && <div className={cn('shrink-0 border-b border-border/40', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
-        <div className={cn('flex-1 min-h-0', bodyClassName)}>{children}</div>
-        {footer && <div className={cn('shrink-0 border-t border-border/40', dense ? 'px-3 sm:px-4 pb-2.5 sm:pb-3 pt-1.5' : 'px-4 sm:px-5 pb-4 sm:pb-5 pt-3')}>{footer}</div>}
-      </motion.div>
-    </div>,
-    document.body
+  return (
+    <ModalSheet open={open} onClose={onClose} maxWidth={maxW} className={heightClass} bodyClassName={bodyClassName} ariaLabel="Manage dialog"
+      header={header && <div className={cn('shrink-0 border-b border-border/40', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
+      footer={footer && <div className={cn('shrink-0 border-t border-border/40', dense ? 'px-3 sm:px-4 pb-2.5 sm:pb-3 pt-1.5' : 'px-4 sm:px-5 pb-4 sm:pb-5 pt-3')}>{footer}</div>}>
+      <div className="min-h-0">{children}</div>
+    </ModalSheet>
   );
 }
 

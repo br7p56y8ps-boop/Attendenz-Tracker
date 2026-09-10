@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn, formatPercentage } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
 import { getSoundEnabled, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type VibrationStyle } from '@/lib/feedback';
-import { useModalAccessibility } from '@/components/ui/dialog';
+import { ModalSheet } from '@/components/ui/modal-sheet';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { UpdateProgressSlider } from '@/utils/useUpdateFlow';
@@ -715,9 +715,6 @@ export default function Settings() {
   };
 
   const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'snapshot' | 'export' | 'dataProtection' | 'identity' | 'feedback' | 'notifications' | 'theme' | null>(null);
-  const settingsModalRef = useModalAccessibility(Boolean(activeSettingModal), () => { setActiveSettingModal(null); setPendingPct(null); });
-  const updatePromptRef = useModalAccessibility(showUpdatePrompt && updatePhase === 'none', () => setShowUpdatePrompt(false));
-  const updateProgressRef = useModalAccessibility(updatePhase !== 'none');
   const [transferImportData, setTransferImportData] = useState<any>(null);
   const transferFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -971,23 +968,7 @@ export default function Settings() {
           </div>
         </div>
 
-          <AnimatePresence>
-            {backupTransferOpen && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden"
-                onClick={() => setBackupTransferOpen(false)}
-              >
-                <motion.div
-                  initial={{ y: 48, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: 48, opacity: 0 }}
-                  transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                  className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-lg max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
-                  onClick={(e) => e.stopPropagation()}
-                >
+          <ModalSheet open={backupTransferOpen} onClose={() => setBackupTransferOpen(false)} ariaLabel="Backup and transfer" maxWidth="max-w-lg" bodyClassName="p-6 space-y-4 text-left">
                   <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3">
                     <div>
                       <h3 className="text-sm font-bold text-foreground">Backup / Transfer</h3>
@@ -1131,16 +1112,9 @@ export default function Settings() {
                       </div>
                     </div>
                   )}
+        </ModalSheet>
 
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <AnimatePresence>
-            {activeSettingModal && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} ref={settingsModalRef} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4 overflow-hidden" onClick={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }}>
-                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} role="dialog" aria-modal="true" aria-labelledby="settings-modal-title" tabIndex={-1} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-4 sm:p-6 w-full max-h-[min(70dvh,48rem)] shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <ModalSheet open={Boolean(activeSettingModal)} onClose={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }} ariaLabel="Settings dialog" labelledBy="settings-modal-title" maxWidth="max-w-2xl" bodyClassName="overflow-hidden p-4 sm:p-6 space-y-4 text-left">
                                       <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3 shrink-0">
                       <div className="flex min-w-0 flex-1 items-start gap-3">
                         {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
@@ -1481,35 +1455,20 @@ export default function Settings() {
                       </div>
                     )}
                   </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        </ModalSheet>
 
-          <AnimatePresence>
-            {notificationRecovery && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[170] flex items-end justify-center p-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} onClick={() => setNotificationRecovery(null)}>
-                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content !min-h-0 bg-card backdrop-blur-2xl border border-blue-500/30 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-start gap-2"><AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><div><h3 className="text-sm font-bold text-foreground">{notificationRecovery.title}</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{notificationRecovery.message}</p></div></div>
+          <ModalSheet open={Boolean(notificationRecovery)} onClose={() => setNotificationRecovery(null)} ariaLabel="Notification recovery" maxWidth="max-w-sm" bodyClassName="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3" zIndexClassName="z-[170]">
+                  <div className="flex items-start gap-2"><AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><div><h3 className="text-sm font-bold text-foreground">{notificationRecovery?.title}</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{notificationRecovery?.message}</p></div></div>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setNotificationRecovery(null)} className="action-button action-button--cancel flex-1 min-h-10">Close</button>
-                    {notificationRecovery.action && <button type="button" onClick={() => { const action = notificationRecovery.action; setNotificationRecovery(null); if (action === 'enable') void enableSystemNotifications(); }} className="action-button action-button--update flex-1 min-h-10">{notificationRecovery.action === 'settings' ? 'I’ll Check Settings' : 'Try Again'}</button>}
+                    {notificationRecovery?.action && <button type="button" onClick={() => { const action = notificationRecovery?.action; setNotificationRecovery(null); if (action === 'enable') void enableSystemNotifications(); }} className="action-button action-button--update flex-1 min-h-10">{notificationRecovery?.action === 'settings' ? 'I’ll Check Settings' : 'Try Again'}</button>}
                   </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        </ModalSheet>
 
-          <AnimatePresence>
-            {nightlyReminderNotice && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/55 backdrop-blur-sm z-[175] flex items-end justify-center p-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} onClick={() => setNightlyReminderNotice(false)}>
-                <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ duration: 0.25, ease: 'easeOut' }} className="modal-sheet-content !min-h-0 bg-card border border-primary/30 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+          <ModalSheet open={nightlyReminderNotice} onClose={() => setNightlyReminderNotice(false)} ariaLabel="Nightly reminder updated" maxWidth="max-w-sm" bodyClassName="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3" zIndexClassName="z-[175]">
                   <div className="flex items-start gap-2"><Bell className="w-4 h-4 text-primary shrink-0 mt-0.5" /><div><h3 className="text-sm font-bold text-foreground">Nightly reminder time updated</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Your new time will apply from the next nightly reminder. Only one nightly reminder is sent each night.</p></div></div>
                   <button type="button" onClick={() => setNightlyReminderNotice(false)} className="action-button action-button--cancel w-full min-h-10">Got it</button>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        </ModalSheet>
 
           {/* 5. Danger Zone */}
           <div className="contents">
@@ -1520,10 +1479,7 @@ export default function Settings() {
           </div>
       </div>
       {/* All dialogs remain as before */}
-      <AnimatePresence>
-        {showUpdatePrompt && isUpdateAvailable && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} ref={updatePromptRef} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowUpdatePrompt(false); }}>
-            <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} role="dialog" aria-modal="true" aria-labelledby="settings-update-title" tabIndex={-1} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
+      <ModalSheet open={showUpdatePrompt && isUpdateAvailable} onClose={() => setShowUpdatePrompt(false)} ariaLabel="Update available" labelledBy="settings-update-title" maxWidth="max-w-sm" bodyClassName="p-6 space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20"><Download className="w-5 h-5 text-amber-500" /></div>
                 <div className="text-left">
@@ -1539,38 +1495,20 @@ export default function Settings() {
                 <button type="button" onClick={() => handleApplyUpdate(false)} className="action-button action-button--neutral w-full">Skip Backup</button>
                 <button type="button" onClick={() => setShowUpdatePrompt(false)} className="action-button action-button--cancel w-full">Cancel</button>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </ModalSheet>
 
-      <AnimatePresence>
-        {updatePhase !== 'none' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} ref={updateProgressRef} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[140] flex items-end justify-center p-4">
-          <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} role="dialog" aria-modal="true" aria-labelledby="settings-progress-title" tabIndex={-1} className="modal-sheet-content flex w-full max-w-xs flex-col items-center justify-center gap-4 rounded-3xl border border-border/80 bg-card p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.42)]">
-              <UpdateProgressSlider phase={updatePhase} complete={progressComplete} />
+      <ModalSheet open={updatePhase !== 'none'} onClose={() => undefined} ariaLabel="Update progress" labelledBy="settings-progress-title" maxWidth="max-w-xs" bodyClassName="flex flex-col items-center justify-center gap-4 p-8 text-center" zIndexClassName="z-[140]">
+              <UpdateProgressSlider phase={updatePhase === 'none' ? 'downloading' : updatePhase} complete={progressComplete} />
               <p className="text-[10px] text-muted-foreground">{updatePhase === 'backing' ? 'Securing your attendance records & preferences…' : updatePhase === 'completed' ? 'The app will load the Welcome Screen shortly.' : 'Please keep the app open while the update completes.'}</p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </ModalSheet>
 
-      <AnimatePresence>
-        {showDeleteDataDialog && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[150] flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowDeleteDataDialog(false); }}>
-            <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} transition={{ type: 'spring', damping: 26, stiffness: 300 }} className="modal-sheet-content bg-card backdrop-blur-2xl border border-destructive/30 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4">
+      <ModalSheet open={showDeleteDataDialog} onClose={() => setShowDeleteDataDialog(false)} ariaLabel="Delete all app data" maxWidth="max-w-sm" bodyClassName="p-6 space-y-4" zIndexClassName="z-[150]">
               <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-destructive/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div><div><h3 className="text-base font-bold text-foreground">Delete All App Data?</h3><p className="text-[11px] text-destructive font-semibold">Irreversible Action</p></div></div>
               <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases <strong className="text-foreground">attendance records, routines, all curriculum data, snapshots, profile data, target settings, and setup state</strong>. Export a backup first if you are unsure.</p>
               <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </ModalSheet>
 
-      <AnimatePresence>
-        {isEditingName && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[130] flex items-end justify-center p-4" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }} onClick={() => setIsEditingName(false)}>
-            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="modal-sheet-content !min-h-0 bg-card backdrop-blur-2xl border border-border/80 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
+      <ModalSheet open={isEditingName} onClose={() => setIsEditingName(false)} ariaLabel="Edit name" maxWidth="max-w-sm" bodyClassName="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3" zIndexClassName="z-[130]" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }}>
               <div>
                 <h3 className="text-base font-bold text-foreground">Edit Name</h3>
                 <p className="text-[11px] text-muted-foreground">Update your display name.</p>
@@ -1580,10 +1518,7 @@ export default function Settings() {
                 <button type="button" onClick={() => setIsEditingName(false)} className="action-button action-button--cancel flex-1">Cancel</button>
                 <button type="button" onClick={handleSaveName} className="action-button action-button--save flex-1">Save</button>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </ModalSheet>
     </Layout>
   );
 }

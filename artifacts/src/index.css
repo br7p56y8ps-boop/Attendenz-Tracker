@@ -306,7 +306,6 @@
 .modal-sheet-content {
   transform-origin: center bottom;
   will-change: transform, opacity;
-  min-height: 12rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -337,12 +336,9 @@
 
 /* Existing components retain their geometry while inheriting solid dashboard
    surfaces instead of rendering frosted glass. */
-.backdrop-blur-sm,
-.backdrop-blur-md,
-.backdrop-blur-2xl,
-.backdrop-blur-xl {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+.modal-sheet-backdrop {
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
 }
 [class*="bg-card/"] { background-color: var(--card) !important; }
 [class*="bg-black/"] { background-color: rgba(0, 0, 0, 0.8) !important; }

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, pctColor, getSubjectColor, formatPercentage } from '@/lib/utils';
@@ -7,6 +6,7 @@ import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { CountStepper } from '@/components/CountStepper';
 import { Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ModalSheet } from '@/components/ui/modal-sheet';
 
 interface SubjectCardProps {
   subject: string;
@@ -306,27 +306,7 @@ export const SubjectCard = ({
         {headerContent}
       </div>
 
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {isModalOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end justify-center p-4 overflow-hidden"
-              onClick={closeModal}
-            >
-              <motion.div
-                initial={{ y: 48, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 48, opacity: 0 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                role="dialog"
-                aria-modal="true"
-                aria-label={`${displayName} details`}
-                className="subject-details-modal modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
-                onClick={(e) => e.stopPropagation()}
-              >
+      <ModalSheet open={isModalOpen} onClose={closeModal} ariaLabel={`${displayName} details`} maxWidth="max-w-md" className="subject-details-modal" bodyClassName="p-6 space-y-4 text-left">
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -355,12 +335,7 @@ export const SubjectCard = ({
                   </div>
                 </div>
                 {modalDetailsContent}
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
+      </ModalSheet>
     </>
   );
 };

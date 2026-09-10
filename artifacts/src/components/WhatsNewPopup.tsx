@@ -1,10 +1,9 @@
 import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { useCustomData } from "@/contexts/CustomDataContext";
 import { Wrench, Zap } from "lucide-react";
 import { APP_VERSION, getReleaseNotes } from "@/lib/appVersion";
 import type { WhatsNewItem } from "@/lib/appVersion";
-import { useModalAccessibility } from "@/components/ui/dialog";
+import { ModalSheet } from "@/components/ui/modal-sheet";
 
 interface ReleaseItemProps {
   item: WhatsNewItem;
@@ -78,30 +77,10 @@ export function WhatsNewPopup() {
   const notes = getReleaseNotes(notesVersion);
 
   const handleClose = () => { setWhatsNewOpen(false); };
-  const modalRef = useModalAccessibility(whatsNewOpen, handleClose);
-
   return (
-    <AnimatePresence>
-      {whatsNewOpen && (
-        <div
-          ref={modalRef}
-          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/80 p-3 backdrop-blur-md sm:p-4"
-          onClick={handleClose}
-        >
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            transition={{ duration: 0.24, ease: "easeOut" }}
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="whats-new-title"
-            tabIndex={-1}
-            className="modal-sheet-content flex h-auto max-h-[min(78dvh,42rem)] min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-[0_24px_80px_rgba(0,0,0,0.24)] dark:bg-card dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]"
-          >
+    <ModalSheet open={whatsNewOpen} onClose={handleClose} ariaLabel="What's New" maxWidth="max-w-sm" zIndexClassName="z-[9999]" bodyClassName="max-h-[min(78dvh,42rem)]">
             {/* Fixed header */}
-            <div className="flex shrink-0 items-center justify-between border-b border-border/60 bg-card px-4 pb-3 pt-4">
+            <div className="flex items-center justify-between border-b border-border/60 bg-card px-4 pb-3 pt-4">
               <div className="flex items-center gap-2.5">
                 <div className="h-9 w-9 shrink-0 overflow-hidden rounded-2xl border border-border/70 bg-background shadow-sm">
                   <img
@@ -125,11 +104,11 @@ export function WhatsNewPopup() {
             </div>
 
             {/* Soft top and bottom boundaries surround the only scrolling region. */}
-            <div className="relative min-h-0 max-h-[calc(78dvh-9rem)] overflow-hidden">
+            <div className="relative min-h-0">
               <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-card via-card/80 to-transparent dark:from-card/95 dark:via-card/55" />
               <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-card via-card/80 to-transparent dark:from-card/95 dark:via-card/55" />
               <div
-                className="max-h-[calc(78dvh-9rem)] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 pb-5 text-left [scrollbar-width:thin]"
+                className="overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 pb-5 text-left [scrollbar-width:thin]"
                 style={{ WebkitOverflowScrolling: "touch" }}
               >
                 <div className="space-y-4">
@@ -152,7 +131,7 @@ export function WhatsNewPopup() {
             </div>
 
             {/* Fixed compact footer action */}
-            <div className="relative z-20 flex shrink-0 justify-center border-t border-border/50 bg-card px-4 pb-4 pt-3">
+            <div className="flex justify-center border-t border-border/50 bg-card px-4 pb-4 pt-3">
               <button
                 type="button"
                 onClick={handleClose}
@@ -162,10 +141,7 @@ export function WhatsNewPopup() {
                 Got It
               </button>
             </div>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+    </ModalSheet>
   );
 }
 
