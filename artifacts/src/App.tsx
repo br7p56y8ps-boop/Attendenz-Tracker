@@ -3,7 +3,7 @@ import { applyThemePreference, readThemePreference } from '@/lib/theme';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { CustomDataProvider, useCustomData } from '@/contexts/CustomDataContext';
+import { CustomDataProvider } from '@/contexts/CustomDataContext';
 import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageRemoveItemChecked, storageSetItem, recoverPendingDeleteAll } from '@/lib/idb';
 import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
@@ -19,7 +19,6 @@ const Manage = lazy(() => import('@/pages/Manage'));
 const Timetable = lazy(() => import('@/pages/Timetable'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const Login = lazy(() => import('@/pages/Login'));
-const SetupScreen = lazy(() => import('@/pages/SetupScreen'));
 const NotFound = lazy(() => import('@/pages/not-found'));
 
 const PageFallback = () => <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Initialising…</div>;
@@ -29,7 +28,6 @@ const UPDATE_GATE_DISMISSED_VERSION_KEY = 'att_update_gate_dismissed_version';
 
 function AuthGate() {
   const { isLoggedIn } = useAuth();
-  const { setupDone } = useCustomData();
   const { isUpdateAvailable, online, serverVersion, serverSummary, updatePhase, progressComplete, applyUpdate } = useUpdateFlow();
   const [gateDismissed, setGateDismissed] = useState<boolean>(() => localStorage.getItem(UPDATE_GATE_DISMISSED_VERSION_KEY) === localStorage.getItem('att_pwa_latest_version'));
   useEffect(() => {
@@ -37,8 +35,6 @@ function AuthGate() {
   }, [serverVersion]);
 
   if (!isLoggedIn) return <Suspense fallback={<PageFallback />}><Login /></Suspense>;
-  if (!setupDone) return <Suspense fallback={<PageFallback />}><SetupScreen /></Suspense>;
-
   // Pre-Home gate: block BEFORE Home renders (not an overlay on Home)
   const showGate = isUpdateAvailable && online && !gateDismissed;
 

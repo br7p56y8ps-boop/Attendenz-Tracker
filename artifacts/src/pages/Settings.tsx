@@ -1,4 +1,4 @@
-import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, GraduationCap, X, Upload, Vibrate, Volume2, Bell, MoreHorizontal } from 'lucide-react';
+import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, X, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import { assertBackupSize, filterStoredData, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
 import React, { useRef, useState, useEffect } from 'react';
@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
-import { activateCurriculum, completeCurriculum, createCurriculumChecked, deleteCurriculum, getActiveCurriculumId, getActiveCurriculumName, getCurricula, renameCurriculumChecked, setCurriculumStatusChecked, CurriculumRecord } from '@/lib/curriculumStore';
+import { getActiveCurriculumName } from '@/lib/curriculumStore';
 import { idbGetAllChecked, storageClearChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, formatPercentage } from '@/lib/utils';
@@ -29,7 +29,6 @@ import {
   getSystemNotificationsEnabled,
   NOTIFICATION_SETTINGS_CHANGED_EVENT,
   setNotificationPreferences,
-  notifyCurriculumChange,
   notifyDataTransfer,
   type NotificationLeadMinutes,
   type NotificationPreferences,
@@ -189,8 +188,7 @@ export default function Settings() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setNameInput(username); }, [username]);
   useEffect(() => {
-    const curriculumRenameOpen = pendingCurriculumAction?.type === 'rename';
-    if (!isEditingName && !curriculumRenameOpen) {
+    if (!isEditingName) {
       setIdentityKeyboardInset(0);
       return;
     }
@@ -267,41 +265,12 @@ export default function Settings() {
   const [nightlyReminderNotice, setNightlyReminderNotice] = useState(false);
   const [expandedNotificationGroups, setExpandedNotificationGroups] = useState<Record<string, boolean>>({ attendance: false, dailySchedule: false, activity: false, updates: false });
   const [pendingPct, setPendingPct] = useState<number | null>(null);
-  const [confirmMarkComplete, setConfirmMarkComplete] = useState(false);
   const [snapshotToRestore, setSnapshotToRestore] = useState<Snapshot | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [snapshotMsg, setSnapshotMsg] = useState('');
   const [showSnapshotsList, setShowSnapshotsList] = useState(false);
   const [snapshotToDelete, setSnapshotToDelete] = useState<Snapshot | null>(null);
-  const [curriculumStatus, setCurriculumStatus] = useState<'Active' | 'Completed'>(() => (localStorage.getItem('att_curriculum_status') as 'Active' | 'Completed') || 'Active');
   const [restoreConfirmType, setRestoreConfirmType] = useState<'file' | 'transfer' | null>(null);
-  const [curricula, setCurricula] = useState<CurriculumRecord[]>(() => getCurricula());
-  const [activeCurriculumId, setActiveCurriculumIdState] = useState<string>(() => getActiveCurriculumId() || '');
-  const [newCurriculumName, setNewCurriculumName] = useState('');
-  const [editingCurriculumId, setEditingCurriculumId] = useState<string | null>(null);
-  const [editingCurriculumName, setEditingCurriculumName] = useState('');
-  const [showArchiveFolder, setShowArchiveFolder] = useState(false);
-  const [curriculumToDelete, setCurriculumToDelete] = useState<CurriculumRecord | null>(null);
-  const [pendingCurriculumAction, setPendingCurriculumAction] = useState<{ type: 'complete' | 'switch' | 'reopen' | 'rename'; curriculum: CurriculumRecord } | null>(null);
-  const [openCurriculumMenuId, setOpenCurriculumMenuId] = useState<string | null>(null);
-  const [creationRestriction, setCreationRestriction] = useState(false);
-  const [showCreateCurriculumForm, setShowCreateCurriculumForm] = useState(false);
-  const [showSwitchDialog, setShowSwitchDialog] = useState(false);
-  const activeCurriculum = curricula.find(c => c.id === activeCurriculumId) || null;
-  const builtInCurricula = curricula.filter(c => c.id === 'curriculum_final_phase_5th_year' || c.id === 'curriculum_custom_routine');
-  const bothBuiltInCurriculaComplete = builtInCurricula.length === 2 && builtInCurricula.every(c => c.status === 'archived');
-  const unfinishedNewCurriculum = curricula.some(c => c.kind === 'custom' && c.id !== 'curriculum_custom_routine' && c.status === 'active');
-  const activeCurriculumReadyForNewRoutine = bothBuiltInCurriculaComplete && !unfinishedNewCurriculum;
-  useEffect(() => {
-    if (pendingCurriculumAction?.type !== 'rename' && !showCreateCurriculumForm) return;
-    const viewport = window.visualViewport;
-    if (!viewport) return;
-    const updateInset = () => setIdentityKeyboardInset(Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop)));
-    updateInset();
-    viewport.addEventListener('resize', updateInset);
-    viewport.addEventListener('scroll', updateInset);
-    return () => { viewport.removeEventListener('resize', updateInset); viewport.removeEventListener('scroll', updateInset); };
-  }, [pendingCurriculumAction?.type, showCreateCurriculumForm]);
 
   const refreshNotificationState = async () => {
     setNotificationPermission(getNotificationPermission());
@@ -388,25 +357,6 @@ export default function Settings() {
     await enableSystemNotifications();
   };
 
-
-  const handleToggleCurriculumStatus = async () => {
-    const next = curriculumStatus === 'Active' ? 'Completed' : 'Active';
-    if (next === 'Completed') { if (activeCurriculumId) void handleMarkCurriculumComplete(activeCurriculumId); return; }
-    if (!activeCurriculumId) {
-      import('sonner').then(({ toast }) => toast.error('There is no active curriculum to reactivate. Use Curriculum Management to reopen or create one.'));
-      return;
-    }
-    try {
-      const updated = await setCurriculumStatusChecked(activeCurriculumId, 'active');
-      setCurriculumStatus('Active');
-      localStorage.setItem('att_curriculum_status', 'Active');
-      setCurricula(updated);
-      void notifyCurriculumChange(`The ${getActiveCurriculumName() || 'current'} curriculum is active again.`);
-      import('sonner').then(({ toast }) => toast.info('Curriculum marked as Active.'));
-    } catch (error) {
-      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not reactivate curriculum.'));
-    }
-  };
 
   const handleApplyUpdate = async (withBackup: boolean) => {
     if (!navigator.onLine) {
@@ -912,115 +862,6 @@ export default function Settings() {
   const updateSoundEnabled = (enabled: boolean) => { setSoundEnabledState(enabled); setSoundEnabled(enabled); };
   const updateSoundVolume = (volume: number) => { setSoundVolumeState(volume); setSoundVolume(volume); };
 
-  const openCurriculumManager = () => {
-    setConfirmMarkComplete(false);
-    setShowArchiveFolder(false);
-    setShowCreateCurriculumForm(false);
-    setCreationRestriction(false);
-    setCurricula(getCurricula());
-    setActiveCurriculumIdState(getActiveCurriculumId() || '');
-    setShowSwitchDialog(true);
-  };
-  const handleCreateCurriculum = async () => {
-    if (!activeCurriculumReadyForNewRoutine) {
-      setShowCreateCurriculumForm(false);
-      setCreationRestriction(true);
-      return;
-    }
-    try {
-      const created = await createCurriculumChecked(newCurriculumName);
-      setNewCurriculumName('');
-      setShowCreateCurriculumForm(false);
-      setCreationRestriction(false);
-      const currentActiveId = getActiveCurriculumId();
-      setActiveCurriculumIdState(currentActiveId || '');
-      if (currentActiveId === created.id) setCurriculumStatus('Active');
-      setCurricula(getCurricula());
-      notifySuccess(`${created.name} created empty. Use Manage Import if you want to bring in a routine structure.`);
-    } catch (error) {
-      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not create curriculum.'));
-    }
-  };
-  const handleActivateCurriculum = async (id: string) => {
-    if (operationBusy) return;
-    setBusy('curriculum');
-    if (id === activeCurriculumId) return;
-    try {
-      await activateCurriculum(id);
-      await flushStorageWrites();
-      setShowSwitchDialog(false);
-      void notifyCurriculumChange(`Switched to ${getActiveCurriculumName() || 'the selected curriculum'}.`);
-      notifySuccess('Curriculum switched.');
-      setLocation('/');
-      window.location.reload();
-    } catch (error) {
-      setBusy(null);
-      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not switch curriculum.'));
-    }
-  };
-  const confirmCurriculumAction = async () => {
-    if (!pendingCurriculumAction) return;
-    const { type, curriculum } = pendingCurriculumAction;
-    setPendingCurriculumAction(null);
-    if (type === 'switch' || type === 'reopen') { await handleActivateCurriculum(curriculum.id); return; }
-    if (type === 'complete') { await handleMarkCurriculumComplete(curriculum.id); return; }
-    handleRenameCurriculum(curriculum.id);
-  };
-  const handleRenameCurriculum = async (id: string) => {
-    try {
-      setCurricula(await renameCurriculumChecked(id, editingCurriculumName));
-      setEditingCurriculumId(null);
-      setEditingCurriculumName('');
-    } catch (error) {
-      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not rename curriculum.'));
-    }
-  };
-  const handleMarkCurriculumComplete = async (id: string) => {
-    if (operationBusy) return;
-    setBusy('curriculum');
-    try {
-      const completingActive = id === activeCurriculumId;
-      if (completingActive && !await createSnapshot('Curriculum Completed')) {
-        throw new Error('Could not create a safety snapshot. The curriculum was not archived.');
-      }
-      const targetName = curricula.find(c => c.id === id)?.name || 'curriculum';
-      const result = await completeCurriculum(id);
-      setCurricula(result.curricula);
-      if (completingActive) {
-        if (result.replacement) {
-          setActiveCurriculumIdState(result.replacement.id);
-          setCurriculumStatus('Active');
-        } else {
-          setActiveCurriculumIdState('');
-          setCurriculumStatus('Completed');
-        }
-      }
-      void notifyCurriculumChange(`The ${targetName} was completed and archived.`);
-      notifySuccess('Curriculum marked as complete.');
-      if (completingActive) window.location.reload();
-      setBusy(null);
-    } catch (error) {
-      setBusy(null);
-      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not complete curriculum.'));
-    }
-  };
-  const handleDeleteCurriculum = async () => {
-    if (operationBusy) return;
-    setBusy('curriculum');
-    if (!curriculumToDelete || curriculumToDelete.kind === 'preset' || curriculumToDelete.id === 'curriculum_custom_routine') return;
-    try {
-      const deletingActive = curriculumToDelete.id === activeCurriculumId;
-      const remaining = await deleteCurriculum(curriculumToDelete.id);
-      setCurricula(remaining);
-      setCurriculumToDelete(null);
-      notifySuccess('Curriculum permanently deleted.');
-      if (deletingActive) window.location.reload();
-      setBusy(null);
-    } catch (error) {
-      setBusy(null);
-      import('sonner').then(({ toast }) => toast.error(error instanceof Error ? error.message : 'Could not delete curriculum.'));
-    }
-  };
   const detectGender = (name: string): 'male' | 'female' | 'neutral' => {
     if (!name || name.length < 2) return 'neutral';
     const n = name.toLowerCase();
@@ -1061,11 +902,11 @@ export default function Settings() {
 
   const [backupTransferOpen, setBackupTransferOpen] = useState(false);
   useEffect(() => {
-    const modalOpen = Boolean(isEditingName || showDeleteDataDialog || showUpdatePrompt || pendingPct !== null || confirmMarkComplete || snapshotToRestore || snapshotToDelete || activeSettingModal || showSwitchDialog || backupTransferOpen || restoreConfirmType);
+    const modalOpen = Boolean(isEditingName || showDeleteDataDialog || showUpdatePrompt || pendingPct !== null || snapshotToRestore || snapshotToDelete || activeSettingModal || backupTransferOpen || restoreConfirmType);
     if (!modalOpen) return;
     lockScroll();
     return () => unlockScroll();
-  }, [isEditingName, showDeleteDataDialog, showUpdatePrompt, pendingPct, confirmMarkComplete, snapshotToRestore, snapshotToDelete, activeSettingModal, showSwitchDialog, backupTransferOpen, restoreConfirmType]);
+  }, [isEditingName, showDeleteDataDialog, showUpdatePrompt, pendingPct, snapshotToRestore, snapshotToDelete, activeSettingModal, backupTransferOpen, restoreConfirmType]);
 
   return (
     <Layout>
@@ -1096,18 +937,6 @@ export default function Settings() {
               </div>
               <div className="flex items-center gap-2">
                 <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-              </div>
-            </button>
-            <button type="button" onClick={() => openCurriculumManager() } className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="w-8.5 h-8.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><GraduationCap className="w-4.5 h-4.5" /></div>
-                <div>
-                  <h3 className="font-bold text-xs text-foreground">Curriculum Management</h3>
-                  <p className="text-[10px] text-muted-foreground">Academic progress, status & routine mode</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
               </div>
             </button>
           </div>
@@ -1316,7 +1145,6 @@ export default function Settings() {
                                       <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3 shrink-0">
                       <div className="flex min-w-0 flex-1 items-start gap-3">
                         {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
-                      {activeSettingModal === 'curriculum' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><GraduationCap className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'snapshot' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><SnapshotIcon className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'export' && (<div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20"><FileText className="w-5 h-5" /></div>)}
                       {activeSettingModal === 'dataProtection' && (<div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 border border-emerald-500/20"><Database className="w-5 h-5" /></div>)}
@@ -1327,7 +1155,6 @@ export default function Settings() {
                       <div className="min-w-0 flex-1">
                         <h3 id="settings-modal-title" className="break-words text-sm font-bold text-foreground sm:text-base">
                           {activeSettingModal === 'preferredPc' && 'Curriculum Percentage'}
-                          {activeSettingModal === 'curriculum' && 'Curriculum Management'}
                           {activeSettingModal === 'snapshot' && 'Snapshots & Storage'}
                           {activeSettingModal === 'export' && 'Export Attendance Data'}
                           {activeSettingModal === 'dataProtection' && 'Data Protection & Storage'}
@@ -1338,7 +1165,6 @@ export default function Settings() {
                         </h3>
                         <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">
                           {activeSettingModal === 'preferredPc' && 'Target attendance threshold percentage'}
-                          {activeSettingModal === 'curriculum' && 'Academic progress, status & routine mode'}
                           {activeSettingModal === 'snapshot' && 'Manage local state backups & cache'}
                           {activeSettingModal === 'export' && 'Export records in PDF, Excel, or CSV formats'}
                           {activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}
@@ -1457,32 +1283,6 @@ export default function Settings() {
                           </div>
                         )}
                         {pendingPct === null && <div className="pt-2 flex justify-end"><button type="button" onClick={() => setActiveSettingModal(null)} className="action-button action-button--save">Save & Close</button></div>}
-                      </div>
-                    )}
-                    {activeSettingModal === 'curriculum' && (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-1 gap-2 bg-muted/30 p-3.5 rounded-2xl border border-border/50">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-muted-foreground">Current Curriculum:</span>
-                            <span className="text-xs font-bold text-foreground">{activeCurriculum?.name || getActiveCurriculumName()}</span>
-                          </div>
-                          <div className="flex items-center justify-between pt-1 border-t border-border/30">
-                            <span className="text-xs font-medium text-muted-foreground">Current Routine Mode:</span>
-                            <span className="text-xs font-bold text-primary">{subjectMode === 'preloaded' ? 'Preset routine' : 'Custom routine'}</span>
-                          </div>
-                          <div className="flex items-center justify-between pt-1 border-t border-border/30">
-                            <span className="text-xs font-medium text-muted-foreground">Curriculum Status:</span>
-                            <span className={cn("text-xs font-extrabold", curriculumStatus === 'Completed' ? "text-emerald-500" : "text-primary")}>{curriculumStatus}</span>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                          <button type="button" onClick={handleToggleCurriculumStatus} className={cn("action-button flex-1", curriculumStatus === 'Completed' ? "action-button--neutral" : "action-button--save")}>
-                            <span>{curriculumStatus === 'Completed' ? 'Mark as Active' : 'Mark Curriculum as Completed'}</span>
-                          </button>
-                          <button type="button" onClick={() => { setActiveSettingModal(null); openCurriculumManager(); }} className="action-button action-button--edit flex-1">
-                            <span>Change Curriculum</span>
-                          </button>
-                        </div>
                       </div>
                     )}
                     {activeSettingModal === 'snapshot' && (
@@ -1768,109 +1568,6 @@ export default function Settings() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {showSwitchDialog && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center p-4" onClick={e => { if (e.target === e.currentTarget) { setConfirmMarkComplete(false); setShowSwitchDialog(false); } }}>
-                <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} layout transition={{ type: 'spring', damping: 28, stiffness: 300, layout: { type: 'spring', damping: 30, stiffness: 300 } }} className="modal-sheet-content relative bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <div className="h-10 w-10 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20"><GraduationCap className="h-5 w-5 shrink-0 text-primary" /></div>
-                  <div className="min-w-0 flex-1 text-left"><h3 className="break-words text-sm font-bold text-foreground sm:text-base">Curriculum Management</h3><p className="text-[10px] leading-relaxed text-muted-foreground sm:text-[11px]">Manage your active and archived curricula.</p></div>
-                </div>
-                <button type="button" onClick={() => { setConfirmMarkComplete(false); setShowSwitchDialog(false); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} className="action-button action-button--close action-button--icon mt-0.5 shrink-0" aria-label="Close Curriculum Management"><X className="w-4 h-4" /></button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => { setShowArchiveFolder(!showArchiveFolder); setCreationRestriction(false); setShowCreateCurriculumForm(false); }} style={{ borderColor: '#d97706', color: '#d97706', backgroundColor: 'rgba(217, 119, 6, 0.10)' }} className="action-button action-button--neutral w-full min-h-10">{showArchiveFolder ? 'Back to Active' : 'Archive Folder'}</button>
-                <button type="button" onClick={() => activeCurriculumReadyForNewRoutine ? (setShowCreateCurriculumForm(true), setCreationRestriction(false)) : setCreationRestriction(true)} className="action-button action-button--edit w-full min-h-10">Create New Curricula</button>
-              </div>
-              <div className="relative z-20 space-y-2">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground text-left">{showArchiveFolder ? 'Archive Folder' : 'Active Curricula'}</p>
-                {(showArchiveFolder ? curricula.filter(c => c.status === 'archived') : curricula.filter(c => c.status === 'active').sort((a, b) => Number(b.id === activeCurriculumId) - Number(a.id === activeCurriculumId))).map(c => {
-                  const expanded = true;
-                  const canDelete = c.kind === 'custom' && c.id !== 'curriculum_custom_routine';
-                  return (
-                    <div key={c.id} className={cn('relative rounded-2xl border p-3 text-left', c.id === activeCurriculumId ? 'border-primary/50 bg-primary/5' : 'border-border/60', openCurriculumMenuId === c.id && 'z-30')}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <span className="block truncate text-base font-extrabold text-foreground">{c.name}</span>
-                          <span className="block text-[10px] font-semibold text-muted-foreground">{c.status === 'active' ? (c.id === activeCurriculumId ? 'In Use' : 'Available') : 'Archived'} · {c.kind === 'preset' ? 'Preset' : 'New Curriculum'}</span>
-                        </div>
-                        {c.status === 'archived' && <button type="button" onClick={() => setOpenCurriculumMenuId(openCurriculumMenuId === c.id ? null : c.id)} className="action-button action-button--icon shrink-0" aria-label={`More actions for ${c.name}`} aria-expanded={openCurriculumMenuId === c.id}><MoreHorizontal className="h-5 w-5" /></button>}
-                      </div>
-                      {openCurriculumMenuId === c.id && (
-                        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm" onClick={() => setOpenCurriculumMenuId(null)}>
-                          <div className="absolute bottom-0 left-0 right-0 mx-auto w-full max-w-md rounded-t-3xl border border-border/80 bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
-                            <div className="mb-3 flex items-center justify-between"><p className="text-sm font-bold text-foreground">{c.name}</p><button type="button" onClick={() => setOpenCurriculumMenuId(null)} className="text-xl leading-none text-muted-foreground" aria-label="Close menu">×</button></div>
-                            <button type="button" onClick={() => { setEditingCurriculumName(c.name); setOpenCurriculumMenuId(null); setPendingCurriculumAction({ type: 'rename', curriculum: c }); }} className="action-button w-full justify-start px-3 py-2 text-left text-xs"><span><span className="block">Rename</span><span className="block text-[10px] font-normal text-muted-foreground">Change the display name of this archived curriculum.</span></span></button>
-                            {canDelete && <button type="button" onClick={() => { setOpenCurriculumMenuId(null); setCurriculumToDelete(c); }} className="action-button action-button--danger w-full justify-start px-3 py-2 text-left text-xs"><span><span className="block">Delete</span><span className="block text-[10px] font-normal text-muted-foreground">Permanently remove this archived curriculum.</span></span></button>}
-                          </div>
-                        </div>
-                      )}
-                      {expanded && <AnimatePresence initial={false}><motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="overflow-hidden"><div className="mt-3 pt-3">
-                        {c.status === 'active' && c.id === activeCurriculumId && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'complete', curriculum: c })} className="action-button action-button--save w-full min-h-11 px-3">Mark as Complete</button>}
-                        {c.status === 'active' && c.id !== activeCurriculumId && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'switch', curriculum: c })} className="action-button action-button--edit w-full min-h-11 px-3">Switch to this Curriculum</button>}
-                        {c.status === 'archived' && <button type="button" onClick={() => setPendingCurriculumAction({ type: 'reopen', curriculum: c })} className="action-button action-button--edit w-full min-h-11 px-3">Reopen Curriculum</button>}
-                      </div></motion.div></AnimatePresence>}
-                      {editingCurriculumId === c.id && <input autoFocus value={editingCurriculumName} onChange={e => setEditingCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRenameCurriculum(c.id); }} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary" />}
-                    </div>
-                  );
-                })}
-                {((showArchiveFolder && !curricula.some(c => c.status === 'archived')) || (!showArchiveFolder && !curricula.some(c => c.status === 'active'))) && <div className="min-h-[8rem] flex items-center justify-center text-center"><p className="text-sm font-semibold text-muted-foreground">{showArchiveFolder ? 'No Archived Curricula' : 'No Active Curricula'}</p></div>}
-              </div>
-              <AnimatePresence>
-                {showCreateCurriculumForm && activeCurriculumReadyForNewRoutine && (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[155] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }} onClick={() => { setShowCreateCurriculumForm(false); setCreationRestriction(false); }}>
-                    <motion.div initial={{ scale: 0.96, y: 18, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.96, y: 18, opacity: 0 }} transition={{ type: 'spring', damping: 28, stiffness: 300 }} className="modal-sheet-content !min-h-0 w-full max-w-sm rounded-3xl bg-card p-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
-                      <h3 className="text-base font-bold text-foreground">Create New Curriculum</h3>
-                      <p className="mt-1 text-xs text-muted-foreground">Create a curriculum for your academic, clinical, and SGT planning.</p>
-                      <div className="mt-4 space-y-3">
-                        <input value={newCurriculumName} onChange={e => setNewCurriculumName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleCreateCurriculum(); }} onFocus={() => window.setTimeout(() => setIdentityKeyboardInset(Math.max(0, Math.round(window.innerHeight - (window.visualViewport?.height ?? window.innerHeight) - (window.visualViewport?.offsetTop ?? 0)))), 80)} placeholder="Curriculum name" className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary" />
-
-                        <div className="grid grid-cols-2 gap-2 pt-1"><button type="button" onClick={() => setShowCreateCurriculumForm(false)} className="action-button action-button--cancel w-full min-h-10">Cancel</button><button type="button" onClick={handleCreateCurriculum} className="action-button action-button--save w-full min-h-10">Save</button></div>
-                      </div>
-                    </motion.div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {creationRestriction && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[155] flex items-end justify-center px-4 pb-[calc(0.5rem+env(safe-area-inset-bottom))]" onClick={() => setCreationRestriction(false)}>
-            <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content !min-h-0 bg-card backdrop-blur-2xl border border-amber-500/30 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-md shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
-              <h3 className="text-sm font-bold text-foreground">New Curriculum Restricted</h3>
-              <p className="text-xs leading-relaxed text-muted-foreground">You already have the maximum number of Active Curricula. Mark Complete, or Delete one before creating a New Curriculum.</p>
-              <button type="button" onClick={() => setCreationRestriction(false)} className="action-button action-button--cancel w-full min-h-10">Close</button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {pendingCurriculumAction && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[145] flex items-end justify-center p-0" style={{ paddingBottom: `env(safe-area-inset-bottom)` }} onClick={() => { setPendingCurriculumAction(null); setCreationRestriction(false); }}>
-            <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }} className="modal-sheet-content !min-h-0 bg-card backdrop-blur-2xl border border-border/80 rounded-t-3xl rounded-b-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
-              <h3 className="text-base font-bold text-foreground">{pendingCurriculumAction.type === 'switch' ? 'Switch curriculum?' : pendingCurriculumAction.type === 'reopen' ? 'Reopen curriculum?' : pendingCurriculumAction.type === 'complete' ? 'Mark as Complete?' : 'Rename curriculum?'}</h3>
-              <p className="text-xs leading-relaxed text-muted-foreground">{pendingCurriculumAction.type === 'switch' ? 'This curriculum will become your active workspace.' : pendingCurriculumAction.type === 'reopen' ? 'This curriculum will return to Active Curricula.' : pendingCurriculumAction.type === 'complete' ? 'This curriculum will move to the Archive Folder.' : 'You can update the curriculum name next.'}</p>
-              {pendingCurriculumAction.type === 'rename' && <input value={editingCurriculumName || pendingCurriculumAction.curriculum.name} onChange={e => setEditingCurriculumName(e.target.value)} onFocus={() => window.setTimeout(() => setIdentityKeyboardInset(Math.max(0, Math.round(window.innerHeight - (window.visualViewport?.height ?? window.innerHeight) - (window.visualViewport?.offsetTop ?? 0)))), 80)} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary" />}
-              <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => { setPendingCurriculumAction(null); setCreationRestriction(false); }} className="action-button action-button--cancel w-full min-h-10">Cancel</button><button type="button" onClick={confirmCurriculumAction} className="action-button action-button--save w-full min-h-10">Confirm</button></div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {curriculumToDelete && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[150] flex items-end justify-center p-0" onClick={e => { if (e.target === e.currentTarget) setCurriculumToDelete(null); }}>
-            <motion.div initial={{ y: 64, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 64, opacity: 0 }} className="modal-sheet-content !min-h-0 bg-card backdrop-blur-2xl border border-destructive/30 rounded-3xl p-4 w-full max-w-sm shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
-              <h3 className="text-base font-bold text-foreground">Delete this curriculum?</h3>
-              <p className="text-xs leading-relaxed text-muted-foreground">All data associated with this curriculum will be permanently deleted and cannot be recovered.</p>
-              <div className="flex gap-2"><button type="button" onClick={() => setCurriculumToDelete(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteCurriculum} className="action-button action-button--danger flex-1">Delete Permanently</button></div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
       <AnimatePresence>
         {isEditingName && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[130] flex items-end justify-center p-4" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }} onClick={() => setIsEditingName(false)}>

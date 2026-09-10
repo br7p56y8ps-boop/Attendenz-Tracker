@@ -443,6 +443,39 @@ export function ensureCurriculumMigration(): void {
   const existing = getCurricula();
   const active = getActiveCurriculum();
   if (existing.length > 0) {
+    const preset = existing.find(curriculum => curriculum.id === defaultCurriculumId('preset') && curriculum.kind === 'preset');
+    if (preset) {
+      const presetBundle: CurriculumBundle = {
+        ...getCurriculumBundle(preset.id),
+        ...captureWorkspaceBundle('preset'),
+        'att_subject_mode': 'preloaded',
+        'att_curriculum_status': 'Active',
+      };
+      const removedKeys = [
+        ...existing.filter(curriculum => curriculum.id !== preset.id).map(curriculum => `att_curriculum_bundle_${curriculum.id}`),
+        ...ALIAS_KEYS.filter(key => CUSTOM_ALIAS_KEYS.has(key)),
+      ];
+      const entries: Array<[string, string]> = [
+        [CURRICULA_KEY, JSON.stringify([{ ...preset, status: 'active', updatedAt: nowIso() }])],
+        [`att_curriculum_bundle_${preset.id}`, JSON.stringify(presetBundle)],
+        [ACTIVE_CURRICULUM_KEY, preset.id],
+        ['att_subject_mode', 'preloaded'],
+        ['att_curriculum_status', 'Active'],
+        ['att_setup_done', 'true'],
+      ];
+      for (const key of PRESET_ALIAS_KEYS) {
+        if (presetBundle[key] !== undefined) entries.push([key, presetBundle[key]]);
+      }
+      localStorage.setItem(CURRICULA_KEY, entries[0][1]);
+      localStorage.setItem(`att_curriculum_bundle_${preset.id}`, entries[1][1]);
+      localStorage.setItem(ACTIVE_CURRICULUM_KEY, preset.id);
+      localStorage.setItem('att_subject_mode', 'preloaded');
+      localStorage.setItem('att_curriculum_status', 'Active');
+      localStorage.setItem('att_setup_done', 'true');
+      void storageCommitChecked(entries, removedKeys);
+      write(CURRICULUM_MIGRATION_KEY, 'true');
+      return;
+    }
     if (!active) {
       const activeCandidate = existing.find(curriculum => curriculum.status === 'active');
       if (activeCandidate) setActiveCurriculumId(activeCandidate.id);
@@ -462,50 +495,14 @@ export function ensureCurriculumMigration(): void {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  const custom: CurriculumRecord = {
-    id: 'curriculum_custom_routine',
-    name: 'My Custom Routine',
-    status: 'active',
-    kind: 'custom',
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-
-  const currentMode = localStorage.getItem('att_subject_mode') === 'custom' ? 'custom' : 'preloaded';
-  const currentBundle = captureActiveBundle(currentMode === 'custom' ? 'custom' : 'preset');
-  const presetBundle: CurriculumBundle = currentMode === 'preloaded'
-    ? { ...currentBundle }
-    : captureWorkspaceBundle('preset');
-  const customBundle: CurriculumBundle = currentMode === 'custom'
-    ? { ...currentBundle }
-    : captureWorkspaceBundle('custom');
-
-  const currentWorkspace = currentMode === 'custom' ? customBundle : presetBundle;
-  for (const key of ['attendance_tracker_preferred_percentage', 'att_curriculum_status']) {
-    if (currentBundle[key] !== undefined) currentWorkspace[key] = currentBundle[key];
-  }
+  const presetBundle: CurriculumBundle = { ...captureWorkspaceBundle('preset') };
   presetBundle['att_subject_mode'] = 'preloaded';
-  customBundle['att_subject_mode'] = 'custom';
-  if (!customBundle['att_custom_subjects']) customBundle['att_custom_subjects'] = '[]';
-  if (!customBundle['att_custom_wards']) customBundle['att_custom_wards'] = '[]';
-  if (!customBundle['attendance_tracker_subjects_custom']) customBundle['attendance_tracker_subjects_custom'] = '{}';
-  if (!customBundle['attendance_tracker_ward_custom']) customBundle['attendance_tracker_ward_custom'] = '{}';
-  if (!customBundle['attendance_tracker_home_selections_custom']) customBundle['attendance_tracker_home_selections_custom'] = '{}';
-  if (!customBundle['attendance_tracker_finished_map_custom']) customBundle['attendance_tracker_finished_map_custom'] = '{}';
-
-  // The current mode's complete alias bundle is authoritative for its workspace.
-  if (currentMode === 'custom') {
-    saveCurriculumBundle(custom.id, customBundle);
-    saveCurriculumBundle(preset.id, presetBundle);
-    setActiveCurriculumId(custom.id);
-  } else {
-    saveCurriculumBundle(preset.id, presetBundle);
-    saveCurriculumBundle(custom.id, customBundle);
-    setActiveCurriculumId(preset.id);
-  }
-  saveCurricula([preset, custom]);
+  saveCurriculumBundle(preset.id, presetBundle);
+  setActiveCurriculumId(preset.id);
+  saveCurricula([preset]);
+  write('att_subject_mode', 'preloaded');
+  write('att_setup_done', 'true');
   write(CURRICULUM_MIGRATION_KEY, 'true');
-  reconcileActiveCurriculumToMode();
 }
 
 export const CURRICULUM_KEYS = { CURRICULA_KEY, ACTIVE_CURRICULUM_KEY, CURRICULUM_MIGRATION_KEY };

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { CountStepper } from '@/components/CountStepper';
@@ -24,7 +23,6 @@ import { useModalAccessibility } from '@/components/ui/dialog';
 import { storageSetItem } from '@/lib/idb';
 import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
-import { getActiveCurriculum, getCurricula } from '@/lib/curriculumStore';
 import {
   Plus, Trash2, X, AlertTriangle,
   GraduationCap, Stethoscope,
@@ -356,7 +354,6 @@ export default function Manage() {
     getPresetWardDisplayName,
   } = useCustomData();
   const { removeSubjectData, removeWardData, removeAttendanceByKey, reopenFinishedIfPlanIncreased } = useAttendance();
-  const [, setLocation] = useLocation();
 
   const [note, setNote] = useState<{ msg: string; kind: 'ok' | 'err' | 'info' } | null>(null);
   const noteTimer = useRef<number | null>(null);
@@ -426,8 +423,6 @@ export default function Manage() {
   const [addSlotPlanned, setAddSlotPlanned] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const [noActiveCurriculumMessage, setNoActiveCurriculumMessage] = useState(false);
-  const [moreBlockedMessage, setMoreBlockedMessage] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
   const [historyClearEntry, setHistoryClearEntry] = useState<any | null>(null);
   const [editDataOpen, setEditDataOpen] = useState(false);
@@ -548,25 +543,10 @@ export default function Manage() {
   }, [subjectMode, userAddedSubjects, customSubjects]);
 
   const openMoreMenu = () => {
-    const activeCurriculum = getActiveCurriculum();
-    if (!activeCurriculum) {
-      setNoActiveCurriculumMessage(true);
-      return;
-    }
-    const isBuiltInPreset = activeCurriculum.id === 'curriculum_final_phase_5th_year' || activeCurriculum.id === 'curriculum_custom_routine';
-    if (!isBuiltInPreset && activeCurriculum.status !== 'archived') {
-      setMoreBlockedMessage(true);
-      return;
-    }
     setMoreMenuOpen(true);
   };
 
   const openEditDataFromMore = () => {
-    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
-      setMoreMenuOpen(false);
-      setNoActiveCurriculumMessage(true);
-      return;
-    }
     setMoreMenuOpen(false);
     setReturnToMoreAfterEditData(true);
     setEditDataOpen(true);
@@ -651,10 +631,6 @@ export default function Manage() {
 
   const openAddSlot = () => { setAddSlotSubject(''); setAddSlotStart('09:00 AM'); setAddSlotEnd('10:00 AM'); setAddSlotPlanned(0); setFormError(null); setAddSlotOpen(true); setAddSuccess(false); };
   const openAddFromMore = () => {
-    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
-      setNoActiveCurriculumMessage(true);
-      return;
-    }
     setMoreMenuOpen(false);
     setReturnToMoreAfterAdd(true);
     setFormError(null);
@@ -1600,30 +1576,12 @@ export default function Manage() {
       contentClassName="h-full min-h-0"
       bottomNavClassName="border-t-0"
       headerRight={
-        <button type="button" onClick={openMoreMenu} aria-disabled={Boolean(getActiveCurriculum() && getActiveCurriculum()!.id !== 'curriculum_final_phase_5th_year' && getActiveCurriculum()!.id !== 'curriculum_custom_routine' && getActiveCurriculum()!.status !== 'archived')} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
+        <button type="button" onClick={openMoreMenu} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
           <SendToBack className="w-4 h-4" />
           <span className="text-[9px] font-extrabold leading-none">More</span>
         </button>
       }
     >
-      {noActiveCurriculumMessage && createPortal(
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-end justify-center bg-black/80 backdrop-blur-sm" onClick={() => setNoActiveCurriculumMessage(false)}>
-          <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} className="modal-sheet-content !min-h-0 w-full max-w-md rounded-t-3xl bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-foreground">No Active Curricula</h3>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">There are no Active Curricula. Reopen or Create a new Active Curricula from <button type="button" onClick={() => { setNoActiveCurriculumMessage(false); setLocation('/account'); }} className="font-semibold text-blue-500 hover:text-blue-400">Setting&apos;s</button> Curriculum Management to Add/Edit a Subject data.</p>
-            <button type="button" onClick={() => setNoActiveCurriculumMessage(false)} className="action-button action-button--cancel mt-3 w-full min-h-10">Close</button>
-          </motion.div>
-        </motion.div>, document.body
-      )}
-      {moreBlockedMessage && createPortal(
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-end justify-center bg-black/80 backdrop-blur-sm" onClick={() => setMoreBlockedMessage(false)}>
-          <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} className="modal-sheet-content !min-h-0 w-full max-w-md rounded-t-3xl bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-foreground">More actions are unavailable</h3>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Mark the active curriculum as complete before adding more subjects or schedule data.</p>
-            <button type="button" onClick={() => setMoreBlockedMessage(false)} className="action-button action-button--cancel mt-3 w-full min-h-10">Close</button>
-          </motion.div>
-        </motion.div>, document.body
-      )}
       <div className="flex h-full min-h-0 flex-col gap-1 scroll-reachability">
         <div className="shrink-0">{manageSectionSwitcher}</div>
         {manageDaySelector && (
