@@ -308,17 +308,19 @@
   will-change: transform, opacity;
 }
 
-.modal-sheet-header,
-.modal-sheet-footer {
-  border-color: color-mix(in srgb, var(--border) 50%, transparent);
-}
-
-.modal-sheet-header {
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-}
-
-.modal-sheet-footer {
-  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+.modal-sheet-divider {
+  position: relative;
+  width: 62%;
+  height: 1px;
+  margin-inline: auto;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--border) 18%, transparent) 16%,
+    color-mix(in srgb, var(--border) 55%, transparent) 50%,
+    color-mix(in srgb, var(--border) 18%, transparent) 84%,
+    transparent 100%
+  );
 }
 
 .modal-sheet-footer > * {

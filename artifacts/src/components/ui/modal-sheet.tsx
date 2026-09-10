@@ -47,7 +47,7 @@ export function ModalSheet({
   return createPortal(
     <AnimatePresence initial={false}>
       {open && (
-        <div className={cn('fixed inset-0 flex items-end justify-center', zIndexClassName)} style={style}>
+        <div className={cn('fixed inset-0 flex items-end justify-center p-3 sm:p-4', zIndexClassName)} style={style}>
           <motion.div
             className={cn('modal-sheet-backdrop absolute inset-0 bg-black/60', backdropClassName)}
             initial={{ opacity: 0 }}
@@ -80,7 +80,7 @@ export function ModalSheet({
               layout: { duration: 0.22, ease: 'easeInOut' },
             }}
             className={cn(
-              'relative flex w-full min-h-[140px] max-h-[80dvh] flex-col overflow-hidden rounded-t-3xl rounded-b-none border border-border bg-card',
+              'relative flex w-full min-h-[140px] max-h-[80dvh] flex-col overflow-hidden rounded-3xl border border-border bg-card',
               maxWidth,
               className,
             )}
@@ -94,7 +94,9 @@ export function ModalSheet({
               <span className="h-1 w-10 rounded-full bg-muted-foreground/35" />
             </div>
             {header && <div className="modal-sheet-header shrink-0">{header}</div>}
+            <div className="modal-sheet-divider shrink-0" aria-hidden="true" />
             <div className={cn('min-h-0 flex-1 overflow-y-auto overscroll-contain', bodyClassName)}>{children}</div>
+            <div className="modal-sheet-divider shrink-0" aria-hidden="true" />
             {footer && <div className="modal-sheet-footer shrink-0">{footer}</div>}
           </motion.div>
         </div>

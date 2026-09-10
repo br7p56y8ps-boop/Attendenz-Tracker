@@ -93,7 +93,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed inset-x-0 bottom-0 top-auto z-50 mx-auto grid w-full max-w-lg max-h-[80dvh] translate-x-0 translate-y-0 gap-4 overflow-y-auto rounded-t-3xl rounded-b-none border bg-background p-6 shadow-none duration-300 ease-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-full data-[state=open]:slide-in-from-bottom-full',
+        'fixed inset-x-3 bottom-3 top-auto z-50 mx-auto grid w-[calc(100%-1.5rem)] max-w-lg max-h-[80dvh] translate-x-0 translate-y-0 gap-4 overflow-y-auto rounded-3xl border bg-background p-6 shadow-none duration-300 ease-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-full data-[state=open]:slide-in-from-bottom-full sm:inset-x-4 sm:bottom-4 sm:w-[calc(100%-2rem)]',
         className,
       )}
       {...props}

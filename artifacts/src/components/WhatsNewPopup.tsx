@@ -32,13 +32,7 @@ interface ReleaseSectionProps {
   accentClass: string;
 }
 
-function ReleaseSection({
-  title,
-  icon,
-  items,
-  titleClass,
-  accentClass,
-}: ReleaseSectionProps) {
+function ReleaseSection({ title, icon, items, titleClass, accentClass }: ReleaseSectionProps) {
   if (items.length === 0) return null;
 
   return (
@@ -77,70 +71,65 @@ export function WhatsNewPopup() {
   const notes = getReleaseNotes(notesVersion);
 
   const handleClose = () => { setWhatsNewOpen(false); };
+  const header = (
+    <div className="flex items-center gap-2.5 px-4 pb-3 pt-1">
+      <div className="h-9 w-9 shrink-0 overflow-hidden rounded-2xl border border-border/70 bg-background shadow-sm">
+        <img
+          src={`${import.meta.env.BASE_URL || "/"}Logo.jpeg`}
+          alt="Attendenz Logo"
+          className="h-full w-full object-cover"
+        />
+      </div>
+      <div className="text-left">
+        <h2 id="whats-new-title" className="text-sm font-extrabold leading-tight text-foreground">
+          What's New
+        </h2>
+        <span className="mt-1 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wider text-emerald-500">
+          Version {notesVersion}
+        </span>
+      </div>
+    </div>
+  );
+
+  const footer = (
+    <button
+      type="button"
+      onClick={handleClose}
+      onPointerDown={(event) => event.stopPropagation()}
+      className="action-button action-button--save"
+    >
+      Got It
+    </button>
+  );
+
   return (
-    <ModalSheet open={whatsNewOpen} onClose={handleClose} ariaLabel="What's New" maxWidth="max-w-sm" zIndexClassName="z-[9999]" bodyClassName="max-h-[min(78dvh,42rem)]">
-            {/* Fixed header */}
-            <div className="flex items-center justify-between border-b border-border/60 bg-card px-4 pb-3 pt-4">
-              <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-2xl border border-border/70 bg-background shadow-sm">
-                  <img
-                    src={`${import.meta.env.BASE_URL || "/"}Logo.jpeg`}
-                    alt="Attendenz Logo"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <div className="text-left">
-                  <h2
-                    id="whats-new-title"
-                    className="text-sm font-extrabold leading-tight text-foreground"
-                  >
-                    What's New
-                  </h2>
-                  <span className="mt-1 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wider text-emerald-500">
-                    Version {notesVersion}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Soft top and bottom boundaries surround the only scrolling region. */}
-            <div className="relative min-h-0">
-              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-card via-card/80 to-transparent dark:from-card/95 dark:via-card/55" />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-card via-card/80 to-transparent dark:from-card/95 dark:via-card/55" />
-              <div
-                className="overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 pb-5 text-left [scrollbar-width:thin]"
-                style={{ WebkitOverflowScrolling: "touch" }}
-              >
-                <div className="space-y-4">
-                  <ReleaseSection
-                    title="Upgrades / New Features"
-                    icon={<Zap className="h-3.5 w-3.5 shrink-0" />}
-                    items={notes.upgrades}
-                    titleClass="text-emerald-500"
-                    accentClass="text-muted-foreground"
-                  />
-                  <ReleaseSection
-                    title="Fixes & Refinements"
-                    icon={<Wrench className="h-3.5 w-3.5 shrink-0" />}
-                    items={notes.fixes}
-                    titleClass="text-amber-500"
-                    accentClass="text-muted-foreground"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Fixed compact footer action */}
-            <div className="flex justify-center border-t border-border/50 bg-card px-4 pb-4 pt-3">
-              <button
-                type="button"
-                onClick={handleClose}
-                onPointerDown={(event) => event.stopPropagation()}
-                className="action-button action-button--save w-full"
-              >
-                Got It
-              </button>
-            </div>
+    <ModalSheet
+      open={whatsNewOpen}
+      onClose={handleClose}
+      ariaLabel="What's New"
+      labelledBy="whats-new-title"
+      maxWidth="max-w-sm"
+      zIndexClassName="z-[9999]"
+      header={header}
+      footer={footer}
+      bodyClassName="max-h-[min(78dvh,42rem)] px-4 py-3 pb-5 text-left [scrollbar-width:thin]"
+    >
+      <div className="space-y-4">
+        <ReleaseSection
+          title="Upgrades / New Features"
+          icon={<Zap className="h-3.5 w-3.5 shrink-0" />}
+          items={notes.upgrades}
+          titleClass="text-emerald-500"
+          accentClass="text-muted-foreground"
+        />
+        <ReleaseSection
+          title="Fixes & Refinements"
+          icon={<Wrench className="h-3.5 w-3.5 shrink-0" />}
+          items={notes.fixes}
+          titleClass="text-amber-500"
+          accentClass="text-muted-foreground"
+        />
+      </div>
     </ModalSheet>
   );
 }
