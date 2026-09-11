@@ -2345,14 +2345,14 @@ export default function Manage() {
               </div>
             ) : slotConflict ? (
               <div className="grid grid-cols-3 gap-2">
-                <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full')}>Remove Slot</button>
+                <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full')}>Remove</button>
                 <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnCancel, 'w-full')}>Cancel</button>
                 <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className={cn(btnPrimary, 'w-full')}>Merge Anyway</button>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full flex items-center justify-center gap-1.5')}>
-                  <Trash2 className="w-3.5 h-3.5" /> Remove Slot
+                  <Trash2 className="w-3.5 h-3.5" /> Remove
                 </button>
                 <button type="button" onClick={closeEditSlot} className={cn(btnCancel, 'w-full')}>Cancel</button>
                 {editSlot.multiSelectMode ? (
