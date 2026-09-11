@@ -1,4 +1,4 @@
-import { Camera, Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Eraser, Clock, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
+import { Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import { assertBackupSize, filterStoredData, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
 import React, { useRef, useState, useEffect } from 'react';
@@ -968,13 +968,7 @@ export default function Settings() {
           </div>
         </div>
 
-          <ModalSheet open={backupTransferOpen} onClose={() => setBackupTransferOpen(false)} ariaLabel="Backup and transfer" maxWidth="max-w-lg" bodyClassName="p-6 space-y-4 text-left">
-                  <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3">
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground">Backup / Transfer</h3>
-                      <p className="text-[10px] text-muted-foreground">Complete app backup keeps both Preset and Custom workspaces. Routine bundles use the active mode only.</p>
-                    </div>
-                  </div>
+          <ModalSheet open={backupTransferOpen} onClose={() => setBackupTransferOpen(false)} ariaLabel="Backup and transfer" maxWidth="max-w-lg" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Backup / Transfer</h3><p className="mt-1 text-[10px] text-muted-foreground">Complete app backup keeps both Preset and Custom workspaces.</p></div>} bodyClassName="p-6 space-y-4 text-left">
 
                   {busy && <p className="text-xs font-semibold text-center text-primary bg-primary/10 py-2 rounded-xl">{busy}</p>}
 
@@ -1111,42 +1105,10 @@ export default function Settings() {
                   )}
         </ModalSheet>
 
-          <ModalSheet open={Boolean(activeSettingModal)} onClose={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }} ariaLabel="Settings dialog" labelledBy="settings-modal-title" maxWidth="max-w-2xl" bodyClassName="p-4 sm:p-6 space-y-4 text-left"
+          <ModalSheet open={Boolean(activeSettingModal)} onClose={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }} ariaLabel="Settings dialog" labelledBy="settings-modal-title" maxWidth="max-w-2xl"
+            header={<div className="text-center"><h3 id="settings-modal-title" className="break-words text-sm font-bold text-foreground sm:text-base">{activeSettingModal === 'preferredPc' && 'Curriculum Percentage'}{activeSettingModal === 'snapshot' && 'Snapshots & Storage'}{activeSettingModal === 'export' && 'Export Attendance Data'}{activeSettingModal === 'dataProtection' && 'Data Protection & Storage'}{activeSettingModal === 'identity' && 'Identity Card'}{activeSettingModal === 'feedback' && 'Feedback & Sounds'}{activeSettingModal === 'notifications' && 'System Notifications'}{activeSettingModal === 'theme' && 'Theme'}</h3><p className="mt-1 text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{activeSettingModal === 'preferredPc' && 'Target attendance threshold percentage'}{activeSettingModal === 'snapshot' && 'Manage local state backups and cache'}{activeSettingModal === 'export' && 'Export records in PDF, Excel, or CSV formats'}{activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}{activeSettingModal === 'identity' && 'Profile, display name, and active curriculum'}{activeSettingModal === 'feedback' && 'Choose what you hear after a confirmation'}{activeSettingModal === 'notifications' && 'Choose reminders, routine updates, and app alerts'}{activeSettingModal === 'theme' && 'Choose how Attendenz follows your device'}</p></div>}
+            bodyClassName="p-4 sm:p-6 space-y-4 text-left"
             footer={activeSettingModal === 'preferredPc' && pendingPct === null ? <button type="button" onClick={() => setActiveSettingModal(null)} className="action-button action-button--save">Save &amp; Close</button> : undefined}>
-                                      <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-3 shrink-0">
-                      <div className="flex min-w-0 flex-1 items-start gap-3">
-                        {activeSettingModal === 'preferredPc' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 font-bold text-sm">%</div>)}
-                      {activeSettingModal === 'snapshot' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><SnapshotIcon className="w-5 h-5" /></div>)}
-                      {activeSettingModal === 'export' && (<div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20"><FileText className="w-5 h-5" /></div>)}
-                      {activeSettingModal === 'dataProtection' && (<div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 border border-emerald-500/20"><Database className="w-5 h-5" /></div>)}
-                      {activeSettingModal === 'identity' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><Camera className="w-5 h-5" /></div>)}
-                      {activeSettingModal === 'feedback' && (<div className="w-9 h-9 rounded-xl bg-violet-500/10 text-violet-500 flex items-center justify-center shrink-0 border border-violet-500/20"><Vibrate className="w-5 h-5" /></div>)}
-                      {activeSettingModal === 'notifications' && (<div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 border border-blue-500/20"><Bell className="w-5 h-5" /></div>)}
-                      {activeSettingModal === 'theme' && (<div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><Info className="w-5 h-5" /></div>)}
-                      <div className="min-w-0 flex-1">
-                        <h3 id="settings-modal-title" className="break-words text-sm font-bold text-foreground sm:text-base">
-                          {activeSettingModal === 'preferredPc' && 'Curriculum Percentage'}
-                          {activeSettingModal === 'snapshot' && 'Snapshots & Storage'}
-                          {activeSettingModal === 'export' && 'Export Attendance Data'}
-                          {activeSettingModal === 'dataProtection' && 'Data Protection & Storage'}
-                          {activeSettingModal === 'identity' && 'Identity Card'}
-                          {activeSettingModal === 'feedback' && 'Feedback & Sounds'}
-                          {activeSettingModal === 'notifications' && 'System Notifications'}
-                          {activeSettingModal === 'theme' && 'Theme'}
-                        </h3>
-                        <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">
-                          {activeSettingModal === 'preferredPc' && 'Target attendance threshold percentage'}
-                          {activeSettingModal === 'snapshot' && 'Manage local state backups & cache'}
-                          {activeSettingModal === 'export' && 'Export records in PDF, Excel, or CSV formats'}
-                          {activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}
-                          {activeSettingModal === 'identity' && 'Profile, display name, and active curriculum'}
-                          {activeSettingModal === 'feedback' && 'Choose what you hear after a confirmation'}
-                          {activeSettingModal === 'notifications' && 'Choose Reminders, Routine Updates, and App Update Alerts'}
-                          {activeSettingModal === 'theme' && 'Choose how Attendenz follows your device'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
                   <div className="pt-1 flex-1 min-h-0 overflow-y-auto">
                     {activeSettingModal === 'identity' && (
                       <div className="space-y-4">
@@ -1274,11 +1236,9 @@ export default function Settings() {
                         </div>
                         <div className="grid grid-cols-2 gap-2 pt-1">
                           <button onClick={() => setShowSnapshotsList(!showSnapshotsList)} className="action-button action-button--neutral w-full">
-                            <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                             <span>Saved ({snapshots.length})</span>
                           </button>
                           <button onClick={handleClearCache} className="action-button action-button--warning w-full">
-                            <Eraser className="w-3.5 h-3.5 text-muted-foreground" />
                             <span>Clear Cache</span>
                           </button>
                         </div>
@@ -1451,16 +1411,14 @@ export default function Settings() {
                   </div>
         </ModalSheet>
 
-          <ModalSheet open={Boolean(notificationRecovery)} onClose={() => setNotificationRecovery(null)} ariaLabel="Notification recovery" maxWidth="max-w-sm" bodyClassName="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3" zIndexClassName="z-[170]">
-                  <div className="flex items-start gap-2"><AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><div><h3 className="text-sm font-bold text-foreground">{notificationRecovery?.title}</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{notificationRecovery?.message}</p></div></div>
+          <ModalSheet open={Boolean(notificationRecovery)} onClose={() => setNotificationRecovery(null)} ariaLabel="Notification recovery" maxWidth="max-w-sm" header={notificationRecovery ? <div className="text-center"><h3 className="text-sm font-bold text-foreground">{notificationRecovery.title}</h3><p className="mt-1 text-[10px] text-muted-foreground">Review notification recovery options.</p></div> : undefined} bodyClassName="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3" zIndexClassName="z-[170]">
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setNotificationRecovery(null)} className="action-button action-button--cancel flex-1 min-h-10">Close</button>
                     {notificationRecovery?.action && <button type="button" onClick={() => { const action = notificationRecovery?.action; setNotificationRecovery(null); if (action === 'enable') void enableSystemNotifications(); }} className="action-button action-button--update flex-1 min-h-10">{notificationRecovery?.action === 'settings' ? 'I’ll Check Settings' : 'Try Again'}</button>}
                   </div>
         </ModalSheet>
 
-          <ModalSheet open={nightlyReminderNotice} onClose={() => setNightlyReminderNotice(false)} ariaLabel="Nightly reminder updated" maxWidth="max-w-sm" bodyClassName="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3" zIndexClassName="z-[175]">
-                  <div className="flex items-start gap-2"><Bell className="w-4 h-4 text-primary shrink-0 mt-0.5" /><div><h3 className="text-sm font-bold text-foreground">Nightly reminder time updated</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Your new time will apply from the next nightly reminder. Only one nightly reminder is sent each night.</p></div></div>
+          <ModalSheet open={nightlyReminderNotice} onClose={() => setNightlyReminderNotice(false)} ariaLabel="Nightly reminder updated" maxWidth="max-w-sm" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Nightly reminder time updated</h3><p className="mt-1 text-[10px] text-muted-foreground">Your new time applies from the next nightly reminder.</p></div>} bodyClassName="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3" zIndexClassName="z-[175]">
                   <button type="button" onClick={() => setNightlyReminderNotice(false)} className="action-button action-button--cancel w-full min-h-10">Got it</button>
         </ModalSheet>
 
@@ -1473,7 +1431,7 @@ export default function Settings() {
           </div>
       </div>
       {/* All dialogs remain as before */}
-      <ModalSheet open={showUpdatePrompt && isUpdateAvailable} onClose={() => setShowUpdatePrompt(false)} ariaLabel="Update available" labelledBy="settings-update-title" maxWidth="max-w-sm" bodyClassName="p-6 space-y-4">
+      <ModalSheet open={showUpdatePrompt && isUpdateAvailable} onClose={() => setShowUpdatePrompt(false)} ariaLabel="Update available" labelledBy="settings-update-title" maxWidth="max-w-sm" header={<div className="text-center"><h3 id="settings-update-title" className="text-sm font-bold text-foreground">Update Available</h3><p className="mt-1 text-[10px] text-muted-foreground">Review the available app update.</p></div>} bodyClassName="p-6 space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20"><Download className="w-5 h-5 text-amber-500" /></div>
                 <div className="text-left">
@@ -1491,22 +1449,19 @@ export default function Settings() {
               </div>
         </ModalSheet>
 
-      <ModalSheet open={updatePhase !== 'none'} onClose={() => undefined} ariaLabel="Update progress" labelledBy="settings-progress-title" maxWidth="max-w-xs" bodyClassName="flex flex-col items-center justify-center gap-4 p-8 text-center" zIndexClassName="z-[140]">
+      <ModalSheet open={updatePhase !== 'none'} onClose={() => undefined} ariaLabel="Update progress" labelledBy="settings-progress-title" maxWidth="max-w-xs" header={<div className="text-center"><h3 id="settings-progress-title" className="text-sm font-bold text-foreground">Updating App</h3><p className="mt-1 text-[10px] text-muted-foreground">Please wait while the update completes.</p></div>} bodyClassName="flex flex-col items-center justify-center gap-4 p-8 text-center" zIndexClassName="z-[140]">
               <UpdateProgressSlider phase={updatePhase === 'none' ? 'downloading' : updatePhase} complete={progressComplete} />
               <p className="text-[10px] text-muted-foreground">{updatePhase === 'backing' ? 'Securing your attendance records & preferences…' : updatePhase === 'completed' ? 'The app will load the Welcome Screen shortly.' : 'Please keep the app open while the update completes.'}</p>
         </ModalSheet>
 
-      <ModalSheet open={showDeleteDataDialog} onClose={() => setShowDeleteDataDialog(false)} ariaLabel="Delete all app data" maxWidth="max-w-sm" bodyClassName="p-6 space-y-4" zIndexClassName="z-[150]">
-              <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-destructive/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div><div><h3 className="text-base font-bold text-foreground">Delete All App Data?</h3><p className="text-[11px] text-destructive font-semibold">Irreversible Action</p></div></div>
+      <ModalSheet open={showDeleteDataDialog} onClose={() => setShowDeleteDataDialog(false)} ariaLabel="Delete all app data" maxWidth="max-w-sm" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Delete All App Data?</h3><p className="mt-1 text-[10px] text-destructive">This action cannot be undone.</p></div>} bodyClassName="p-6 space-y-4" zIndexClassName="z-[150]">
+              <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-2xl bg-destructive/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-destructive" /></div><p className="text-xs text-destructive font-semibold">Irreversible action confirmation.</p></div>
               <p className="text-xs text-muted-foreground leading-relaxed">This permanently erases <strong className="text-foreground">attendance records, routines, all curriculum data, snapshots, profile data, target settings, and setup state</strong>. Export a backup first if you are unsure.</p>
               <div className="flex gap-2"><button type="button" onClick={() => setShowDeleteDataDialog(false)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={handleDeleteAllData} className="action-button action-button--danger flex-1">Yes, Delete Everything</button></div>
         </ModalSheet>
 
-      <ModalSheet open={isEditingName} onClose={() => setIsEditingName(false)} ariaLabel="Edit name" maxWidth="max-w-sm" bodyClassName="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3" zIndexClassName="z-[130]" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }}>
-              <div>
-                <h3 className="text-base font-bold text-foreground">Edit Name</h3>
-                <p className="text-[11px] text-muted-foreground">Update your display name.</p>
-              </div>
+      <ModalSheet open={isEditingName} onClose={() => setIsEditingName(false)} ariaLabel="Edit name" maxWidth="max-w-sm" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Edit Name</h3><p className="mt-1 text-[10px] text-muted-foreground">Update your display name.</p></div>} bodyClassName="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3" zIndexClassName="z-[130]" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom) + ${identityKeyboardInset}px)` }}>
+              <div><p className="text-xs text-muted-foreground">Your display name is stored locally.</p></div>
               <input ref={nameInputRef} type="text" value={nameInput} onChange={e => setNameInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); }} onFocus={() => window.setTimeout(() => nameInputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80)} className="w-full bg-muted px-3 py-2.5 rounded-xl text-sm font-bold text-foreground outline-none border border-primary/40 focus:ring-2 focus:ring-primary/20" autoFocus />
               <div className="flex gap-2">
                 <button type="button" onClick={() => setIsEditingName(false)} className="action-button action-button--cancel flex-1">Cancel</button>

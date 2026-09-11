@@ -676,11 +676,7 @@ export default function Home() {
         </AnimatePresence>
 
         {/* ── Update notice modal ── */}
-        <ModalSheet open={updateInfoOpen} onClose={() => setUpdateInfoOpen(false)} ariaLabel="Update information" maxWidth="max-w-sm" bodyClassName="p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-extrabold text-foreground">New Version Available <span className="text-emerald-400">(v{serverVersion})</span></h3>
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p>
+        <ModalSheet open={updateInfoOpen} onClose={() => setUpdateInfoOpen(false)} ariaLabel="Update information" maxWidth="max-w-sm" header={<div className="text-center"><h3 className="text-sm font-extrabold text-foreground">New Version Available <span className="text-emerald-400">(v{serverVersion})</span></h3><p className="mt-1 text-[10px] text-muted-foreground">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p></div>} bodyClassName="p-5 space-y-3">
                 {!online && (
                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5">
                     <p className="text-[10px] font-bold text-amber-500">You're offline — connect to the internet once to install the update.</p>

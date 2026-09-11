@@ -22,7 +22,7 @@ import { storageSetItem } from '@/lib/idb';
 import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import {
-  Plus, Trash2, X, AlertTriangle,
+  Plus, Trash2, Undo2, X, AlertTriangle,
   GraduationCap, Stethoscope,
   Check, ChevronDown, ChevronRight, SendToBack, Pencil,
 } from 'lucide-react';
@@ -297,7 +297,7 @@ function VacationEditor({ vacations, onChange }: {
             <div key={v.id} className="flex items-center gap-1.5">
               <input type="date" value={v.start} onChange={e => onChange(vacations.map(x => x.id === v.id ? { ...x, start: e.target.value } : x))} className={cn(inputCls, 'h-8 text-center text-xs')} />
               <input type="date" value={v.end} onChange={e => onChange(vacations.map(x => x.id === v.id ? { ...x, end: e.target.value } : x))} className={cn(inputCls, 'h-8 text-center text-xs')} />
-              <button type="button" onClick={() => onChange(vacations.filter(x => x.id !== v.id))} className="shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer">Remove</button>
+              <button type="button" onClick={() => onChange(vacations.filter(x => x.id !== v.id))} className="action-button action-button--danger action-button--icon action-button--compact" aria-label="Remove day and time"><Undo2 className="w-3.5 h-3.5" /></button>
             </div>
           ))}
           <button type="button" onClick={() => onChange([...vacations, { id: genId('vac'), start: '', end: '' }])} className={cn(btnGhost, 'w-full flex items-center justify-center gap-1.5')}>
@@ -1697,8 +1697,9 @@ export default function Manage() {
           bodyClassName={section === 'academic' ? 'flex min-h-0 flex-col overflow-y-auto' : 'overflow-y-auto'}
           header={
             <div>
-              <div className="flex items-center justify-between">
+              <div className="text-center">
                 <h3 className="text-sm font-bold text-foreground">{section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}</h3>
+                <p className="mt-1 text-[10px] text-muted-foreground">Create a subject, rotation, or teaching item.</p>
               </div>
 
               {/* Static type selector */}
@@ -2108,7 +2109,7 @@ export default function Manage() {
           maxW="max-w-sm"
           header={
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
+              <div className="text-center"><h3 className="text-sm font-bold text-foreground">Add Slot</h3><p className="mt-1 text-[10px] text-muted-foreground">Add a class to the selected academic day.</p></div>
             </div>
           }
           footer={
@@ -2148,7 +2149,7 @@ export default function Manage() {
         {/* More menu */}
         <OverlayModal open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} maxW="max-w-md" header={
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-foreground">More</h3>
+            <div className="text-center"><h3 className="text-sm font-bold text-foreground">More</h3><p className="mt-1 text-[10px] text-muted-foreground">Choose a Manage action.</p></div>
           </div>
         }>
           <div className="p-4 sm:p-5 space-y-2">
@@ -2168,11 +2169,8 @@ export default function Manage() {
         </OverlayModal>
 
         {/* History Modal */}
-        <OverlayModal open={historyOpen} onClose={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} maxW="max-w-md">
+        <OverlayModal open={historyOpen} onClose={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} maxW="max-w-md" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Recent Activity</h3><p className="mt-1 text-[10px] text-muted-foreground">Review recent changes made in Manage.</p></div>}>
           <div className="p-4 sm:p-5 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">Recent Activity</h3>
-            </div>
             <div className="space-y-2">
               {historyEntries.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-5">No Manage actions yet.</p>
@@ -2189,11 +2187,11 @@ export default function Manage() {
                         <button
                           type="button"
                           onClick={(event) => { event.stopPropagation(); setHistoryClearEntry(entry); }}
-                          className="action-button action-button--close px-2 py-1 text-[10px]"
+                          className="action-button action-button--close action-button--icon"
                           aria-label={`Clear ${entry.type} history entry`}
                           title="Clear This History Entry Only"
                         >
-                          Clear
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -2206,16 +2204,9 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Clear History Entry Modal */}
-        <OverlayModal open={!!historyClearEntry} onClose={() => setHistoryClearEntry(null)} maxW="max-w-md">
+        <OverlayModal open={!!historyClearEntry} onClose={() => setHistoryClearEntry(null)} maxW="max-w-md" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Clear This History Entry?</h3><p className="mt-1 text-[10px] text-muted-foreground">Only this displayed history record will be removed.</p></div>}>
           {historyClearEntry && (
             <div className="p-4 sm:p-5 space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-muted-foreground" /></div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">Clear This History Entry?</h3>
-                  <p className="text-[10px] text-muted-foreground">Only this displayed history record will be removed.</p>
-                </div>
-              </div>
               <div className="rounded-xl border border-border/60 bg-background px-3 py-2">
                 <p className="text-xs font-semibold text-foreground">{historyClearEntry.type} · {getHistoryCategory(historyClearEntry)}</p>
                 {formatHistoryDetail(historyClearEntry) && <p className="text-[10px] text-muted-foreground mt-0.5">{formatHistoryDetail(historyClearEntry)}</p>}
@@ -2241,7 +2232,7 @@ export default function Manage() {
             </>
           }
           footer={
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2">
               <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={cn(btnCancel, editSubject?.subjectType === 'allied' && 'text-destructive hover:text-destructive')}>Cancel</button>
               <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save Changes</button>
             </div>
@@ -2320,7 +2311,7 @@ export default function Manage() {
             </div>
           }
           footer={
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2">
               <button type="button" onClick={saveEditWard} className={btnPrimary}>Save Changes</button>
             </div>
           }
@@ -2483,7 +2474,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Slot Remove Confirm Modal */}
-        <OverlayModal open={slotRemoveConfirm} onClose={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }}>
+        <OverlayModal open={slotRemoveConfirm} onClose={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }} header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Remove from Slot?</h3><p className="mt-1 text-[10px] text-muted-foreground">Confirm removing this subject from its scheduled slot.</p></div>}>
           {slotRemove && (
             <div className="p-4 sm:p-5 space-y-3">
               <div className="flex items-start gap-3">
@@ -2502,7 +2493,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Whole Slot Remove Confirm Modal */}
-        <OverlayModal open={slotRemoveAllConfirm} onClose={() => setSlotRemoveAllConfirm(false)}>
+        <OverlayModal open={slotRemoveAllConfirm} onClose={() => setSlotRemoveAllConfirm(false)} header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Remove This Slot?</h3><p className="mt-1 text-[10px] text-muted-foreground">All subjects in this time slot will be removed.</p></div>}>
           <div className="p-4 sm:p-5 space-y-3">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-rose-500" /></div>
@@ -2519,7 +2510,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Delete Confirm Modal */}
-        <OverlayModal open={!!deleteSheet} onClose={() => setDeleteSheet(null)}>
+        <OverlayModal open={!!deleteSheet} onClose={() => setDeleteSheet(null)} header={deleteSheet ? <div className="text-center"><h3 className="text-sm font-bold text-foreground">{deleteSheet.title}</h3><p className="mt-1 text-[10px] text-muted-foreground">Confirm the items to permanently remove.</p></div> : undefined}>
           {deleteSheet && (
             <div className="p-4 sm:p-5 space-y-3">
               <div className="flex items-start gap-3">
@@ -2541,7 +2532,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Conflict Sheet Modal */}
-        <OverlayModal open={!!conflictSheet} onClose={() => setConflictSheet(null)}>
+        <OverlayModal open={!!conflictSheet} onClose={() => setConflictSheet(null)} header={conflictSheet ? <div className="text-center"><h3 className="text-sm font-bold text-foreground">Conflict Detected</h3><p className="mt-1 text-[10px] text-muted-foreground">Review the issues before proceeding.</p></div> : undefined}>
           {conflictSheet && (
             <div className="p-4 sm:p-5 space-y-3">
               <div className="flex items-start gap-3">
