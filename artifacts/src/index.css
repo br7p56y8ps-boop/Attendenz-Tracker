@@ -324,13 +324,18 @@
 }
 
 .modal-sheet-footer {
-  padding-block: 0.65rem;
+  padding: 0.65rem 0.75rem;
 }
 
 .modal-sheet-footer > * {
-  display: flex !important;
-  width: 80%;
+  width: 100%;
   margin-inline: auto;
+}
+
+.modal-sheet-footer > button,
+.modal-sheet-footer > *:has(> button),
+.modal-sheet-footer > * > :has(> button) {
+  display: flex !important;
   align-items: center;
   justify-content: center !important;
   gap: 0.5rem;
@@ -342,24 +347,20 @@
   text-align: center;
 }
 
-.modal-sheet-footer > * > *,
-.modal-sheet-footer > button {
+.modal-sheet-footer > *:has(> button) > *,
+.modal-sheet-footer > * > :has(> button) > * {
   flex: 1 1 0 !important;
   min-width: 0;
   width: auto !important;
 }
 
-.modal-sheet-footer > *:has(> :only-child) > :only-child,
+.modal-sheet-footer > *:has(> :only-child:is(button)) > :only-child,
+.modal-sheet-footer > * > :has(> :only-child:is(button)) > :only-child,
 .modal-sheet-footer > :only-child:is(button) {
-  flex: 0 0 100% !important;
-  max-width: none;
-  margin-inline: 0;
-}
-
-@media (min-width: 480px) {
-  .modal-sheet-footer > *:has(> :nth-child(3)) {
-    width: 90%;
-  }
+  flex: 0 0 80% !important;
+  max-width: 80%;
+  width: 80% !important;
+  margin-inline: auto !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
