@@ -1450,7 +1450,8 @@ export default function Manage() {
   const renderRowList = (
     rows: ScheduleRow[],
     onUpdate: (id: string, patch: Partial<ScheduleRow>) => void,
-    onRemove: (id: string) => void
+    onRemove: (id: string) => void,
+    iconRemove = false,
   ) => (
     <div className="space-y-2">
       {rows.map(r => (
@@ -1468,7 +1469,9 @@ export default function Manage() {
           </select>
           <TimeField value={r.startTime} onChange={v => onUpdate(r.id, { startTime: v })} ariaLabel="start" />
           <TimeField value={r.endTime} onChange={v => onUpdate(r.id, { endTime: v })} ariaLabel="end" />
-          <button type="button" onClick={() => onRemove(r.id)} className="shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer">Remove</button>
+          <button type="button" onClick={() => onRemove(r.id)} className={cn(iconRemove ? 'action-button action-button--danger action-button--icon action-button--compact' : 'shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer')} aria-label={iconRemove ? 'Remove day and time' : 'Remove'}>
+            {iconRemove ? <Undo2 className="w-3.5 h-3.5" /> : 'Remove'}
+          </button>
         </div>
       ))}
     </div>
@@ -1803,7 +1806,7 @@ export default function Manage() {
                                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-3 pr-1" style={{ overscrollBehaviorY: 'contain' }}>
                   <div>
                     <label className={labelCls}>Day & Time</label>
-                    {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow)}
+                    {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow, true)}
                     <button type="button" onClick={addSubjectRow} disabled={subjectRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
                       <Plus className="w-3.5 h-3.5" /> Add Another Day & Time
                     </button>
@@ -1894,7 +1897,7 @@ export default function Manage() {
                     <div>
                       <label className={labelCls}>Schedules (Day + Time)</label>
                       <p className={descCls}>Add weekly SGT class days and times.</p>
-                      {renderRowList(sgtRows, updateSgtRow, removeSgtRow)}
+                      {renderRowList(sgtRows, updateSgtRow, removeSgtRow, true)}
                       <button type="button" onClick={addSgtRow} disabled={sgtRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
                         <Plus className="w-3.5 h-3.5" /> Add Another Day & Time
                       </button>
@@ -2107,11 +2110,7 @@ export default function Manage() {
           open={addSlotOpen}
           onClose={() => { setAddSlotOpen(false); setFormError(null); setAddSuccess(false); }}
           maxW="max-w-sm"
-          header={
-            <div className="flex items-center justify-between">
-              <div className="text-center"><h3 className="text-sm font-bold text-foreground">Add Slot</h3><p className="mt-1 text-[10px] text-muted-foreground">Add a class to the selected academic day.</p></div>
-            </div>
-          }
+          header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Add Slot</h3><p className="mt-1 text-[10px] text-muted-foreground">Add a class to the selected academic day.</p></div>}
           footer={
             <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5 border-2 border-cyan-400/90')}>
               <Plus className="w-3.5 h-3.5" /> Add Slot
@@ -2147,11 +2146,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* More menu */}
-        <OverlayModal open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} maxW="max-w-md" header={
-          <div className="flex items-center justify-between">
-            <div className="text-center"><h3 className="text-sm font-bold text-foreground">More</h3><p className="mt-1 text-[10px] text-muted-foreground">Choose a Manage action.</p></div>
-          </div>
-        }>
+        <OverlayModal open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} maxW="max-w-md" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">More</h3><p className="mt-1 text-[10px] text-muted-foreground">Choose a Manage action.</p></div>}>
           <div className="p-4 sm:p-5 space-y-2">
             <button type="button" onClick={openAddFromMore} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
               <Plus className="w-4 h-4 text-primary shrink-0" />
@@ -2302,14 +2297,7 @@ export default function Manage() {
           open={!!editWard}
           onClose={() => { setEditWard(null); setEditError(null); }}
           maxW="max-w-lg"
-          header={
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
-                <p className="text-[10px] text-muted-foreground mt-1">Change dates, session times, or vacations. Rename is disabled.</p>
-              </div>
-            </div>
-          }
+          header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Edit Rotation</h3><p className="mt-1 text-[10px] text-muted-foreground">Change dates, session times, or vacations. Rename is disabled.</p></div>}
           footer={
             <div className="flex gap-2">
               <button type="button" onClick={saveEditWard} className={btnPrimary}>Save Changes</button>

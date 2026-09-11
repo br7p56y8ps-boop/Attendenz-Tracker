@@ -72,7 +72,7 @@ export function WhatsNewPopup() {
 
   const handleClose = () => { setWhatsNewOpen(false); };
   const header = (
-    <div className="flex items-center gap-2.5 px-4 pb-3 pt-1">
+    <div className="flex flex-col items-center gap-2.5 px-4 pb-3 pt-1 text-center">
       <div className="h-9 w-9 shrink-0 overflow-hidden rounded-2xl border border-border/70 bg-background shadow-sm">
         <img
           src={`${import.meta.env.BASE_URL || "/"}Logo.jpeg`}
@@ -80,7 +80,7 @@ export function WhatsNewPopup() {
           className="h-full w-full object-cover"
         />
       </div>
-      <div className="text-left">
+      <div className="text-center">
         <h2 id="whats-new-title" className="text-sm font-extrabold leading-tight text-foreground">
           What's New
         </h2>
