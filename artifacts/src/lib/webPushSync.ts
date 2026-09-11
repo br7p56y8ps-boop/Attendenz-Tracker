@@ -84,7 +84,7 @@ function maybeShowMissedNightlyReminder(payload: ReminderSyncPayload, occurrence
     previous.setUTCDate(previous.getUTCDate() - 1);
     return previous.toISOString().slice(0, 10);
   })();
-  const dueKey = `att_nightly_catchup_shown_${reminderDate}_${payload.preferences.nightlyReminderTime}`;
+  const dueKey = `att_nightly_catchup_shown_${reminderDate}`;
   if (localStorage.getItem(dueKey) === 'true') return;
   const syncedAt = previousSync.state === 'synced' ? Date.parse(previousSync.at) : NaN;
   const dueAt = new Date(`${reminderDate}T00:00:00`).getTime() + dueMinute * 60_000;

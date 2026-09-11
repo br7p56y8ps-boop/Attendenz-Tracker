@@ -530,9 +530,9 @@ function listLeadNames(rows: OccurrenceRow[], limit = 6): string {
 }
 
 function leadReminderDetails(item: OccurrenceRow): { title: string; description: string } {
-  if (item.attentionLevel === 'mustAttend') return { title: 'Must Attend Reminder', description: 'This class is important for your attendance.\nAttending it is advised to keep you on track.' };
-  if (item.attentionLevel === 'needAttention') return { title: 'Need Attention Reminder', description: 'This class needs your attention.\nAttending it helps keep your attendance at a safe level.' };
-  return { title: 'Safe to Miss Reminder', description: 'You are currently on track.\nMissing this class should still be okay and keep you on track.' };
+  if (item.attentionLevel === 'mustAttend') return { title: 'Must Attend Reminder', description: 'This class is important for your attendance. Attending it will help you stay on track.' };
+  if (item.attentionLevel === 'needAttention') return { title: 'Need Attention Reminder', description: 'This class needs your attention. Attending it will help keep your attendance at a safe level.' };
+  return { title: 'Safe to Miss Reminder', description: 'You are currently on track. Missing this class should still be okay and keep you on track.' };
 }
 
 async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): Promise<void> {

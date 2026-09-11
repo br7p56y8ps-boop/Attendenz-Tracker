@@ -262,7 +262,7 @@ export default function Timetable() {
   const allRotations = useMemo(() => {
     const list: { name: string; start: string; end: string }[] = [];
     if (subjectMode === 'preloaded') {
-      presetWardSchedule.forEach(ws => list.push({ name: ws.ward, start: ws.start, end: ws.end }));
+      presetWardSchedule.filter(ws => ws.ward.trim().toLowerCase() !== 'holiday').forEach(ws => list.push({ name: ws.ward, start: ws.start, end: ws.end }));
     } else {
       customWards.forEach(w => list.push({ name: w.name, start: w.startDate, end: w.endDate }));
     }

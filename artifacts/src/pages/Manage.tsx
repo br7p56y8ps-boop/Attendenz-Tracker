@@ -1,7 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { useLocation } from 'wouter';
-import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { CountStepper } from '@/components/CountStepper';
 import {
@@ -20,13 +17,12 @@ import {
   getSubjectColor,
 } from '@/lib/utils';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
-import { useModalAccessibility } from '@/components/ui/dialog';
+import { ModalSheet } from '@/components/ui/modal-sheet';
 import { storageSetItem } from '@/lib/idb';
 import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
-import { getCurricula } from '@/lib/curriculumStore';
 import {
-  Plus, Trash2, X, AlertTriangle,
+  Plus, Trash2, Undo2, X, AlertTriangle,
   GraduationCap, Stethoscope,
   Check, ChevronDown, ChevronRight, SendToBack, Pencil,
 } from 'lucide-react';
@@ -59,36 +55,16 @@ const splitRange = (range: string): { start: string; end: string } => {
   if (m) return { start: m[1], end: m[2] };
   return { start: '09:00 AM', end: '10:00 AM' };
 };
-function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, footer, heightClass = 'max-h-[85vh]', bodyClassName = 'overflow-y-auto', dense = false }: {
+function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, footer, heightClass = 'max-h-[80dvh]', bodyClassName = 'overflow-y-auto', dense = false }: {
   open: boolean; onClose: () => void; children: React.ReactNode; maxW?: string;
   header?: React.ReactNode; footer?: React.ReactNode; heightClass?: string; bodyClassName?: string; dense?: boolean;
 }) {
-  const modalRef = useModalAccessibility(open, onClose);
-
-  if (!open) return null;
-  if (typeof document === 'undefined') return null;
-  return createPortal(
-    <div ref={modalRef} className="fixed inset-0 z-[120] flex items-end justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, y: 48 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 48 }}
-        layout
-        transition={{ type: 'spring', damping: 26, stiffness: 320, layout: { type: 'spring', damping: 28, stiffness: 300 } }}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Manage dialog"
-        tabIndex={-1}
-        className={cn('modal-sheet-content relative bg-card backdrop-blur-2xl border border-border/80 rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.42)] w-full max-h-[min(70dvh,48rem)] min-h-[12rem] flex flex-col overflow-hidden', maxW, heightClass)}
-        onClick={e => e.stopPropagation()}
-      >
-        {header && <div className={cn('shrink-0 border-b border-border/40', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
-        <div className={cn('flex-1 min-h-0', bodyClassName)}>{children}</div>
-        {footer && <div className={cn('shrink-0 border-t border-border/40', dense ? 'px-3 sm:px-4 pb-2.5 sm:pb-3 pt-1.5' : 'px-4 sm:px-5 pb-4 sm:pb-5 pt-3')}>{footer}</div>}
-      </motion.div>
-    </div>,
-    document.body
+  return (
+    <ModalSheet open={open} onClose={onClose} maxWidth={maxW} className={heightClass} bodyClassName={bodyClassName} ariaLabel="Manage dialog"
+      header={header && <div className={cn('shrink-0', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
+      footer={footer && <div className={cn('shrink-0', dense ? 'px-3 sm:px-4 pb-2.5 sm:pb-3 pt-1.5' : 'px-4 sm:px-5 pb-4 sm:pb-5 pt-3')}>{footer}</div>}>
+      <div className="min-h-0">{children}</div>
+    </ModalSheet>
   );
 }
 
@@ -321,7 +297,7 @@ function VacationEditor({ vacations, onChange }: {
             <div key={v.id} className="flex items-center gap-1.5">
               <input type="date" value={v.start} onChange={e => onChange(vacations.map(x => x.id === v.id ? { ...x, start: e.target.value } : x))} className={cn(inputCls, 'h-8 text-center text-xs')} />
               <input type="date" value={v.end} onChange={e => onChange(vacations.map(x => x.id === v.id ? { ...x, end: e.target.value } : x))} className={cn(inputCls, 'h-8 text-center text-xs')} />
-              <button type="button" onClick={() => onChange(vacations.filter(x => x.id !== v.id))} className="shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer">Remove</button>
+              <button type="button" onClick={() => onChange(vacations.filter(x => x.id !== v.id))} className="action-button action-button--danger action-button--icon action-button--compact" aria-label="Remove day and time"><Undo2 className="w-3.5 h-3.5" /></button>
             </div>
           ))}
           <button type="button" onClick={() => onChange([...vacations, { id: genId('vac'), start: '', end: '' }])} className={cn(btnGhost, 'w-full flex items-center justify-center gap-1.5')}>
@@ -356,7 +332,6 @@ export default function Manage() {
     getPresetWardDisplayName,
   } = useCustomData();
   const { removeSubjectData, removeWardData, removeAttendanceByKey, reopenFinishedIfPlanIncreased } = useAttendance();
-  const [, setLocation] = useLocation();
 
   const [note, setNote] = useState<{ msg: string; kind: 'ok' | 'err' | 'info' } | null>(null);
   const noteTimer = useRef<number | null>(null);
@@ -426,7 +401,6 @@ export default function Manage() {
   const [addSlotPlanned, setAddSlotPlanned] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const [noActiveCurriculumMessage, setNoActiveCurriculumMessage] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
   const [historyClearEntry, setHistoryClearEntry] = useState<any | null>(null);
   const [editDataOpen, setEditDataOpen] = useState(false);
@@ -547,19 +521,10 @@ export default function Manage() {
   }, [subjectMode, userAddedSubjects, customSubjects]);
 
   const openMoreMenu = () => {
-    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
-      setNoActiveCurriculumMessage(true);
-      return;
-    }
     setMoreMenuOpen(true);
   };
 
   const openEditDataFromMore = () => {
-    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
-      setMoreMenuOpen(false);
-      setNoActiveCurriculumMessage(true);
-      return;
-    }
     setMoreMenuOpen(false);
     setReturnToMoreAfterEditData(true);
     setEditDataOpen(true);
@@ -644,10 +609,6 @@ export default function Manage() {
 
   const openAddSlot = () => { setAddSlotSubject(''); setAddSlotStart('09:00 AM'); setAddSlotEnd('10:00 AM'); setAddSlotPlanned(0); setFormError(null); setAddSlotOpen(true); setAddSuccess(false); };
   const openAddFromMore = () => {
-    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
-      setNoActiveCurriculumMessage(true);
-      return;
-    }
     setMoreMenuOpen(false);
     setReturnToMoreAfterAdd(true);
     setFormError(null);
@@ -1420,7 +1381,7 @@ export default function Manage() {
       if (subjectMode === 'preloaded') {
         const seenWards = new Set<string>();
         WARD_SUBJECTS.forEach(w => { seenWards.add(w.name); presetItems.push({ id: `ward:${w.name}`, name: w.name, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(w.name) }); });
-        presetWardSchedule.forEach(e => { if (!seenWards.has(e.ward)) { seenWards.add(e.ward); presetItems.push({ id: `ward:${e.ward}`, name: e.ward, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(e.ward) }); } });
+        presetWardSchedule.forEach(e => { if (e.ward.trim().toLowerCase() !== 'holiday' && !seenWards.has(e.ward)) { seenWards.add(e.ward); presetItems.push({ id: `ward:${e.ward}`, name: e.ward, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(e.ward) }); } });
         userAddedSubjects.filter(s => isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'sgt' as const, category: 'SGT' as const, deletable: true, planned: s.plannedClasses }));
       } else {
         customWards.forEach(w => addedItems.push({ id: w.id, name: w.name, store: 'custom-ward' as const, category: 'Clinical' as const, deletable: true, planned: getCustomWardTotalPlanned(w.startDate, w.endDate, w.vacationPeriods) }));
@@ -1489,7 +1450,8 @@ export default function Manage() {
   const renderRowList = (
     rows: ScheduleRow[],
     onUpdate: (id: string, patch: Partial<ScheduleRow>) => void,
-    onRemove: (id: string) => void
+    onRemove: (id: string) => void,
+    iconRemove = false,
   ) => (
     <div className="space-y-2">
       {rows.map(r => (
@@ -1507,7 +1469,9 @@ export default function Manage() {
           </select>
           <TimeField value={r.startTime} onChange={v => onUpdate(r.id, { startTime: v })} ariaLabel="start" />
           <TimeField value={r.endTime} onChange={v => onUpdate(r.id, { endTime: v })} ariaLabel="end" />
-          <button type="button" onClick={() => onRemove(r.id)} className="shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer">Remove</button>
+          <button type="button" onClick={() => onRemove(r.id)} className={cn(iconRemove ? 'action-button action-button--danger action-button--icon action-button--compact' : 'shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer')} aria-label={iconRemove ? 'Remove day and time' : 'Remove'}>
+            {iconRemove ? <Undo2 className="w-3.5 h-3.5" /> : 'Remove'}
+          </button>
         </div>
       ))}
     </div>
@@ -1599,15 +1563,6 @@ export default function Manage() {
         </button>
       }
     >
-      {noActiveCurriculumMessage && createPortal(
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-end justify-center bg-black/80 backdrop-blur-sm" onClick={() => setNoActiveCurriculumMessage(false)}>
-          <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} className="modal-sheet-content !min-h-0 w-full max-w-md rounded-t-3xl bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-foreground">No Active Curricula</h3>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">There are no Active Curricula. Reopen or Create a new Active Curricula from <button type="button" onClick={() => { setNoActiveCurriculumMessage(false); setLocation('/account'); }} className="font-semibold text-blue-500 hover:text-blue-400">Setting&apos;s</button> Curriculum Management to Add/Edit a Subject data.</p>
-            <button type="button" onClick={() => setNoActiveCurriculumMessage(false)} className="action-button action-button--cancel mt-3 w-full min-h-10">Close</button>
-          </motion.div>
-        </motion.div>, document.body
-      )}
       <div className="flex h-full min-h-0 flex-col gap-1 scroll-reachability">
         <div className="shrink-0">{manageSectionSwitcher}</div>
         {manageDaySelector && (
@@ -1742,12 +1697,12 @@ export default function Manage() {
           maxW="max-w-lg"
           heightClass="!max-h-[80dvh]"
           dense
-          bodyClassName={section === 'academic' ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}
+          bodyClassName={section === 'academic' ? 'flex min-h-0 flex-col overflow-y-auto' : 'overflow-y-auto'}
           header={
             <div>
-              <div className="flex items-center justify-between">
+              <div className="text-center">
                 <h3 className="text-sm font-bold text-foreground">{section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}</h3>
-                <button type="button" onClick={closeAddModal} className="action-button action-button--close action-button--icon" aria-label="Close Add New"><X className="w-4 h-4" /></button>
+                <p className="mt-1 text-[10px] text-muted-foreground">Create a subject, rotation, or teaching item.</p>
               </div>
 
               {/* Static type selector */}
@@ -1851,7 +1806,7 @@ export default function Manage() {
                                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-3 pr-1" style={{ overscrollBehaviorY: 'contain' }}>
                   <div>
                     <label className={labelCls}>Day & Time</label>
-                    {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow)}
+                    {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow, true)}
                     <button type="button" onClick={addSubjectRow} disabled={subjectRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
                       <Plus className="w-3.5 h-3.5" /> Add Another Day & Time
                     </button>
@@ -1942,7 +1897,7 @@ export default function Manage() {
                     <div>
                       <label className={labelCls}>Schedules (Day + Time)</label>
                       <p className={descCls}>Add weekly SGT class days and times.</p>
-                      {renderRowList(sgtRows, updateSgtRow, removeSgtRow)}
+                      {renderRowList(sgtRows, updateSgtRow, removeSgtRow, true)}
                       <button type="button" onClick={addSgtRow} disabled={sgtRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
                         <Plus className="w-3.5 h-3.5" /> Add Another Day & Time
                       </button>
@@ -1974,11 +1929,10 @@ export default function Manage() {
                   <h3 className="text-sm font-bold text-foreground">Edit {section === 'academic' ? 'Academic' : 'Clinical'} Data</h3>
                   <p className="text-[10px] text-muted-foreground">
                     {section === 'clinical'
-                      ? 'Planned for clinical items are auto-calculated and cannot be edited.'
+                      ? 'Planned for clinical items are auto-calculated and cannot be edited. Vacation or exam periods can be edited from the clinical edit window.'
                       : subjectMode === 'custom' ? 'Edit planned classes or delete Custom routine items.' : 'Edit planned classes or delete user-added items.'}
                   </p>
                 </div>
-                <button type="button" onClick={closeEditData} className="action-button action-button--close action-button--icon" aria-label="Close Edit Data"><X className="w-4 h-4" /></button>
               </div>
 
               {/* Active-mode data selector */}
@@ -2156,12 +2110,7 @@ export default function Manage() {
           open={addSlotOpen}
           onClose={() => { setAddSlotOpen(false); setFormError(null); setAddSuccess(false); }}
           maxW="max-w-sm"
-          header={
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
-              <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
-            </div>
-          }
+          header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Add Slot</h3><p className="mt-1 text-[10px] text-muted-foreground">Add a class to the selected academic day.</p></div>}
           footer={
             <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5 border-2 border-cyan-400/90')}>
               <Plus className="w-3.5 h-3.5" /> Add Slot
@@ -2197,12 +2146,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* More menu */}
-        <OverlayModal open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} maxW="max-w-md" header={
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-foreground">More</h3>
-            <button type="button" onClick={() => setMoreMenuOpen(false)} className="action-button action-button--close action-button--icon" aria-label="Close More Menu"><X className="w-4 h-4" /></button>
-          </div>
-        }>
+        <OverlayModal open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} maxW="max-w-md" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">More</h3><p className="mt-1 text-[10px] text-muted-foreground">Choose a Manage action.</p></div>}>
           <div className="p-4 sm:p-5 space-y-2">
             <button type="button" onClick={openAddFromMore} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
               <Plus className="w-4 h-4 text-primary shrink-0" />
@@ -2220,12 +2164,8 @@ export default function Manage() {
         </OverlayModal>
 
         {/* History Modal */}
-        <OverlayModal open={historyOpen} onClose={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} maxW="max-w-md">
+        <OverlayModal open={historyOpen} onClose={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} maxW="max-w-md" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Recent Activity</h3><p className="mt-1 text-[10px] text-muted-foreground">Review recent changes made in Manage.</p></div>}>
           <div className="p-4 sm:p-5 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">Recent Activity</h3>
-              <button type="button" onClick={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
-            </div>
             <div className="space-y-2">
               {historyEntries.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-5">No Manage actions yet.</p>
@@ -2242,11 +2182,11 @@ export default function Manage() {
                         <button
                           type="button"
                           onClick={(event) => { event.stopPropagation(); setHistoryClearEntry(entry); }}
-                          className="action-button action-button--close px-2 py-1 text-[10px]"
+                          className="action-button action-button--close action-button--icon"
                           aria-label={`Clear ${entry.type} history entry`}
                           title="Clear This History Entry Only"
                         >
-                          Clear
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -2259,16 +2199,9 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Clear History Entry Modal */}
-        <OverlayModal open={!!historyClearEntry} onClose={() => setHistoryClearEntry(null)} maxW="max-w-md">
+        <OverlayModal open={!!historyClearEntry} onClose={() => setHistoryClearEntry(null)} maxW="max-w-md" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Clear This History Entry?</h3><p className="mt-1 text-[10px] text-muted-foreground">Only this displayed history record will be removed.</p></div>}>
           {historyClearEntry && (
             <div className="p-4 sm:p-5 space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-muted-foreground" /></div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">Clear This History Entry?</h3>
-                  <p className="text-[10px] text-muted-foreground">Only this displayed history record will be removed.</p>
-                </div>
-              </div>
               <div className="rounded-xl border border-border/60 bg-background px-3 py-2">
                 <p className="text-xs font-semibold text-foreground">{historyClearEntry.type} · {getHistoryCategory(historyClearEntry)}</p>
                 {formatHistoryDetail(historyClearEntry) && <p className="text-[10px] text-muted-foreground mt-0.5">{formatHistoryDetail(historyClearEntry)}</p>}
@@ -2294,7 +2227,7 @@ export default function Manage() {
             </>
           }
           footer={
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2">
               <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={cn(btnCancel, editSubject?.subjectType === 'allied' && 'text-destructive hover:text-destructive')}>Cancel</button>
               <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save Changes</button>
             </div>
@@ -2364,19 +2297,9 @@ export default function Manage() {
           open={!!editWard}
           onClose={() => { setEditWard(null); setEditError(null); }}
           maxW="max-w-lg"
-          header={
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
-                <p className="text-[10px] text-muted-foreground mt-1">Change dates, session times, or vacations. Rename is disabled.</p>
-              </div>
-              <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="action-button action-button--close action-button--icon shrink-0" aria-label="Close Edit Rotation">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          }
+          header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Edit Rotation</h3><p className="mt-1 text-[10px] text-muted-foreground">Change dates, session times, or vacations. Rename is disabled.</p></div>}
           footer={
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2">
               <button type="button" onClick={saveEditWard} className={btnPrimary}>Save Changes</button>
             </div>
           }
@@ -2422,14 +2345,14 @@ export default function Manage() {
               </div>
             ) : slotConflict ? (
               <div className="grid grid-cols-3 gap-2">
-                <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full')}>Remove Slot</button>
+                <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full')}>Remove</button>
                 <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnCancel, 'w-full')}>Cancel</button>
                 <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className={cn(btnPrimary, 'w-full')}>Merge Anyway</button>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full flex items-center justify-center gap-1.5')}>
-                  <Trash2 className="w-3.5 h-3.5" /> Remove Slot
+                  <Trash2 className="w-3.5 h-3.5" /> Remove
                 </button>
                 <button type="button" onClick={closeEditSlot} className={cn(btnCancel, 'w-full')}>Cancel</button>
                 {editSlot.multiSelectMode ? (
@@ -2539,7 +2462,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Slot Remove Confirm Modal */}
-        <OverlayModal open={slotRemoveConfirm} onClose={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }}>
+        <OverlayModal open={slotRemoveConfirm} onClose={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }} header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Remove from Slot?</h3><p className="mt-1 text-[10px] text-muted-foreground">Confirm removing this subject from its scheduled slot.</p></div>}>
           {slotRemove && (
             <div className="p-4 sm:p-5 space-y-3">
               <div className="flex items-start gap-3">
@@ -2558,7 +2481,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Whole Slot Remove Confirm Modal */}
-        <OverlayModal open={slotRemoveAllConfirm} onClose={() => setSlotRemoveAllConfirm(false)}>
+        <OverlayModal open={slotRemoveAllConfirm} onClose={() => setSlotRemoveAllConfirm(false)} header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Remove This Slot?</h3><p className="mt-1 text-[10px] text-muted-foreground">All subjects in this time slot will be removed.</p></div>}>
           <div className="p-4 sm:p-5 space-y-3">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-rose-500" /></div>
@@ -2575,7 +2498,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Delete Confirm Modal */}
-        <OverlayModal open={!!deleteSheet} onClose={() => setDeleteSheet(null)}>
+        <OverlayModal open={!!deleteSheet} onClose={() => setDeleteSheet(null)} header={deleteSheet ? <div className="text-center"><h3 className="text-sm font-bold text-foreground">{deleteSheet.title}</h3><p className="mt-1 text-[10px] text-muted-foreground">Confirm the items to permanently remove.</p></div> : undefined}>
           {deleteSheet && (
             <div className="p-4 sm:p-5 space-y-3">
               <div className="flex items-start gap-3">
@@ -2597,7 +2520,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Conflict Sheet Modal */}
-        <OverlayModal open={!!conflictSheet} onClose={() => setConflictSheet(null)}>
+        <OverlayModal open={!!conflictSheet} onClose={() => setConflictSheet(null)} header={conflictSheet ? <div className="text-center"><h3 className="text-sm font-bold text-foreground">Conflict Detected</h3><p className="mt-1 text-[10px] text-muted-foreground">Review the issues before proceeding.</p></div> : undefined}>
           {conflictSheet && (
             <div className="p-4 sm:p-5 space-y-3">
               <div className="flex items-start gap-3">

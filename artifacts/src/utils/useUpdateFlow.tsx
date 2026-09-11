@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { createSnapshot, getSnapshots } from '@/utils/snapshotUtils';
+import { ModalSheet } from '@/components/ui/modal-sheet';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { storageSetItemChecked, storageRemoveItemChecked, storageCommitChecked } from '@/lib/idb';
 import { notifyUpdateAvailable } from '@/lib/webPush';
@@ -84,7 +84,7 @@ export function useUpdateFlow() {
           return;
         }
       }
-      await new Promise(r => setTimeout(r, Math.max(0, 8000 - (Date.now() - backupStarted))));
+      await new Promise(r => setTimeout(r, Math.max(0, 5000 - (Date.now() - backupStarted))));
       setProgressComplete(true);
       await new Promise(r => setTimeout(r, 350));
     }
@@ -133,7 +133,7 @@ export function useUpdateFlow() {
 }
 
 export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'backing' | 'downloading' | 'installing' | 'completed'; complete?: boolean }) => {
-  const duration = phase === 'backing' ? 8000 : 5000;
+  const duration = phase === 'backing' ? 5000 : phase === 'downloading' ? 8000 : 5000;
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     setProgress(0);
@@ -149,33 +149,24 @@ export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'back
   return (
     <div className="release-progress flex w-full flex-col items-center justify-center text-center">
       <div className="release-progress__steps flex items-center justify-center" role="progressbar" aria-label="Update progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
-        <div className="relative h-24 w-24" aria-hidden="true"><svg viewBox="0 0 100 100" className="h-24 w-24 -rotate-90"><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" className="text-muted/40" /><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" className="text-primary transition-all duration-300" strokeDasharray={264} strokeDashoffset={264 - (264 * Math.max(0, progress)) / 100} /></svg><span className="absolute inset-0 flex items-center justify-center text-sm font-extrabold text-foreground">{Math.round(progress)}%</span></div>
+        <div className="relative h-24 w-24" aria-hidden="true"><svg viewBox="0 0 100 100" className="h-24 w-24 -rotate-90"><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" className="text-muted/40" /><circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" className="text-primary transition-all duration-300" strokeDasharray={264} strokeDashoffset={264 - (264 * Math.max(0, progress)) / 100} /></svg>{phase === 'completed' ? <span className="update-progress-checkmark absolute inset-0 flex items-center justify-center text-4xl font-black text-primary" aria-label="Completed">✓</span> : <span className="absolute inset-0 flex items-center justify-center text-sm font-extrabold text-foreground">{Math.round(progress)}%</span>}</div>
       </div>
-      <p className="release-progress__label mt-2 text-xs font-bold text-foreground">{phase === 'completed' ? 'Completed' : complete && phase === 'backing' ? 'Backup complete' : phase === 'backing' ? 'Backing Up…' : phase === 'downloading' ? 'Downloading Updates…' : 'Installing…'}</p>
+      <p className="release-progress__label mt-2 text-xs font-bold text-foreground">{phase === 'completed' ? 'Completed!' : complete && phase === 'backing' ? 'Backup complete' : phase === 'backing' ? 'Backing Up…' : phase === 'downloading' ? 'Downloading Updates…' : 'Installing Updates…'}</p>
     </div>
   );
 };
 
 export const UpdateOverlay = ({ phase, progressComplete }: { phase: 'none' | 'backing' | 'downloading' | 'installing' | 'completed'; progressComplete?: boolean }) => (
-  <AnimatePresence>
-    {phase !== 'none' && (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[140] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
-        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content flex w-full max-w-xs flex-col items-center justify-center gap-4 rounded-3xl border border-border/80 bg-card p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.42)]">
-          <UpdateProgressSlider phase={phase} complete={progressComplete} />
-          <p className="text-[10px] text-muted-foreground">{phase === 'backing' ? 'Securing your attendance records & preferences…' : phase === 'completed' ? 'The app will load the Welcome Screen shortly.' : 'Please keep the app open while the update completes.'}</p>
-        </motion.div>
-      </motion.div>
-    )}
-  </AnimatePresence>
+  <ModalSheet open={phase !== 'none'} onClose={() => undefined} ariaLabel="Update progress" maxWidth="max-w-xs" zIndexClassName="z-[140]" bodyClassName="flex flex-col items-center justify-center gap-4 p-8 text-center">
+    <UpdateProgressSlider phase={phase === 'none' ? 'downloading' : phase} complete={progressComplete} />
+    <p className="text-[10px] text-muted-foreground">{phase === 'backing' ? 'Securing your attendance records & preferences…' : phase === 'completed' ? 'The app will load the Welcome Screen shortly.' : 'Please keep the app open while the update completes.'}</p>
+  </ModalSheet>
 );
 
 export const UpdateModal = ({ open, serverVersion, summary, onRemind, onUpdate }: {
   open: boolean; serverVersion: string; summary: string; onRemind: () => void; onUpdate: (b: boolean) => void;
 }) => (
-  <AnimatePresence>
-    {open && (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[120] flex items-end justify-center p-4">
-        <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4" onClick={e => e.stopPropagation()}>
+  <ModalSheet open={open} onClose={onRemind} ariaLabel="Update available" maxWidth="max-w-sm" bodyClassName="p-6 space-y-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20"><span className="text-amber-500 font-extrabold">↑</span></div>
             <div className="text-left">
@@ -189,8 +180,5 @@ export const UpdateModal = ({ open, serverVersion, summary, onRemind, onUpdate }
             <button type="button" onClick={() => onUpdate(false)} className="action-button action-button--update w-full">Update</button>
             <button type="button" onClick={onRemind} className="action-button action-button--neutral w-full">Remind Later</button>
           </div>
-        </motion.div>
-      </motion.div>
-    )}
-  </AnimatePresence>
+  </ModalSheet>
 );

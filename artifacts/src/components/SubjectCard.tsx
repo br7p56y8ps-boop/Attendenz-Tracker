@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, pctColor, getSubjectColor, formatPercentage } from '@/lib/utils';
@@ -7,6 +6,7 @@ import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { CountStepper } from '@/components/CountStepper';
 import { Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ModalSheet } from '@/components/ui/modal-sheet';
 
 interface SubjectCardProps {
   subject: string;
@@ -30,7 +30,7 @@ export const SubjectCard = ({
   isSGT = false,
   sgtId,
 }: SubjectCardProps) => {
-  const { subjects, wards, finishedMap, updateSubject, updateWard, toggleFinished, preferredPercentage } = useAttendance();
+  const { subjects, wards, updateSubject, updateWard, preferredPercentage } = useAttendance();
   const { subjectMode, getPresetSubjectDisplayName, getSubjectIdByName } = useCustomData();
 
   const displayName = subjectMode === 'preloaded' ? getPresetSubjectDisplayName(subject) : subject;
@@ -45,7 +45,6 @@ export const SubjectCard = ({
   const dataStore = isWard ? wards : subjects;
   const updateFn = isWard ? updateWard : updateSubject;
   const data = attendanceKey ? dataStore[attendanceKey] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-  const isMarkedFinished = attendanceKey ? finishedMap?.[attendanceKey] || false : false;
 
   const currentDataRef = useRef({ attended: data.attended, missed: data.missed });
   useEffect(() => {
@@ -120,7 +119,7 @@ export const SubjectCard = ({
   const requiredToAttend = rawRequired > remaining ? "Not possible" : rawRequired;
   const isMaxReached = totalConducted >= totalPlanned;
   const percentageColor = pctColor(percentage, preferredPercentage, {
-    isFinished: isMarkedFinished || isMaxReached,
+    isFinished: isMaxReached,
     hasPlannedClasses: totalPlanned > 0,
   });
 
@@ -258,7 +257,7 @@ export const SubjectCard = ({
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setActiveStatInfo(null); }}
-                  className="action-button action-button--close action-button--icon"
+                  className="subject-inline-message-close action-button action-button--close action-button--icon"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -289,26 +288,6 @@ export const SubjectCard = ({
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Mark Completed Button */}
-      {isWard && (
-        <div className="pt-2">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (attendanceKey) toggleFinished(attendanceKey);
-            }}
-            className={cn(
-              "action-button w-full",
-              isMarkedFinished
-                ? "action-button--warning"
-                : "action-button--edit"
-            )}
-          >
-            <span>{isMarkedFinished ? 'Finished Early (Click to Re-open)' : 'Mark as Finished'}</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 
@@ -327,27 +306,7 @@ export const SubjectCard = ({
         {headerContent}
       </div>
 
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {isModalOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end justify-center p-4 overflow-hidden"
-              onClick={closeModal}
-            >
-              <motion.div
-                initial={{ y: 48, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 48, opacity: 0 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                role="dialog"
-                aria-modal="true"
-                aria-label={`${displayName} details`}
-                className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
-                onClick={(e) => e.stopPropagation()}
-              >
+      <ModalSheet open={isModalOpen} onClose={closeModal} ariaLabel={`${displayName} details`} maxWidth="max-w-md" className="subject-details-modal" bodyClassName="p-6 space-y-4 text-left">
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -368,7 +327,7 @@ export const SubjectCard = ({
                     <button
                       type="button"
                       onClick={closeModal}
-                      className="action-button action-button--close action-button--icon"
+                      className="subject-details-close action-button action-button--close action-button--icon"
                       title="Close"
                     >
                       <X className="w-4 h-4" />
@@ -376,12 +335,7 @@ export const SubjectCard = ({
                   </div>
                 </div>
                 {modalDetailsContent}
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
+      </ModalSheet>
     </>
   );
 };

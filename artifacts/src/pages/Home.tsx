@@ -9,6 +9,7 @@ import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSession
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { PRESET_PARENTS } from '@/lib/constants';
 import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen } from 'lucide-react';
+import { ModalSheet } from '@/components/ui/modal-sheet';
 
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -675,15 +676,7 @@ export default function Home() {
         </AnimatePresence>
 
         {/* ── Update notice modal ── */}
-        <AnimatePresence>
-          {updateInfoOpen && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-md z-[120] flex items-end justify-center p-4" onClick={() => setUpdateInfoOpen(false)}>
-              <motion.div initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 48, opacity: 0 }} className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-5 w-full max-w-sm max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-3" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-extrabold text-foreground">New Version Available <span className="text-emerald-400">(v{serverVersion})</span></h3>
-                  <button type="button" onClick={() => setUpdateInfoOpen(false)} className="action-button action-button--close action-button--icon"><X className="w-3.5 h-3.5" /></button>
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p>
+        <ModalSheet open={updateInfoOpen} onClose={() => setUpdateInfoOpen(false)} ariaLabel="Update information" maxWidth="max-w-sm" header={<div className="text-center"><h3 className="text-sm font-extrabold text-foreground">New Version Available <span className="text-emerald-400">(v{serverVersion})</span></h3><p className="mt-1 text-[10px] text-muted-foreground">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p></div>} bodyClassName="p-5 space-y-3">
                 {!online && (
                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5">
                     <p className="text-[10px] font-bold text-amber-500">You're offline — connect to the internet once to install the update.</p>
@@ -699,10 +692,7 @@ export default function Home() {
                   <button type="button" onClick={() => setUpdateInfoOpen(false)} className="action-button action-button--neutral flex-1">Remind Later</button>
                   <button type="button" onClick={() => { setUpdateInfoOpen(false); setLocation('/account'); }} className="action-button action-button--update flex-1">Go to Account</button>
                 </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        </ModalSheet>
       </div>
     </Layout>
   );
