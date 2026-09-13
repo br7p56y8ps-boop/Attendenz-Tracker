@@ -146,6 +146,7 @@ export default function App() {
   const [storageReady, setStorageReady] = useState(false);
   const [storageError, setStorageError] = useState(false);
   const [storageInitError, setStorageInitError] = useState<string | null>(null);
+  const [storageProgress, setStorageProgress] = useState('Initialising…');
   useEffect(() => {
     const onStorageError = () => setStorageError(true);
     const flushOnHide = () => { if (document.visibilityState === 'hidden') void flushStorageWrites(); };
@@ -160,7 +161,10 @@ export default function App() {
   }, []);
   useEffect(() => {
     let alive = true;
-    initStorageAndMigrate().then(() => recoverPendingDeleteAll()).then(() => { ensureCurriculumMigration(); if (alive) setStorageReady(true); }).catch((error) => { if (alive) setStorageInitError(error instanceof Error ? error.message : 'Storage could not be initialized.'); });
+    recoverPendingDeleteAll((label) => { if (alive) setStorageProgress(label); })
+      .then(() => initStorageAndMigrate())
+      .then(() => { ensureCurriculumMigration(); if (alive) setStorageReady(true); })
+      .catch((error) => { if (alive) setStorageInitError(error instanceof Error ? error.message : 'Storage could not be initialized.'); });
 
     const applyCurrentTheme = () => applyThemePreference(readThemePreference());
     applyCurrentTheme();
@@ -175,7 +179,7 @@ export default function App() {
     };
   }, []);
 
-  if (!storageReady) return <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground"><span>Initialising…</span>{storageInitError && <><span className="text-center px-6">{storageInitError}</span><button type="button" className="rounded-lg border border-primary px-3 py-2 text-foreground" onClick={() => window.location.reload()}>Retry</button></>}</div>;
+  if (!storageReady) return <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground"><span>{storageProgress}</span>{storageInitError && <><span className="text-center px-6">{storageInitError}</span><button type="button" className="rounded-lg border border-primary px-3 py-2 text-foreground" onClick={() => window.location.reload()}>Retry</button></>}</div>;
 
   return (
     <>

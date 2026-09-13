@@ -9,7 +9,7 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
 import { getActiveCurriculumName } from '@/lib/curriculumStore';
-import { idbGetAllChecked, storageClearChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
+import { idbGetAllChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, formatPercentage } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
@@ -838,8 +838,6 @@ export default function Settings() {
       const unsubscribed = await disableDirectPush();
       if (!unsubscribed) throw new Error('Could not unregister browser notifications. Try again before deleting app data.');
       await storageSetItemChecked(PENDING_DELETE_ALL_KEY, 'true');
-      await storageClearChecked([PENDING_DELETE_ALL_KEY]);
-      await storageRemoveItemChecked(PENDING_DELETE_ALL_KEY);
       setShowDeleteDataDialog(false);
       triggerConfirmationFeedback('danger');
       notifySuccess('All app data deleted. Returning to Welcome and Setup…');
