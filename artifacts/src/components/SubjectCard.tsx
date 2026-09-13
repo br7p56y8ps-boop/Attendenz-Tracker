@@ -54,6 +54,16 @@ export const SubjectCard = ({
   const [showLimitMessage, setShowLimitMessage] = useState(false);
   const [activeStatInfo, setActiveStatInfo] = useState<'remaining' | 'missable' | 'canMiss' | 'required' | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  useEffect(() => {
+    if (!activeStatInfo) return;
+    const timer = window.setTimeout(() => setActiveStatInfo(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [activeStatInfo]);
+  useEffect(() => {
+    if (!showLimitMessage) return;
+    const timer = window.setTimeout(() => setShowLimitMessage(false), 10000);
+    return () => window.clearTimeout(timer);
+  }, [showLimitMessage]);
 
   useEffect(() => {
     if (!isModalOpen) return;
@@ -242,7 +252,7 @@ export const SubjectCard = ({
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
+            exit={{ opacity: 0, height: 0, transition: { duration: 0.22, ease: 'easeInOut' } }}
             className="overflow-hidden pt-3"
           >
             <div className="bg-muted/40 border border-primary/30 rounded-2xl p-3 text-xs text-foreground space-y-1.5 relative">

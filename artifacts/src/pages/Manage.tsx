@@ -339,12 +339,17 @@ export default function Manage() {
     if (kind === 'ok') triggerConfirmationFeedback('success');
     if (noteTimer.current) window.clearTimeout(noteTimer.current);
     setNote({ msg, kind });
-    noteTimer.current = window.setTimeout(() => setNote(null), 2600);
+    noteTimer.current = window.setTimeout(() => setNote(null), 10000);
   };
   useEffect(() => () => { if (noteTimer.current) window.clearTimeout(noteTimer.current); }, []);
 
   const [formError, setFormError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!formError && !editError) return;
+    const timer = window.setTimeout(() => { setFormError(null); setEditError(null); }, 10000);
+    return () => window.clearTimeout(timer);
+  }, [formError, editError]);
   const [moreOpen, setMoreOpen] = useState(false);
   const [section, setSection] = useState<'academic' | 'clinical'>('academic');
   const [returnToMoreAfterAdd, setReturnToMoreAfterAdd] = useState(false);
@@ -1066,7 +1071,6 @@ export default function Manage() {
       const slot = presetTimetable[slotRemove.day]?.[slotRemove.index];
       if (slot) {
         const remaining = slot.subjects.filter(s => s !== slotRemove.subject);
-        updatePresetTimetableSlot(slotRemove.day, slotRemove.index, slot.time, remaining, slotRemove.day);
         const subject = subjectMode === 'preloaded'
           ? userAddedSubjects.find(u => u.name.toLowerCase() === slotRemove.subject.toLowerCase() && !isSGTRecord(u))
           : customSubjects.find(c => c.name.toLowerCase() === slotRemove.subject.toLowerCase() && !isSGTRecord(c));
@@ -1077,9 +1081,11 @@ export default function Manage() {
             updateUserAddedSubject(subject.id, { schedules: filtered, days: filtered.map(s => s.day).join(', ') } as any);
           } else {
             const schedules = (subject.schedules || []) as Array<{ day: string; time: string }>;
-            const filtered = schedules.filter(s => !((s as any).day === DAY_ABBRS[slotRemove.day] && (s as any).start === slotRemove.start && (s as any).end === slotRemove.end));
+            const filtered = schedules.filter(s => !(s.day === DAY_ABBRS[slotRemove.day] && canonicalizeTimeRange(s.time) === canonicalizeTimeRange(slotRemove.time)));
             updateCustomSubject(subject.id, { schedules: filtered, days: filtered.map(s => s.day).join(', ') });
           }
+        } else {
+          updatePresetTimetableSlot(slotRemove.day, slotRemove.index, slot.time, remaining, slotRemove.day);
         }
         recordHistory('Removed from Slot', { subject: slotRemove.subject, day: slotRemove.day, time: slotRemove.time });
         showToast(`Removed "${slotRemove.subject}" from slot.`);
@@ -1924,7 +1930,7 @@ export default function Manage() {
           heightClass=""
           header={
             <div>
-              <div className="flex items-center justify-between">
+              <div className="text-center">
                 <div>
                   <h3 className="text-sm font-bold text-foreground">Edit {section === 'academic' ? 'Academic' : 'Clinical'} Data</h3>
                   <p className="text-[10px] text-muted-foreground">

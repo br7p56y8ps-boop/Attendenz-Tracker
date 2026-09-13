@@ -440,6 +440,11 @@ export default function Settings() {
   const [exportEndDate, setExportEndDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [exportSemester, setExportSemester] = useState<string>('Current Month');
   const [exportMsg, setExportMsg] = useState('');
+  useEffect(() => {
+    if (!exportMsg) return;
+    const timer = window.setTimeout(() => setExportMsg(''), 10000);
+    return () => window.clearTimeout(timer);
+  }, [exportMsg]);
   const [runtimeStorageInfo, setRuntimeStorageInfo] = useState({ isIndexedDB: true, isPersistent: false, techTitle: 'Local Device Storage (IndexedDB + Cache)', usedMB: '0.00 MB', quotaMB: '0.00 GB' });
   useEffect(() => {
     async function detectStorage() {
@@ -780,13 +785,13 @@ export default function Settings() {
     const success = await createSnapshot('Manual Checkpoint');
     if (!success) {
       setSnapshotMsg('✗ Snapshot could not be saved.');
-      setTimeout(() => setSnapshotMsg(''), 3000);
+      setTimeout(() => setSnapshotMsg(''), 10000);
       return;
     }
     triggerConfirmationFeedback('success');
     setSnapshots(getSnapshots());
     setSnapshotMsg('✓ Snapshot created successfully!');
-    setTimeout(() => setSnapshotMsg(''), 3000);
+    setTimeout(() => setSnapshotMsg(''), 10000);
   };
   const handleRestoreSnapshot = async (id: string) => {
     if (operationBusy) return;
@@ -798,7 +803,7 @@ export default function Settings() {
       setTimeout(() => window.location.reload(), 1500);
     } else {
       setSnapshotMsg('✗ Failed to restore snapshot.');
-      setTimeout(() => setSnapshotMsg(''), 3000);
+      setTimeout(() => setSnapshotMsg(''), 10000);
     }
     setBusy(null);
   };
@@ -812,17 +817,17 @@ export default function Settings() {
       triggerConfirmationFeedback('danger');
       setSnapshotToDelete(null);
       setSnapshotMsg('✓ Snapshot deleted.');
-      setTimeout(() => setSnapshotMsg(''), 3000);
+      setTimeout(() => setSnapshotMsg(''), 10000);
     } catch {
       setSnapshotMsg('✗ Snapshot could not be deleted.');
-      setTimeout(() => setSnapshotMsg(''), 3000);
+      setTimeout(() => setSnapshotMsg(''), 10000);
     }
   };
   const handleClearCache = () => {
     const cleared = clearLocalCache();
     triggerConfirmationFeedback('success');
     setSnapshotMsg(`✓ Cleared ${cleared} temporary cached items safely! Attendance records & subjects remain 100% intact.`);
-    setTimeout(() => setSnapshotMsg(''), 4000);
+    setTimeout(() => setSnapshotMsg(''), 10000);
   };
   const handleDeleteAllData = async () => {
     if (operationBusy) return;

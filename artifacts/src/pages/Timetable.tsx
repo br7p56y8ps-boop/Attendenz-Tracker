@@ -661,12 +661,12 @@ export default function Timetable() {
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Overall — every subject & ward combined</p>
               <div className="flex items-center gap-3">
-                <div className="relative w-11 h-11 shrink-0">
-                  <svg width="44" height="44" className="transform -rotate-90">
-                    <circle cx="22" cy="22" r="18" strokeWidth="4" className="text-muted/20" stroke="currentColor" fill="transparent" />
-                    <circle cx="22" cy="22" r="18" strokeWidth="4" stroke={overallHex} strokeDasharray={2 * Math.PI * 18} strokeDashoffset={(2 * Math.PI * 18) * (1 - Math.min(100, overall.pct) / 100)} strokeLinecap="round" fill="transparent" />
+                <div className="relative w-14 h-14 shrink-0">
+                  <svg width="56" height="56" className="transform -rotate-90">
+                    <circle cx="28" cy="28" r="23" strokeWidth="4" className="text-muted/20" stroke="currentColor" fill="transparent" />
+                    <circle cx="28" cy="28" r="23" strokeWidth="4" stroke={overallHex} strokeDasharray={2 * Math.PI * 23} strokeDashoffset={(2 * Math.PI * 23) * (1 - Math.min(100, overall.pct) / 100)} strokeLinecap="round" fill="transparent" />
                   </svg>
-                  <span className={cn('absolute inset-0 flex items-center justify-center text-[9px] font-extrabold', overallColor)}>{formatPercentage(overall.pct)}</span>
+                  <span className={cn('absolute inset-0 flex items-center justify-center whitespace-nowrap text-[8px] leading-none font-extrabold', overallColor)}>{formatPercentage(overall.pct)}</span>
                 </div>
                 <div className="flex-1 min-w-0 text-left">
                   <p className="text-[10px] text-muted-foreground font-medium">
@@ -717,7 +717,7 @@ export default function Timetable() {
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {attention.map(a => (
-                    <button key={a.name} type="button" onClick={() => setAttnOpen(o => !o)} className="action-button action-button--danger px-2 py-1 text-[9px]">
+                    <button key={`${a.category}-${a.name}`} type="button" onClick={() => setAttnOpen(o => !o)} className="action-button action-button--danger px-2 py-1 text-[9px]">
                       <span className="mr-1">{shortenSubject(a.name)}</span>
                       <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider', categoryBadgeClass(a.category))}>{a.category}</span>
                       <span className="ml-1">{formatPercentage(a.pct)}</span>
@@ -728,7 +728,7 @@ export default function Timetable() {
               {attnOpen && attention.length > 0 && (
                 <div className="mt-2 space-y-1">
                   {attention.map(a => (
-                    <p key={a.name} className="text-[10px] text-muted-foreground">
+                    <p key={`${a.category}-${a.name}`} className="text-[10px] text-muted-foreground">
                       <strong className="text-foreground">{a.name}</strong> <span className="text-[9px] font-bold uppercase tracking-wider text-primary">({a.category})</span> — attend next <strong className="text-rose-500">{a.needed}</strong> to recover.
                     </p>
                   ))}
@@ -747,7 +747,7 @@ export default function Timetable() {
                     const maxStatus = getAttendanceStatus(item.maxPossiblePct, target, { hasPlannedClasses: item.planned > 0 });
                     const maxColor = maxStatus === 'green' ? 'text-success' : maxStatus === 'yellow' ? 'text-warning' : maxStatus === 'neutral' ? 'text-muted-foreground' : 'text-destructive';
                     return (
-                      <div key={item.name} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 bg-muted/20 rounded-lg px-3 py-1.5">
+                      <div key={`${item.category}-${item.name}`} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 bg-muted/20 rounded-lg px-3 py-1.5">
                         <span className="min-w-0 text-xs font-bold text-foreground truncate" style={{ color: getSubjectColor(item.name) }}>{shortenSubject(item.name)} <span className={cn('ml-1 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider align-middle', categoryBadgeClass(item.category))}>{item.category}</span></span>
                         <div className="contents">
                           <span className="text-[10px] text-muted-foreground">Now {formatPercentage(item.currentPct)}</span>
