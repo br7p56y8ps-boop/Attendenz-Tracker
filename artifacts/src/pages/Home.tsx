@@ -530,10 +530,11 @@ export default function Home() {
           </button>
         </div>
       ) : undefined}
-      headerBottom={dateWheel}
     >
-      <div className="min-h-0 flex flex-col">
-        {/* ── Date Wheel ── */}
+      <div className="min-h-0 flex flex-col home-page-content">
+        <div className="home-date-wheel-float" aria-label="Choose date">
+          {dateWheel}
+        </div>
         <div className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain pb-0 scroll-fade-viewport scroll-reachability">
         {/* ── Content ── */}
         {!hasAnything ? (

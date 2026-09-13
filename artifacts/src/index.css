@@ -739,3 +739,181 @@ input[type="time"] {
 @media (prefers-reduced-motion: reduce) {
   .attendance-mark-button::before { animation: none; }
 }
+
+
+/* ── 2026 product refresh ──────────────────────────────────────────────── */
+:root {
+  --background: #f5f7f4;
+  --foreground: #16231f;
+  --card: #ffffff;
+  --card-foreground: #16231f;
+  --border: #dce7e1;
+  --primary: #087f70;
+  --primary-foreground: #f7fffc;
+  --muted: #eaf1ed;
+  --muted-foreground: #60736c;
+  --destructive: #c94855;
+  --destructive-foreground: #fff8f8;
+  --success: #16845e;
+  --warning: #b87917;
+}
+.dark {
+  --background: #0e1816;
+  --foreground: #ecf5f0;
+  --card: #172521;
+  --card-foreground: #ecf5f0;
+  --border: #2d443c;
+  --primary: #56c8b5;
+  --primary-foreground: #09221d;
+  --muted: #1d302a;
+  --muted-foreground: #a5bdb4;
+  --destructive: #f27f89;
+  --destructive-foreground: #271013;
+  --success: #71d7a9;
+  --warning: #f0c269;
+}
+body {
+  background:
+    radial-gradient(circle at 8% -5%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 34rem),
+    radial-gradient(circle at 100% 12%, color-mix(in srgb, var(--warning) 8%, transparent), transparent 28rem),
+    var(--background);
+}
+.app-shell {
+  background: transparent !important;
+}
+.app-shell > header {
+  background: color-mix(in srgb, var(--card) 90%, transparent) !important;
+  border: 0 !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent) !important;
+  border-radius: 0 0 1.5rem 1.5rem !important;
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--foreground) 8%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
+}
+.app-shell > header h1 {
+  letter-spacing: -0.045em;
+  font-weight: 850;
+}
+.app-shell main {
+  max-width: 48rem;
+}
+.app-shell .bg-card,
+.app-shell .glass-card,
+.app-shell .glass-panel,
+.app-shell [class*="bg-card/"] {
+  background: color-mix(in srgb, var(--card) 94%, transparent) !important;
+  border-color: color-mix(in srgb, var(--border) 86%, transparent) !important;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--foreground) 5%, transparent) !important;
+}
+.app-shell .rounded-2xl { border-radius: 1.25rem !important; }
+.app-shell .rounded-3xl { border-radius: 1.6rem !important; }
+.app-shell .action-button,
+.app-shell button.glass-button {
+  border-radius: 0.9rem;
+  letter-spacing: -0.01em;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+.app-shell .action-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+.app-shell input,
+.app-shell select,
+.app-shell textarea {
+  border-radius: 0.9rem !important;
+  border-color: var(--border) !important;
+  background: color-mix(in srgb, var(--muted) 48%, var(--card)) !important;
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.bottom-nav-surface {
+  background: color-mix(in srgb, var(--card) 92%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent) !important;
+  border-bottom: 0 !important;
+  border-radius: 1.6rem 1.6rem 0 0 !important;
+  box-shadow: 0 -14px 34px color-mix(in srgb, var(--foreground) 10%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
+}
+.bottom-nav-surface nav button {
+  border-radius: 1rem !important;
+}
+.bottom-nav-surface nav button:hover {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.modal-sheet-content,
+[role="dialog"] {
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent) !important;
+  border-radius: 1.6rem !important;
+  box-shadow: 0 24px 80px color-mix(in srgb, var(--foreground) 24%, transparent) !important;
+}
+.modal-sheet-backdrop {
+  background: color-mix(in srgb, #071310 38%, transparent) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+/* The Home wheel is intentionally a floating control outside the app bar. */
+.home-date-wheel-float {
+  position: fixed;
+  z-index: 45;
+  top: calc(var(--app-header-height) + 0.6rem);
+  left: max(var(--ui-gutter), calc((100vw - 48rem) / 2 + var(--ui-gutter)));
+  right: max(var(--ui-gutter), calc((100vw - 48rem) / 2 + var(--ui-gutter)));
+  pointer-events: none;
+}
+.home-date-wheel-float > * {
+  pointer-events: auto;
+}
+.home-page-content {
+  padding-top: 5.1rem;
+}
+.home-date-wheel-float .date-wheel-surface {
+  height: 4.15rem !important;
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--border)) !important;
+  background: color-mix(in srgb, var(--card) 92%, transparent) !important;
+  box-shadow: 0 14px 28px color-mix(in srgb, var(--foreground) 12%, transparent) !important;
+  backdrop-filter: blur(16px) saturate(130%);
+}
+
+/* Selection controls are calm; only the explicit confirmation action animates. */
+.attendance-option-button {
+  position: relative;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+}
+.attendance-option-button:hover {
+  transform: translateY(-1px);
+}
+.attendance-confirm-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  color: var(--foreground);
+  background: var(--card);
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+.attendance-confirm-button::before {
+  content: '';
+  position: absolute;
+  inset: -80%;
+  z-index: -2;
+  background: conic-gradient(from 0deg, transparent 0 58%, var(--attendance-border) 64% 94%, transparent 100%);
+  animation: attendance-border-spin 2.8s linear infinite;
+}
+.attendance-confirm-button::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: 0.65rem;
+  background: var(--card);
+}
+.attendance-confirm-button--attended { --attendance-border: #22a968; color: #16845e; }
+.attendance-confirm-button--missed { --attendance-border: #dc5662; color: #c94855; }
+.attendance-confirm-button--off { --attendance-border: #d49a27; color: #b87917; }
+@media (prefers-reduced-motion: reduce) {
+  .attendance-confirm-button::before { animation: none; }
+}
