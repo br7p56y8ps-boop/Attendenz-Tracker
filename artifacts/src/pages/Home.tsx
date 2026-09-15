@@ -7,8 +7,8 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSessionId, getCustomSubjectSessionId } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
-import { PRESET_PARENTS } from '@/lib/constants';
-import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen, Activity, ArrowRight, Clock3 } from 'lucide-react';
+import { CATEGORIES, INTEGRATED_SUBJECTS, PRESET_PARENTS, WARD_SUBJECTS } from '@/lib/constants';
+import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen, ClipboardCheck } from 'lucide-react';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { idbGet, idbSet } from '@/lib/idb';
@@ -64,7 +64,7 @@ export default function Home() {
   const today = new Date();
   const todayStr = toDateString(today);
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
-  const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
+  const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
   const { homeSelections, finishedMap, subjects, wards } = useAttendance();
   const [, setLocation] = useLocation();
   const { username } = useAuth();
@@ -494,16 +494,29 @@ export default function Home() {
       const baseline = 76 - (value * 0.22);
       const next = points[index + 1] ?? value;
       const nextBaseline = 76 - (next * 0.22);
-      return `M ${x.toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.22).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.32).toFixed(1)} ${(baseline - 5).toFixed(1)} L ${(x + width * 0.42).toFixed(1)} ${(baseline + 4).toFixed(1)} L ${(x + width * 0.52).toFixed(1)} ${(baseline - 29).toFixed(1)} L ${(x + width * 0.62).toFixed(1)} ${(baseline + 14).toFixed(1)} L ${(x + width * 0.72).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width).toFixed(1)} ${nextBaseline.toFixed(1)}`;
+      return `M ${x.toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.22).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.32).toFixed(1)} ${(baseline - 5).toFixed(1)} L ${(x + width * 0.42).toFixed(1)} ${(baseline + 4).toFixed(1)} L ${(x + width * 0.52).toFixed(1)} ${(baseline - 29).toFixed(1)} L ${(x + width * 0.62).toFixed(1)} ${(baseline + 14).toFixed(1)} L ${(x + width * 0.72).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.79).toFixed(1)} ${(baseline - 7).toFixed(1)} Q ${(x + width * 0.85).toFixed(1)} ${(baseline - 11).toFixed(1)} ${(x + width * 0.91).toFixed(1)} ${(baseline - 7).toFixed(1)} L ${(x + width).toFixed(1)} ${nextBaseline.toFixed(1)}`;
     }).join(' ');
   }, [overallPercentage, trendPoints]);
-  const subjectPotentialMetrics = useMemo(() => Object.entries(subjects).slice(0, 6).map(([name, item]) => {
-    const planned = Math.max(item.attended + item.missed, getSubjectPlannedTotal(name));
-    const remaining = Math.max(0, planned - item.attended - item.missed);
-    const current = planned ? Math.round((item.attended / Math.max(1, item.attended + item.missed)) * 100) : 0;
-    const maximum = planned ? Math.round(((item.attended + remaining) / planned) * 100) : current;
-    return { name, attended: item.attended, missed: item.missed, current, maximum };
-  }), [getSubjectPlannedTotal, subjects]);
+  const resolveSubjectAlert = (storageKey: string) => {
+    const raw = storageKey.replace(/^academic:/, '');
+    if (storageKey.startsWith('sgt:')) {
+      const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+      return { name: source.find(item => item.id === storageKey.slice(4))?.name || 'Small Group Teaching', category: 'SGT' };
+    }
+    if (storageKey.startsWith('ward:')) return { name: getPresetWardDisplayName(storageKey.slice(5)), category: 'Ward' };
+    const userAdded = userAddedSubjects.find(item => item.id === raw);
+    const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS].find(item => item.id === raw || item.name === raw);
+    return { name: getPresetSubjectDisplayName(userAdded?.name || preset?.name || raw), category: userAdded?.parentName === 'Small Group Teaching' ? 'SGT' : 'Lecture' };
+  };
+  const subjectPotentialMetrics = useMemo(() => Object.entries(subjects).map(([storageKey, item]) => {
+    const resolved = resolveSubjectAlert(storageKey);
+    const planned = Math.max(item.attended + item.missed, getSubjectPlannedTotal(resolved.name));
+    const conducted = item.attended + item.missed;
+    const remaining = Math.max(0, planned - conducted);
+    const current = conducted === 0 ? 0 : (item.attended / conducted) * 100;
+    const maximum = planned > 0 ? ((item.attended + remaining) / planned) * 100 : current;
+    return { ...resolved, attended: item.attended, missed: item.missed, current, maximum, remaining, planned };
+  }).filter(item => item.remaining > 0).sort((a, b) => a.maximum - b.maximum).slice(0, 6), [customSubjects, getPresetSubjectDisplayName, getPresetWardDisplayName, getSubjectPlannedTotal, subjectMode, subjects, userAddedSubjects]);
   const statusForEntry = (entry: DayEntry) => {
     const sessionId = entry.card?.sessionId;
     if (!sessionId) return undefined;
@@ -581,27 +594,27 @@ export default function Home() {
           <p className="text-sm font-semibold text-muted-foreground">{timeOfDay},</p>
           <h1 className="text-2xl font-extrabold tracking-tight text-foreground">{username}</h1>
         </div>
-        <p className="text-xs font-bold text-muted-foreground">· {shortDate}</p>
+        <p className="text-xs font-bold text-muted-foreground">{shortDate}</p>
       </div>
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
         <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
-          <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span><ArrowRight className="h-4 w-4 text-muted-foreground" /></div>
+          <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
           <svg viewBox="0 0 280 92" className="mt-2 h-24 w-full" role="img" aria-label="PQRST attendance ECG over the last fourteen days"><path d="M0 76H280" stroke="currentColor" strokeOpacity=".12" /><path d="M0 48H280" stroke="currentColor" strokeOpacity=".08" /><path d={overallEcgPath} fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          <div className="mt-1 flex flex-wrap gap-1.5 text-[9px] font-bold"><span className="rounded-full bg-muted/60 px-2 py-1 text-muted-foreground">Conducted {overallTotal}</span><span className="rounded-full bg-primary/10 px-2 py-1 text-primary">Attended {overallAttended}</span><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-500">Current {overallPercentage}%</span></div>
+          <div className="mt-2 grid grid-cols-2 gap-1.5 text-[9px] font-bold"><span className="rounded-full bg-muted/60 px-2 py-1.5 text-center text-muted-foreground">Conducted: {overallTotal}</span><span className="rounded-full bg-primary/10 px-2 py-1.5 text-center text-primary">Attended: {overallAttended}</span><span className="rounded-full bg-rose-500/10 px-2 py-1.5 text-center text-rose-500">Missed: {overallMissed}</span><span className="rounded-full bg-emerald-500/10 px-2 py-1.5 text-center text-emerald-500">Current: {overallPercentage}%</span></div>
         </button>
         <div className="grid min-h-0 grid-rows-2 gap-3">
-          <button type="button" onClick={() => setShowMarkAttendance(true)} className="rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><Clock3 className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.length} Classes today</p></button>
+          <button type="button" onClick={() => setShowMarkAttendance(true)} className="rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.length} Classes today</p></button>
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><p className="mt-1 truncate text-[10px] text-muted-foreground">First: {dashboardClassEntries[0]?.card?.subject || 'No classes scheduled'}</p></button>
         </div>
       </div>
       <section className="glass-card rounded-2xl border border-border p-4">
-        <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Today’s Activity</h2><Activity className="h-4 w-4 text-muted-foreground" /></div>
-        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-3 pl-4 before:absolute before:bottom-1 before:left-[5px] before:top-1 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => <div key={item.id} className="relative flex items-center justify-between gap-2 text-xs"><span className="absolute -left-[13px] h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" /><span className="font-semibold text-foreground">{item.text}</span><span className="shrink-0 text-[10px] text-muted-foreground">Today</span></div>)}</div>}
+        <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Today’s Activity</h2></div>
+        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-3 pl-5 before:absolute before:bottom-1 before:left-[7px] before:top-1 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => <div key={item.id} className="relative flex items-center justify-between gap-2 text-xs"><span className="absolute -left-[14px] h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" /><span className="font-semibold text-foreground">{item.text}</span><span className="shrink-0 text-[10px] text-muted-foreground">Today</span></div>)}</div>}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Today at a Glance</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{dashboardClassEntries.length === 0 ? <p className="text-xs text-muted-foreground">No classes today.</p> : dashboardClassEntries.map(entry => { const status = statusForEntry(entry); const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet'; const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground'; return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="min-w-[132px] rounded-xl border border-border bg-muted/30 p-3 text-left shadow-[0_2px_8px_rgba(0,0,0,0.22)]"><p className="truncate text-xs font-bold">{entry.card?.subject}</p><p className="mt-1 text-[10px] text-muted-foreground">{entry.time}</p><span className={cn('mt-2 block text-[10px] font-extrabold', color)}>{label}</span></button>; })}</div></section>
-      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{Object.entries(subjects).slice(0, 3).map(([name, item]) => { const total = item.attended + item.missed; const pct = total ? Math.round((item.attended / total) * 100) : 0; const parts = name.split(':'); const label = parts.length > 1 ? parts.slice(1).join(':') : name; const category = parts[0] === 'ward' ? 'Ward' : parts[0] === 'sgt' ? 'SGT' : 'Lecture'; return <button type="button" key={name} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', pct < 75 ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{label} <span className="text-[9px] font-bold text-muted-foreground">({category})</span></span><span className="text-xs font-bold text-muted-foreground">{pct}% ({item.attended}/{total})</span></button>; })}</div></section>
-      <section className="glass-card rounded-2xl border border-border p-4"><div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span></div><div className="mt-3 space-y-3">{subjectPotentialMetrics.length === 0 ? <p className="text-[10px] text-muted-foreground">Add subjects to see their attendance potential.</p> : subjectPotentialMetrics.map(metric => <button type="button" key={metric.name} onClick={() => setLocation('/subjects')} className="block w-full text-left"><div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold"><span className="truncate">{metric.name}</span><span className="shrink-0 text-emerald-500">{metric.maximum}% max</span></div><svg viewBox="0 0 240 18" className="h-4 w-full" preserveAspectRatio="none" aria-label={`${metric.name} maximum percentage graph`}><path d="M0 9H240" stroke="currentColor" strokeOpacity=".12" strokeWidth="6" strokeLinecap="round" /><path d={`M0 9H${Math.max(4, metric.current * 2.4)}`} stroke="var(--primary)" strokeWidth="6" strokeLinecap="round" /><path d={`M0 9H${Math.max(4, metric.maximum * 2.4)}`} stroke="#34d399" strokeOpacity=".55" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 3" /></svg></button>)}<p className="text-[10px] text-muted-foreground">Each graph uses the planned curriculum and attendance records for that subject.</p></div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{Object.entries(subjects).slice(0, 3).map(([storageKey, item]) => { const total = item.attended + item.missed; const pct = total ? Math.round((item.attended / total) * 100) : 0; const resolved = resolveSubjectAlert(storageKey); return <button type="button" key={storageKey} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', pct < 75 ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{resolved.name} <span className="text-[9px] font-bold text-muted-foreground">({resolved.category})</span></span><span className="text-xs font-bold text-muted-foreground">{pct}% ({item.attended}/{total})</span></button>; })}</div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span></div><div className="mt-3 space-y-3">{subjectPotentialMetrics.length === 0 ? <p className="text-[10px] text-muted-foreground">Add subjects to see their attendance potential.</p> : subjectPotentialMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="block w-full text-left"><div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold"><span className="truncate">{metric.name} <span className="text-[9px] text-muted-foreground">({metric.category})</span></span><span className="shrink-0 text-emerald-500">Max: {Math.round(metric.maximum)}%</span></div><svg viewBox="0 0 240 18" className="h-4 w-full" preserveAspectRatio="none" aria-label={`${metric.name} maximum percentage graph`}><path d="M0 9H240" stroke="currentColor" strokeOpacity=".12" strokeWidth="6" strokeLinecap="round" /><path d={`M0 9H${Math.max(4, metric.current * 2.4)}`} stroke="var(--primary)" strokeWidth="6" strokeLinecap="round" /><path d={`M0 9H${Math.max(4, metric.maximum * 2.4)}`} stroke="#34d399" strokeOpacity=".55" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 3" /></svg></button>)}<p className="text-[10px] text-muted-foreground">Remaining classes are compared with each subject’s total planned classes.</p></div></section>
     </motion.div>
   );
   return (

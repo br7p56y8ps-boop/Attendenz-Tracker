@@ -433,21 +433,18 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   ) : !currentSelection && !isFinished ? (
       <div className="space-y-2">
       <div className="flex gap-2">
-        {(['attended', 'missed', 'off'] as const).map(s => (
+        {(['attended', 'missed', 'off'] as const).map(s => pendingSelection === s ? (
+          <button key={s} type="button" onClick={handleConfirmSelection} className={cn('attendance-confirm-button flex-1 h-11 rounded-2xl text-xs sm:text-sm font-extrabold', `attendance-confirm-button--${s}`)}>
+            Confirm {selWord(s)}
+          </button>
+        ) : (
           <button key={s} type="button" onClick={() => handleSelection(s)}
             className={cn('attendance-option-button flex-1 h-11 rounded-2xl text-xs sm:text-sm font-extrabold border transition-all bg-background/70 text-muted-foreground shadow-sm',
-              s === 'attended' && 'hover:bg-emerald-500/10 hover:text-emerald-600', s === 'missed' && 'hover:bg-rose-500/10 hover:text-rose-600', s === 'off' && 'hover:bg-amber-500/10 hover:text-amber-600',
-              pendingSelection === s && 'ring-2 ring-inset font-extrabold', pendingSelection === s && (s === 'attended' ? 'ring-emerald-500 bg-emerald-500/20 text-emerald-500' : s === 'missed' ? 'ring-rose-500 bg-rose-500/20 text-rose-500' : 'ring-amber-500 bg-amber-500/20 text-amber-500'))}>
+              s === 'attended' && 'hover:bg-emerald-500/10 hover:text-emerald-600', s === 'missed' && 'hover:bg-rose-500/10 hover:text-rose-600', s === 'off' && 'hover:bg-amber-500/10 hover:text-amber-600')}>
             {s === 'off' ? 'Holiday' : s === 'attended' ? 'Attended' : 'Missed'}
           </button>
         ))}
       </div>
-      {pendingSelection && (
-        <button type="button" onClick={handleConfirmSelection}
-          className={cn('attendance-confirm-button w-full h-11 rounded-xl text-xs sm:text-sm font-extrabold', `attendance-confirm-button--${pendingSelection}`)}>
-          Confirm {selWord(pendingSelection)}
-        </button>
-      )}
     </div>
   ) : null;
 
@@ -455,8 +452,16 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     <div ref={cardRef} className={cn('relative rounded-2xl border overflow-hidden select-none mb-4 bg-card', borderCls)}
       style={effectiveMode !== 'today' && !isFinished && !currentSelection ? { borderColor: subjectColor } : undefined}>
       <div className={cn('p-5', effectiveMode === 'today' ? markTint : '')}>
-        {/* ── PAST ── */}
-        {effectiveMode === 'past' ? (
+        {isVacationOrExamPeriod ? (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-1">
+              <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
+              <div className="text-sm leading-tight text-muted-foreground">{time}</div>
+              <span className="inline-flex rounded-full border border-warning/35 bg-warning/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-warning">Vacation / Exam Period</span>
+            </div>
+            <div className="shrink-0 text-lg font-bold text-muted-foreground">{total === 0 ? '--' : formatPercentage(percentage)}</div>
+          </div>
+        ) : effectiveMode === 'past' ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
               {tagEl && <div className="flex items-center">{tagEl}</div>}
@@ -513,7 +518,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
         )}
 
         {/* ── BOTTOM (today) ── */}
-        {effectiveMode === 'today' && (
+        {!isVacationOrExamPeriod && effectiveMode === 'today' && (
           <AnimatePresence initial={false}>
             {todayBottom && (
               <motion.div key={`tb-${ecgCount}`} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: 'easeInOut' }} className="overflow-hidden">
