@@ -8,8 +8,10 @@ import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSessionId, getCustomSubjectSessionId } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { PRESET_PARENTS } from '@/lib/constants';
-import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen } from 'lucide-react';
+import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen, Activity, ArrowRight, CheckCircle2, Clock3, ChevronRight } from 'lucide-react';
 import { ModalSheet } from '@/components/ui/modal-sheet';
+import { useAuth } from '@/contexts/AuthContext';
+import { idbGet, idbSet } from '@/lib/idb';
 
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -65,6 +67,9 @@ export default function Home() {
   const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
   const { homeSelections, finishedMap, subjects, wards } = useAttendance();
   const [, setLocation] = useLocation();
+  const { username } = useAuth();
+  const [showMarkAttendance, setShowMarkAttendance] = useState(false);
+  const [dashboardActivities, setDashboardActivities] = useState<Array<{ id: string; text: string; timestamp: number }>>([]);
 
   /* ── Update notice ── */
   const [installedVersion] = useState<string>(() => {
@@ -446,6 +451,32 @@ export default function Home() {
     return { pending, completed };
   }, [dayEntries, isTodaySelected, finishedMap, subjects, wards, subjectMode, customWards, customSubjects, userAddedSubjects]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const now = Date.now();
+    const derived = Object.entries(homeSelections)
+      .filter(([key]) => key.startsWith(todayStr))
+      .map(([key, value]) => ({ id: `attendance-${key}`, text: `Marked attendance as ${value === 'off' ? 'Off' : value}`, timestamp: now }))
+      .slice(-12);
+    void idbGet('att_dashboard_activity_v1').then(raw => {
+      let stored: Array<{ id: string; text: string; timestamp: number }> = [];
+      try { stored = raw ? JSON.parse(raw) as Array<{ id: string; text: string; timestamp: number }> : []; } catch { stored = []; }
+      const merged = [...stored, ...derived].filter(item => now - item.timestamp < 48 * 60 * 60 * 1000);
+      const unique = Array.from(new Map(merged.map(item => [item.id, item])).values()).sort((a, b) => b.timestamp - a.timestamp).slice(0, 40);
+      if (cancelled) return;
+      setDashboardActivities(unique);
+      void idbSet('att_dashboard_activity_v1', JSON.stringify(unique));
+    });
+    return () => { cancelled = true; };
+  }, [homeSelections, todayStr]);
+  const overallAttended = Object.values(subjects).concat(Object.values(wards)).reduce((sum, item) => sum + item.attended, 0);
+  const overallMissed = Object.values(subjects).concat(Object.values(wards)).reduce((sum, item) => sum + item.missed, 0);
+  const overallTotal = overallAttended + overallMissed;
+  const overallPercentage = overallTotal === 0 ? 0 : Math.round((overallAttended / overallTotal) * 100);
+  const dashboardClassEntries = dayEntries.filter(entry => entry.kind === 'card');
+  const timeOfDay = new Date().getHours() < 12 ? 'Good Morning' : new Date().getHours() < 18 ? 'Good Afternoon' : 'Good Evening';
+  const shortDate = new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+
   const dateWheel = (
     <div className="pt-1 pb-1">
       <div
@@ -508,9 +539,39 @@ export default function Home() {
       </div>
     </div>
   );
-
+  const dashboard = (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="space-y-4 pb-4">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-muted-foreground">{timeOfDay},</p>
+          <h1 className="text-2xl font-extrabold tracking-tight text-foreground">{username}</h1>
+        </div>
+        <p className="text-xs font-bold text-muted-foreground">· {shortDate}</p>
+      </div>
+      <div className="grid grid-cols-[1.2fr_1fr] gap-3">
+        <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
+          <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span><ArrowRight className="h-4 w-4 text-muted-foreground" /></div>
+          <div className="mx-auto mt-2 flex h-20 w-20 items-center justify-center rounded-full border-[7px] border-primary/20 border-t-primary text-xl font-extrabold text-foreground">{overallPercentage}%</div>
+          <div className="mt-3 flex flex-wrap gap-1"><span className="rounded-full bg-rose-500/10 px-2 py-1 text-[9px] font-bold text-rose-600">Must Attend</span><span className="rounded-full bg-amber-500/10 px-2 py-1 text-[9px] font-bold text-amber-600">Need Attention</span><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-bold text-emerald-600">Safe to Miss</span></div>
+        </button>
+        <button type="button" onClick={() => setShowMarkAttendance(true)} className="rounded-2xl border border-primary/30 bg-primary/10 p-4 text-left transition-transform active:scale-[0.98]">
+          <Clock3 className="h-5 w-5 text-primary" /><p className="mt-3 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.length} Classes today</p><ChevronRight className="mt-3 h-4 w-4 text-primary" />
+        </button>
+      </div>
+      <section className="glass-card rounded-2xl border border-border p-4">
+        <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Today’s Activity</h2><Activity className="h-4 w-4 text-muted-foreground" /></div>
+        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-3 pl-4 before:absolute before:bottom-1 before:left-[5px] before:top-1 before:w-px before:bg-border">{dashboardActivities.slice(0, 4).map(item => <div key={item.id} className="relative flex items-center justify-between gap-2 text-xs"><span className="absolute -left-[13px] h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" /><span className="font-semibold text-foreground">{item.text}</span><span className="shrink-0 text-[10px] text-muted-foreground">Today</span></div>)}</div>}
+        <button type="button" onClick={() => setShowMarkAttendance(true)} className="mt-4 w-full text-left text-xs font-bold text-primary">View all activity →</button>
+      </section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Today at a Glance</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{dashboardClassEntries.length === 0 ? <p className="text-xs text-muted-foreground">No classes today.</p> : dashboardClassEntries.map(entry => <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="min-w-[132px] rounded-xl border border-border bg-muted/30 p-3 text-left"><p className="truncate text-xs font-bold">{entry.card?.subject}</p><p className="mt-1 text-[10px] text-muted-foreground">{entry.time}</p><CheckCircle2 className="mt-2 h-4 w-4 text-emerald-500" /></button>)}</div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{Object.entries(subjects).slice(0, 3).map(([name, item]) => { const total = item.attended + item.missed; const pct = total ? Math.round((item.attended / total) * 100) : 0; return <button type="button" key={name} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', pct < 75 ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{name}</span><span className="text-xs font-bold text-muted-foreground">{pct}% ({item.attended}/{total})</span></button>; })}</div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Tomorrow</h2><MoonStar className="h-4 w-4 text-muted-foreground" /></div><p className="mt-2 text-xs text-muted-foreground">{dashboardClassEntries.length} classes · {dashboardClassEntries.filter(entry => entry.card?.tag === 'Must Attend').length} must-attend</p><p className="mt-1 text-xs font-semibold text-foreground">First: {dashboardClassEntries[0]?.card?.subject || 'No classes scheduled'}</p></section>
+    </motion.div>
+  );
   return (
     <Layout
+      headerTitle={showMarkAttendance ? 'Mark Attendance' : `${timeOfDay}, ${username}`}
+      headerDescription={showMarkAttendance ? shortDate : `· ${shortDate}`}
       headerRight={showUpdatePill ? (
         <div className="flex items-center gap-1.5 shrink-0">
           <button
@@ -531,7 +592,8 @@ export default function Home() {
         </div>
       ) : undefined}
     >
-      <div className="min-h-0 flex flex-col home-page-content">
+      {showMarkAttendance ? <motion.div key="attendance-view" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 14 }} transition={{ duration: 0.3, ease: 'easeOut' }} className="min-h-0 flex flex-col home-page-content">
+        <button type="button" onClick={() => setShowMarkAttendance(false)} className="mb-2 self-start text-xs font-bold text-primary">← Dashboard</button>
         <div className="home-date-wheel-float" aria-label="Choose date">
           {dateWheel}
         </div>
@@ -675,6 +737,7 @@ export default function Home() {
             </motion.div>
           )}
         </AnimatePresence>
+      </motion.div> : dashboard}
 
         {/* ── Update notice modal ── */}
         <ModalSheet open={updateInfoOpen} onClose={() => setUpdateInfoOpen(false)} ariaLabel="Update information" maxWidth="max-w-sm" header={<div className="text-center"><h3 className="text-sm font-extrabold text-foreground">New Version Available <span className="text-emerald-400">(v{serverVersion})</span></h3><p className="mt-1 text-[10px] text-muted-foreground">{serverSummary || 'Bug fixes and refinements are ready to install.'}</p></div>} bodyClassName="p-5 space-y-3">
@@ -694,7 +757,6 @@ export default function Home() {
                   <button type="button" onClick={() => { setUpdateInfoOpen(false); setLocation('/account'); }} className="action-button action-button--update flex-1">Go to Account</button>
                 </div>
         </ModalSheet>
-      </div>
     </Layout>
   );
 }

@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import { Heart, Stethoscope, Syringe, Calendar, Hospital } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 
 const NAV_ITEMS = [
   { path: '/',          label: 'Home',      description: 'Classes and attendance by date', Icon: Heart },
@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { path: '/account',   label: 'Settings',  description: 'Preferences, backups, and app settings', Icon: Hospital },
 ] as const;
 
-export const Layout = ({ children, headerRight, headerBottom, mainClassName, contentClassName, bottomNavClassName }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode; mainClassName?: string; contentClassName?: string; bottomNavClassName?: string }) => {
+export const Layout = ({ children, headerRight, headerBottom, headerTitle, headerDescription, mainClassName, contentClassName, bottomNavClassName }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode; headerTitle?: React.ReactNode; headerDescription?: React.ReactNode; mainClassName?: string; contentClassName?: string; bottomNavClassName?: string }) => {
   const [location, setLocation] = useLocation();
   const headerRef = useRef<HTMLElement>(null);
   const navTouchStartX = useRef<number | null>(null);
@@ -45,8 +45,8 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
         <div className="max-w-3xl mx-auto w-full px-4 pt-[env(safe-area-inset-top)] py-3">
           <div className="flex items-center justify-between gap-3 min-h-[4.5rem]">
             <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{currentItem.label}</h1>
-              <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{currentItem.description}</p>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{headerTitle ?? currentItem.label}</h1>
+              <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{headerDescription ?? currentItem.description}</p>
             </div>
             {headerRight}
           </div>
@@ -74,12 +74,24 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
             const active = location === path;
             return (
               <button type="button" key={path} onClick={() => setLocation(path)} className={cn(
-                'flex flex-col items-center justify-center flex-1 h-full space-y-1 transition-all duration-300 relative rounded-2xl active:scale-90',
-                active ? 'text-primary filter drop-shadow-[0_0_8px_rgba(10,132,255,0.4)]' : 'text-muted-foreground/60 hover:text-foreground'
+                'relative flex h-full flex-1 flex-col items-center justify-center transition-colors duration-200 active:scale-95',
+                active ? 'text-primary' : 'text-muted-foreground/60 hover:text-foreground'
               )}>
-                {active && <motion.span layoutId="selected-tab-indicator" className="absolute inset-0 -z-10 rounded-2xl bg-primary/10" transition={{ type: 'spring', stiffness: 420, damping: 32 }} />}
-                <Icon className={cn('w-6 h-6 transition-transform duration-300', active ? 'scale-110' : 'scale-100')} strokeWidth={active ? 2.5 : 2} />
-                <span className={cn('text-[10px] font-medium tracking-wide transition-all duration-300', active ? 'font-bold text-primary' : 'text-muted-foreground/60')}>{label}</span>
+                {active && <motion.span layoutId="selected-tab-indicator" className="absolute inset-1 rounded-2xl bg-primary/10" transition={{ duration: 0.25, ease: 'easeOut' }} />}
+                <span className="relative z-10 flex flex-col items-center gap-0.5">
+                  <Icon className="h-5 w-5" strokeWidth={active ? 2.5 : 2} />
+                  <AnimatePresence initial={false} mode="popLayout">
+                    {active && (
+                      <motion.span
+                        initial={{ opacity: 0, height: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                        exit={{ opacity: 0, height: 0, scale: 0.8 }}
+                        transition={{ duration: 0.25, ease: 'easeOut' }}
+                        className="text-[10px] font-bold leading-none"
+                      >{label}</motion.span>
+                    )}
+                  </AnimatePresence>
+                </span>
               </button>
             );
           })}
