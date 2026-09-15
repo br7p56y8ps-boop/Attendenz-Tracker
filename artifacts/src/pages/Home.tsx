@@ -325,11 +325,10 @@ export default function Home() {
       // SGT subjects
       userAddedSubjects.forEach(u => {
         if (u.subjectType !== 'allied' || !u.parentName || !PRESET_PARENTS.includes(u.parentName)) return;
-        const anyU = u as any;
-        if (anyU.startDate && anyU.endDate) {
-          if (selectedDateStr < anyU.startDate || selectedDateStr > anyU.endDate) return;
+        if (u.startDate && u.endDate) {
+          if (selectedDateStr < u.startDate || selectedDateStr > u.endDate) return;
         }
-        const sch = (u.schedules || []).find((s: any) => s.day === selectedTodayAbbr);
+        const sch = (u.schedules || []).find(s => s.day === selectedTodayAbbr);
         if (!sch) return;
         const time = `${sch.start}–${sch.end}`;
         const sessionId = `${u.id}:${sch.day}:${sch.start}:${sch.end}`;
@@ -435,7 +434,7 @@ export default function Home() {
         ? (() => { const ward = customWards.find(w => w.name.toLowerCase() === (c.subtitle || c.subject).toLowerCase()); return ward ? getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods) : 0; })()
         : getPresetWardTotalPlanned(c.subtitle || c.subject)
       : c.isSGT && c.sgtId
-        ? (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects).find((item: any) => item.id === c.sgtId)?.plannedClasses || 0
+        ? (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects).find(item => item.id === c.sgtId)?.plannedClasses || 0
         : getSubjectPlannedTotal(c.subject);
     return !!finishedMap[id] || (planned > 0 && conducted >= planned);
   };
@@ -459,6 +458,7 @@ export default function Home() {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
           onPointerLeave={handlePointerUp}
           style={{ touchAction: 'pan-y' }}
         >

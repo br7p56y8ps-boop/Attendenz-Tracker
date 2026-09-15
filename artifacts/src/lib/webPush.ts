@@ -208,6 +208,7 @@ function base64UrlToBytes(value: string): Uint8Array {
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
 
+// Keep this list synchronized with push-service/src/index.ts.
 const DOCUMENTED_PUSH_ENDPOINTS = [
   'https://fcm.googleapis.com/',
   'https://updates.push.services.mozilla.com/',

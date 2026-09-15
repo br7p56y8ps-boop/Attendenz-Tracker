@@ -855,7 +855,7 @@ body {
 .home-date-wheel-float {
   position: fixed;
   z-index: 45;
-  top: calc(var(--app-header-height) + 0.6rem);
+  top: calc(var(--app-header-height) + 0.3rem);
   left: max(var(--ui-gutter), calc((100vw - 48rem) / 2 + var(--ui-gutter)));
   right: max(var(--ui-gutter), calc((100vw - 48rem) / 2 + var(--ui-gutter)));
   pointer-events: none;
@@ -864,7 +864,7 @@ body {
   pointer-events: auto;
 }
 .home-page-content {
-  padding-top: 5.1rem;
+  padding-top: 4.8rem;
 }
 .home-date-wheel-float .date-wheel-surface {
   height: 4.15rem !important;
@@ -892,7 +892,7 @@ body {
   justify-content: center;
   border: 1px solid transparent;
   color: var(--foreground);
-  background: var(--card);
+  background: transparent;
   box-shadow: 0 7px 18px color-mix(in srgb, var(--foreground) 10%, transparent);
 }
 .attendance-confirm-button::before {
@@ -909,11 +909,11 @@ body {
   inset: 2px;
   z-index: -1;
   border-radius: 0.65rem;
-  background: var(--card);
+  background: transparent;
 }
-.attendance-confirm-button--attended { --attendance-border: #22a968; color: #16845e; }
-.attendance-confirm-button--missed { --attendance-border: #dc5662; color: #c94855; }
-.attendance-confirm-button--off { --attendance-border: #d49a27; color: #b87917; }
+.attendance-confirm-button--attended { --attendance-border: #22a968; border-color: #22a968; color: #16845e; }
+.attendance-confirm-button--missed { --attendance-border: #dc5662; border-color: #dc5662; color: #c94855; }
+.attendance-confirm-button--off { --attendance-border: #d49a27; border-color: #d49a27; color: #b87917; }
 @media (prefers-reduced-motion: reduce) {
   .attendance-confirm-button::before { animation: none; }
 }

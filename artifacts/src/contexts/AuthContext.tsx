@@ -61,14 +61,14 @@ interface StoredAuth {
 }
 
 export interface DataTransferPayload {
-  subjects?: any;
-  wards?: any;
-  homeSelections?: any;
-  customSubjects?: any;
-  customWards?: any;
-  presetTimetable?: any;
-  presetWardSchedule?: any;
-  presetSubjectTotals?: any;
+  subjects?: Record<string, unknown>;
+  wards?: Record<string, unknown>;
+  homeSelections?: Record<string, unknown>;
+  customSubjects?: unknown[];
+  customWards?: unknown[];
+  presetTimetable?: Record<string, unknown>;
+  presetWardSchedule?: unknown[];
+  presetSubjectTotals?: Record<string, number>;
   preferredPercentage?: number;
 }
 

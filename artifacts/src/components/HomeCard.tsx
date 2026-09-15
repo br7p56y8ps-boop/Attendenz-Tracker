@@ -198,6 +198,25 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const selectionKey = attendanceKey ? (sessionId ? `${activeDateStr}-${attendanceKey}-${sessionId}` : `${activeDateStr}-${attendanceKey}`) : '';
   const effectiveMode = mode || (dateStr && dateStr !== getCurrentDateStr() ? 'past' : 'today');
 
+  const isVacationOrExamPeriod = useMemo(() => {
+    const includesDate = (periods?: Array<{ start: string; end: string }>) =>
+      Boolean(periods?.some(period => activeDateStr >= period.start && activeDateStr <= period.end));
+    if (isWard) {
+      if (subjectMode === 'custom') {
+        const ward = customWards?.find(item => item.name.toLowerCase() === subject.toLowerCase());
+        return includesDate(ward?.vacationPeriods);
+      }
+      return presetWardSchedule
+        .filter(entry => entry.ward === subject)
+        .some(entry => includesDate(entry.vacationPeriods));
+    }
+    if (isSGT && sgtId) {
+      const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+      return includesDate(source?.find(item => item.id === sgtId)?.vacationPeriods);
+    }
+    return false;
+  }, [activeDateStr, customSubjects, customWards, isSGT, isWard, presetWardSchedule, sgtId, subject, subjectMode, userAddedSubjects]);
+
   const getPastAttendance = (): SelectionType | undefined => {
     return attendanceKey ? getHomeSelection(activeDateStr, attendanceKey, sessionId, isWard) : undefined;
   };
@@ -399,7 +418,11 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const pastStatusClass = currentSelection === 'attended' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : currentSelection === 'missed' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : currentSelection === 'off' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-muted/30 text-muted-foreground border-border/50';
   const pastIsMarked = currentSelection === 'attended' || currentSelection === 'missed';
 
-  const todayBottom = ecgPhase ? (
+  const todayBottom = isVacationOrExamPeriod ? (
+    <div className="flex h-11 w-full items-center justify-center rounded-xl border border-warning/35 bg-warning/8 text-xs font-extrabold text-warning">
+      Vacation / Exam Period
+    </div>
+  ) : ecgPhase ? (
     <div className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
       <svg className="absolute inset-0 w-full h-full opacity-40" preserveAspectRatio="none" viewBox="0 0 100 40">
         <motion.path d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 100 20" fill="none" stroke={ecgColor} strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeInOut' }} />
@@ -458,7 +481,9 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
                 <span className="shrink-0 whitespace-nowrap">{time}</span>
               </div>
               {effectiveMode === 'future' && <div className="mt-1 flex items-center"><span className={cn('shrink-0 rounded-full border bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', isTomorrow ? futureTag.color : 'border-border/50 text-muted-foreground')}>{futureStatusText}</span></div>}
-              {effectiveMode === 'today' && currentSelection && !ecgPhase && (
+              {effectiveMode === 'today' && isVacationOrExamPeriod ? (
+                <div className="mt-1 text-[11px] font-extrabold text-warning">Vacation / Exam Period</div>
+              ) : effectiveMode === 'today' && currentSelection && !ecgPhase && (
                 undoPending ? (
                   <button type="button" onClick={handleUndoTap} className="text-[11px] font-extrabold text-rose-500 leading-tight mt-1 animate-pulse cursor-pointer">Confirm Undo?</button>
                 ) : (

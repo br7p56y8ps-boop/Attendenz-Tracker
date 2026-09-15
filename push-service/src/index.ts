@@ -5,6 +5,7 @@ const MAX_OCCURRENCES = 500;
 const DEVICE_TTL_DAYS = 45;
 const DEFAULT_ALLOWED_ORIGIN = 'https://benz-attendance-tracker.pages.dev';
 const CATEGORY_VALUES = new Set(['academic', 'clinical', 'sgt', 'ward']);
+// Keep this list synchronized with artifacts/src/lib/webPush.ts.
 const DOCUMENTED_PUSH_ENDPOINTS = [
   'https://fcm.googleapis.com/',
   'https://updates.push.services.mozilla.com/',
@@ -13,6 +14,8 @@ const DOCUMENTED_PUSH_ENDPOINTS = [
 ] as const;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
+// Cloudflare Worker isolates do not share memory; durable cross-isolate limiting
+// would require an external store. Expired buckets are pruned on each request.
 const rateLimitBuckets = new Map<string, { startedAt: number; count: number }>();
 
 export interface Env {
@@ -120,7 +123,7 @@ const error = (message: string, status: number, origin: string): Response =>
 function allowedOrigin(request: Request, env: Env): string {
   const configured = env.ALLOWED_ORIGIN || DEFAULT_ALLOWED_ORIGIN;
   const requestOrigin = request.headers.get('Origin');
-  return requestOrigin === configured ? configured : configured;
+  return requestOrigin === configured ? configured : DEFAULT_ALLOWED_ORIGIN;
 }
 
 function hasAllowedOrigin(request: Request, env: Env): boolean {
@@ -270,6 +273,9 @@ function clientAddress(request: Request): string {
 
 function consumeRateLimit(request: Request, deviceId?: string): boolean {
   const now = Date.now();
+  for (const [key, bucket] of rateLimitBuckets) {
+    if (now - bucket.startedAt >= RATE_LIMIT_WINDOW_MS) rateLimitBuckets.delete(key);
+  }
   const keys = [`ip:${clientAddress(request)}`, deviceId ? `device:${deviceId}` : null].filter((key): key is string => Boolean(key));
   for (const key of keys) {
     const existing = rateLimitBuckets.get(key);
