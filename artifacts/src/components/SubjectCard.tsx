@@ -3,7 +3,6 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, pctColor, getSubjectColor, formatPercentage } from '@/lib/utils';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
-import { CountStepper } from '@/components/CountStepper';
 import { Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ModalSheet } from '@/components/ui/modal-sheet';
@@ -172,17 +171,15 @@ export const SubjectCard = ({
     </div>
   );
 
-  const Stepper = ({ field, value }: { field: 'attended' | 'missed', value: number }) => (
-    <CountStepper
-      label={field}
-      value={value}
-      onDecrement={() => { handleStep(field, -1); }}
-      onIncrement={() => { handleStep(field, 1); }}
-      decrementDisabled={value <= 0}
-      incrementDisabled={isMaxReached}
-      ariaLabel={field}
-    />
-  );
+  const Stepper = ({ field, value }: { field: 'attended' | 'missed', value: number }) => {
+    const attended = field === 'attended';
+    return (
+      <div className={cn('flex items-center justify-between rounded-2xl border px-3 py-2.5', attended ? 'border-emerald-500/35 bg-emerald-500/10' : 'border-rose-500/35 bg-rose-500/10')}>
+        <span className={cn('text-xs font-extrabold', attended ? 'text-emerald-600' : 'text-rose-600')}>{attended ? 'Attended' : 'Missed'}</span>
+        <div className="flex items-center gap-2"><button type="button" disabled={value <= 0} onClick={() => handleStep(field, -1)} className="h-7 w-7 rounded-full border border-current/30 text-sm font-extrabold disabled:opacity-30" aria-label={`Decrease ${field}`}>−</button><span className="min-w-5 text-center text-base font-extrabold text-foreground">{value}</span><button type="button" disabled={isMaxReached} onClick={() => handleStep(field, 1)} className="h-7 w-7 rounded-full border border-current/30 text-sm font-extrabold disabled:opacity-30" aria-label={`Increase ${field}`}>+</button></div>
+      </div>
+    );
+  };
 
   const modalDetailsContent = (
     <div className="space-y-4 pt-1">

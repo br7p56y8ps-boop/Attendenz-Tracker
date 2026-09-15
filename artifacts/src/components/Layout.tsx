@@ -46,7 +46,7 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
           <div className="flex items-center justify-between gap-3 min-h-[4.5rem]">
             <div className="min-w-0">
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{headerTitle ?? currentItem.label}</h1>
-              <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{headerDescription ?? currentItem.description}</p>
+              {(headerDescription ?? currentItem.description) && <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{headerDescription ?? currentItem.description}</p>}
             </div>
             {headerRight}
           </div>

@@ -8,7 +8,7 @@ import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSessionId, getCustomSubjectSessionId } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { PRESET_PARENTS } from '@/lib/constants';
-import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen, Activity, ArrowRight, CheckCircle2, Clock3, ChevronRight } from 'lucide-react';
+import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen, Activity, ArrowRight, Clock3 } from 'lucide-react';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { idbGet, idbSet } from '@/lib/idb';
@@ -65,11 +65,12 @@ export default function Home() {
   const todayStr = toDateString(today);
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
   const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
-  const { homeSelections, finishedMap, subjects, wards } = useAttendance();
+  const { homeSelections, finishedMap, subjects, wards, preferredPercentage } = useAttendance();
   const [, setLocation] = useLocation();
   const { username } = useAuth();
   const [showMarkAttendance, setShowMarkAttendance] = useState(false);
   const [dashboardActivities, setDashboardActivities] = useState<Array<{ id: string; text: string; timestamp: number }>>([]);
+  const [activityExpanded, setActivityExpanded] = useState(false);
 
   /* ── Update notice ── */
   const [installedVersion] = useState<string>(() => {
@@ -456,7 +457,12 @@ export default function Home() {
     const now = Date.now();
     const derived = Object.entries(homeSelections)
       .filter(([key]) => key.startsWith(todayStr))
-      .map(([key, value]) => ({ id: `attendance-${key}`, text: `Marked attendance as ${value === 'off' ? 'Off' : value}`, timestamp: now }))
+      .map(([key, value]) => {
+        const matched = dayEntries.find(entry => entry.card?.sessionId && key.includes(entry.card.sessionId));
+        const subject = matched?.card?.subject || 'Class';
+        const kind = matched?.card?.isWard ? 'Clinical Rotation' : matched?.card?.tag === 'Small Group' ? 'Small Group Teaching' : 'Lecture';
+        return { id: `attendance-${key}`, text: `Marked ${subject} (${kind}) as ${value === 'off' ? 'Off' : value === 'missed' ? 'Bunked' : 'Attended'}`, timestamp: now };
+      })
       .slice(-12);
     void idbGet('att_dashboard_activity_v1').then(raw => {
       let stored: Array<{ id: string; text: string; timestamp: number }> = [];
@@ -468,12 +474,23 @@ export default function Home() {
       void idbSet('att_dashboard_activity_v1', JSON.stringify(unique));
     });
     return () => { cancelled = true; };
-  }, [homeSelections, todayStr]);
+  }, [homeSelections, todayStr, dayEntries]);
   const overallAttended = Object.values(subjects).concat(Object.values(wards)).reduce((sum, item) => sum + item.attended, 0);
   const overallMissed = Object.values(subjects).concat(Object.values(wards)).reduce((sum, item) => sum + item.missed, 0);
   const overallTotal = overallAttended + overallMissed;
   const overallPercentage = overallTotal === 0 ? 0 : Math.round((overallAttended / overallTotal) * 100);
   const dashboardClassEntries = dayEntries.filter(entry => entry.kind === 'card');
+  const trendPoints = useMemo(() => Array.from({ length: 14 }, (_, index) => {
+    const dateStr = toDateString(addDays(new Date(todayStr + 'T12:00:00'), index - 13));
+    const values = Object.entries(homeSelections).filter(([key]) => key.startsWith(`${dateStr}-`) || key.startsWith(`${dateStr}_`)).map(([, value]) => value);
+    const conducted = values.filter(value => value === 'attended' || value === 'missed');
+    return conducted.length ? Math.round((conducted.filter(value => value === 'attended').length / conducted.length) * 100) : null;
+  }), [homeSelections, todayStr]);
+  const statusForEntry = (entry: DayEntry) => {
+    const sessionId = entry.card?.sessionId;
+    if (!sessionId) return undefined;
+    return Object.entries(homeSelections).find(([key]) => key.startsWith(todayStr) && key.includes(sessionId))?.[1];
+  };
   const timeOfDay = new Date().getHours() < 12 ? 'Good Morning' : new Date().getHours() < 18 ? 'Good Afternoon' : 'Good Evening';
   const shortDate = new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
 
@@ -551,27 +568,28 @@ export default function Home() {
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
         <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span><ArrowRight className="h-4 w-4 text-muted-foreground" /></div>
-          <div className="mx-auto mt-2 flex h-20 w-20 items-center justify-center rounded-full border-[7px] border-primary/20 border-t-primary text-xl font-extrabold text-foreground">{overallPercentage}%</div>
-          <div className="mt-3 flex flex-wrap gap-1"><span className="rounded-full bg-rose-500/10 px-2 py-1 text-[9px] font-bold text-rose-600">Must Attend</span><span className="rounded-full bg-amber-500/10 px-2 py-1 text-[9px] font-bold text-amber-600">Need Attention</span><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-bold text-emerald-600">Safe to Miss</span></div>
+          <svg viewBox="0 0 280 92" className="mt-2 h-24 w-full" role="img" aria-label="Attendance trend over the last fourteen days"><path d="M0 76H280" stroke="currentColor" strokeOpacity=".12" /><path d="M0 48H280" stroke="currentColor" strokeOpacity=".08" /><polyline fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" points={trendPoints.map((point, index) => `${index * (280 / 13)},${point === null ? 84 : 84 - Math.max(4, point) * 0.62}`).join(' ')} /></svg>
+          <div className="mt-1 grid grid-cols-3 gap-2 text-[9px] text-muted-foreground"><span>Total conducted <strong className="block text-foreground">{overallTotal}</strong></span><span>Total attended <strong className="block text-foreground">{overallAttended}</strong></span><span>Current <strong className="block text-foreground">{overallPercentage}%</strong></span></div>
         </button>
-        <button type="button" onClick={() => setShowMarkAttendance(true)} className="rounded-2xl border border-primary/30 bg-primary/10 p-4 text-left transition-transform active:scale-[0.98]">
-          <Clock3 className="h-5 w-5 text-primary" /><p className="mt-3 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.length} Classes today</p><ChevronRight className="mt-3 h-4 w-4 text-primary" />
-        </button>
+        <div className="grid min-h-0 grid-rows-2 gap-3">
+          <button type="button" onClick={() => setShowMarkAttendance(true)} className="rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><Clock3 className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.length} Classes today</p></button>
+          <button type="button" onClick={() => setShowMarkAttendance(true)} className="rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><p className="mt-1 truncate text-[10px] text-muted-foreground">First: {dashboardClassEntries[0]?.card?.subject || 'No classes scheduled'}</p></button>
+        </div>
       </div>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Today’s Activity</h2><Activity className="h-4 w-4 text-muted-foreground" /></div>
-        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-3 pl-4 before:absolute before:bottom-1 before:left-[5px] before:top-1 before:w-px before:bg-border">{dashboardActivities.slice(0, 4).map(item => <div key={item.id} className="relative flex items-center justify-between gap-2 text-xs"><span className="absolute -left-[13px] h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" /><span className="font-semibold text-foreground">{item.text}</span><span className="shrink-0 text-[10px] text-muted-foreground">Today</span></div>)}</div>}
-        <button type="button" onClick={() => setShowMarkAttendance(true)} className="mt-4 w-full text-left text-xs font-bold text-primary">View all activity →</button>
+        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-3 pl-4 before:absolute before:bottom-1 before:left-[5px] before:top-1 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => <div key={item.id} className="relative flex items-center justify-between gap-2 text-xs"><span className="absolute -left-[13px] h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" /><span className="font-semibold text-foreground">{item.text}</span><span className="shrink-0 text-[10px] text-muted-foreground">Today</span></div>)}</div>}
+        <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
-      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Today at a Glance</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{dashboardClassEntries.length === 0 ? <p className="text-xs text-muted-foreground">No classes today.</p> : dashboardClassEntries.map(entry => <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="min-w-[132px] rounded-xl border border-border bg-muted/30 p-3 text-left"><p className="truncate text-xs font-bold">{entry.card?.subject}</p><p className="mt-1 text-[10px] text-muted-foreground">{entry.time}</p><CheckCircle2 className="mt-2 h-4 w-4 text-emerald-500" /></button>)}</div></section>
-      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{Object.entries(subjects).slice(0, 3).map(([name, item]) => { const total = item.attended + item.missed; const pct = total ? Math.round((item.attended / total) * 100) : 0; return <button type="button" key={name} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', pct < 75 ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{name}</span><span className="text-xs font-bold text-muted-foreground">{pct}% ({item.attended}/{total})</span></button>; })}</div></section>
-      <section className="glass-card rounded-2xl border border-border p-4"><div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Tomorrow</h2><MoonStar className="h-4 w-4 text-muted-foreground" /></div><p className="mt-2 text-xs text-muted-foreground">{dashboardClassEntries.length} classes · {dashboardClassEntries.filter(entry => entry.card?.tag === 'Must Attend').length} must-attend</p><p className="mt-1 text-xs font-semibold text-foreground">First: {dashboardClassEntries[0]?.card?.subject || 'No classes scheduled'}</p></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Today at a Glance</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{dashboardClassEntries.length === 0 ? <p className="text-xs text-muted-foreground">No classes today.</p> : dashboardClassEntries.map(entry => { const status = statusForEntry(entry); const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet'; const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground'; return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="min-w-[132px] rounded-xl border border-border bg-muted/30 p-3 text-left shadow-[0_2px_8px_rgba(0,0,0,0.22)]"><p className="truncate text-xs font-bold">{entry.card?.subject}</p><p className="mt-1 text-[10px] text-muted-foreground">{entry.time}</p><span className={cn('mt-2 block text-[10px] font-extrabold', color)}>{label}</span></button>; })}</div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{Object.entries(subjects).slice(0, 3).map(([name, item]) => { const total = item.attended + item.missed; const pct = total ? Math.round((item.attended / total) * 100) : 0; const parts = name.split(':'); const label = parts.length > 1 ? parts.slice(1).join(':') : name; const category = parts[0] === 'ward' ? 'Ward' : parts[0] === 'sgt' ? 'SGT' : 'Lecture'; return <button type="button" key={name} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', pct < 75 ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{label} <span className="text-[9px] font-bold text-muted-foreground">({category})</span></span><span className="text-xs font-bold text-muted-foreground">{pct}% ({item.attended}/{total})</span></button>; })}</div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2><div className="mt-3 space-y-3"><div><div className="mb-1 flex justify-between text-[10px] font-bold"><span>Current</span><span>{overallPercentage}%</span></div><div className="h-2 rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${overallPercentage}%` }} /></div></div><div><div className="mb-1 flex justify-between text-[10px] font-bold"><span>Target</span><span>{preferredPercentage || 75}%</span></div><div className="h-2 rounded-full bg-muted"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${preferredPercentage || 75}%` }} /></div></div><p className="text-[10px] text-muted-foreground">Maximum possible is calculated from the same planned curriculum and attendance records used by Subjects.</p></div></section>
     </motion.div>
   );
   return (
     <Layout
-      headerTitle={showMarkAttendance ? 'Mark Attendance' : `${timeOfDay}, ${username}`}
-      headerDescription={showMarkAttendance ? shortDate : `· ${shortDate}`}
+      headerTitle={showMarkAttendance ? 'Attendance' : 'Dashboard'}
+      headerDescription=""
       headerRight={showUpdatePill ? (
         <div className="flex items-center gap-1.5 shrink-0">
           <button
