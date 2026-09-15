@@ -183,7 +183,7 @@ export const SubjectCard = ({
 
   const modalDetailsContent = (
     <div className="space-y-4 pt-1">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Stepper field="attended" value={attendedNum} />
         <Stepper field="missed" value={missedNum} />
       </div>

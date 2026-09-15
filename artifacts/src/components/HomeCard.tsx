@@ -361,7 +361,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   };
 
   const handleSelection = (sel: 'off' | 'missed' | 'attended') => {
-    if (effectiveMode !== 'today' || !attendanceKey) return;
+    if (effectiveMode !== 'today' || !attendanceKey || isVacationOrExamPeriod) return;
     if (isFinished && !currentSelection) return;
     setPendingSelection(sel);
   };
@@ -431,11 +431,11 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
       <span className="text-xs font-extrabold capitalize relative z-10">{selWord(ecgPhase)}</span>
     </div>
   ) : !currentSelection && !isFinished ? (
-    <div className="space-y-2">
+      <div className="space-y-2">
       <div className="flex gap-2">
         {(['attended', 'missed', 'off'] as const).map(s => (
           <button key={s} type="button" onClick={() => handleSelection(s)}
-            className={cn('attendance-option-button flex-1 h-11 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-background/70 text-muted-foreground',
+            className={cn('attendance-option-button flex-1 h-11 rounded-2xl text-xs sm:text-sm font-extrabold border transition-all bg-background/70 text-muted-foreground shadow-sm',
               s === 'attended' && 'hover:bg-emerald-500/10 hover:text-emerald-600', s === 'missed' && 'hover:bg-rose-500/10 hover:text-rose-600', s === 'off' && 'hover:bg-amber-500/10 hover:text-amber-600',
               pendingSelection === s && 'ring-2 ring-inset font-extrabold', pendingSelection === s && (s === 'attended' ? 'ring-emerald-500 bg-emerald-500/20 text-emerald-500' : s === 'missed' ? 'ring-rose-500 bg-rose-500/20 text-rose-500' : 'ring-amber-500 bg-amber-500/20 text-amber-500'))}>
             {s === 'off' ? 'Holiday' : s === 'attended' ? 'Attended' : 'Missed'}
@@ -480,7 +480,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
               <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
                 <span className="shrink-0 whitespace-nowrap">{time}</span>
               </div>
-              {effectiveMode === 'future' && <div className="mt-1 flex items-center"><span className={cn('shrink-0 rounded-full border bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', isTomorrow ? futureTag.color : 'border-border/50 text-muted-foreground')}>{futureStatusText}</span></div>}
+              {effectiveMode === 'future' && (isVacationOrExamPeriod ? <div className="mt-1 flex items-center"><span className="rounded-full border border-warning/35 bg-warning/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-warning">Vacation / Exam Period</span></div> : <div className="mt-1 flex items-center"><span className={cn('shrink-0 rounded-full border bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', isTomorrow ? futureTag.color : 'border-border/50 text-muted-foreground')}>{futureStatusText}</span></div>)}
               {effectiveMode === 'today' && isVacationOrExamPeriod ? (
                 <div className="mt-1 text-[11px] font-extrabold text-warning">Vacation / Exam Period</div>
               ) : effectiveMode === 'today' && currentSelection && !ecgPhase && (

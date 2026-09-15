@@ -43,8 +43,8 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
     >
       <header ref={headerRef} className="fixed inset-x-0 top-0 z-50 border-b border-black/20 dark:border-white/20 bg-card rounded-b-[28px] shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
         <div className="max-w-3xl mx-auto w-full px-4 pt-[env(safe-area-inset-top)] py-3">
-          <div className="flex items-center justify-between gap-3 min-h-[4.5rem]">
-            <div className="min-w-0">
+          <div className="flex items-center justify-between gap-3 min-h-[4.25rem]">
+            <div className="min-w-0 space-y-0.5">
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{headerTitle ?? currentItem.label}</h1>
               {(headerDescription ?? currentItem.description) && <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{headerDescription ?? currentItem.description}</p>}
             </div>
@@ -81,15 +81,13 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
                 <span className="relative z-10 flex flex-col items-center gap-0.5">
                   <Icon className="h-5 w-5" strokeWidth={active ? 2.5 : 2} />
                   <AnimatePresence initial={false} mode="popLayout">
-                    {active && (
-                      <motion.span
-                        initial={{ opacity: 0, height: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, height: 'auto', scale: 1 }}
-                        exit={{ opacity: 0, height: 0, scale: 0.8 }}
-                        transition={{ duration: 0.25, ease: 'easeOut' }}
-                        className="text-[10px] font-bold leading-none"
-                      >{label}</motion.span>
-                    )}
+                    <motion.span
+                      initial={{ opacity: 0, y: 3 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 3 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                      className="text-[9px] font-bold leading-none"
+                    >{label}</motion.span>
                   </AnimatePresence>
                 </span>
               </button>
