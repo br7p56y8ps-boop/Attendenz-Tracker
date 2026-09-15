@@ -119,6 +119,11 @@ const PRESET_SUBJECT_TOTALS_KEY = 'att_preset_subject_totals';
 const PRESET_RENAMES_KEY = 'att_preset_subject_renames';
 const PRESET_WARD_RENAMES_KEY = 'att_preset_ward_renames';
 const SGT_REPAIR_DONE_KEY = 'att_sgt_repair_v1_done';
+const LEGACY_HOLIDAY_WARD_MIGRATIONS = [
+  { start: '2026-03-14', end: '2026-03-27', ward: 'Pediatrics' },
+  { start: '2026-05-23', end: '2026-06-05', ward: 'Internal Medicine' },
+  { start: '2026-10-17', end: '2026-10-23', ward: 'Otolaryngology' },
+] as const;
 
 const DEFAULT_MORNING_TIME = '09:30 AM–11:30 AM';
 const DEFAULT_EVENING_TIME = '07:00 PM–09:00 PM';
@@ -273,6 +278,35 @@ const defaultWardSchedule = (): PresetWardEntry[] =>
     morningTime: DEFAULT_MORNING_TIME,
     eveningTime: DEFAULT_EVENING_TIME,
   }));
+
+const migrateLegacyHolidayWardEntries = (entries: PresetWardEntry[]): { entries: PresetWardEntry[]; changed: boolean } => {
+  const next = entries.map(entry => ({
+    ...entry,
+    vacationPeriods: Array.isArray(entry.vacationPeriods) ? entry.vacationPeriods.map(period => ({ ...period })) : undefined,
+  }));
+  let changed = false;
+
+  for (const migration of LEGACY_HOLIDAY_WARD_MIGRATIONS) {
+    const holidayIndexes = next
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => entry.ward.trim().toLowerCase() === 'holiday' && entry.start === migration.start && entry.end === migration.end)
+      .map(({ index }) => index);
+    if (holidayIndexes.length === 0) continue;
+
+    const ownerIndex = next.findIndex(entry => entry.ward === migration.ward && entry.end < migration.start);
+    if (ownerIndex !== -1) {
+      const owner = next[ownerIndex];
+      const periods = owner.vacationPeriods || [];
+      if (!periods.some(period => period.start === migration.start && period.end === migration.end)) {
+        next[ownerIndex] = { ...owner, vacationPeriods: [...periods, { start: migration.start, end: migration.end }] };
+      }
+      holidayIndexes.sort((a, b) => b - a).forEach(index => next.splice(index, 1));
+      changed = true;
+    }
+  }
+
+  return { entries: next, changed };
+};
 
 const canonTime = (t?: string): { value?: string; changed: boolean } => {
   if (t === undefined || t === null || t === '') return { value: t, changed: false };
@@ -754,7 +788,15 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       presetTimetableRef.current = loadedTimetable;
 
       const pws = localStorage.getItem(PRESET_WARD_SCHEDULE_KEY);
-      if (pws) setPresetWardSchedule(JSON.parse(pws));
+      if (pws) {
+        const parsedSchedule = JSON.parse(pws) as PresetWardEntry[];
+        const migratedSchedule = migrateLegacyHolidayWardEntries(parsedSchedule);
+        setPresetWardSchedule(migratedSchedule.entries);
+        if (migratedSchedule.changed) {
+          snapshotBeforeEdit('Legacy Holiday Ward Migration');
+          void storageSetItemChecked(PRESET_WARD_SCHEDULE_KEY, JSON.stringify(migratedSchedule.entries)).catch(() => undefined);
+        }
+      }
 
       const pst = localStorage.getItem(PRESET_SUBJECT_TOTALS_KEY);
       if (pst) setPresetSubjectTotals(JSON.parse(pst));

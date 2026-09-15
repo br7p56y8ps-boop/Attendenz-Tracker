@@ -198,6 +198,25 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const selectionKey = attendanceKey ? (sessionId ? `${activeDateStr}-${attendanceKey}-${sessionId}` : `${activeDateStr}-${attendanceKey}`) : '';
   const effectiveMode = mode || (dateStr && dateStr !== getCurrentDateStr() ? 'past' : 'today');
 
+  const isVacationOrExamPeriod = useMemo(() => {
+    const includesDate = (periods?: Array<{ start: string; end: string }>) =>
+      Boolean(periods?.some(period => activeDateStr >= period.start && activeDateStr <= period.end));
+    if (isWard) {
+      if (subjectMode === 'custom') {
+        const ward = customWards?.find(item => item.name.toLowerCase() === subject.toLowerCase());
+        return includesDate(ward?.vacationPeriods);
+      }
+      return presetWardSchedule
+        .filter(entry => entry.ward === subject)
+        .some(entry => includesDate(entry.vacationPeriods));
+    }
+    if (isSGT && sgtId) {
+      const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+      return includesDate(source?.find(item => item.id === sgtId)?.vacationPeriods);
+    }
+    return false;
+  }, [activeDateStr, customSubjects, customWards, isSGT, isWard, presetWardSchedule, sgtId, subject, subjectMode, userAddedSubjects]);
+
   const getPastAttendance = (): SelectionType | undefined => {
     return attendanceKey ? getHomeSelection(activeDateStr, attendanceKey, sessionId, isWard) : undefined;
   };
@@ -205,8 +224,8 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const percentage = total === 0 ? 100 : (attended / total) * 100;
 
   const todayStr = getCurrentDateStr();
+  const tomorrowDate = addDays(new Date(todayStr + 'T12:00:00'), 1);
   const daysFromToday = Math.round((new Date(activeDateStr + 'T12:00:00').getTime() - new Date(todayStr + 'T12:00:00').getTime()) / 86400000);
-  const isTomorrow = daysFromToday === 1;
 
   const isScheduledOn = useCallback((d: Date): boolean => {
     const ds = toStr(d); const abbr = DAY_ABBRS[d.getDay()]; const dow = d.getDay();
@@ -236,6 +255,25 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     if (cs.days && cs.days.split(',').map((t: string) => t.trim()).includes(abbr)) return true;
     return false;
   }, [isWard, subjectMode, customWards, getCurrentPresetWard, isSGT, sgtId, userAddedSubjects, customSubjects, presetTimetable, subject]);
+  const isRoutineHoliday = useCallback((d: Date): boolean => {
+    if (d.getDay() === 0 || d.getDay() === 6) return false;
+    if (subjectMode === 'preloaded') return d.getDay() === 5 || getCurrentPresetWard(d)?.ward === 'Holiday';
+    const day = DAY_ABBRS[d.getDay()];
+    const hasSubject = customSubjects?.some((item: any) => {
+      if ((item.startDate && toStr(d) < item.startDate) || (item.endDate && toStr(d) > item.endDate)) return false;
+      return (item.schedules || []).some((schedule: any) => schedule.day === day)
+        || (item.days && item.days.split(',').map((value: string) => value.trim()).includes(day));
+    });
+    const hasWard = customWards?.some(ward => toStr(d) >= ward.startDate && toStr(d) <= ward.endDate);
+    const hasHolidayWard = customWards?.some(ward => ward.name.toLowerCase() === 'holiday' && toStr(d) >= ward.startDate && toStr(d) <= ward.endDate);
+    return Boolean(hasHolidayWard || (!hasSubject && !hasWard));
+  }, [subjectMode, getCurrentPresetWard, customSubjects, customWards]);
+  const holidaySkipDate = isRoutineHoliday(tomorrowDate) ? addDays(tomorrowDate, 1) : null;
+  const isHolidaySkippedPrediction = Boolean(holidaySkipDate && toStr(holidaySkipDate) === activeDateStr);
+  const isTomorrow = daysFromToday === 1 || isHolidaySkippedPrediction;
+  const predictionClassLabel = isHolidaySkippedPrediction
+    ? `${holidaySkipDate!.toLocaleDateString('en-US', { weekday: 'long' })}'s class`
+    : 'this Class';
   const k = useMemo(() => {
     if (effectiveMode !== 'future') return 1;
     let count = 0;
@@ -251,23 +289,35 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     if (percentage < preferredPercentage) {
       const N = needToAttend;
       if (k < N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this <span className="whitespace-nowrap">(+{N - k}) more {cls(N - k)}!!</span></span> };
-      if (k === N) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this Class!!</span> };
+      if (k === N) {
+        if (isHolidaySkippedPrediction) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend {predictionClassLabel}!!</span> };
+        return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">Must attend this Class!!</span> };
+      }
       return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
     }
     if (canMissCount > 0) {
       const M = canMissCount;
       if (k < M) return { sev: ((M - k) >= 2 ? 'safe' : 'can') as 'safe' | 'can', jsx: <span className={cn('font-semibold', (M - k) >= 2 ? 'text-emerald-500' : 'text-amber-500')}>On track.. Can bunk this <span className="whitespace-nowrap">(+{M - k}) {cls(M - k)}!!</span></span> };
-      if (k === M) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk this Class</span> };
+      if (k === M) {
+        if (isHolidaySkippedPrediction) return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk {predictionClassLabel}</span> };
+        return { sev: 'can' as const, jsx: <span className="text-amber-500 font-semibold">Can bunk this Class</span> };
+      }
       return { sev: 'safe' as const, jsx: <span className="text-emerald-500 font-semibold">On track</span> };
     }
-    if (k === 1) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this Class</span> };
+    if (k === 1) {
+      if (isHolidaySkippedPrediction) return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk {predictionClassLabel}</span> };
+      return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this Class</span> };
+    }
     return { sev: 'must' as const, jsx: <span className="text-rose-500 font-semibold">On target, DO NOT bunk this <span className="whitespace-nowrap">(+{k - 1}) {cls(k - 1)}</span></span> };
   })();
   const futureTag = (() => {
     if (isFinished) return { text: 'No more Scheduled/Planned Class', color: 'text-muted-foreground' };
-    if (futureMsg.sev === 'must') return { text: needToAttend === 1 ? 'Tomorrow’s Class Only' : `Attend = ${needToAttend} ${cls(needToAttend)}`, color: 'text-rose-500' };
-    if (futureMsg.sev === 'can') return { text: canMissCount === 1 ? 'Tomorrow’s Class Only' : `Bunkable Class = ${canMissCount} ${cls(canMissCount)}`, color: 'text-amber-500' };
-    return { text: canMissCount === 1 ? 'Tomorrow’s Class Only' : `Safely Bunkable = ${canMissCount} ${cls(canMissCount)}`, color: 'text-emerald-500' };
+    const onlyClassLabel = isHolidaySkippedPrediction
+      ? `${holidaySkipDate!.toLocaleDateString('en-US', { weekday: 'long' })}'s class Only`
+      : 'Tomorrow’s Class Only';
+    if (futureMsg.sev === 'must') return { text: needToAttend === 1 ? onlyClassLabel : `Attend = ${needToAttend} ${cls(needToAttend)}`, color: 'text-rose-500' };
+    if (futureMsg.sev === 'can') return { text: canMissCount === 1 ? onlyClassLabel : `Bunkable Class = ${canMissCount} ${cls(canMissCount)}`, color: 'text-amber-500' };
+    return { text: canMissCount === 1 ? onlyClassLabel : `Safely Bunkable = ${canMissCount} ${cls(canMissCount)}`, color: 'text-emerald-500' };
   })();
   const futureStatusText = isTomorrow ? futureTag.text : isFinished ? 'No more Scheduled/Planned Class' : 'Yet to be Conducted';
 
@@ -311,19 +361,22 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   };
 
   const handleSelection = (sel: 'off' | 'missed' | 'attended') => {
-    if (effectiveMode !== 'today' || !attendanceKey) return;
+    if (effectiveMode !== 'today' || !attendanceKey || isVacationOrExamPeriod) return;
     if (isFinished && !currentSelection) return;
-    if (pendingSelection === sel) {
-      setPendingSelection(null);
-      setEcgPhase(sel);
-      setEcgCount(c => c + 1);
-      setMarkCount(c => c + 1);
-      setUndoPending(false);
-      updateHomeSelection(selectionKey, attendanceKey, sel, isWard);
-      triggerConfirmationFeedback(sel === 'off' ? 'info' : sel === 'missed' ? 'danger' : 'success');
-      if (ecgTimeoutRef.current !== null) window.clearTimeout(ecgTimeoutRef.current);
-      ecgTimeoutRef.current = window.setTimeout(() => { setEcgPhase(null); ecgTimeoutRef.current = null; }, 1500);
-    } else setPendingSelection(sel);
+    setPendingSelection(sel);
+  };
+  const handleConfirmSelection = () => {
+    if (!pendingSelection || !attendanceKey) return;
+    const sel = pendingSelection;
+    setPendingSelection(null);
+    setEcgPhase(sel);
+    setEcgCount(c => c + 1);
+    setMarkCount(c => c + 1);
+    setUndoPending(false);
+    updateHomeSelection(selectionKey, attendanceKey, sel, isWard);
+    triggerConfirmationFeedback(sel === 'off' ? 'info' : sel === 'missed' ? 'danger' : 'success');
+    if (ecgTimeoutRef.current !== null) window.clearTimeout(ecgTimeoutRef.current);
+    ecgTimeoutRef.current = window.setTimeout(() => { setEcgPhase(null); ecgTimeoutRef.current = null; }, 1500);
   };
   const handleUndoTap = () => {
     if (!attendanceKey) return;
@@ -365,7 +418,11 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const pastStatusClass = currentSelection === 'attended' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : currentSelection === 'missed' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : currentSelection === 'off' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-muted/30 text-muted-foreground border-border/50';
   const pastIsMarked = currentSelection === 'attended' || currentSelection === 'missed';
 
-  const todayBottom = ecgPhase ? (
+  const todayBottom = isVacationOrExamPeriod ? (
+    <div className="flex h-11 w-full items-center justify-center rounded-xl border border-warning/35 bg-warning/8 text-xs font-extrabold text-warning">
+      Vacation / Exam Period
+    </div>
+  ) : ecgPhase ? (
     <div className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
       <svg className="absolute inset-0 w-full h-full opacity-40" preserveAspectRatio="none" viewBox="0 0 100 40">
         <motion.path d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 100 20" fill="none" stroke={ecgColor} strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeInOut' }} />
@@ -374,15 +431,20 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
       <span className="text-xs font-extrabold capitalize relative z-10">{selWord(ecgPhase)}</span>
     </div>
   ) : !currentSelection && !isFinished ? (
-    <div className="flex gap-2">
-      {(['attended', 'missed', 'off'] as const).map(s => (
-        <button key={s} type="button" onClick={() => handleSelection(s)}
-          className={cn('flex-1 h-11 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-background/70 text-muted-foreground border-border',
-            s === 'attended' && 'hover:bg-emerald-500/10 hover:text-emerald-600', s === 'missed' && 'hover:bg-rose-500/10 hover:text-rose-600', s === 'off' && 'hover:bg-amber-500/10 hover:text-amber-600',
-            pendingSelection === s && 'ring-2 ring-inset font-extrabold', pendingSelection === s && (s === 'attended' ? 'ring-emerald-500 bg-emerald-500/20 text-emerald-500' : s === 'missed' ? 'ring-rose-500 bg-rose-500/20 text-rose-500' : 'ring-amber-500 bg-amber-500/20 text-amber-500'))}>
-          {pendingSelection === s ? 'Confirm?' : s === 'off' ? 'Holiday' : s === 'attended' ? 'Attended' : 'Missed'}
-        </button>
-      ))}
+      <div className="space-y-2">
+      <div className="flex gap-2">
+        {(['attended', 'missed', 'off'] as const).map(s => pendingSelection === s ? (
+          <button key={s} type="button" onClick={handleConfirmSelection} className={cn('attendance-confirm-button flex-1 h-11 rounded-2xl text-xs sm:text-sm font-extrabold', `attendance-confirm-button--${s}`)}>
+            Confirm {selWord(s)}
+          </button>
+        ) : (
+          <button key={s} type="button" onClick={() => handleSelection(s)}
+            className={cn('attendance-option-button flex-1 h-11 rounded-2xl text-xs sm:text-sm font-extrabold border transition-all bg-background/70 text-muted-foreground shadow-sm',
+              s === 'attended' && 'hover:bg-emerald-500/10 hover:text-emerald-600', s === 'missed' && 'hover:bg-rose-500/10 hover:text-rose-600', s === 'off' && 'hover:bg-amber-500/10 hover:text-amber-600')}>
+            {s === 'off' ? 'Holiday' : s === 'attended' ? 'Attended' : 'Missed'}
+          </button>
+        ))}
+      </div>
     </div>
   ) : null;
 
@@ -390,8 +452,16 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     <div ref={cardRef} className={cn('relative rounded-2xl border overflow-hidden select-none mb-4 bg-card', borderCls)}
       style={effectiveMode !== 'today' && !isFinished && !currentSelection ? { borderColor: subjectColor } : undefined}>
       <div className={cn('p-5', effectiveMode === 'today' ? markTint : '')}>
-        {/* ── PAST ── */}
-        {effectiveMode === 'past' ? (
+        {isVacationOrExamPeriod ? (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-1">
+              <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
+              <div className="text-sm leading-tight text-muted-foreground">{time}</div>
+              <span className="inline-flex rounded-full border border-warning/35 bg-warning/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-warning">Vacation / Exam Period</span>
+            </div>
+            <div className="shrink-0 text-lg font-bold text-muted-foreground">{total === 0 ? '--' : formatPercentage(percentage)}</div>
+          </div>
+        ) : effectiveMode === 'past' ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-0.5">
               {tagEl && <div className="flex items-center">{tagEl}</div>}
@@ -415,8 +485,10 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
               <div className="flex min-w-0 items-center gap-2 text-sm leading-tight text-muted-foreground">
                 <span className="shrink-0 whitespace-nowrap">{time}</span>
               </div>
-              {effectiveMode === 'future' && <div className="mt-1 flex items-center"><span className={cn('shrink-0 rounded-full border bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', isTomorrow ? futureTag.color : 'border-border/50 text-muted-foreground')}>{futureStatusText}</span></div>}
-              {effectiveMode === 'today' && currentSelection && !ecgPhase && (
+              {effectiveMode === 'future' && (isVacationOrExamPeriod ? <div className="mt-1 flex items-center"><span className="rounded-full border border-warning/35 bg-warning/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-warning">Vacation / Exam Period</span></div> : <div className="mt-1 flex items-center"><span className={cn('shrink-0 rounded-full border bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', isTomorrow ? futureTag.color : 'border-border/50 text-muted-foreground')}>{futureStatusText}</span></div>)}
+              {effectiveMode === 'today' && isVacationOrExamPeriod ? (
+                <div className="mt-1 text-[11px] font-extrabold text-warning">Vacation / Exam Period</div>
+              ) : effectiveMode === 'today' && currentSelection && !ecgPhase && (
                 undoPending ? (
                   <button type="button" onClick={handleUndoTap} className="text-[11px] font-extrabold text-rose-500 leading-tight mt-1 animate-pulse cursor-pointer">Confirm Undo?</button>
                 ) : (
@@ -446,7 +518,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
         )}
 
         {/* ── BOTTOM (today) ── */}
-        {effectiveMode === 'today' && (
+        {!isVacationOrExamPeriod && effectiveMode === 'today' && (
           <AnimatePresence initial={false}>
             {todayBottom && (
               <motion.div key={`tb-${ecgCount}`} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: 'easeInOut' }} className="overflow-hidden">

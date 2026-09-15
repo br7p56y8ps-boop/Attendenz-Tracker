@@ -387,10 +387,31 @@ export function storageClearChecked(keysToKeep: string[] = []): Promise<void> {
   });
 }
 
-export async function recoverPendingDeleteAll(): Promise<void> {
-  if (localStorage.getItem(PENDING_DELETE_ALL_KEY) !== 'true') return;
+export async function recoverPendingDeleteAll(onStep?: (label: string) => void): Promise<boolean> {
+  if (localStorage.getItem(PENDING_DELETE_ALL_KEY) !== 'true') return false;
+  const waitForUserVisibleStep = async (label: string) => {
+    onStep?.(label);
+    await new Promise(resolve => window.setTimeout(resolve, 500));
+  };
+
+  await waitForUserVisibleStep('Cleaning up your Data…');
   await storageClearChecked([PENDING_DELETE_ALL_KEY]);
+
+  await waitForUserVisibleStep('Cleaning up the Caches…');
+  if (typeof window !== 'undefined' && 'caches' in window) {
+    const cacheNames = await window.caches.keys();
+    await Promise.all(cacheNames.map(name => window.caches.delete(name)));
+  }
+
+  await waitForUserVisibleStep('Resetting the Attendenz…');
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map(registration => registration.unregister()));
+  }
+
+  await waitForUserVisibleStep('Initialising…');
   await storageRemoveItemChecked(PENDING_DELETE_ALL_KEY);
+  return true;
 }
 
 /**

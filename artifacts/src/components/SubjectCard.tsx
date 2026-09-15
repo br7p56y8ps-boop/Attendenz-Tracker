@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { cn, pctColor, getSubjectColor, formatPercentage } from '@/lib/utils';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
-import { CountStepper } from '@/components/CountStepper';
 import { Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ModalSheet } from '@/components/ui/modal-sheet';
 
 interface SubjectCardProps {
   subject: string;
@@ -30,7 +29,7 @@ export const SubjectCard = ({
   isSGT = false,
   sgtId,
 }: SubjectCardProps) => {
-  const { subjects, wards, finishedMap, updateSubject, updateWard, toggleFinished, preferredPercentage } = useAttendance();
+  const { subjects, wards, updateSubject, updateWard, preferredPercentage } = useAttendance();
   const { subjectMode, getPresetSubjectDisplayName, getSubjectIdByName } = useCustomData();
 
   const displayName = subjectMode === 'preloaded' ? getPresetSubjectDisplayName(subject) : subject;
@@ -45,7 +44,6 @@ export const SubjectCard = ({
   const dataStore = isWard ? wards : subjects;
   const updateFn = isWard ? updateWard : updateSubject;
   const data = attendanceKey ? dataStore[attendanceKey] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-  const isMarkedFinished = attendanceKey ? finishedMap?.[attendanceKey] || false : false;
 
   const currentDataRef = useRef({ attended: data.attended, missed: data.missed });
   useEffect(() => {
@@ -55,6 +53,16 @@ export const SubjectCard = ({
   const [showLimitMessage, setShowLimitMessage] = useState(false);
   const [activeStatInfo, setActiveStatInfo] = useState<'remaining' | 'missable' | 'canMiss' | 'required' | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  useEffect(() => {
+    if (!activeStatInfo) return;
+    const timer = window.setTimeout(() => setActiveStatInfo(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [activeStatInfo]);
+  useEffect(() => {
+    if (!showLimitMessage) return;
+    const timer = window.setTimeout(() => setShowLimitMessage(false), 10000);
+    return () => window.clearTimeout(timer);
+  }, [showLimitMessage]);
 
   useEffect(() => {
     if (!isModalOpen) return;
@@ -120,7 +128,7 @@ export const SubjectCard = ({
   const requiredToAttend = rawRequired > remaining ? "Not possible" : rawRequired;
   const isMaxReached = totalConducted >= totalPlanned;
   const percentageColor = pctColor(percentage, preferredPercentage, {
-    isFinished: isMarkedFinished || isMaxReached,
+    isFinished: isMaxReached,
     hasPlannedClasses: totalPlanned > 0,
   });
 
@@ -163,21 +171,19 @@ export const SubjectCard = ({
     </div>
   );
 
-  const Stepper = ({ field, value }: { field: 'attended' | 'missed', value: number }) => (
-    <CountStepper
-      label={field}
-      value={value}
-      onDecrement={() => { handleStep(field, -1); }}
-      onIncrement={() => { handleStep(field, 1); }}
-      decrementDisabled={value <= 0}
-      incrementDisabled={isMaxReached}
-      ariaLabel={field}
-    />
-  );
+  const Stepper = ({ field, value }: { field: 'attended' | 'missed', value: number }) => {
+    const attended = field === 'attended';
+    return (
+      <div className={cn('flex items-center justify-between rounded-2xl border px-3 py-2.5', attended ? 'border-emerald-500/35 bg-emerald-500/10' : 'border-rose-500/35 bg-rose-500/10')}>
+        <span className={cn('text-xs font-extrabold', attended ? 'text-emerald-600' : 'text-rose-600')}>{attended ? 'Attended' : 'Missed'}</span>
+        <div className="flex items-center gap-2"><button type="button" disabled={value <= 0} onClick={() => handleStep(field, -1)} className="h-7 w-7 rounded-full border border-current/30 text-sm font-extrabold disabled:opacity-30" aria-label={`Decrease ${field}`}>−</button><span className="min-w-5 text-center text-base font-extrabold text-foreground">{value}</span><button type="button" disabled={isMaxReached} onClick={() => handleStep(field, 1)} className="h-7 w-7 rounded-full border border-current/30 text-sm font-extrabold disabled:opacity-30" aria-label={`Increase ${field}`}>+</button></div>
+      </div>
+    );
+  };
 
   const modalDetailsContent = (
-    <div className="space-y-4 pt-1">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className="space-y-5 pt-1">
+      <div className="grid grid-cols-2 gap-4">
         <Stepper field="attended" value={attendedNum} />
         <Stepper field="missed" value={missedNum} />
       </div>
@@ -187,7 +193,7 @@ export const SubjectCard = ({
         </p>
       )}
       {/* Metrics Row */}
-      <div className="grid grid-cols-4 gap-2 pt-3 border-t border-border/30">
+      <div className="grid grid-cols-4 gap-2 pt-5 border-t border-border/30">
         <div
           role="button" tabIndex={0} aria-expanded={activeStatInfo === 'remaining'}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setActiveStatInfo(prev => prev === 'remaining' ? null : 'remaining'); } }}
@@ -243,7 +249,7 @@ export const SubjectCard = ({
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
+            exit={{ opacity: 0, height: 0, transition: { duration: 0.22, ease: 'easeInOut' } }}
             className="overflow-hidden pt-3"
           >
             <div className="bg-muted/40 border border-primary/30 rounded-2xl p-3 text-xs text-foreground space-y-1.5 relative">
@@ -258,7 +264,7 @@ export const SubjectCard = ({
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setActiveStatInfo(null); }}
-                  className="action-button action-button--close action-button--icon"
+                  className="subject-inline-message-close action-button action-button--close action-button--icon"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -289,26 +295,6 @@ export const SubjectCard = ({
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Mark Completed Button */}
-      {isWard && (
-        <div className="pt-2">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (attendanceKey) toggleFinished(attendanceKey);
-            }}
-            className={cn(
-              "action-button w-full",
-              isMarkedFinished
-                ? "action-button--warning"
-                : "action-button--edit"
-            )}
-          >
-            <span>{isMarkedFinished ? 'Finished Early (Click to Re-open)' : 'Mark as Finished'}</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 
@@ -327,27 +313,7 @@ export const SubjectCard = ({
         {headerContent}
       </div>
 
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {isModalOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end justify-center p-4 overflow-hidden"
-              onClick={closeModal}
-            >
-              <motion.div
-                initial={{ y: 48, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 48, opacity: 0 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                role="dialog"
-                aria-modal="true"
-                aria-label={`${displayName} details`}
-                className="modal-sheet-content bg-card backdrop-blur-2xl border border-border/80 rounded-3xl p-6 w-full max-w-md max-h-[min(70dvh,48rem)] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.42)] space-y-4 text-left relative"
-                onClick={(e) => e.stopPropagation()}
-              >
+      <ModalSheet open={isModalOpen} onClose={closeModal} ariaLabel={`${displayName} details`} maxWidth="max-w-lg" className="subject-details-modal" bodyClassName="p-6 space-y-4 text-left">
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -368,7 +334,7 @@ export const SubjectCard = ({
                     <button
                       type="button"
                       onClick={closeModal}
-                      className="action-button action-button--close action-button--icon"
+                      className="subject-details-close action-button action-button--close action-button--icon"
                       title="Close"
                     >
                       <X className="w-4 h-4" />
@@ -376,12 +342,7 @@ export const SubjectCard = ({
                   </div>
                 </div>
                 {modalDetailsContent}
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
+      </ModalSheet>
     </>
   );
 };
