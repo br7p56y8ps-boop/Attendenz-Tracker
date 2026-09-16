@@ -8,7 +8,7 @@ import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSessionId, getCustomSubjectSessionId } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, INTEGRATED_SUBJECTS, PRESET_PARENTS, WARD_SUBJECTS } from '@/lib/constants';
-import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen, ClipboardCheck } from 'lucide-react';
+import { ArrowUpCircle, X, MoonStar, Coffee, BookOpen, ClipboardCheck, Pencil, Plus, Minus, CalendarDays, Percent, Tag } from 'lucide-react';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { idbGet, idbSet } from '@/lib/idb';
@@ -59,17 +59,19 @@ interface DayEntry {
   card?: HomeCardSpec;
   holidayTime?: string;
 }
+type ActivityKind = 'attendance' | 'missed' | 'edit' | 'slot' | 'vacation' | 'percentage' | 'neutral';
+interface ActivityItem { id: string; text: string; timestamp: number; kind: ActivityKind; }
 
 export default function Home() {
   const today = new Date();
   const todayStr = toDateString(today);
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
   const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
-  const { homeSelections, finishedMap, subjects, wards } = useAttendance();
+  const { homeSelections, finishedMap, subjects, wards, preferredPercentage } = useAttendance();
   const [, setLocation] = useLocation();
   const { username } = useAuth();
   const [showMarkAttendance, setShowMarkAttendance] = useState(false);
-  const [dashboardActivities, setDashboardActivities] = useState<Array<{ id: string; text: string; timestamp: number }>>([]);
+  const [dashboardActivities, setDashboardActivities] = useState<ActivityItem[]>([]);
   const [activityExpanded, setActivityExpanded] = useState(false);
 
   /* ── Update notice ── */
@@ -455,19 +457,30 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     const now = Date.now();
-    const derived = Object.entries(homeSelections)
+    const derived: ActivityItem[] = Object.entries(homeSelections)
       .filter(([key]) => key.startsWith(todayStr))
       .map(([key, value]) => {
         const matched = dayEntries.find(entry => entry.card?.sessionId && key.includes(entry.card.sessionId));
         const subject = matched?.card?.subject || 'Class';
         const kind = matched?.card?.isWard ? 'Clinical Rotation' : matched?.card?.tag === 'Small Group' ? 'Small Group Teaching' : 'Lecture';
-        return { id: `attendance-${key}`, text: `Marked ${subject} (${kind}) as ${value === 'off' ? 'Off' : value === 'missed' ? 'Bunked' : 'Attended'}`, timestamp: now };
+        return { id: `attendance-${key}`, text: `Marked ${subject} (${kind}) as ${value === 'off' ? 'Off' : value === 'missed' ? 'Bunked' : 'Attended'}`, timestamp: now, kind: (value === 'missed' ? 'missed' : 'attendance') as ActivityKind };
       })
       .slice(-12);
-    void idbGet('att_dashboard_activity_v1').then(raw => {
-      let stored: Array<{ id: string; text: string; timestamp: number }> = [];
-      try { stored = raw ? JSON.parse(raw) as Array<{ id: string; text: string; timestamp: number }> : []; } catch { stored = []; }
-      const merged = [...stored, ...derived].filter(item => now - item.timestamp < 48 * 60 * 60 * 1000);
+    void Promise.all([idbGet('att_dashboard_activity_v1'), idbGet('att_manage_history')]).then(([raw, historyRaw]) => {
+      let stored: ActivityItem[] = [];
+      try { stored = raw ? (JSON.parse(raw) as Array<any>).map(item => ({ ...item, kind: item.kind || 'neutral' as ActivityKind })) : []; } catch { stored = []; }
+      let history: ActivityItem[] = [];
+      try {
+        const entries = historyRaw ? JSON.parse(historyRaw) as Array<any> : [];
+        history = entries.map(entry => {
+          const type = String(entry.type || 'Updated routine');
+          const data = entry.data || {};
+          const target = data.name || data.subject || data.ward || data.names?.join(', ') || data.clinicalSubject || 'routine';
+          const kind: ActivityKind = /vacation|exam/i.test(type) ? 'vacation' : /percentage|planned/i.test(type) ? 'percentage' : /slot/i.test(type) ? 'slot' : /edit|move|add|delete/i.test(type) ? 'edit' : 'neutral';
+          return { id: `history-${entry.id}`, text: `${type}: ${target}`, timestamp: Date.parse(entry.timestamp) || now, kind };
+        });
+      } catch { history = []; }
+      const merged = [...stored, ...history, ...derived].filter(item => now - item.timestamp < 48 * 60 * 60 * 1000);
       const unique = Array.from(new Map(merged.map(item => [item.id, item])).values()).sort((a, b) => b.timestamp - a.timestamp).slice(0, 40);
       if (cancelled) return;
       setDashboardActivities(unique);
@@ -480,23 +493,27 @@ export default function Home() {
   const overallTotal = overallAttended + overallMissed;
   const overallPercentage = overallTotal === 0 ? 0 : Math.round((overallAttended / overallTotal) * 100);
   const dashboardClassEntries = dayEntries.filter(entry => entry.kind === 'card');
-  const trendPoints = useMemo(() => Array.from({ length: 14 }, (_, index) => {
-    const dateStr = toDateString(addDays(new Date(todayStr + 'T12:00:00'), index - 13));
-    const values = Object.entries(homeSelections).filter(([key]) => key.startsWith(`${dateStr}-`) || key.startsWith(`${dateStr}_`)).map(([, value]) => value);
-    const conducted = values.filter(value => value === 'attended' || value === 'missed');
-    return conducted.length ? Math.round((conducted.filter(value => value === 'attended').length / conducted.length) * 100) : null;
-  }), [homeSelections, todayStr]);
-  const overallEcgPath = useMemo(() => {
-    const points = trendPoints.map(value => value ?? overallPercentage);
-    const width = 280 / Math.max(1, points.length);
+  const glanceEntries = dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry));
+  const makePqrstPath = (points: number[]) => {
+    const width = 268 / Math.max(1, points.length);
     return points.map((value, index) => {
-      const x = index * width;
+      const x = 24 + index * width;
       const baseline = 76 - (value * 0.22);
       const next = points[index + 1] ?? value;
       const nextBaseline = 76 - (next * 0.22);
       return `M ${x.toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.22).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.32).toFixed(1)} ${(baseline - 5).toFixed(1)} L ${(x + width * 0.42).toFixed(1)} ${(baseline + 4).toFixed(1)} L ${(x + width * 0.52).toFixed(1)} ${(baseline - 29).toFixed(1)} L ${(x + width * 0.62).toFixed(1)} ${(baseline + 14).toFixed(1)} L ${(x + width * 0.72).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.79).toFixed(1)} ${(baseline - 7).toFixed(1)} Q ${(x + width * 0.85).toFixed(1)} ${(baseline - 11).toFixed(1)} ${(x + width * 0.91).toFixed(1)} ${(baseline - 7).toFixed(1)} L ${(x + width).toFixed(1)} ${nextBaseline.toFixed(1)}`;
     }).join(' ');
-  }, [overallPercentage, trendPoints]);
+  };
+  const groupedEcgPaths = useMemo(() => {
+    const groups = [{ label: 'Medicine & Allied', color: '#38bdf8', values: [] as number[] }, { label: 'Surgery & Allied', color: '#a78bfa', values: [] as number[] }, { label: 'Clinical', color: '#34d399', values: [] as number[] }];
+    Object.entries(subjects).forEach(([key, item], index) => {
+      const conducted = item.attended + item.missed;
+      if (!conducted) return;
+      const group = key.startsWith('ward:') ? groups[2] : groups[index % 2];
+      group.values.push((item.attended / conducted) * 100);
+    });
+    return groups.map(group => ({ ...group, path: makePqrstPath(Array.from({ length: 10 }, (_, index) => group.values[index % Math.max(1, group.values.length)] ?? overallPercentage)) }));
+  }, [overallPercentage, subjects]);
   const resolveSubjectAlert = (storageKey: string) => {
     const raw = storageKey.replace(/^academic:/, '');
     if (storageKey.startsWith('sgt:')) {
@@ -599,22 +616,23 @@ export default function Home() {
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
         <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
-          <svg viewBox="0 0 280 92" className="mt-2 h-24 w-full" role="img" aria-label="PQRST attendance ECG over the last fourteen days"><path d="M0 76H280" stroke="currentColor" strokeOpacity=".12" /><path d="M0 48H280" stroke="currentColor" strokeOpacity=".08" /><path d={overallEcgPath} fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <svg viewBox="0 0 300 112" className="mt-2 h-28 w-full" role="img" aria-label="Grouped PQRST attendance ECG chart"><path d="M24 8V92H292" stroke="currentColor" strokeOpacity=".35" /><path d="M24 71H292M24 50H292M24 29H292" stroke="currentColor" strokeOpacity=".1" strokeDasharray="2 3" /><text x="2" y="12" fontSize="7" fill="currentColor">100%</text><text x="7" y="53" fontSize="7" fill="currentColor">50%</text><text x="13" y="94" fontSize="7" fill="currentColor">0%</text>{groupedEcgPaths.map(group => <path key={group.label} d={group.path} fill="none" stroke={group.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />)}</svg>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[8px] font-bold text-muted-foreground">{groupedEcgPaths.map(group => <span key={group.label} className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: group.color }} />{group.label}</span>)}</div>
           <div className="mt-2 grid grid-cols-2 gap-1.5 text-[9px] font-bold"><span className="rounded-full bg-muted/60 px-2 py-1.5 text-center text-muted-foreground">Conducted: {overallTotal}</span><span className="rounded-full bg-primary/10 px-2 py-1.5 text-center text-primary">Attended: {overallAttended}</span><span className="rounded-full bg-rose-500/10 px-2 py-1.5 text-center text-rose-500">Missed: {overallMissed}</span><span className="rounded-full bg-emerald-500/10 px-2 py-1.5 text-center text-emerald-500">Current: {overallPercentage}%</span></div>
         </button>
         <div className="grid min-h-0 grid-rows-2 gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.length} Classes today</p></button>
-          <button type="button" onClick={() => setShowMarkAttendance(true)} className="rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><p className="mt-1 truncate text-[10px] text-muted-foreground">First: {dashboardClassEntries[0]?.card?.subject || 'No classes scheduled'}</p></button>
+          <button type="button" onClick={() => { setSelectedDateStr(toDateString(addDays(today, 1))); setShowMarkAttendance(true); }} className="rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><p className="mt-1 truncate text-[10px] text-muted-foreground">First: {dashboardClassEntries[0]?.card?.subject || 'No classes scheduled'}</p></button>
         </div>
       </div>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Today’s Activity</h2></div>
-        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-3 pl-5 before:absolute before:bottom-1 before:left-[7px] before:top-1 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => <div key={item.id} className="relative flex items-center justify-between gap-2 text-xs"><span className="absolute -left-[14px] h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" /><span className="font-semibold text-foreground">{item.text}</span><span className="shrink-0 text-[10px] text-muted-foreground">Today</span></div>)}</div>}
+        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[3.75rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3rem_1.5rem_minmax(0,1fr)] items-center gap-2 text-xs"><time className="text-right text-[9px] font-bold text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-6 w-6 items-center justify-center rounded-full', color)}><Icon className="h-3 w-3" /></span><span className="min-w-0 font-semibold text-foreground">{item.text}</span></div>; })}</div>}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
-      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Today at a Glance</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{dashboardClassEntries.length === 0 ? <p className="text-xs text-muted-foreground">No classes today.</p> : dashboardClassEntries.map(entry => { const status = statusForEntry(entry); const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet'; const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground'; return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="min-w-[132px] rounded-xl border border-border bg-muted/30 p-3 text-left shadow-[0_2px_8px_rgba(0,0,0,0.22)]"><p className="truncate text-xs font-bold">{entry.card?.subject}</p><p className="mt-1 text-[10px] text-muted-foreground">{entry.time}</p><span className={cn('mt-2 block text-[10px] font-extrabold', color)}>{label}</span></button>; })}</div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Today at a Glance</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{glanceEntries.length === 0 ? <p className="text-xs text-muted-foreground">No remaining classes today.</p> : glanceEntries.map(entry => { const status = statusForEntry(entry); const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet'; const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground'; return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="min-w-[132px] rounded-xl border border-border bg-muted/30 p-3 text-left shadow-[0_2px_8px_rgba(0,0,0,0.22)]"><p className="truncate text-xs font-bold">{entry.card?.subject}</p><p className="mt-1 text-[10px] text-muted-foreground">{entry.time}</p><span className={cn('mt-2 block text-[10px] font-extrabold', color)}>{label}</span></button>; })}</div></section>
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{Object.entries(subjects).slice(0, 3).map(([storageKey, item]) => { const total = item.attended + item.missed; const pct = total ? Math.round((item.attended / total) * 100) : 0; const resolved = resolveSubjectAlert(storageKey); return <button type="button" key={storageKey} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', pct < 75 ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{resolved.name} <span className="text-[9px] font-bold text-muted-foreground">({resolved.category})</span></span><span className="text-xs font-bold text-muted-foreground">{pct}% ({item.attended}/{total})</span></button>; })}</div></section>
-      <section className="glass-card rounded-2xl border border-border p-4"><div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span></div><div className="mt-3 space-y-3">{subjectPotentialMetrics.length === 0 ? <p className="text-[10px] text-muted-foreground">Add subjects to see their attendance potential.</p> : subjectPotentialMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="block w-full text-left"><div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold"><span className="truncate">{metric.name} <span className="text-[9px] text-muted-foreground">({metric.category})</span></span><span className="shrink-0 text-emerald-500">Max: {Math.round(metric.maximum)}%</span></div><svg viewBox="0 0 240 18" className="h-4 w-full" preserveAspectRatio="none" aria-label={`${metric.name} maximum percentage graph`}><path d="M0 9H240" stroke="currentColor" strokeOpacity=".12" strokeWidth="6" strokeLinecap="round" /><path d={`M0 9H${Math.max(4, metric.current * 2.4)}`} stroke="var(--primary)" strokeWidth="6" strokeLinecap="round" /><path d={`M0 9H${Math.max(4, metric.maximum * 2.4)}`} stroke="#34d399" strokeOpacity=".55" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 3" /></svg></button>)}<p className="text-[10px] text-muted-foreground">Remaining classes are compared with each subject’s total planned classes.</p></div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span></div><div className="mt-3 space-y-3">{subjectPotentialMetrics.length === 0 ? <p className="text-[10px] text-muted-foreground">Add subjects to see their attendance potential.</p> : subjectPotentialMetrics.map(metric => { const currentWidth = Math.min(100, Math.max(0, metric.current)); const improvementWidth = Math.min(100 - currentWidth, Math.max(0, metric.maximum - metric.current)); const maxColor = metric.maximum >= preferredPercentage ? '#34d399' : '#f87171'; return <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="block w-full text-left"><div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold"><span className="truncate">{metric.name} <span className="text-[9px] text-muted-foreground">({metric.category})</span></span><span className="shrink-0" style={{ color: maxColor }}>Max: {Math.round(metric.maximum)}%</span></div><svg viewBox="0 0 100 8" className="h-4 w-full" preserveAspectRatio="none" aria-label={`${metric.name} current and maximum percentage`}><rect x="0" y="0" width="100" height="8" rx="4" fill="currentColor" fillOpacity=".12" /><rect x="0" y="0" width={currentWidth} height="8" rx="4" fill="#94a3b8" /><rect x={currentWidth} y="0" width={improvementWidth} height="8" fill={maxColor} /></svg></button>; })}<p className="text-[10px] text-muted-foreground">Grey shows current attendance; the second segment shows maximum possible attendance.</p></div></section>
     </motion.div>
   );
   return (
@@ -641,7 +659,7 @@ export default function Home() {
         </div>
       ) : undefined}
     >
-      {showMarkAttendance ? <motion.div key="attendance-view" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.18, ease: 'easeOut' }} className="min-h-0 flex flex-col home-page-content">
+      {showMarkAttendance ? <motion.div key="attendance-view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} className="min-h-0 flex flex-col home-page-content">
         <button type="button" onClick={() => setShowMarkAttendance(false)} className="mb-2 self-start text-xs font-bold text-primary">← Dashboard</button>
         <div className="home-date-wheel-float" aria-label="Choose date">
           {dateWheel}

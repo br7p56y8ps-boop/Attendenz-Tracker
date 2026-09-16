@@ -4,7 +4,7 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CustomDataProvider } from '@/contexts/CustomDataContext';
-import { initStorageAndMigrate, STORAGE_ERROR_EVENT, flushStorageWrites, storageRemoveItem, storageRemoveItemChecked, storageSetItem, recoverPendingDeleteAll } from '@/lib/idb';
+import { initStorageAndMigrate, flushStorageWrites, storageRemoveItem, storageRemoveItemChecked, storageSetItem, recoverPendingDeleteAll } from '@/lib/idb';
 import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
 import { restoreSnapshot } from '@/utils/snapshotUtils';
@@ -144,17 +144,13 @@ function MainAppFlow() {
 
 export default function App() {
   const [storageReady, setStorageReady] = useState(false);
-  const [storageError, setStorageError] = useState(false);
   const [storageInitError, setStorageInitError] = useState<string | null>(null);
   const [storageProgress, setStorageProgress] = useState('Initialising…');
   useEffect(() => {
-    const onStorageError = () => setStorageError(true);
     const flushOnHide = () => { if (document.visibilityState === 'hidden') void flushStorageWrites(); };
-    window.addEventListener(STORAGE_ERROR_EVENT, onStorageError);
     window.addEventListener('pagehide', flushOnHide);
     document.addEventListener('visibilitychange', flushOnHide);
     return () => {
-      window.removeEventListener(STORAGE_ERROR_EVENT, onStorageError);
       window.removeEventListener('pagehide', flushOnHide);
       document.removeEventListener('visibilitychange', flushOnHide);
     };
@@ -183,14 +179,6 @@ export default function App() {
 
   return (
     <>
-      {storageError && (
-        <div className="fixed inset-x-3 top-[5.25rem] z-[180] rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 py-3 text-xs text-amber-950 shadow-xl backdrop-blur-xl dark:text-amber-100">
-          <div className="flex items-start justify-between gap-3">
-            <p><strong>Storage Warning:</strong> Your latest changes may not be fully durable. Export a backup from Settings before closing the app.</p>
-            <button type="button" onClick={() => setStorageError(false)} className="shrink-0 font-bold text-amber-900 underline underline-offset-2 dark:text-amber-100" aria-label="Dismiss Storage Warning">Dismiss</button>
-          </div>
-        </div>
-      )}
       <AuthProvider>
       <CustomDataProvider>
         <AttendanceProvider>

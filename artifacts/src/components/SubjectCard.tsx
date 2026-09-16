@@ -182,8 +182,8 @@ export const SubjectCard = ({
   };
 
   const modalDetailsContent = (
-    <div className="space-y-5 pt-1">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="space-y-4 pt-1">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Stepper field="attended" value={attendedNum} />
         <Stepper field="missed" value={missedNum} />
       </div>
@@ -193,7 +193,7 @@ export const SubjectCard = ({
         </p>
       )}
       {/* Metrics Row */}
-      <div className="grid grid-cols-4 gap-2 pt-5 border-t border-border/30">
+      <div className="grid grid-cols-4 gap-2 pt-3 border-t border-border/30">
         <div
           role="button" tabIndex={0} aria-expanded={activeStatInfo === 'remaining'}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setActiveStatInfo(prev => prev === 'remaining' ? null : 'remaining'); } }}
@@ -313,7 +313,7 @@ export const SubjectCard = ({
         {headerContent}
       </div>
 
-      <ModalSheet open={isModalOpen} onClose={closeModal} ariaLabel={`${displayName} details`} maxWidth="max-w-lg" className="subject-details-modal" bodyClassName="p-6 space-y-4 text-left">
+      <ModalSheet open={isModalOpen} onClose={closeModal} ariaLabel={`${displayName} details`} maxWidth="max-w-md" className="subject-details-modal" bodyClassName="p-6 space-y-4 text-left">
                 <div className="flex justify-between items-start gap-3 border-b border-border/50 pb-4">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
