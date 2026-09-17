@@ -9,7 +9,7 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
 import { getActiveCurriculumName } from '@/lib/curriculumStore';
-import { idbGetAllChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
+import { idbGet, idbSet, idbGetAllChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, formatPercentage } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
@@ -207,6 +207,13 @@ export default function Settings() {
   }, [isEditingName]);
   const handleSaveName = () => { if (nameInput.trim()) updateUsername(nameInput.trim()); setIsEditingName(false); };
   const { subjects, wards, homeSelections, finishedMap, preferredPercentage, setPreferredPercentage } = useAttendance();
+  const recordDashboardActivity = async (text: string, kind: string) => {
+    try {
+      const raw = await idbGet('att_dashboard_activity_v1');
+      const entries = raw ? JSON.parse(raw) as Array<Record<string, unknown>> : [];
+      await idbSet('att_dashboard_activity_v1', JSON.stringify([{ id: `activity-${Date.now()}`, text, kind, timestamp: Date.now() }, ...entries].slice(0, 50)));
+    } catch {}
+  };
   const quarantineUnresolvedAttendance = (type: 'subject' | 'ward', name: string, data: unknown) => {
     try {
       const existing = JSON.parse(localStorage.getItem(ORPHANED_RECORDS_KEY) || '[]');
@@ -1212,7 +1219,7 @@ export default function Settings() {
                           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-left space-y-2">
                             <p className="text-xs font-bold text-foreground">Apply {formatPercentage(pendingPct)} target?</p>
                             <p className="text-[11px] text-muted-foreground">All subjects and wards in this curriculum will use this threshold.</p>
-                            <div className="flex gap-2"><button type="button" onClick={() => setPendingPct(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={() => { setPreferredPercentage(pendingPct); setPendingPct(null); }} className="action-button action-button--save flex-1">Apply</button></div>
+                            <div className="flex gap-2"><button type="button" onClick={() => setPendingPct(null)} className="action-button action-button--cancel flex-1">Cancel</button><button type="button" onClick={() => { setPreferredPercentage(pendingPct); void recordDashboardActivity(`Changed preferred percentage to ${pendingPct}%`, 'percentage'); setPendingPct(null); }} className="action-button action-button--save flex-1">Apply</button></div>
                           </div>
                         )}
                       </div>

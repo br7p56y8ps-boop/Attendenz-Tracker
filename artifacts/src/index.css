@@ -704,42 +704,11 @@ input[type="time"] {
   transform: translateY(-1px);
 }
 
-/* Release-only visual exceptions retained after restoring the original UI. */
+/* Preserved hidden close-button state. */
 .subject-details-close,
 .subject-inline-message-close {
   display: none !important;
 }
-.attendance-mark-button {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  border-color: transparent !important;
-}
-.attendance-mark-button::before {
-  content: '';
-  position: absolute;
-  inset: -55%;
-  z-index: -2;
-  background: conic-gradient(from 0deg, transparent 0 58%, var(--attendance-border) 63% 96%, transparent 101% 100%);
-  animation: attendance-border-spin 2.5s linear infinite;
-}
-.attendance-mark-button::after {
-  content: '';
-  position: absolute;
-  inset: 2px;
-  z-index: -1;
-  border-radius: 8px;
-  background: var(--background);
-}
-.attendance-mark-button--attended { --attendance-border: #22c55e; }
-.attendance-mark-button--missed { --attendance-border: #ef4444; }
-.attendance-mark-button--off { --attendance-border: #eab308; }
-.attendance-mark-button > * { position: relative; z-index: 1; }
-@keyframes attendance-border-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .attendance-mark-button::before { animation: none; }
-}
-
 
 /* Requested post-rollback behavior: floating date wheel and confirmation-only animation. */
 .home-date-wheel-float {
@@ -793,7 +762,7 @@ h1, h2, h3, h4, h5, h6, .bottom-nav-surface button, .app-shell > header h1 { fon
   right: 0.75rem;
   border: 1px solid color-mix(in srgb, var(--border) 88%, var(--primary) 12%) !important;
   border-radius: 1.5rem !important;
-  background: color-mix(in srgb, var(--card) 74%, transparent) !important;
+  background: color-mix(in srgb, var(--card) 82%, transparent) !important;
   box-shadow: 0 10px 28px rgba(0,0,0,.18) !important;
   backdrop-filter: blur(18px) saturate(125%);
   -webkit-backdrop-filter: blur(18px) saturate(125%);
@@ -801,7 +770,7 @@ h1, h2, h3, h4, h5, h6, .bottom-nav-surface button, .app-shell > header h1 { fon
 .bottom-nav-surface nav { gap: 0.25rem; }
 .bottom-nav-surface button { min-width: 0; }
 .home-date-wheel-float .date-wheel-surface {
-  background: color-mix(in srgb, var(--background) 68%, transparent) !important;
+  background: color-mix(in srgb, var(--background) 82%, transparent) !important;
   box-shadow: 0 10px 30px rgba(0,0,0,.14), inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
   backdrop-filter: blur(16px) saturate(135%);
   -webkit-backdrop-filter: blur(16px) saturate(135%);
@@ -811,8 +780,7 @@ h1, h2, h3, h4, h5, h6, .bottom-nav-surface button, .app-shell > header h1 { fon
 .attendance-confirm-button::after { background: var(--card); border-radius: 0.625rem; }
 .attendance-confirm-button--attended,
 .attendance-confirm-button--missed,
-.attendance-confirm-button--off { border-color: transparent !important; }
-.attendance-confirm-button { box-shadow: 0 4px 14px color-mix(in srgb, var(--attendance-border) 20%, transparent); }
+.attendance-confirm-button--off { border-color: var(--attendance-border) !important; }
 .home-page-content + .fixed { bottom: calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom) + 0.85rem); }
 .modal-sheet-content, [role="dialog"] {
   background:

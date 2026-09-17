@@ -832,6 +832,7 @@ export default function Manage() {
         addCustomWards([{ name, startDate: start, endDate: end, morningTime, eveningTime, vacationPeriods: vacationData }]);
       }
       recordHistory('Added Rotation', { name, start, end });
+      if (vacations.length > 0) recordHistory('Set Vacation / Exam Period', { name, periods: vacationData });
       setWardName(''); setWardStart(''); setWardEnd(''); setWardVacations([]);
       setFormError(null); showToast('Rotation added.');
       void notifyManageChange(`${name} was added to your rotation schedule.`);
@@ -910,6 +911,7 @@ export default function Manage() {
         if (subjectMode === 'preloaded') addUserAddedSubjects([newSubject as any]);
         else addCustomSubjects([newSubject as any]);
         recordHistory('Added SGT', { name: finalSgtName, clinicalSubject: clinicalSubjectName, planned: pc });
+        if (sgtVacations.length > 0) recordHistory('Set Vacation / Exam Period', { name: finalSgtName, periods: sgtVacations.map(v => ({ start: v.start, end: v.end })) });
         setSgtClinicalSubject(''); setSgtName(''); setSgtStartDate(''); setSgtEndDate(''); setSgtRows([newRow([])]); setSgtVacations([]);
         setFormError(null); showToast(`SGT added with ${pc} planned classes.`);
         void notifyManageChange(`${finalSgtName} was added to your routine.`);

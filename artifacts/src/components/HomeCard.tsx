@@ -5,6 +5,7 @@ import { cn, getCurrentDateStr, getSubjectColor, pctColor, getAttendanceStatus, 
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
+import { idbGet, idbSet } from '@/lib/idb';
 
 interface HomeCardProps {
   subject: string; time: string; isWard?: boolean; title?: string; subtitle?: string;
@@ -16,6 +17,13 @@ const cls = (n: number) => (n === 1 ? 'Class' : 'Classes');
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const toStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+const recordDashboardActivity = async (text: string, kind: string) => {
+  try {
+    const raw = await idbGet('att_dashboard_activity_v1');
+    const entries = raw ? JSON.parse(raw) as Array<Record<string, unknown>> : [];
+    await idbSet('att_dashboard_activity_v1', JSON.stringify([{ id: `activity-${Date.now()}`, text, kind, timestamp: Date.now() }, ...entries].slice(0, 50)));
+  } catch {}
+};
 const shortenSubject = (name: string) => ({
   'Surgery': 'Surg.', 'Obstetrics & Gynaecology': 'Obs & Gyn.', 'Pediatrics': 'Peds.',
   'Orthopedics': 'Ortho.', 'Ophthalmology': 'Ophtha.', 'Otolaryngology': 'ENT',
@@ -382,7 +390,10 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     if (!attendanceKey) return;
     if (!undoPending) { setUndoPending(true); return; }
     setUndoPending(false);
-    if (currentSelection) updateHomeSelection(selectionKey, attendanceKey, currentSelection, isWard);
+    if (currentSelection) {
+      updateHomeSelection(selectionKey, attendanceKey, currentSelection, isWard);
+      void recordDashboardActivity(`Unmarked ${subjectName} (${isWard ? 'Clinical Rotation' : 'Lecture'})`, 'edit');
+    }
   };
 
   useEffect(() => {
@@ -459,7 +470,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
               <div className="text-sm leading-tight text-muted-foreground">{time}</div>
               <span className="inline-flex rounded-full border border-warning/35 bg-warning/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-warning">Vacation / Exam Period</span>
             </div>
-            <div className="shrink-0 text-lg font-bold text-muted-foreground">{total === 0 ? '--' : formatPercentage(percentage)}</div>
+            <div className={cn('shrink-0 rounded-full border px-3 py-1 text-sm font-bold', total === 0 ? 'border-border/50 bg-muted/30 text-muted-foreground' : percentage >= preferredPercentage ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500' : 'border-rose-500/30 bg-rose-500/10 text-rose-500')}>{total === 0 ? '--' : formatPercentage(percentage)}</div>
           </div>
         ) : effectiveMode === 'past' ? (
           <div className="flex items-center justify-between gap-3">
@@ -497,7 +508,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
               )}
               {effectiveMode === 'today' && !currentSelection && (
                 <div className="leading-tight mt-1">
-                  {isFinished ? <span className={cn('font-bold text-[11px]', finishedTargetMet ? 'text-emerald-500' : 'text-rose-500')}>{getFinishedMessage()}</span> : renderTodayAdvisory()}
+                  {!isFinished && renderTodayAdvisory()}
                 </div>
               )}
             </div>
