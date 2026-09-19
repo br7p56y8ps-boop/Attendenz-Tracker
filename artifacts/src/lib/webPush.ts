@@ -21,7 +21,6 @@ export interface NotificationPreferences {
   manageChanges: boolean;
   updateAvailable: boolean;
   updateCompleted: boolean;
-  curriculumChanges: boolean;
   dataTransfer: boolean;
   unmarkedAttendanceToday: boolean;
   leadMinutes: NotificationLeadMinutes;
@@ -65,7 +64,6 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   manageChanges: true,
   updateAvailable: true,
   updateCompleted: true,
-  curriculumChanges: false,
   dataTransfer: true,
   unmarkedAttendanceToday: false,
   leadMinutes: 30,
@@ -145,7 +143,6 @@ export function getNotificationPreferences(): NotificationPreferences {
       manageChanges,
       updateAvailable: parsed.updateAvailable !== false,
       updateCompleted: parsed.updateCompleted !== false,
-      curriculumChanges: parsed.curriculumChanges === true,
       dataTransfer: parsed.dataTransfer === true,
       unmarkedAttendanceToday: parsed.unmarkedAttendanceToday ?? DEFAULT_PREFERENCES.unmarkedAttendanceToday,
       leadMinutes,
@@ -179,7 +176,7 @@ export function setNotificationPreferences(preferences: NotificationPreferences)
 const GROUP_FOR_PREFERENCE: Partial<Record<keyof NotificationPreferences, NotificationGroup>> = {
   needAttentionSummary: 'attendance', needAttentionSubjects: 'attendance', safeToMiss: 'attendance', beforeClassWarnings: 'attendance', unmarkedAttendanceToday: 'attendance',
   lastPlannedClassToday: 'dailySchedule', firstClassOfDay: 'dailySchedule', allScheduledClasses: 'dailySchedule',
-  manageChanges: 'activity', curriculumChanges: 'activity', dataTransfer: 'activity',
+  manageChanges: 'activity', dataTransfer: 'activity',
   updateAvailable: 'updates', updateCompleted: 'updates',
 };
 
@@ -211,6 +208,7 @@ function base64UrlToBytes(value: string): Uint8Array {
   return Uint8Array.from(binary, char => char.charCodeAt(0));
 }
 
+// Keep this list synchronized with push-service/src/index.ts.
 const DOCUMENTED_PUSH_ENDPOINTS = [
   'https://fcm.googleapis.com/',
   'https://updates.push.services.mozilla.com/',
@@ -341,10 +339,6 @@ export function notifyUpdateAvailable(version: string): Promise<boolean> {
 
 export function notifyUpdateCompleted(version: string): Promise<boolean> {
   return showNotificationIfEnabled('updateCompleted', 'Update Complete', `The app is now updated to version ${version}.`, `attendenz-update-completed-${version}`);
-}
-
-export function notifyCurriculumChange(body: string): Promise<boolean> {
-  return showNotificationIfEnabled('curriculumChanges', 'Curriculum Updated', body, `attendenz-curriculum-change-${Date.now()}`);
 }
 
 export function notifyDataTransfer(body: string): Promise<boolean> {

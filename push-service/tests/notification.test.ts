@@ -39,9 +39,9 @@ console.log('notification regression tests passed');
 
 
 const { processDevice, buildNotificationData, localClock } = __test;
-assert.deepEqual(buildNotificationData('Need Attention Reminder', 'Medicine (Lecture) starts in 30 minutes.\nThis class needs extra attention to help you stay on track.', '/'), {
+assert.deepEqual(buildNotificationData('Need Attention Reminder', 'Medicine (Lecture) starts in 30 minutes.\nThis class needs your attention. Attending it will help keep your attendance at a safe level.', '/'), {
   title: 'Need Attention Reminder',
-  body: 'Medicine (Lecture) starts in 30 minutes.\nThis class needs extra attention to help you stay on track.',
+  body: 'Medicine (Lecture) starts in 30 minutes.\nThis class needs your attention. Attending it will help keep your attendance at a safe level.',
   url: '/',
 });
 assert.deepEqual(buildNotificationData('Attendance & Risk Reminder', 'Must Attend: Anatomy (Lecture)\nNeed Attention: Medicine (Lecture)', '/'), {
@@ -99,6 +99,9 @@ try {
   assert.deepEqual(localClock(Date.parse('2026-09-07T03:30:00Z'), 'America/New_York'), { date: '2026-09-06', hour: 23, minute: 30 });
   await processDevice({ DB: db, VAPID_SUBJECT: 'https://benz-attendance-tracker.pages.dev', VAPID_SERVER_PUBLIC_KEY: base64Url(vapidPublic), VAPID_SERVER_PRIVATE_KEY: vapidJwk.d! }, device, Date.parse('2026-09-07T03:30:00Z'));
   assert.equal(pushCount, 2, 'nightly attendance and daily schedule groups should send separate pushes');
+  device.nightly_reminder_time = '23:35';
+  await processDevice({ DB: db, VAPID_SUBJECT: 'https://benz-attendance-tracker.pages.dev', VAPID_SERVER_PUBLIC_KEY: base64Url(vapidPublic), VAPID_SERVER_PRIVATE_KEY: vapidJwk.d! }, device, Date.parse('2026-09-07T03:35:00Z'));
+  assert.equal(pushCount, 2, 'changing the nightly time must not send a second reminder for the same night');
   await processDevice({ DB: db, VAPID_SUBJECT: 'https://benz-attendance-tracker.pages.dev', VAPID_SERVER_PUBLIC_KEY: base64Url(vapidPublic), VAPID_SERVER_PRIVATE_KEY: vapidJwk.d! }, device, Date.parse('2026-09-07T08:00:00Z'));
   assert.equal(pushCount, 2, 'nightly batch should not send after the 4 AM cutoff');
 } finally {

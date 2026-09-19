@@ -30,7 +30,7 @@
   --color-accent-foreground: var(--foreground);
   --color-ring: var(--primary);
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Inter, sans-serif;
+  --font-sans: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
   
   --radius-xl: 0.875rem;
   --radius-2xl: 1rem;
@@ -46,7 +46,7 @@
   
   --border: #d7e0e8;
   
-  --primary: #1769aa;
+  --primary: #007AFF;
   --primary-foreground: #ffffff;
   
   --muted: #edf2f6;
@@ -69,7 +69,7 @@
   
   --border: #3a424e;
   
-  --primary: #62afe9;
+  --primary: #007AFF;
   --primary-foreground: #ffffff;
   
   --muted: #1d1d1d;
@@ -306,7 +306,61 @@
 .modal-sheet-content {
   transform-origin: center bottom;
   will-change: transform, opacity;
-  min-height: 12rem;
+}
+
+.modal-sheet-divider {
+  position: relative;
+  width: 62%;
+  height: 1px;
+  margin-inline: auto;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--border) 18%, transparent) 16%,
+    color-mix(in srgb, var(--border) 55%, transparent) 50%,
+    color-mix(in srgb, var(--border) 18%, transparent) 84%,
+    transparent 100%
+  );
+}
+
+.modal-sheet-footer {
+  padding: 0.65rem 0.75rem;
+}
+
+.modal-sheet-footer > * {
+  width: 100%;
+  margin-inline: auto;
+}
+
+.modal-sheet-footer > button,
+.modal-sheet-footer > *:has(> button),
+.modal-sheet-footer > * > :has(> button) {
+  display: flex !important;
+  align-items: center;
+  justify-content: center !important;
+  gap: 0.5rem;
+}
+
+.modal-sheet-header h2,
+.modal-sheet-header h3,
+.modal-sheet-header p {
+  text-align: center;
+}
+
+.modal-sheet-footer > *:has(> button) > *,
+.modal-sheet-footer > * > :has(> button) > * {
+  flex: 1 1 0 !important;
+  min-width: 0;
+  width: auto !important;
+}
+
+.modal-sheet-footer > *:has(> :only-child:is(button)) > :only-child,
+.modal-sheet-footer > * > :has(> :only-child:is(button)) > :only-child,
+.modal-sheet-footer > :only-child:is(button) {
+  flex: 0 0 80% !important;
+  max-width: 80%;
+  width: 80% !important;
+  margin-inline: auto !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -337,12 +391,9 @@
 
 /* Existing components retain their geometry while inheriting solid dashboard
    surfaces instead of rendering frosted glass. */
-.backdrop-blur-sm,
-.backdrop-blur-md,
-.backdrop-blur-2xl,
-.backdrop-blur-xl {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+.modal-sheet-backdrop {
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
 }
 [class*="bg-card/"] { background-color: var(--card) !important; }
 [class*="bg-black/"] { background-color: rgba(0, 0, 0, 0.8) !important; }
@@ -652,3 +703,91 @@ input[type="time"] {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 4px rgba(0, 0, 0, 0.28), 0 4px 9px rgba(0, 0, 0, 0.3);
   transform: translateY(-1px);
 }
+
+/* Preserved hidden close-button state. */
+.subject-details-close,
+.subject-inline-message-close {
+  display: none !important;
+}
+
+/* Requested post-rollback behavior: floating date wheel and confirmation-only animation. */
+.home-date-wheel-float {
+  position: fixed;
+  z-index: 45;
+  top: calc(var(--app-header-height) + 0.3rem);
+  left: max(var(--ui-gutter), calc((100vw - 48rem) / 2 + var(--ui-gutter)));
+  right: max(var(--ui-gutter), calc((100vw - 48rem) / 2 + var(--ui-gutter)));
+  pointer-events: none;
+}
+.home-date-wheel-float > * { pointer-events: auto; }
+.home-page-content { padding-top: 4.8rem; }
+.attendance-confirm-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid transparent;
+  background: transparent;
+}
+.attendance-confirm-button::before {
+  content: '';
+  position: absolute;
+  inset: -55%;
+  z-index: -2;
+  background: conic-gradient(from 0deg, transparent 0 58%, var(--attendance-border) 63% 96%, transparent 101% 100%);
+  animation: attendance-border-spin 2.5s linear infinite;
+}
+.attendance-confirm-button::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: 8px;
+  background: transparent;
+}
+.attendance-confirm-button--attended { --attendance-border: #22c55e; border-color: #22c55e; color: #16803c; }
+.attendance-confirm-button--missed { --attendance-border: #ef4444; border-color: #ef4444; color: #c53030; }
+.attendance-confirm-button--off { --attendance-border: #eab308; border-color: #eab308; color: #a16207; }
+.attendance-confirm-button > * { position: relative; z-index: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .attendance-confirm-button::before { animation: none; }
+}
+
+/* Focused polish: rounded geometric type, floating translucent navigation, and
+   intentionally varied modal surfaces without changing page behavior. */
+body { font-family: var(--font-sans); letter-spacing: 0.005em; }
+h1, h2, h3, h4, h5, h6, .bottom-nav-surface button, .app-shell > header h1 { font-weight: 800; letter-spacing: -0.02em; }
+.bottom-nav-surface {
+  bottom: calc(0.65rem + env(safe-area-inset-bottom));
+  left: 0.75rem;
+  right: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, var(--primary) 12%) !important;
+  border-radius: 1.5rem !important;
+  background: color-mix(in srgb, var(--card) 82%, transparent) !important;
+  box-shadow: 0 10px 28px rgba(0,0,0,.18) !important;
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+}
+.bottom-nav-surface nav { gap: 0.25rem; }
+.bottom-nav-surface button { min-width: 0; }
+.home-date-wheel-float .date-wheel-surface {
+  background: color-mix(in srgb, var(--background) 82%, transparent) !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,.14), inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+  backdrop-filter: blur(16px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+}
+.home-date-wheel-float .date-wheel-surface > div > div > div { backface-visibility: hidden; }
+.home-page-content { padding-top: 5.25rem; }
+.attendance-confirm-button::after { background: var(--card); border-radius: 0.625rem; }
+.attendance-confirm-button--attended,
+.attendance-confirm-button--missed,
+.attendance-confirm-button--off { border-color: var(--attendance-border) !important; }
+.home-page-content + .fixed { bottom: calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom) + 0.85rem); }
+.modal-sheet-content, [role="dialog"] {
+  background:
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--primary) 7%, transparent), transparent 38%),
+    radial-gradient(circle at 88% 90%, color-mix(in srgb, var(--foreground) 6%, transparent), transparent 42%),
+    var(--card) !important;
+  box-shadow: 0 22px 60px rgba(0,0,0,.28), inset 0 1px 0 color-mix(in srgb, white 10%, transparent) !important;
+}
+.subject-details-modal { background: linear-gradient(145deg, var(--card), color-mix(in srgb, var(--primary) 4%, var(--card))) !important; }
+.modal-sheet-backdrop { backdrop-filter: blur(7px) saturate(110%) !important; -webkit-backdrop-filter: blur(7px) saturate(110%) !important; }

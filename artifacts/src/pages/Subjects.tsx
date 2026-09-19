@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { SubjectCard } from '@/components/SubjectCard';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
@@ -61,6 +61,12 @@ const CategoryCard = ({
   preferredPercentage,
   renderChildren,
 }: CategoryCardProps) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isOpen || !cardRef.current) return;
+    const frame = window.requestAnimationFrame(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [isOpen]);
   const overallColor = pctColor(summary.pct, preferredPercentage, {
     isFinished: summary.planned > 0 && summary.remainingTotal === 0,
     hasPlannedClasses: summary.planned > 0,
@@ -74,6 +80,7 @@ const CategoryCard = ({
       };
   return (
     <motion.div
+      ref={cardRef}
       style={cardStyle}
       className={cn(
         'border rounded-2xl shadow-sm transition-all overflow-hidden p-4 sm:p-5 space-y-3.5',
@@ -288,7 +295,7 @@ export default function Subjects() {
     for (const e of presetWardSchedule) {
       if (!seen.has(norm(e.ward))) {
         seen.add(norm(e.ward));
-        out.push(e.ward);
+        if (norm(e.ward) !== 'holiday') out.push(e.ward);
       }
     }
     return out;
@@ -596,7 +603,7 @@ export default function Subjects() {
         {(subjectMode === 'preloaded' || customWards.length > 0) && (() => {
           const wardList = subjectMode === 'preloaded'
             ? [
-                ...WARD_SUBJECTS.map(w => ({ name: w.name, id: getSubjectIdByName(w.name, 'clinical') })),
+                ...WARD_SUBJECTS.filter(w => norm(w.name) !== 'holiday').map(w => ({ name: w.name, id: getSubjectIdByName(w.name, 'clinical') })),
                 ...extraWardNames.map(n => ({ name: n, id: getSubjectIdByName(n, 'clinical') })),
               ]
             : customWards.map(w => ({ name: w.name, id: w.id, total: getCustomWardTotalPlanned(w.startDate, w.endDate, w.vacationPeriods) }));
@@ -612,7 +619,7 @@ export default function Subjects() {
               preferredPercentage={preferredPercentage}
               renderChildren={() => (
                 <>
-                  {subjectMode === 'preloaded' && WARD_SUBJECTS.map((ward) => (
+                  {subjectMode === 'preloaded' && WARD_SUBJECTS.filter(ward => norm(ward.name) !== 'holiday').map((ward) => (
                     <SubjectCard
                       key={ward.name}
                       subject={ward.name}
