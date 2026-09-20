@@ -1,6 +1,6 @@
 import { Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
-import { assertBackupSize, filterStoredData, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
+import { assertBackupSize, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
 import React, { useRef, useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
@@ -9,7 +9,7 @@ import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKe
 import { useCustomData } from '@/contexts/CustomDataContext';
 import { useLocation } from 'wouter';
 import { getActiveCurriculumName } from '@/lib/curriculumStore';
-import { idbGet, idbSet, idbGetAllChecked, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
+import { idbGet, idbSet, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, formatPercentage } from '@/lib/utils';
 import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
@@ -212,7 +212,12 @@ export default function Settings() {
       const raw = await idbGet('att_dashboard_activity_v1');
       const entries = raw ? JSON.parse(raw) as Array<Record<string, unknown>> : [];
       await idbSet('att_dashboard_activity_v1', JSON.stringify([{ id: `activity-${Date.now()}`, text, kind, timestamp: Date.now() }, ...entries].slice(0, 50)));
-    } catch {}
+      return true;
+    } catch (error) {
+      console.error('Dashboard activity persistence failed.', error);
+      import('sonner').then(({ toast }) => toast.error('Could not save this activity to Today’s Activity.'));
+      return false;
+    }
   };
   const quarantineUnresolvedAttendance = (type: 'subject' | 'ward', name: string, data: unknown) => {
     try {
@@ -413,7 +418,9 @@ export default function Settings() {
           setUpdatePhase('completed');
         }
       })) !== false : false;
-    } catch {}
+    } catch (error) {
+      console.error('Update activation failed.', error);
+    }
     if (!applied) {
       await storageRemoveItemChecked('att_just_updated').catch(() => undefined);
       setUpdatePhase('none');
@@ -430,8 +437,10 @@ export default function Settings() {
         storageRemoveItemChecked('att_pwa_latest_version'),
         storageRemoveItemChecked('att_pwa_update_summary'),
       ]);
-    } catch {
+    } catch (error) {
+      console.error('Update state persistence failed.', error);
       setUpdatePhase('none');
+      import('sonner').then(({ toast }) => toast.error('Update state could not be saved. Please try again.'));
       return;
     }
     setProgressComplete(true);
@@ -732,8 +741,8 @@ export default function Settings() {
 
   const handleShareData = async () => {
     const success = await shareDataAsJSON();
-    if (success) { void notifyDataTransfer('Your app data transfer file is ready.'); notifySuccess('Transfer file ready!'); }
-    else import('sonner').then(({ toast }) => toast.error('Failed to prepare transfer file.'));
+    if (success === true) { void notifyDataTransfer('Your app data transfer file is ready.'); notifySuccess('Transfer file ready!'); }
+    else if (success !== 'cancelled') import('sonner').then(({ toast }) => toast.error('Failed to prepare transfer file.'));
   };
   const handleTransferFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -767,9 +776,7 @@ export default function Settings() {
         key,
         typeof value === 'string' ? value : JSON.stringify(value),
       ] as [string, string]);
-      const current = await idbGetAllChecked();
-      const keysToRemove = Object.keys(filterStoredData(current)).filter(key => key !== SNAPSHOTS_KEY && !(key in transferImportData));
-      await storageCommitChecked(entries, keysToRemove);
+      await storageCommitChecked(entries);
 
       const migrationFlags = [
         'att_mode_separation_done_v1',
@@ -840,11 +847,13 @@ export default function Settings() {
     if (operationBusy) return;
     setBusy('Deleting app data…');
     try {
-      const remoteRemoved = await deleteRemoteDevice();
-      if (!remoteRemoved) throw new Error(navigator.onLine ? 'Could not remove this device from the reminder service. Try again before deleting app data.' : 'Connect to the internet before deleting app data so remote reminders can be removed too.');
-      const unsubscribed = await disableDirectPush();
-      if (!unsubscribed) throw new Error('Could not unregister browser notifications. Try again before deleting app data.');
       await storageSetItemChecked(PENDING_DELETE_ALL_KEY, 'true');
+      try {
+        if (!await deleteRemoteDevice()) console.error('Remote device deletion did not complete before local wipe.');
+      } catch (error) { console.error('Remote device deletion failed before local wipe.', error); }
+      try {
+        if (!await disableDirectPush()) console.error('Direct push unsubscription did not complete before local wipe.');
+      } catch (error) { console.error('Direct push unsubscription failed before local wipe.', error); }
       setShowDeleteDataDialog(false);
       triggerConfirmationFeedback('danger');
       notifySuccess('All app data deleted. Returning to Welcome and Setup…');

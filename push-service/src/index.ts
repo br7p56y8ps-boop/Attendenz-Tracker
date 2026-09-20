@@ -14,6 +14,15 @@ const DOCUMENTED_PUSH_ENDPOINTS = [
 ] as const;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
+function compareVersions(left: string, right: string): number {
+  const parse = (value: string) => value.split(/[.+-]/, 1)[0].split('.').map(part => Number.parseInt(part, 10) || 0);
+  const a = parse(left);
+  const b = parse(right);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) - (b[i] || 0);
+  }
+  return 0;
+}
 // Cloudflare Worker isolates do not share memory; durable cross-isolate limiting
 // would require an external store. Expired buckets are pruned on each request.
 const rateLimitBuckets = new Map<string, { startedAt: number; count: number }>();
@@ -590,7 +599,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
   }
 
   if (scheduleDate === clock.date && device.unmarked_attendance_today && isWithinFiveMinuteWindow(currentMinute, 22 * 60)) {
-    const unmarked = occurrences.filter(item => item.startMinute < currentMinute && item.status === 'unmarked' && !item.isFinalForSubject);
+    const unmarked = occurrences.filter(item => item.startMinute < currentMinute && item.status === 'unmarked');
     if (unmarked.length > 0) {
       await deliverIfNew(env, device, `${device.device_id}:unmarked:${clock.date}`, 'Attendance Still Unmarked', `${unmarked.length} Class${unmarked.length === 1 ? '' : 'es'} from today still need an attendance status: ${listNames(unmarked)}.`, url);
     }
@@ -628,7 +637,7 @@ async function runScheduled(env: Env, scheduledAt: number): Promise<void> {
   for (const device of devices.results || []) {
     try {
       const releaseVersion = env.RELEASE_VERSION;
-      if (device.update_available && releaseVersion && device.app_version !== releaseVersion) {
+      if (device.update_available && releaseVersion && compareVersions(device.app_version, releaseVersion) < 0) {
         await deliverIfNew(env, device, `${device.device_id}:update-available:${releaseVersion}`, 'Update Available', `A new version ${releaseVersion} is ready. Open the app to review and update.`, DEFAULT_ALLOWED_ORIGIN);
       }
       await processDevice(env, device, scheduledAt);

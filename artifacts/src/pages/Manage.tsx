@@ -588,8 +588,14 @@ export default function Manage() {
       const updated = prev.filter(item => item.id !== entry.id);
       try {
         localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-        void storageSetItem(HISTORY_KEY, JSON.stringify(updated));
-      } catch {}
+        void storageSetItem(HISTORY_KEY, JSON.stringify(updated)).catch(error => {
+          console.error('Manage history persistence failed.', error);
+          showToast('Could not save the history change.');
+        });
+      } catch (error) {
+        console.error('Manage history persistence failed.', error);
+        showToast('Could not save the history change.');
+      }
       return updated;
     });
     setHistoryClearEntry(null);

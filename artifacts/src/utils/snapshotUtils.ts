@@ -279,7 +279,7 @@ export async function exportDataAsJSON(returnData: boolean = false): Promise<str
   }
 }
 
-export async function shareDataAsJSON(): Promise<boolean> {
+export async function shareDataAsJSON(): Promise<boolean | 'cancelled'> {
   try {
     const exported = await exportDataAsJSON(true);
     if (typeof exported !== 'string') return false;
@@ -298,7 +298,8 @@ export async function shareDataAsJSON(): Promise<boolean> {
       return await exportDataAsJSON() === true;
     }
   } catch (err) {
-     // console.error('Failed to share:', err);
+    if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled';
+    console.error('Failed to share:', err);
     return false;
   }
 }

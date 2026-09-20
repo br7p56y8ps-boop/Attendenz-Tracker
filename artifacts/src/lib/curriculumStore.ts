@@ -501,7 +501,6 @@ export function ensureCurriculumMigration(): void {
   setActiveCurriculumId(preset.id);
   saveCurricula([preset]);
   write('att_subject_mode', 'preloaded');
-  write('att_setup_done', 'true');
   write(CURRICULUM_MIGRATION_KEY, 'true');
 }
 

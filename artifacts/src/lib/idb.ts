@@ -393,24 +393,40 @@ export async function recoverPendingDeleteAll(onStep?: (label: string) => void):
     onStep?.(label);
     await new Promise(resolve => window.setTimeout(resolve, 500));
   };
+  const bounded = async <T>(operation: Promise<T>, label: string): Promise<T | undefined> => {
+    let timeoutId: number | undefined;
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<undefined>(resolve => { timeoutId = window.setTimeout(() => { console.error(`${label} timed out.`); resolve(undefined); }, 3000); }),
+      ]);
+    } catch (error) {
+      console.error(`${label} failed.`, error);
+      return undefined;
+    } finally {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    }
+  };
 
-  await waitForUserVisibleStep('Cleaning up your Data…');
-  await storageClearChecked([PENDING_DELETE_ALL_KEY]);
+  try {
+    await waitForUserVisibleStep('Cleaning up your Data…');
+    await storageClearChecked([PENDING_DELETE_ALL_KEY]);
 
-  await waitForUserVisibleStep('Cleaning up the Caches…');
-  if (typeof window !== 'undefined' && 'caches' in window) {
-    const cacheNames = await window.caches.keys();
-    await Promise.all(cacheNames.map(name => window.caches.delete(name)));
+    await waitForUserVisibleStep('Cleaning up the Caches…');
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      const cacheNames = await bounded(window.caches.keys(), 'Cache listing');
+      if (cacheNames) await bounded(Promise.all(cacheNames.map(name => window.caches.delete(name))), 'Cache cleanup');
+    }
+
+    await waitForUserVisibleStep('Resetting the Attendenz…');
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const registrations = await bounded(navigator.serviceWorker.getRegistrations(), 'Service-worker listing');
+      if (registrations) await bounded(Promise.all(registrations.map(registration => registration.unregister())), 'Service-worker cleanup');
+    }
+  } finally {
+    await waitForUserVisibleStep('Initialising…');
+    await storageRemoveItemChecked(PENDING_DELETE_ALL_KEY).catch(error => console.error('Delete-all marker cleanup failed.', error));
   }
-
-  await waitForUserVisibleStep('Resetting the Attendenz…');
-  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-    const registrations = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(registrations.map(registration => registration.unregister()));
-  }
-
-  await waitForUserVisibleStep('Initialising…');
-  await storageRemoveItemChecked(PENDING_DELETE_ALL_KEY);
   return true;
 }
 

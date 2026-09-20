@@ -22,7 +22,10 @@ const recordDashboardActivity = async (text: string, kind: string) => {
     const raw = await idbGet('att_dashboard_activity_v1');
     const entries = raw ? JSON.parse(raw) as Array<Record<string, unknown>> : [];
     await idbSet('att_dashboard_activity_v1', JSON.stringify([{ id: `activity-${Date.now()}`, text, kind, timestamp: Date.now() }, ...entries].slice(0, 50)));
-  } catch {}
+  } catch (error) {
+    console.error('Dashboard activity persistence failed.', error);
+    import('sonner').then(({ toast }) => toast.error('Could not save this activity to Today’s Activity.'));
+  }
 };
 const shortenSubject = (name: string) => ({
   'Surgery': 'Surg.', 'Obstetrics & Gynaecology': 'Obs & Gyn.', 'Pediatrics': 'Peds.',
@@ -292,7 +295,9 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   }, [effectiveMode, todayStr, activeDateStr, isScheduledOn]);
 
   const canMissCount = Math.max(0, Math.floor((attended * 100) / preferredPercentage - total));
-  const needToAttend = Math.max(1, Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage)));
+  const needToAttend = preferredPercentage >= 100
+    ? Math.max(0, total - attended)
+    : Math.max(1, Math.ceil((preferredPercentage * total - 100 * attended) / (100 - preferredPercentage)));
   const futureMsg = (() => {
     if (percentage < preferredPercentage) {
       const N = needToAttend;
