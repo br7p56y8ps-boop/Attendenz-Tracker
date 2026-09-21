@@ -5,7 +5,7 @@ import { cn, getCurrentDateStr, getSubjectColor, pctColor, getAttendanceStatus, 
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
-import { idbGet, idbSet } from '@/lib/idb';
+import { formatAttendanceActivity, recordDashboardActivity } from '@/lib/activity';
 
 interface HomeCardProps {
   subject: string; time: string; isWard?: boolean; title?: string; subtitle?: string;
@@ -17,17 +17,7 @@ const cls = (n: number) => (n === 1 ? 'Class' : 'Classes');
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const toStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
-const recordDashboardActivity = async (text: string, kind: string) => {
-  try {
-    const raw = await idbGet('att_dashboard_activity_v1');
-    const entries = raw ? JSON.parse(raw) as Array<Record<string, unknown>> : [];
-    await idbSet('att_dashboard_activity_v1', JSON.stringify([{ id: `activity-${Date.now()}`, text, kind, timestamp: Date.now() }, ...entries].slice(0, 50)));
-  } catch (error) {
-    console.error('Dashboard activity persistence failed.', error);
-    import('sonner').then(({ toast }) => toast.error('Could not save this activity to Today’s Activity.'));
-  }
-};
-const shortenSubject = (name: string) => ({
+export const shortenSubject = (name: string) => ({
   'Surgery': 'Surg.', 'Obstetrics & Gynaecology': 'Obs & Gyn.', 'Pediatrics': 'Peds.',
   'Orthopedics': 'Ortho.', 'Ophthalmology': 'Ophtha.', 'Otolaryngology': 'ENT',
   'Dermatology': 'Derm.', 'Psychiatry': 'Psych.', 'Physical Medicine': 'PMR',
@@ -387,6 +377,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     setMarkCount(c => c + 1);
     setUndoPending(false);
     updateHomeSelection(selectionKey, attendanceKey, sel, isWard);
+    void recordDashboardActivity(formatAttendanceActivity(displaySubject, isWard ? 'Clinical Rotation' : isSGT ? 'Small Group Teaching' : 'Lecture', sel === 'off' ? 'Off' : sel === 'missed' ? 'Bunked' : 'Attended'), sel === 'missed' ? 'missed' : 'attendance');
     triggerConfirmationFeedback(sel === 'off' ? 'info' : sel === 'missed' ? 'danger' : 'success');
     if (ecgTimeoutRef.current !== null) window.clearTimeout(ecgTimeoutRef.current);
     ecgTimeoutRef.current = window.setTimeout(() => { setEcgPhase(null); ecgTimeoutRef.current = null; }, 1500);
@@ -397,7 +388,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     setUndoPending(false);
     if (currentSelection) {
       updateHomeSelection(selectionKey, attendanceKey, currentSelection, isWard);
-      void recordDashboardActivity(`Unmarked ${subjectName} (${isWard ? 'Clinical Rotation' : 'Lecture'})`, 'edit');
+      void recordDashboardActivity(`Unmarked ${displaySubject} (${isWard ? 'Clinical Rotation' : isSGT ? 'Small Group Teaching' : 'Lecture'})`, 'edit');
     }
   };
 
@@ -435,9 +426,9 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const pastIsMarked = currentSelection === 'attended' || currentSelection === 'missed';
 
   const todayBottom = isVacationOrExamPeriod ? (
-    <div className="flex h-11 w-full items-center justify-center rounded-xl border border-warning/35 bg-warning/8 text-xs font-extrabold text-warning">
+    <ThreeDContainer className="h-11 w-full items-center justify-center border-warning/35 bg-warning/8 text-xs font-extrabold text-warning">
       Vacation / Exam Period
-    </div>
+    </ThreeDContainer>
   ) : ecgPhase ? (
     <div className={cn('w-full h-12 rounded-xl border relative overflow-hidden flex items-center justify-center gap-2', selBg(ecgPhase), selColor(ecgPhase))}>
       <svg className="absolute inset-0 w-full h-full opacity-40" preserveAspectRatio="none" viewBox="0 0 100 40">

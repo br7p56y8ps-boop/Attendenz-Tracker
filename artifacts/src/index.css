@@ -714,7 +714,7 @@ input[type="time"] {
 .home-date-wheel-float {
   position: fixed;
   z-index: 45;
-  top: calc(var(--app-header-height) + 0.3rem);
+  top: calc(var(--app-header-height) - 0.4rem);
   left: max(var(--ui-gutter), calc((100vw - 48rem) / 2 + var(--ui-gutter)));
   right: max(var(--ui-gutter), calc((100vw - 48rem) / 2 + var(--ui-gutter)));
   pointer-events: none;
@@ -731,7 +731,7 @@ input[type="time"] {
 .attendance-confirm-button::before {
   content: '';
   position: absolute;
-  inset: -55%;
+  inset: -25%;
   z-index: -2;
   background: conic-gradient(from 0deg, transparent 0 58%, var(--attendance-border) 63% 96%, transparent 101% 100%);
   animation: attendance-border-spin 2.5s linear infinite;
@@ -744,9 +744,10 @@ input[type="time"] {
   border-radius: 8px;
   background: transparent;
 }
-.attendance-confirm-button--attended { --attendance-border: #22c55e; border-color: #22c55e; color: #16803c; }
-.attendance-confirm-button--missed { --attendance-border: #ef4444; border-color: #ef4444; color: #c53030; }
-.attendance-confirm-button--off { --attendance-border: #eab308; border-color: #eab308; color: #a16207; }
+.attendance-confirm-button--attended { --attendance-border: #22c55e; border-color: transparent; color: #16803c; }
+.attendance-confirm-button--missed { --attendance-border: #ef4444; border-color: transparent; color: #c53030; }
+.attendance-confirm-button--off { --attendance-border: #eab308; border-color: transparent; color: #a16207; }
+@keyframes attendance-border-spin { to { transform: rotate(360deg); } }
 .attendance-confirm-button > * { position: relative; z-index: 1; }
 @media (prefers-reduced-motion: reduce) {
   .attendance-confirm-button::before { animation: none; }
@@ -757,11 +758,11 @@ input[type="time"] {
 body { font-family: var(--font-sans); letter-spacing: 0.005em; }
 h1, h2, h3, h4, h5, h6, .bottom-nav-surface button, .app-shell > header h1 { font-weight: 800; letter-spacing: -0.02em; }
 .bottom-nav-surface {
-  bottom: calc(0.65rem + env(safe-area-inset-bottom));
-  left: 0.75rem;
-  right: 0.75rem;
+  bottom: 0;
+  left: 0;
+  right: 0;
   border: 1px solid color-mix(in srgb, var(--border) 88%, var(--primary) 12%) !important;
-  border-radius: 1.5rem !important;
+  border-radius: 1.5rem 1.5rem 0 0 !important;
   background: color-mix(in srgb, var(--card) 82%, transparent) !important;
   box-shadow: 0 10px 28px rgba(0,0,0,.18) !important;
   backdrop-filter: blur(18px) saturate(125%);
@@ -778,9 +779,6 @@ h1, h2, h3, h4, h5, h6, .bottom-nav-surface button, .app-shell > header h1 { fon
 .home-date-wheel-float .date-wheel-surface > div > div > div { backface-visibility: hidden; }
 .home-page-content { padding-top: 5.25rem; }
 .attendance-confirm-button::after { background: var(--card); border-radius: 0.625rem; }
-.attendance-confirm-button--attended,
-.attendance-confirm-button--missed,
-.attendance-confirm-button--off { border-color: var(--attendance-border) !important; }
 .home-page-content + .fixed { bottom: calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom) + 0.85rem); }
 .modal-sheet-content, [role="dialog"] {
   background:
