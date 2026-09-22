@@ -135,7 +135,7 @@ interface EditWardState {
 }
 interface EditSlotState {
   day: number; index: number; startTime: string; endTime: string; targetDay: number;
-  subjects: Array<{ name: string; planned: number; id: string }>;
+  subjects: Array<{ name: string; planned: number; id: string; canonicalId?: string }>;
   multiSelectMode: boolean;
 }
 const newRow = (usedDays: string[]): ScheduleRow => {
@@ -391,7 +391,7 @@ export default function Manage() {
   const [slotMoveStart, setSlotMoveStart] = useState('09:00 AM');
   const [slotMoveEnd, setSlotMoveEnd] = useState('10:00 AM');
   const [slotConflict, setSlotConflict] = useState<{ messages: string[]; onConfirm: () => void } | null>(null);
-  const [slotRemove, setSlotRemove] = useState<{ subject: string; day: number; index: number; time: string; start: string; end: string } | null>(null);
+  const [slotRemove, setSlotRemove] = useState<{ subject: string; subjectId?: string; day: number; index: number; time: string; start: string; end: string } | null>(null);
   const [slotRemoveConfirm, setSlotRemoveConfirm] = useState(false);
   const [slotRemoveAllConfirm, setSlotRemoveAllConfirm] = useState(false);
   const [showMoveForm, setShowMoveForm] = useState(false);
@@ -948,7 +948,10 @@ export default function Manage() {
         const cs = customSubjects.find(c => c.name === s && !isSGTRecord(c));
         if (cs) planned = cs.plannedClasses;
       }
-      return { name: s, planned, id: genId('sel') };
+      const canonicalId = subjectMode === 'preloaded'
+        ? userAddedSubjects.find(u => u.name === s && !isSGTRecord(u))?.id || getSubjectIdByName(s, 'academic') || undefined
+        : customSubjects.find(c => c.name === s && !isSGTRecord(c))?.id;
+      return { name: s, planned, id: genId('sel'), canonicalId };
     });
     setEditSlot({ day, index, startTime: start, endTime: end, targetDay: day, subjects, multiSelectMode: subjects.length > 1 });
     setSelectedSubjects([]); setSlotMoveTargetDay(day); setSlotMoveStart(start); setSlotMoveEnd(end);
@@ -1080,8 +1083,8 @@ export default function Manage() {
       if (slot) {
         const remaining = slot.subjects.filter(s => s !== slotRemove.subject);
         const subject = subjectMode === 'preloaded'
-          ? userAddedSubjects.find(u => u.name.toLowerCase() === slotRemove.subject.toLowerCase() && !isSGTRecord(u))
-          : customSubjects.find(c => c.name.toLowerCase() === slotRemove.subject.toLowerCase() && !isSGTRecord(c));
+          ? userAddedSubjects.find(u => (slotRemove.subjectId ? u.id === slotRemove.subjectId : u.name.toLowerCase() === slotRemove.subject.toLowerCase()) && !isSGTRecord(u))
+          : customSubjects.find(c => (slotRemove.subjectId ? c.id === slotRemove.subjectId : c.name.toLowerCase() === slotRemove.subject.toLowerCase()) && !isSGTRecord(c));
         if (subject) {
           if (subjectMode === 'preloaded') {
             const schedules = (subject.schedules || []) as Array<{ day: string; start: string; end: string }>;
@@ -1111,9 +1114,10 @@ export default function Manage() {
       if (slot) {
         updatePresetTimetableSlot(editSlot.day, editSlot.index, slot.time, [], editSlot.day);
         for (const s of slot.subjects) {
+          const canonicalId = editSlot.subjects.find(item => item.name === s)?.canonicalId;
           const subject = subjectMode === 'preloaded'
-            ? userAddedSubjects.find(u => u.name.toLowerCase() === s.toLowerCase() && !isSGTRecord(u))
-            : customSubjects.find(c => c.name.toLowerCase() === s.toLowerCase() && !isSGTRecord(c));
+            ? userAddedSubjects.find(u => (canonicalId ? u.id === canonicalId : u.name.toLowerCase() === s.toLowerCase()) && !isSGTRecord(u))
+            : customSubjects.find(c => (canonicalId ? c.id === canonicalId : c.name.toLowerCase() === s.toLowerCase()) && !isSGTRecord(c));
           if (subject) {
             if (subjectMode === 'preloaded') {
               const schedules = (subject.schedules || []) as Array<{ day: string; start: string; end: string }>;
@@ -2411,7 +2415,7 @@ export default function Manage() {
                           <span className="text-[10px] text-muted-foreground">Planned: {s.planned}</span>
                           <button type="button" onClick={(e) => {
                             e.stopPropagation();
-                            setSlotRemove({ subject: s.name, day: editSlot.day, index: editSlot.index, time: canonicalTimeRange(editSlot.startTime, editSlot.endTime), start: editSlot.startTime, end: editSlot.endTime });
+                            setSlotRemove({ subject: s.name, subjectId: s.canonicalId, day: editSlot.day, index: editSlot.index, time: canonicalTimeRange(editSlot.startTime, editSlot.endTime), start: editSlot.startTime, end: editSlot.endTime });
                             setSlotRemoveConfirm(true);
                           }} className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10">
                             <X className="w-3.5 h-3.5" />

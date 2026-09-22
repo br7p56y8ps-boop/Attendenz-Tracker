@@ -10,7 +10,7 @@ import { idbGetAllChecked, INSTALLATION_METADATA_KEYS, storageSetItem, storageRe
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import { APP_VERSION } from '@/lib/appVersion';
-import { activateCurriculum, ensureCurriculumMigration, getCurricula, getCurriculumForKind, renameCurriculumChecked, CURRICULUM_KEYS } from '@/lib/curriculumStore';
+import { activateCurriculum, ensureCurriculumMigration, getCurricula, getCurriculumBundle, getCurriculumForKind, renameCurriculumChecked, saveCurriculumBundle, CURRICULUM_KEYS } from '@/lib/curriculumStore';
 
 export interface CustomSubject {
   id: string;
@@ -1638,6 +1638,23 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       await storageRemoveItemChecked(CUSTOM_WARDS_KEY);
       setCustomSubjects([]);
       setCustomWards([]);
+    }
+    const target = getCurriculumForKind(modeToClear === 'custom' ? 'custom' : 'preset');
+    if (target) {
+      const clearedBundle: Record<string, string> = modeToClear === 'preloaded'
+        ? {
+            [PRESET_TIMETABLE_KEY]: JSON.stringify(TIMETABLE),
+            [PRESET_WARD_SCHEDULE_KEY]: JSON.stringify(defaultWardSchedule()),
+            [PRESET_SUBJECT_TOTALS_KEY]: JSON.stringify({}),
+            [USER_ADDED_SUBJECTS_KEY]: JSON.stringify([]),
+            [PRESET_RENAMES_KEY]: JSON.stringify({}),
+            [PRESET_WARD_RENAMES_KEY]: JSON.stringify({}),
+          }
+        : {
+            [CUSTOM_SUBJECTS_KEY]: JSON.stringify([]),
+            [CUSTOM_WARDS_KEY]: JSON.stringify([]),
+          };
+      saveCurriculumBundle(target.id, { ...getCurriculumBundle(target.id), ...clearedBundle });
     }
   });
 

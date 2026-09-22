@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { path: '/',          label: 'Home',      description: 'Classes and attendance by date', Icon: Heart },
   { path: '/subjects',  label: 'Subjects',  description: 'Progress, targets, and subject groups', Icon: Stethoscope },
   { path: '/add-new',   label: 'Manage',    description: 'Build your academic and clinical routine', Icon: Syringe },
-  { path: '/calendar',  label: 'Timetable', description: 'Weekly routine, rotations, and statistics', Icon: Calendar },
+  { path: '/calendar',  label: 'Timetable', description: 'Weekly routine, clinical postings, and rotations', Icon: Calendar },
   { path: '/account',   label: 'Settings',  description: 'Preferences, backups, and app settings', Icon: Hospital },
 ] as const;
 

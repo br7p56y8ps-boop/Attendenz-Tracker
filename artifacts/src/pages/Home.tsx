@@ -499,12 +499,12 @@ export default function Home() {
   const tomorrowEntries = useMemo(() => {
     const entries: Array<{ subject?: string; time: string; holiday?: string }> = [];
     if (subjectMode === 'preloaded') {
-      if (tomorrowDay === 5) return [{ time: '', holiday: 'Holiday' }];
+      if (tomorrowDay === 5) return [{ time: '', holiday: 'Detox Day' }];
       (presetTimetable[tomorrowDay] || []).forEach((slot: any) => {
         if (slot.type === 'ward' || slot.type === 'ward_replacement') {
           const ward = getCurrentPresetWard(tomorrowDate);
           if (ward?.ward && ward.ward !== 'Holiday') entries.push({ subject: ward.ward, time: ward.morningTime || slot.time });
-          else entries.push({ time: slot.time || '', holiday: 'Holiday' });
+          else entries.push({ time: slot.time || '', holiday: 'Detox Day' });
         } else (slot.subjects || []).forEach((subject: string) => entries.push({ subject, time: slot.time || '' }));
       });
       userAddedSubjects.forEach(subject => {
@@ -717,7 +717,9 @@ export default function Home() {
           <div className="mt-2 rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
             <div className="flex flex-col items-center">
               <ClipboardCheck className="mb-3 h-10 w-10 text-primary" />
-              <h3 className="mb-2 text-lg font-semibold text-foreground">Detox Day</h3>
+              <h3 className="mb-2 text-lg font-semibold text-foreground">
+                {isFridayPreset ? 'Detox Day' : subjectMode === 'custom' && customSubjects.length === 0 ? 'No Subjects Yet' : 'No Classes Scheduled'}
+              </h3>
                 {subjectMode === 'custom' && customSubjects.length === 0 ? (
                   <p className="mb-0 max-w-xs px-4 text-sm leading-relaxed text-muted-foreground">
                     No subjects added yet.{' '}
