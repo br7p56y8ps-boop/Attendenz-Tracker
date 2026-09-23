@@ -12,7 +12,7 @@ import { useLocation } from 'wouter';
 import { ClipboardList, GraduationCap, Stethoscope } from 'lucide-react';
 
 const SectionHeading = ({ icon, label }: { icon?: React.ReactNode; label: string }) => (
-  <StickySectionLabel icon={icon} label={label} />
+  <StickySectionLabel icon={icon} label={label} offsetClass="top-[calc(var(--app-header-height)+0.5rem)]" className="bg-background" />
 );
 
 interface ChildDetail {
