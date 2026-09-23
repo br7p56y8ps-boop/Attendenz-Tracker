@@ -54,7 +54,7 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
         </div>
       </header>
 
-      <main className={cn('flex-1 min-h-0 max-w-3xl mx-auto w-full px-4', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom))' }}>
+      <main className={cn('flex-1 min-h-0 max-w-3xl mx-auto w-full px-4 overflow-y-auto', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom))' }}>
         <div key={location} className={contentClassName}>
           {children}
         </div>
@@ -65,7 +65,7 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
         transition={{ type: 'spring', stiffness: 260, damping: 26 }}
         className={cn(
           'fixed bottom-0 left-0 right-0 md:left-0 md:right-0 md:w-full',
-          'bottom-nav-surface bg-card/90 backdrop-blur-xl border-x-0 border-b-0 border-t border-black/20 dark:border-white/20 rounded-none pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40',
+          'bottom-nav-surface bg-card/90 backdrop-blur-xl border-x-0 border-b-0 border-t border-black/20 dark:border-white/20 rounded-t-[28px] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40',
           'transition-all duration-300', bottomNavClassName
         )}
       >

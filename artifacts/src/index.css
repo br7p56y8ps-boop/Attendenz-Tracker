@@ -775,7 +775,7 @@ h1, h2, h3, h4, h5, h6, .bottom-nav-surface button, .app-shell > header h1 { fon
   right: 0;
   border: 0 !important;
   border-top: 1px solid color-mix(in srgb, var(--border) 88%, var(--primary) 12%) !important;
-  border-radius: 0 !important;
+  border-radius: 1.5rem 1.5rem 0 0 !important;
   background: color-mix(in srgb, var(--card) 82%, transparent) !important;
   box-shadow: 0 10px 28px rgba(0,0,0,.18) !important;
   backdrop-filter: blur(18px) saturate(125%);
