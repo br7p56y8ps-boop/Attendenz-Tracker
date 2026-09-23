@@ -38,12 +38,12 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
 
   return (
     <div
-      className="app-shell min-h-[100dvh] pb-0 bg-background flex flex-col text-foreground transition-colors duration-300"
+      className="app-shell h-[100dvh] pb-0 bg-background flex flex-col text-foreground transition-colors duration-300"
       style={{ '--app-header-height': `${headerHeight}px`, '--app-bottom-nav-height': '4.5rem', '--app-bottom-nav-offset': '0px' } as React.CSSProperties}
     >
       <header ref={headerRef} className="fixed inset-x-0 top-0 z-50 border-b border-black/20 dark:border-white/20 bg-card rounded-b-[28px] shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
-        <div className="max-w-3xl mx-auto w-full px-4 pt-[env(safe-area-inset-top)] py-3">
-          <div className="flex items-center justify-between gap-3 min-h-[4.25rem]">
+        <div className="max-w-3xl mx-auto w-full px-4 pt-[env(safe-area-inset-top)] py-2">
+          <div className="flex items-center justify-between gap-3 min-h-0">
             <div className="min-w-0 space-y-0.5">
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{headerTitle ?? currentItem.label}</h1>
               {(headerDescription ?? currentItem.description) && <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{headerDescription ?? currentItem.description}</p>}
@@ -54,7 +54,7 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
         </div>
       </header>
 
-      <main className={cn('flex-1 max-w-3xl mx-auto w-full px-4', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom))' }}>
+      <main className={cn('flex-1 min-h-0 max-w-3xl mx-auto w-full px-4', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom))' }}>
         <div key={location} className={contentClassName}>
           {children}
         </div>
@@ -65,7 +65,7 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
         transition={{ type: 'spring', stiffness: 260, damping: 26 }}
         className={cn(
           'fixed bottom-0 left-0 right-0 md:left-0 md:right-0 md:w-full',
-          'bottom-nav-surface bg-card/90 backdrop-blur-xl border-x-0 border-b-0 border-t border-black/20 dark:border-white/20 rounded-t-[28px] rounded-b-none pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40',
+          'bottom-nav-surface bg-card/90 backdrop-blur-xl border-x-0 border-b-0 border-t border-black/20 dark:border-white/20 rounded-none pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40',
           'transition-all duration-300', bottomNavClassName
         )}
       >

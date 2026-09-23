@@ -442,7 +442,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
       <div className="flex gap-2">
         {(['attended', 'missed', 'off'] as const).map(s => pendingSelection === s ? (
           <button key={s} type="button" onClick={handleConfirmSelection} className={cn('attendance-confirm-button flex-1 h-11 rounded-2xl text-xs sm:text-sm font-extrabold', `attendance-confirm-button--${s}`)}>
-            Confirm {selWord(s)}
+            Confirm
           </button>
         ) : (
           <button key={s} type="button" onClick={() => handleSelection(s)}

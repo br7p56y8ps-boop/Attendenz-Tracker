@@ -4,6 +4,18 @@
 
 @custom-variant dark (&:is(.dark, .dark *));
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -714,7 +726,7 @@ input[type="time"] {
 .home-date-wheel-float {
   position: fixed;
   z-index: 45;
-  top: calc(var(--app-header-height) - 0.4rem);
+  top: calc(var(--app-header-height) + 0.3rem);
   left: max(var(--ui-gutter), calc((100vw - 48rem) / 2 + var(--ui-gutter)));
   right: max(var(--ui-gutter), calc((100vw - 48rem) / 2 + var(--ui-gutter)));
   pointer-events: none;
@@ -761,8 +773,9 @@ h1, h2, h3, h4, h5, h6, .bottom-nav-surface button, .app-shell > header h1 { fon
   bottom: 0;
   left: 0;
   right: 0;
-  border: 1px solid color-mix(in srgb, var(--border) 88%, var(--primary) 12%) !important;
-  border-radius: 1.5rem 1.5rem 0 0 !important;
+  border: 0 !important;
+  border-top: 1px solid color-mix(in srgb, var(--border) 88%, var(--primary) 12%) !important;
+  border-radius: 0 !important;
   background: color-mix(in srgb, var(--card) 82%, transparent) !important;
   box-shadow: 0 10px 28px rgba(0,0,0,.18) !important;
   backdrop-filter: blur(18px) saturate(125%);

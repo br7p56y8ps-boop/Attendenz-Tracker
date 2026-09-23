@@ -186,6 +186,7 @@ export default function Home() {
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     isDragging.current = true;
     if (momentumId.current) {
       cancelAnimationFrame(momentumId.current);
@@ -203,9 +204,10 @@ export default function Home() {
     currentOffset.current += dx;
     setOffset(currentOffset.current);
   };
-  const handlePointerUp = () => {
+  const handlePointerUp = (e?: React.PointerEvent) => {
     if (!isDragging.current) return;
     isDragging.current = false;
+    if (e?.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     if (Math.abs(velocity.current) > 20) {
       startMomentum();
     } else {
@@ -603,7 +605,6 @@ export default function Home() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          onPointerLeave={handlePointerUp}
           style={{ touchAction: 'pan-y' }}
         >
           <div

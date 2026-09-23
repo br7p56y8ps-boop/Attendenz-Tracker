@@ -1571,7 +1571,7 @@ export default function Manage() {
 
   return (
     <Layout
-      mainClassName="h-[100dvh] min-h-0 overflow-hidden"
+      mainClassName="flex-1 min-h-0 overflow-hidden"
       contentClassName="h-full min-h-0 overflow-hidden"
       bottomNavClassName="border-t-0"
       headerRight={
@@ -1661,7 +1661,7 @@ export default function Manage() {
                   </>
                 )}
               </div>
-              <div className="shrink-0 px-3 py-2">
+              <div className="sticky bottom-0 z-10 shrink-0 px-3 py-2 bg-background/95 backdrop-blur-sm">
                 <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
                   <Plus className="h-3.5 w-3.5" /> Add Slot
                 </button>

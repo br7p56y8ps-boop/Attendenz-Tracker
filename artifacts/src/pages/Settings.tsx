@@ -19,7 +19,7 @@ import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
 import { UpdateProgressSlider } from '@/utils/useUpdateFlow';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
-import { generatePDFReport, generateExcelReport, generateCSVReport, isStandalonePWA } from '@/lib/exportUtils';
+import { generatePDFReport, generateExcelReport, generateCSVReport } from '@/lib/exportUtils';
 import { deleteRemoteDevice, getReminderRegistrationDiagnostics, getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, type ReminderSyncStatus } from '@/lib/webPushSync';
 import {
   disableDirectPush,
@@ -194,7 +194,8 @@ export default function Settings() {
     const viewport = window.visualViewport;
     if (!viewport) return;
     const updateKeyboardInset = () => {
-      const inset = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+      const viewportDelta = window.innerHeight - viewport.height;
+      const inset = viewportDelta > 120 ? Math.max(0, Math.round(viewportDelta - viewport.offsetTop)) : 0;
       setIdentityKeyboardInset(inset);
     };
     updateKeyboardInset();
@@ -369,6 +370,17 @@ export default function Settings() {
   };
 
 
+  const rollbackUpdateState = async (): Promise<boolean> => {
+    const keys = ['att_pwa_update_ready', 'att_pwa_latest_version', 'att_pwa_update_summary', 'att_just_updated'];
+    const results = await Promise.allSettled(keys.map(key => storageRemoveItemChecked(key)));
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failures.length > 0) {
+      failures.forEach(failure => console.error('Update rollback failed.', failure.reason));
+      return false;
+    }
+    return true;
+  };
+
   const handleApplyUpdate = async (withBackup: boolean) => {
     if (!navigator.onLine) {
       import('sonner').then(({ toast }) => toast.error("You're offline — connect to the internet once to update."));
@@ -388,9 +400,11 @@ export default function Settings() {
       if (snaps.length > 0 && snaps[0].label.startsWith('Pre-Update Backup')) {
         try {
           await storageSetItemChecked('att_pending_update_restore', snaps[0].id);
-        } catch {
+        } catch (error) {
+          console.error('Pending update marker persistence failed.', error);
+          const rolledBack = await rollbackUpdateState();
           setUpdatePhase('none');
-          import('sonner').then(({ toast }) => toast.error('Update stopped — the pending restore marker could not be saved safely.'));
+          import('sonner').then(({ toast }) => toast.error(rolledBack ? 'Update stopped — the pending restore marker could not be saved safely.' : 'Update stopped — cleanup also failed. Please retry.'));
           return;
         }
       }
@@ -422,9 +436,9 @@ export default function Settings() {
       console.error('Update activation failed.', error);
     }
     if (!applied) {
-      await storageRemoveItemChecked('att_just_updated').catch(() => undefined);
+      const rolledBack = await rollbackUpdateState();
       setUpdatePhase('none');
-      import('sonner').then(({ toast }) => toast.error('Update could not be activated. Your update choice is still saved for retry.'));
+      import('sonner').then(({ toast }) => toast.error(rolledBack ? 'Update could not be activated. Update markers were cleared; please retry.' : 'Update could not be activated, and cleanup failed. Please retry.'));
       return;
     }
     try {
@@ -432,15 +446,18 @@ export default function Settings() {
         [['att_just_updated', 'true']],
         ['att_has_seen_welcome_v1', 'att_app_version'],
       );
-      await Promise.all([
+      const cleanup = await Promise.allSettled([
         storageRemoveItemChecked('att_pwa_update_ready'),
         storageRemoveItemChecked('att_pwa_latest_version'),
         storageRemoveItemChecked('att_pwa_update_summary'),
       ]);
+      const cleanupFailures = cleanup.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (cleanupFailures.length > 0) throw cleanupFailures[0].reason;
     } catch (error) {
       console.error('Update state persistence failed.', error);
+      const rolledBack = await rollbackUpdateState();
       setUpdatePhase('none');
-      import('sonner').then(({ toast }) => toast.error('Update state could not be saved. Please try again.'));
+      import('sonner').then(({ toast }) => toast.error(rolledBack ? 'Update state could not be saved. Update markers were cleared; please retry.' : 'Update state could not be saved, and cleanup failed. Please retry.'));
       return;
     }
     setProgressComplete(true);
@@ -722,14 +739,12 @@ export default function Settings() {
       overallPct
     };
     setBusy('Exporting…');
-    const pdfTargetWindow = exportFormat === 'pdf' && isStandalonePWA() ? window.open('', '_blank') : null;
     try {
-      if (exportFormat === 'pdf') await generatePDFReport({ ...reportOptions, pdfTargetWindow });
+      if (exportFormat === 'pdf') await generatePDFReport(reportOptions);
       else if (exportFormat === 'excel') await generateExcelReport(reportOptions);
       else if (exportFormat === 'csv') generateCSVReport(reportOptions);
       notifySuccess('Report exported.');
     } catch (error) {
-      if (pdfTargetWindow && !pdfTargetWindow.closed) pdfTargetWindow.close();
       console.error('Attendance report export failed', error);
       setExportMsg('Export failed. Please try again.');
     } finally { setBusy(null); }
@@ -1192,8 +1207,8 @@ export default function Settings() {
                             </>
                           )}
                         </div>
-                        <NotificationGroupCard title="Attendance & Risk Reminders" description="Nightly, before-class, and unmarked-attendance alerts." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, attendance: !prev.attendance }))} enabled={notificationPreferences.attendanceGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('attendance', value)} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
-                        <NotificationGroupCard title="Daily Schedule Reminders" description="Nightly batch for upcoming schedule reminders." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, dailySchedule: !prev.dailySchedule }))} enabled={notificationPreferences.dailyScheduleGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('dailySchedule', value)} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} nightlyReminderTime={notificationPreferences.nightlyReminderTime} onNightlyReminderTimeChange={value => updateNotificationPreference('nightlyReminderTime', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
+                        <NotificationGroupCard title="Attendance & Risk Reminders" description="Nightly, before-class, and unmarked-attendance alerts." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, attendance: !prev.attendance }))} enabled={notificationPreferences.attendanceGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('attendance', value)} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} nightlyReminderTime={notificationPreferences.nightlyReminderTime} onNightlyReminderTimeChange={value => updateNotificationPreference('nightlyReminderTime', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
+                        <NotificationGroupCard title="Daily Schedule Reminders" description="Upcoming schedule reminders." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, dailySchedule: !prev.dailySchedule }))} enabled={notificationPreferences.dailyScheduleGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('dailySchedule', value)} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
                         <NotificationGroupCard title="Activity & Data Changes" description="Local confirmations for routine and data changes." expanded={Boolean(expandedNotificationGroups.activity)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, activity: !prev.activity }))} enabled={notificationPreferences.activityGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('activity', value)} children={ACTIVITY_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
                         <NotificationGroupCard title="App Updates" description="Local update notices and confirmations." expanded={Boolean(expandedNotificationGroups.updates)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, updates: !prev.updates }))} enabled={notificationPreferences.updatesGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('updates', value)} children={UPDATE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
                       </div>
