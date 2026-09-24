@@ -65,14 +65,30 @@ interface DayEntry {
 type ActivityKind = 'attendance' | 'missed' | 'edit' | 'slot' | 'vacation' | 'percentage' | 'neutral';
 interface ActivityItem extends DashboardActivityItem { kind: ActivityKind; }
 
-function getDashboardSubjectKind(subject: string, card?: HomeCardSpec, userAddedSubjects: Array<{ name: string; parentName?: string } | any> = []): string {
-  if (card?.isWard) return 'Clinical Rotation';
+function getDashboardSubjectKind(subject: string, card?: { isWard?: boolean; isSGT?: boolean }, userAddedSubjects: Array<{ name: string; parentName?: string } | any> = []): string {
+  if (card?.isWard) return 'Ward';
   if (card?.isSGT) return 'SGT';
   const userAdded = userAddedSubjects.find(item => item.name === subject);
   if (userAdded?.parentName === 'Small Group Teaching') return 'SGT';
   if (INTEGRATED_SUBJECTS.some(item => item.name === subject || item.id === subject)) return 'Integrated';
   if (WARD_SUBJECTS.some(item => item.name === subject || item.id === subject)) return 'Clinical Rotation';
   return 'Lecture';
+}
+
+function wrapDashboardSvgLabel(value: string, maxChars = 22): string[] {
+  const words = value.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  words.forEach(word => {
+    if (current && `${current} ${word}`.length > maxChars) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? `${current} ${word}` : word;
+    }
+  });
+  if (current) lines.push(current);
+  return lines.slice(0, 2);
 }
 
 export default function Home() {
@@ -527,7 +543,8 @@ export default function Home() {
     return entries.sort((a, b) => (rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
   }, [customSubjects, customWards, getCurrentPresetWard, presetTimetable, subjectMode, tomorrowDate, tomorrowDateStr, tomorrowDay, userAddedSubjects]);
   const tomorrowSubject = tomorrowEntries[0]?.subject;
-  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, undefined, userAddedSubjects)})` : 'No classes scheduled for tomorrow.';
+  const tomorrowIsWard = Boolean(tomorrowSubject && customWards.some(ward => ward.name === tomorrowSubject));
+  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard }, userAddedSubjects)})` : 'No classes scheduled for tomorrow.';
   const isEntryVacation = (entry: DayEntry) => {
     const card = entry.card;
     if (!card) return false;
@@ -575,7 +592,7 @@ export default function Home() {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
       return { name: source.find(item => item.id === storageKey.slice(4))?.name || 'Small Group Teaching', category: 'SGT' };
     }
-    if (storageKey.startsWith('ward:')) return { name: getPresetWardDisplayName(storageKey.slice(5)), category: 'Clinical Rotation' };
+    if (storageKey.startsWith('ward:')) return { name: getPresetWardDisplayName(storageKey.slice(5)), category: 'Ward' };
     const userAdded = userAddedSubjects.find(item => item.id === raw);
     const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS].find(item => item.id === raw || item.name === raw);
     const readable = userAdded?.name || preset?.name;
@@ -695,14 +712,14 @@ export default function Home() {
         </div>
         {subjectPotentialMetrics.length === 0 ? <p className="mt-3 text-[10px] text-muted-foreground">Not enough data yet.</p> : (
           <div className="mt-3">
-            <svg viewBox={`0 0 560 ${subjectPotentialMetrics.length * 48 + 40}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
-              <line x1="92" x2="92" y1="16" y2={subjectPotentialMetrics.length * 48 + 25} stroke="currentColor" strokeOpacity=".45" />
-              <line x1="92" x2="540" y1={subjectPotentialMetrics.length * 48 + 25} y2={subjectPotentialMetrics.length * 48 + 25} stroke="currentColor" strokeOpacity=".45" />
-              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={92 + (448 * tick) / 100} y={subjectPotentialMetrics.length * 48 + 37} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
+            <svg viewBox={`0 0 560 ${subjectPotentialMetrics.length * 60 + 40}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
+              <line x1="164" x2="164" y1="16" y2={subjectPotentialMetrics.length * 60 + 25} stroke="currentColor" strokeOpacity=".45" />
+              <line x1="164" x2="540" y1={subjectPotentialMetrics.length * 60 + 25} y2={subjectPotentialMetrics.length * 60 + 25} stroke="currentColor" strokeOpacity=".45" />
+              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={164 + (376 * tick) / 100} y={subjectPotentialMetrics.length * 60 + 37} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
               {subjectPotentialMetrics.map((metric, index) => {
-                const rowY = 40 + index * 48;
-                const left = 92;
-                const width = 448;
+                const rowY = 40 + index * 60;
+                const left = 164;
+                const width = 376;
                 const baseline = rowY;
                 const currentX = left + (width * Math.min(100, Math.max(0, metric.current))) / 100;
                 const maxX = left + (width * Math.min(100, Math.max(metric.current, metric.maximum))) / 100;
@@ -712,8 +729,12 @@ export default function Home() {
                 const currentColor = metric.current >= preferredPercentage ? '#34d399' : '#ef4444';
                 const maxColor = metric.maximum >= preferredPercentage ? '#34d399' : '#ef4444';
                 const waveform = `M ${currentX.toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.12).toFixed(1)} ${baseline.toFixed(1)}, ${(currentX + extension * 0.16).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.24).toFixed(1)} ${(baseline - 5).toFixed(1)} C ${(currentX + extension * 0.3).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.34).toFixed(1)} ${(baseline + 5).toFixed(1)}, ${(currentX + extension * 0.38).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.42).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(peakX - extension * 0.05).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${peakX.toFixed(1)} ${(baseline - 26).toFixed(1)} C ${(peakX + extension * 0.04).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(currentX + extension * 0.56).toFixed(1)} ${(baseline + 10).toFixed(1)}, ${(currentX + extension * 0.62).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.7).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX - extension * 0.04).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${tX.toFixed(1)} ${(baseline - 9).toFixed(1)} C ${(tX + extension * 0.08).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX + extension * 0.14).toFixed(1)} ${(baseline - 3).toFixed(1)}, ${maxX.toFixed(1)} ${baseline.toFixed(1)}`;
+                const nameLines = wrapDashboardSvgLabel(shortenSubject(metric.name));
                 return <g key={`${metric.category}-${metric.name}`}>
-                  <text x="2" y={rowY + 3} fontSize="9" fontWeight="700" fill="currentColor">{shortenSubject(metric.name).slice(0, 12)} ({metric.category})</text>
+                  <text x="2" y={rowY - 4} fontSize="8" fontWeight="700" fill="currentColor">
+                    {nameLines.map((line, lineIndex) => <tspan key={lineIndex} x="2" dy={lineIndex === 0 ? 0 : 10}>{line}</tspan>)}
+                    <tspan x="2" dy="10" fontSize="7" fontWeight="600" fill="currentColor" opacity=".75">({metric.category})</tspan>
+                  </text>
                   <line x1={left} x2={currentX} y1={baseline} y2={baseline} stroke={currentColor} strokeWidth="2.5" strokeLinecap="round" />
                   <path d={waveform} fill="none" stroke={maxColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   <circle cx={currentX} cy={baseline} r="2.5" fill={currentColor} />

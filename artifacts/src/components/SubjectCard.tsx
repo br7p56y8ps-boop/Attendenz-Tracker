@@ -82,7 +82,7 @@ export const SubjectCard = ({
   const closeModal = () => {
     const initial = modalInitialDataRef.current;
     const final = currentDataRef.current;
-    const category = isWard ? 'Clinical Rotation' : isSGT ? 'Small Group Teaching' : 'Lecture';
+    const category = isWard ? 'Ward' : isSGT ? 'SGT' : 'Lecture';
     const attendedDelta = final.attended - initial.attended;
     const missedDelta = final.missed - initial.missed;
     if (attendedDelta !== 0) {

@@ -1599,7 +1599,7 @@ export default function Manage() {
         )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-0 min-h-0 flex-1 bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden rounded-xl border border-border',
+            'manage-window-surface z-[3] isolate mt-0 min-h-0 flex-1 w-full bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden rounded-xl border border-border',
           )}>
           {section === 'academic' && (
             <div className="min-h-0 flex-1 flex flex-col">

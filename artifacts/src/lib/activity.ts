@@ -8,13 +8,20 @@ export interface DashboardActivityItem {
   kind: DashboardActivityKind;
 }
 
+function normalizeActivityCategory(category: string): 'Lecture' | 'Integrated' | 'Ward' | 'SGT' {
+  if (/small group teaching|sgt/i.test(category)) return 'SGT';
+  if (/clinical rotation|ward/i.test(category)) return 'Ward';
+  if (/integrated/i.test(category)) return 'Integrated';
+  return 'Lecture';
+}
+
 export function formatAttendanceActivity(subject: string, category: string, status: 'Attended' | 'Bunked' | 'Off'): string {
-  return `Marked ${subject} (${category}) as ${status}`;
+  return `Marked ${subject} (${normalizeActivityCategory(category)}) as ${status}`;
 }
 
 export function formatManualAttendanceDelta(subject: string, category: string, type: 'Attended' | 'Bunked', delta: number): string {
   const signedDelta = delta > 0 ? `+${delta}` : String(delta);
-  return `Updated ${subject} (${category}) Data to ${type} (${signedDelta} class)`;
+  return `Updated ${subject} (${normalizeActivityCategory(category)}) Data to ${type} (${signedDelta} class)`;
 }
 
 let activityQueue: Promise<void> = Promise.resolve();

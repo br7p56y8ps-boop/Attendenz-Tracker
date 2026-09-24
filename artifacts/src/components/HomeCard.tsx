@@ -377,7 +377,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     setMarkCount(c => c + 1);
     setUndoPending(false);
     updateHomeSelection(selectionKey, attendanceKey, sel, isWard);
-    void recordDashboardActivity(formatAttendanceActivity(displaySubject, isWard ? 'Clinical Rotation' : isSGT ? 'Small Group Teaching' : 'Lecture', sel === 'off' ? 'Off' : sel === 'missed' ? 'Bunked' : 'Attended'), sel === 'missed' ? 'missed' : 'attendance');
+    void recordDashboardActivity(formatAttendanceActivity(displaySubject, isWard ? 'Ward' : isSGT ? 'SGT' : 'Lecture', sel === 'off' ? 'Off' : sel === 'missed' ? 'Bunked' : 'Attended'), sel === 'missed' ? 'missed' : 'attendance');
     triggerConfirmationFeedback(sel === 'off' ? 'info' : sel === 'missed' ? 'danger' : 'success');
     if (ecgTimeoutRef.current !== null) window.clearTimeout(ecgTimeoutRef.current);
     ecgTimeoutRef.current = window.setTimeout(() => { setEcgPhase(null); ecgTimeoutRef.current = null; }, 1500);
@@ -388,7 +388,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     setUndoPending(false);
     if (currentSelection) {
       updateHomeSelection(selectionKey, attendanceKey, currentSelection, isWard);
-      void recordDashboardActivity(`Unmarked ${displaySubject} (${isWard ? 'Clinical Rotation' : isSGT ? 'Small Group Teaching' : 'Lecture'})`, 'edit');
+      void recordDashboardActivity(`Unmarked ${displaySubject} (${isWard ? 'Ward' : isSGT ? 'SGT' : 'Lecture'})`, 'edit');
     }
   };
 
