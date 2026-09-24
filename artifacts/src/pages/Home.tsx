@@ -510,7 +510,6 @@ export default function Home() {
   const overallAttended = Object.values(subjects).concat(Object.values(wards)).reduce((sum, item) => sum + item.attended, 0);
   const overallMissed = Object.values(subjects).concat(Object.values(wards)).reduce((sum, item) => sum + item.missed, 0);
   const overallTotal = overallAttended + overallMissed;
-  const overallPercentage = overallTotal === 0 ? 0 : Math.round((overallAttended / overallTotal) * 100);
   const dashboardClassEntries = dayEntries.filter(entry => entry.kind === 'card');
   const tomorrowDate = addDays(today, 1);
   const tomorrowDateStr = toDateString(tomorrowDate);
@@ -580,8 +579,14 @@ export default function Home() {
       const group = key.startsWith('ward:') ? groups[2] : key.startsWith('sgt:') || userAdded?.parentName === 'Small Group Teaching' ? groups[3] : /surg/i.test(`${presetCategory} ${userAdded?.parentName || ''}`) ? groups[1] : groups[0];
       group.values.push((item.attended / conducted) * 100);
     });
-    return groups.filter(group => group.values.length > 0).map(group => ({ ...group, path: makePqrstPath(Array.from({ length: 10 }, (_, index) => group.values[index % group.values.length])) }));
-  }, [overallPercentage, subjects]);
+    return groups.map(group => ({
+      ...group,
+      hasData: group.values.length > 0,
+      path: group.values.length > 0
+        ? makePqrstPath(Array.from({ length: 10 }, (_, index) => group.values[index % group.values.length]))
+        : '',
+    }));
+  }, [subjects, userAddedSubjects, wards]);
   const restoredSubjectFallback = (raw: string) => {
     const suffix = raw.replace(/^(ua_|academic:|subject:)/, '').replace(/[_-]+/g, ' ').trim();
     return suffix ? `Restored Subject ${suffix}` : 'Restored Subject';
@@ -691,7 +696,7 @@ export default function Home() {
           <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
           {overallTotal === 0 ? <p className="mt-3 py-8 text-center text-xs text-muted-foreground">No attendance data yet.</p> : <svg viewBox="0 0 300 112" className="mt-1 h-24 w-full" role="img" aria-label="Grouped PQRST attendance ECG chart"><path d="M24 8V92H292" fill="none" stroke="currentColor" strokeOpacity=".35" /><path d="M24 71H292M24 50H292M24 29H292" fill="none" stroke="currentColor" strokeOpacity=".1" strokeDasharray="2 3" /><text x="2" y="12" fontSize="7" fill="currentColor">100%</text><text x="7" y="53" fontSize="7" fill="currentColor">50%</text><text x="13" y="94" fontSize="7" fill="currentColor">0%</text>{groupedEcgPaths.map(group => <path key={group.label} d={group.path} fill="none" stroke={group.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />)}</svg>}
-          {overallTotal > 0 && <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[8px] font-bold text-muted-foreground">{groupedEcgPaths.map(group => <span key={group.label} className="inline-flex min-w-0 items-center gap-1"><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />{group.label}</span>)}</div>}
+          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[8px] font-bold text-muted-foreground">{groupedEcgPaths.map(group => <span key={group.label} className={cn('flex min-w-0 min-h-6 items-center gap-1 leading-3', !group.hasData && 'opacity-50')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.hasData ? group.color : '#94a3b8' }} /><span className="min-w-0">{group.label}{!group.hasData && ' — No data'}</span></span>)}</div>
         </button>
         <div className="grid min-h-0 grid-rows-2 gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
@@ -713,13 +718,13 @@ export default function Home() {
         {subjectPotentialMetrics.length === 0 ? <p className="mt-3 text-[10px] text-muted-foreground">Not enough data yet.</p> : (
           <div className="mt-3">
             <svg viewBox={`0 0 560 ${subjectPotentialMetrics.length * 46 + 34}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
-              <line x1="124" x2="124" y1="10" y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
-              <line x1="124" x2="540" y1={subjectPotentialMetrics.length * 46 + 24} y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
-              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={124 + (416 * tick) / 100} y={subjectPotentialMetrics.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
+              <line x1="112" x2="112" y1="10" y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              <line x1="112" x2="540" y1={subjectPotentialMetrics.length * 46 + 24} y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={112 + (428 * tick) / 100} y={subjectPotentialMetrics.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
               {subjectPotentialMetrics.map((metric, index) => {
                 const rowY = 34 + index * 46;
-                const left = 124;
-                const width = 416;
+                const left = 112;
+                const width = 428;
                 const baseline = rowY;
                 const currentX = left + (width * Math.min(100, Math.max(0, metric.current))) / 100;
                 const maxX = left + (width * Math.min(100, Math.max(metric.current, metric.maximum))) / 100;
@@ -729,11 +734,11 @@ export default function Home() {
                 const currentColor = metric.current >= preferredPercentage ? '#34d399' : '#ef4444';
                 const maxColor = metric.maximum >= preferredPercentage ? '#34d399' : '#ef4444';
                 const waveform = `M ${currentX.toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.12).toFixed(1)} ${baseline.toFixed(1)}, ${(currentX + extension * 0.16).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.24).toFixed(1)} ${(baseline - 5).toFixed(1)} C ${(currentX + extension * 0.3).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.34).toFixed(1)} ${(baseline + 5).toFixed(1)}, ${(currentX + extension * 0.38).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.42).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(peakX - extension * 0.05).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${peakX.toFixed(1)} ${(baseline - 26).toFixed(1)} C ${(peakX + extension * 0.04).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(currentX + extension * 0.56).toFixed(1)} ${(baseline + 10).toFixed(1)}, ${(currentX + extension * 0.62).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.7).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX - extension * 0.04).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${tX.toFixed(1)} ${(baseline - 9).toFixed(1)} C ${(tX + extension * 0.08).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX + extension * 0.14).toFixed(1)} ${(baseline - 3).toFixed(1)}, ${maxX.toFixed(1)} ${baseline.toFixed(1)}`;
-                const nameLines = wrapDashboardSvgLabel(shortenSubject(metric.name));
+                const nameLines = wrapDashboardSvgLabel(shortenSubject(metric.name), 18);
                 return <g key={`${metric.category}-${metric.name}`}>
-                  <text x="2" y={rowY - 4} fontSize="8" fontWeight="700" fill="currentColor">
+                  <text x="2" y={rowY - 4} fontSize="9" fontWeight="700" fill="currentColor">
                     {nameLines.map((line, lineIndex) => <tspan key={lineIndex} x="2" dy={lineIndex === 0 ? 0 : 10}>{line}</tspan>)}
-                    <tspan x="2" dy="10" fontSize="7" fontWeight="600" fill="currentColor" opacity=".75">({metric.category})</tspan>
+                    <tspan x="2" dy="10" fontSize="8" fontWeight="600" fill="currentColor" opacity=".75">({metric.category})</tspan>
                   </text>
                   <line x1={left} x2={currentX} y1={baseline} y2={baseline} stroke={currentColor} strokeWidth="2.5" strokeLinecap="round" />
                   <path d={waveform} fill="none" stroke={maxColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -791,8 +796,8 @@ export default function Home() {
         {!hasAnything ? (
           <div className="flex min-h-full items-center justify-center text-center">
             <div className="flex flex-col items-center">
-              <ClipboardCheck className="mb-3 h-10 w-10 text-primary" />
-              <h3 className="mb-2 text-lg font-semibold text-foreground">
+              <ClipboardCheck className="mb-4 h-12 w-12 text-primary" />
+              <h3 className="mb-3 text-xl font-semibold text-foreground">
                 {isFridayPreset ? 'Detox Day' : subjectMode === 'custom' && customSubjects.length === 0 ? 'No Subjects Yet' : 'No Classes Scheduled'}
               </h3>
                 {subjectMode === 'custom' && customSubjects.length === 0 ? (
@@ -807,7 +812,7 @@ export default function Home() {
                     from the Manage Tab to get started.
                   </p>
                 ) : (
-                  <p className="mb-0 max-w-xs px-4 text-sm leading-relaxed text-muted-foreground">
+                  <p className="mb-0 max-w-sm px-4 text-base leading-relaxed text-muted-foreground">
                     {isTodaySelected
                       ? 'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
                       : isFuture
