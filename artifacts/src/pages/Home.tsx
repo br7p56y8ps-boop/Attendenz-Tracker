@@ -29,16 +29,6 @@ function addDays(date: Date, days: number): Date {
   return result;
 }
 
-function smoothLinePath(points: Array<{ x: number; y: number }>): string {
-  if (points.length === 0) return '';
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-  return points.reduce((path, point, index) => {
-    if (index === 0) return `M ${point.x} ${point.y}`;
-    const previous = points[index - 1];
-    const midpoint = (previous.x + point.x) / 2;
-    return `${path} C ${midpoint} ${previous.y}, ${midpoint} ${point.y}, ${point.x} ${point.y}`;
-  }, '');
-}
 // Returns 1 if a>b, -1 if a<b, 0 if equal
 function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -589,23 +579,6 @@ export default function Home() {
     const maximum = planned > 0 ? ((item.attended + remaining) / planned) * 100 : current;
     return { ...resolved, attended: item.attended, missed: item.missed, current, maximum, remaining, planned };
   }).filter(item => item.remaining > 0 && item.current < preferredPercentage).sort((a, b) => a.current - b.current).slice(0, 6), [customSubjects, getPresetSubjectDisplayName, getPresetWardDisplayName, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, userAddedSubjects]);
-  const maxPercentageChart = useMemo(() => {
-    const width = 600;
-    const height = 210;
-    const left = 34;
-    const right = 12;
-    const top = 20;
-    const bottom = 44;
-    const plotWidth = width - left - right;
-    const plotHeight = height - top - bottom;
-    const count = subjectPotentialMetrics.length;
-    const xFor = (index: number) => count <= 1 ? left + plotWidth / 2 : left + (plotWidth * index) / (count - 1);
-    const yFor = (value: number) => top + plotHeight * (1 - Math.min(100, Math.max(0, value)) / 100);
-    const current = subjectPotentialMetrics.map((metric, index) => ({ x: xFor(index), y: yFor(metric.current), value: metric.current }));
-    const maximum = subjectPotentialMetrics.map((metric, index) => ({ x: xFor(index), y: yFor(metric.maximum), value: metric.maximum }));
-    const area = current.length > 0 ? `${smoothLinePath(current)} L ${current[current.length - 1].x} ${top + plotHeight} L ${current[0].x} ${top + plotHeight} Z` : '';
-    return { width, height, left, top, plotHeight, current, maximum, area };
-  }, [subjectPotentialMetrics]);
   const statusForEntry = (entry: DayEntry) => {
     const sessionId = entry.card?.sessionId;
     if (!sessionId) return undefined;
@@ -698,7 +671,7 @@ export default function Home() {
       </div>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Today’s Activity</h2></div>
-        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.25rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{item.text}</span></div>; })}</div>}
+        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.5rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{item.text}</span></div>; })}</div>}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Today at a Glance</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{glanceEntries.length === 0 ? <p className="text-xs text-muted-foreground">No remaining classes today.</p> : glanceEntries.map(entry => { const status = statusForEntry(entry); const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet'; const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground'; return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="min-w-[132px] rounded-xl border border-border bg-muted/30 p-3 text-left shadow-[0_2px_8px_rgba(0,0,0,0.22)]"><p className="truncate text-xs font-bold">{entry.card?.subject}</p><p className="mt-1 text-[10px] text-muted-foreground">{entry.time}</p><span className={cn('mt-2 block text-[10px] font-extrabold', color)}>{label}</span></button>; })}</div></section>
@@ -710,17 +683,38 @@ export default function Home() {
         </div>
         {subjectPotentialMetrics.length === 0 ? <p className="mt-3 text-[10px] text-muted-foreground">Not enough data yet.</p> : (
           <div className="mt-3">
-            <svg viewBox={`0 0 ${maxPercentageChart.width} ${maxPercentageChart.height}`} className="h-52 w-full" role="img" aria-label="Current and maximum possible attendance by subject">
-              <defs><linearGradient id="current-attendance-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#60a5fa" stopOpacity=".28" /><stop offset="100%" stopColor="#60a5fa" stopOpacity=".03" /></linearGradient></defs>
-              {[0, 25, 50, 75, 100].map(value => { const y = maxPercentageChart.top + maxPercentageChart.plotHeight * (1 - value / 100); return <g key={value}><line x1={maxPercentageChart.left} x2={maxPercentageChart.width - 12} y1={y} y2={y} stroke="currentColor" strokeOpacity=".12" /><text x="2" y={y + 3} fontSize="9" fill="currentColor" opacity=".65">{value}%</text></g>; })}
-              <path d={maxPercentageChart.area} fill="url(#current-attendance-fill)" />
-              <path d={smoothLinePath(maxPercentageChart.current)} fill="none" stroke="#60a5fa" strokeWidth="2.5" strokeLinecap="round" />
-              <path d={smoothLinePath(maxPercentageChart.maximum)} fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" />
-              {maxPercentageChart.current.map((point, index) => <g key={`current-${subjectPotentialMetrics[index].name}`}><circle cx={point.x} cy={point.y} r="3.5" fill="#60a5fa" /><text x={point.x} y={point.y - 8} textAnchor="middle" fontSize="9" fontWeight="700" fill="#60a5fa">{Math.round(point.value)}%</text></g>)}
-              {maxPercentageChart.maximum.map((point, index) => <g key={`maximum-${subjectPotentialMetrics[index].name}`}><circle cx={point.x} cy={point.y} r="3.5" fill="#34d399" /><text x={point.x} y={point.y + 15} textAnchor="middle" fontSize="9" fontWeight="700" fill="#34d399">{Math.round(point.value)}%</text></g>)}
-              {subjectPotentialMetrics.map((metric, index) => <text key={`label-${metric.name}`} x={maxPercentageChart.current[index].x} y={maxPercentageChart.height - 10} textAnchor="middle" fontSize="8" fill="currentColor">{shortenSubject(metric.name).slice(0, 14)}</text>)}
+            <svg viewBox={`0 0 560 ${subjectPotentialMetrics.length * 48 + 28}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
+              <line x1="112" x2="540" y1="16" y2="16" stroke="currentColor" strokeOpacity=".25" />
+              <text x="112" y="10" fontSize="8" fill="currentColor" opacity=".65">0%</text>
+              <text x="540" y="10" textAnchor="end" fontSize="8" fill="currentColor" opacity=".65">100%</text>
+              {subjectPotentialMetrics.map((metric, index) => {
+                const rowY = 40 + index * 48;
+                const left = 112;
+                const width = 428;
+                const baseline = rowY;
+                const currentX = left + (width * Math.min(100, Math.max(0, metric.current))) / 100;
+                const maxX = left + (width * Math.min(100, Math.max(metric.current, metric.maximum))) / 100;
+                const extension = Math.max(24, maxX - currentX);
+                const peakX = currentX + extension * 0.48;
+                const tX = currentX + extension * 0.78;
+                const maxColor = metric.maximum >= preferredPercentage ? '#34d399' : '#ef4444';
+                const waveform = `M ${currentX.toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.12).toFixed(1)} ${baseline.toFixed(1)}, ${(currentX + extension * 0.16).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.24).toFixed(1)} ${(baseline - 5).toFixed(1)} C ${(currentX + extension * 0.3).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.34).toFixed(1)} ${(baseline + 5).toFixed(1)}, ${(currentX + extension * 0.38).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.42).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(peakX - extension * 0.05).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${peakX.toFixed(1)} ${(baseline - 26).toFixed(1)} C ${(peakX + extension * 0.04).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(currentX + extension * 0.56).toFixed(1)} ${(baseline + 10).toFixed(1)}, ${(currentX + extension * 0.62).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.7).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX - extension * 0.04).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${tX.toFixed(1)} ${(baseline - 9).toFixed(1)} C ${(tX + extension * 0.08).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX + extension * 0.14).toFixed(1)} ${(baseline - 3).toFixed(1)}, ${maxX.toFixed(1)} ${baseline.toFixed(1)}`;
+                return <g key={`${metric.category}-${metric.name}`}>
+                  <text x="0" y={rowY + 3} fontSize="9" fontWeight="700" fill="currentColor">{shortenSubject(metric.name).slice(0, 18)}</text>
+                  <line x1={left} x2={currentX} y1={baseline} y2={baseline} stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" />
+                  <path d={waveform} fill="none" stroke={maxColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx={currentX} cy={baseline} r="2.5" fill="#94a3b8" />
+                  <circle cx={maxX} cy={baseline} r="2.5" fill={maxColor} />
+                  <text x={currentX} y={baseline - 7} textAnchor="middle" fontSize="8" fill="#94a3b8">{Math.round(metric.current)}%</text>
+                  <text x={maxX} y={baseline + 13} textAnchor="middle" fontSize="8" fontWeight="700" fill={maxColor}>{Math.round(metric.maximum)}%</text>
+                </g>;
+              })}
             </svg>
-            <div className="mt-1 flex items-center justify-center gap-4 text-[9px] font-bold text-muted-foreground"><span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#60a5fa]" />Current</span><span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#34d399]" />Maximum possible</span></div>
+            <div className="mt-1 flex items-center justify-center gap-4 text-[9px] font-bold text-muted-foreground">
+              <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#94a3b8]" />Current</span>
+              <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#34d399]" />Maximum possible</span>
+              <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#ef4444]" />Below target</span>
+            </div>
           </div>
         )}
       </section>

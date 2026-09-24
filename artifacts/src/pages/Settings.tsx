@@ -943,7 +943,7 @@ export default function Settings() {
       <div className="max-w-xl mx-auto space-y-2 pb-6 scroll-reachability">
         {/* 1. Active Account */}
         <div className="contents">
-          <StickySectionLabel label="Active Account" stackIndex={0} zClass="z-30" offsetClass="top-[calc(var(--app-header-height)+0.5rem)]" className="bg-background" />
+          <StickySectionLabel label="Active Account" stackIndex={0} zClass="z-30" />
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden">
             <button type="button" onClick={() => setActiveSettingModal('identity')} className="w-full flex items-center justify-between gap-3 text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
               <span className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border border-primary/30 bg-primary/10"><img src={profileImage || getDefaultAvatar()} alt="Profile" className="w-full h-full object-cover" /></span>
@@ -955,7 +955,7 @@ export default function Settings() {
 
         {/* 2. Preference & Statistic */}
         <div className="contents">
-          <StickySectionLabel label="Preference" stackIndex={1} zClass="z-30" offsetClass="top-[calc(var(--app-header-height)+0.5rem)]" className="bg-background" />
+          <StickySectionLabel label="Preference" stackIndex={1} zClass="z-30" />
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
             <button type="button" onClick={() => setActiveSettingModal('preferredPc')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
               <div className="flex items-center gap-3">
@@ -974,7 +974,7 @@ export default function Settings() {
 
         {/* 3. Storage & Data */}
         <div className="contents">
-          <StickySectionLabel label="Storage & Data" stackIndex={2} zClass="z-30" offsetClass="top-[calc(var(--app-header-height)+0.5rem)]" className="bg-background" />
+          <StickySectionLabel label="Storage & Data" stackIndex={2} zClass="z-30" />
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
             <SettingRow icon={<Database className="w-4 h-4" />} title="Backup / Transfer" description="Backup, restore, or transfer your complete app data." tone="blue" onClick={() => setBackupTransferOpen(true)} />
             <SettingRow icon={<SnapshotIcon className="w-4 h-4" />} title="Snapshots & Storage" description="Manage local state backups & cache" tone="primary" onClick={() => setActiveSettingModal('snapshot')} />
@@ -985,7 +985,7 @@ export default function Settings() {
 
         {/* 4. App Settings */}
         <div className="contents">
-          <StickySectionLabel label="App Settings" stackIndex={3} zClass="z-30" offsetClass="top-[calc(var(--app-header-height)+0.5rem)]" className="bg-background" />
+          <StickySectionLabel label="App Settings" stackIndex={3} zClass="z-30" />
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden">
             <div className="divide-y divide-border/40">
               <SettingRow icon={<Vibrate className="w-4 h-4" />} title="Feedback & Sounds" description="Choose how Attendenz responds after you save or mark attendance" tone="violet" onClick={() => setActiveSettingModal('feedback')} />
@@ -1458,7 +1458,7 @@ export default function Settings() {
 
           {/* 5. Danger Zone */}
           <div className="contents">
-            <StickySectionLabel label="Danger Zone" stackIndex={4} zClass="z-30" offsetClass="top-[calc(var(--app-header-height)+0.5rem)]" className="bg-background" />
+            <StickySectionLabel label="Danger Zone" stackIndex={4} zClass="z-30" />
             <div className="bg-destructive/5 backdrop-blur-xl border border-destructive/40 rounded-2xl shadow-md shadow-destructive/10 overflow-hidden">
               <SettingRow icon={<Trash2 className="w-4 h-4" />} title="Delete All App’s Data" description="Permanently erase data from every curriculum" tone="danger" onClick={() => setShowDeleteDataDialog(true)} />
             </div>

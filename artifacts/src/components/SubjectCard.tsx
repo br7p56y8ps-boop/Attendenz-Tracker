@@ -6,7 +6,7 @@ import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ModalSheet } from '@/components/ui/modal-sheet';
-import { formatManualAttendanceActivity, recordDashboardActivity } from '@/lib/activity';
+import { formatManualAttendanceDelta, recordDashboardActivity } from '@/lib/activity';
 
 interface SubjectCardProps {
   subject: string;
@@ -54,6 +54,7 @@ export const SubjectCard = ({
   const [showLimitMessage, setShowLimitMessage] = useState(false);
   const [activeStatInfo, setActiveStatInfo] = useState<'remaining' | 'missable' | 'canMiss' | 'required' | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const modalInitialDataRef = useRef({ attended: data.attended, missed: data.missed });
   useEffect(() => {
     if (!activeStatInfo) return;
     const timer = window.setTimeout(() => setActiveStatInfo(null), 10000);
@@ -68,7 +69,7 @@ export const SubjectCard = ({
   useEffect(() => {
     if (!isModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsModalOpen(false);
+      if (e.key === 'Escape') closeModal();
     };
     window.addEventListener('keydown', onKey);
     lockScroll();
@@ -79,6 +80,17 @@ export const SubjectCard = ({
   }, [isModalOpen]);
 
   const closeModal = () => {
+    const initial = modalInitialDataRef.current;
+    const final = currentDataRef.current;
+    const category = isWard ? 'Clinical Rotation' : isSGT ? 'Small Group Teaching' : 'Lecture';
+    const attendedDelta = final.attended - initial.attended;
+    const missedDelta = final.missed - initial.missed;
+    if (attendedDelta !== 0) {
+      void recordDashboardActivity(formatManualAttendanceDelta(displayName, category, 'Attended', attendedDelta), 'edit');
+    }
+    if (missedDelta !== 0) {
+      void recordDashboardActivity(formatManualAttendanceDelta(displayName, category, 'Bunked', missedDelta), 'edit');
+    }
     setIsModalOpen(false);
     setActiveStatInfo(null);
     setShowLimitMessage(false);
@@ -92,6 +104,7 @@ export const SubjectCard = ({
     ) {
       return;
     }
+    modalInitialDataRef.current = { ...currentDataRef.current };
     setIsModalOpen(true);
   };
 
@@ -114,7 +127,6 @@ export const SubjectCard = ({
     if (showLimitMessage) setShowLimitMessage(false);
     currentDataRef.current = { attended: newAttended, missed: newMissed };
     updateFn(attendanceKey, newAttended, newMissed);
-    void recordDashboardActivity(formatManualAttendanceActivity(displayName, isWard ? 'Clinical Rotation' : isSGT ? 'Small Group Teaching' : 'Lecture', newAttended, newMissed), 'edit');
     return true;
   };
 

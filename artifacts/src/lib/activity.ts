@@ -12,8 +12,9 @@ export function formatAttendanceActivity(subject: string, category: string, stat
   return `Marked ${subject} (${category}) as ${status}`;
 }
 
-export function formatManualAttendanceActivity(subject: string, category: string, attended: number, missed: number): string {
-  return `Updated ${subject} (${category}): Attended ${attended} / Missed ${missed}`;
+export function formatManualAttendanceDelta(subject: string, category: string, type: 'Attended' | 'Bunked', delta: number): string {
+  const signedDelta = delta > 0 ? `+${delta}` : String(delta);
+  return `Updated ${subject} (${category}) Data to ${type} (${signedDelta} class)`;
 }
 
 let activityQueue: Promise<void> = Promise.resolve();

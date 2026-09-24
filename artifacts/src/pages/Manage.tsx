@@ -1661,11 +1661,6 @@ export default function Manage() {
                   </>
                 )}
               </div>
-              <div className="sticky bottom-0 z-10 shrink-0 px-3 py-2 bg-background/95 backdrop-blur-sm">
-                <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
-                  <Plus className="h-3.5 w-3.5" /> Add Slot
-                </button>
-              </div>
             </div>
           )}
           {section === 'clinical' && (
@@ -1708,6 +1703,13 @@ export default function Manage() {
             </div>
           )}
         </section>
+        {section === 'academic' && (
+          <div className="shrink-0 px-0 pt-2">
+            <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
+              <Plus className="h-3.5 w-3.5" /> Add Slot
+            </button>
+          </div>
+        )}
         {/* Add New Modal */}
         <OverlayModal
           open={moreOpen}
@@ -2456,22 +2458,15 @@ export default function Manage() {
                 </>
               ) : (
                 <>
-                  <p className="text-[10px] text-muted-foreground bg-muted/20 rounded-lg px-3 py-1.5">
-                    Currently: <span className="font-semibold text-foreground">{DAY_ABBRS[editSlot.day]} {canonicalTimeRange(editSlot.startTime, editSlot.endTime)}</span>
-                  </p>
-                  <div>
-                    <label className={labelCls}>Target Day</label>
-                    <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
-                      {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
-                    </select>
+                  <div className="border-b border-border/50 pb-3 text-center">
+                    <p className="text-sm font-extrabold" style={{ color: getSubjectColor(editSlot.subjects[0].name) }}>{editSlot.subjects[0].name}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">Currently: {DAY_ABBRS[editSlot.day]} ({canonicalTimeRange(editSlot.startTime, editSlot.endTime)})</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
+                    <div><label className={labelCls}>Target Day</label><select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>{DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}</select></div>
+                    <div><label className={labelCls}>Planned No.</label><div className={cn(inputCls, 'flex items-center justify-center text-muted-foreground')}>{editSlot.subjects[0].planned}</div></div>
                     <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
                     <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
-                  </div>
-                  <div className="bg-muted/30 p-2 rounded-lg">
-                    <span className="text-xs font-bold" style={{ color: getSubjectColor(editSlot.subjects[0].name) }}>{editSlot.subjects[0].name}</span>
-                    <p className="text-[10px] text-muted-foreground mt-1">Planned: {editSlot.subjects[0].planned} (read-only — edit in Edit Data)</p>
                   </div>
                 </>
               )}
