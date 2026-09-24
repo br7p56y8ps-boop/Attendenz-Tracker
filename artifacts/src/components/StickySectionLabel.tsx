@@ -15,6 +15,8 @@ interface StickySectionLabelProps {
 const STICKY_LABEL_SELECTOR = '[data-sticky-section-label="true"]';
 
 function findScrollParent(element: HTMLElement): HTMLElement | Window {
+  const main = element.closest('main');
+  if (main) return main;
   let parent = element.parentElement;
   while (parent) {
     const style = window.getComputedStyle(parent);
@@ -41,8 +43,11 @@ function getStickyTop(element: HTMLElement): number {
 }
 
 function getActiveLabel(scrollParent: HTMLElement | Window, currentScroll: number): HTMLElement | null {
-  const labels = Array.from(document.querySelectorAll<HTMLElement>(STICKY_LABEL_SELECTOR))
-    .filter(label => findScrollParent(label) === scrollParent);
+  const labels = Array.from(
+    scrollParent instanceof HTMLElement
+      ? scrollParent.querySelectorAll<HTMLElement>(STICKY_LABEL_SELECTOR)
+      : document.querySelectorAll<HTMLElement>(STICKY_LABEL_SELECTOR),
+  ).filter(label => findScrollParent(label) === scrollParent);
 
   let active: HTMLElement | null = null;
   for (const label of labels) {
