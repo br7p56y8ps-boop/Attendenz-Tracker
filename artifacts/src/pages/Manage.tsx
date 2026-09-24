@@ -1599,22 +1599,23 @@ export default function Manage() {
         )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-0 min-h-0 flex-1 bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden',
+            'manage-window-surface z-[3] isolate -mx-1 mt-0 min-h-0 flex-1 bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden border border-border',
           )}>
           {section === 'academic' && (
-            <div className="min-h-0 flex-1 flex flex-col border border-border">
+            <div className="min-h-0 flex-1 flex flex-col">
               <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
                 {groupedAcademicSlots.length === 0 ? (
-                  <div className="flex min-h-full items-center justify-center px-6 text-center">
-                    <p className="text-sm font-semibold text-muted-foreground">
-                      {subjectMode === 'custom' && customAcademicCount === 0 ? (
-                        <>No Lecture Subject added yet. Tap <button type="button" onClick={openMoreMenu} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button> to add a new Subject.</>
-                      ) : selectedDayIsHoliday ? (
-                        'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
-                      ) : (
-                        'No planned Lecture Classes for today!'
-                      )}
-                    </p>
+                  <div className="flex min-h-full flex-col items-center justify-center px-6 text-center">
+                    {selectedDayIsHoliday ? (
+                      <>
+                        <p className="text-base font-extrabold text-primary">Detox Day</p>
+                        <p className="mt-2 max-w-xs text-sm font-semibold leading-relaxed text-muted-foreground">Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.</p>
+                      </>
+                    ) : subjectMode === 'custom' && customAcademicCount === 0 ? (
+                      <p className="text-sm font-semibold text-muted-foreground">No Lecture Subject added yet. Tap <button type="button" onClick={openMoreMenu} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button> to add a new Subject.</p>
+                    ) : (
+                      <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -1664,7 +1665,7 @@ export default function Manage() {
             </div>
           )}
           {section === 'clinical' && (
-            <div className="h-0 min-h-0 flex-1 flex flex-col border border-border">
+            <div className="h-0 min-h-0 flex-1 flex flex-col">
               <div className="relative z-0 h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
                 {subjectMode === 'custom' && customClinicalCount === 0 ? (
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
@@ -1704,8 +1705,8 @@ export default function Manage() {
           )}
         </section>
         {section === 'academic' && (
-          <div className="shrink-0 px-0 pt-2">
-            <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
+          <div className="shrink-0 px-0 pt-0">
+            <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="-mt-px flex min-h-10 w-full items-center justify-center gap-1.5 rounded-t-none rounded-b-xl border border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
               <Plus className="h-3.5 w-3.5" /> Add Slot
             </button>
           </div>
@@ -2458,13 +2459,13 @@ export default function Manage() {
                 </>
               ) : (
                 <>
-                  <div className="border-b border-border/50 pb-3 text-center">
+                  <div className="pb-1 text-center">
                     <p className="text-sm font-extrabold" style={{ color: getSubjectColor(editSlot.subjects[0].name) }}>{editSlot.subjects[0].name}</p>
                     <p className="mt-1 text-[10px] text-muted-foreground">Currently: {DAY_ABBRS[editSlot.day]} ({canonicalTimeRange(editSlot.startTime, editSlot.endTime)})</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
-                    <div><label className={labelCls}>Target Day</label><select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>{DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}</select></div>
-                    <div><label className={labelCls}>Planned No.</label><div className={cn(inputCls, 'flex items-center justify-center text-muted-foreground')}>{editSlot.subjects[0].planned}</div></div>
+                    <div><label className={labelCls}>Target Day</label><select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={cn(inputCls, 'text-center')}>{DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}</select></div>
+                    <div><label className={labelCls}>Planned No.</label><div aria-label="Planned number (autocalculated)" className="flex min-h-10 items-center justify-center rounded-xl border border-transparent bg-muted/30 px-3 text-xs font-semibold text-muted-foreground">{editSlot.subjects[0].planned} (Autocalculated)</div></div>
                     <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
                     <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
                   </div>

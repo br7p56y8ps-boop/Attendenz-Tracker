@@ -683,29 +683,30 @@ export default function Home() {
         </div>
         {subjectPotentialMetrics.length === 0 ? <p className="mt-3 text-[10px] text-muted-foreground">Not enough data yet.</p> : (
           <div className="mt-3">
-            <svg viewBox={`0 0 560 ${subjectPotentialMetrics.length * 48 + 28}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
-              <line x1="112" x2="540" y1="16" y2="16" stroke="currentColor" strokeOpacity=".25" />
-              <text x="112" y="10" fontSize="8" fill="currentColor" opacity=".65">0%</text>
-              <text x="540" y="10" textAnchor="end" fontSize="8" fill="currentColor" opacity=".65">100%</text>
+            <svg viewBox={`0 0 560 ${subjectPotentialMetrics.length * 48 + 40}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
+              <line x1="92" x2="92" y1="16" y2={subjectPotentialMetrics.length * 48 + 25} stroke="currentColor" strokeOpacity=".45" />
+              <line x1="92" x2="540" y1={subjectPotentialMetrics.length * 48 + 25} y2={subjectPotentialMetrics.length * 48 + 25} stroke="currentColor" strokeOpacity=".45" />
+              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={92 + (448 * tick) / 100} y={subjectPotentialMetrics.length * 48 + 37} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
               {subjectPotentialMetrics.map((metric, index) => {
                 const rowY = 40 + index * 48;
-                const left = 112;
-                const width = 428;
+                const left = 92;
+                const width = 448;
                 const baseline = rowY;
                 const currentX = left + (width * Math.min(100, Math.max(0, metric.current))) / 100;
                 const maxX = left + (width * Math.min(100, Math.max(metric.current, metric.maximum))) / 100;
                 const extension = Math.max(24, maxX - currentX);
                 const peakX = currentX + extension * 0.48;
                 const tX = currentX + extension * 0.78;
+                const currentColor = metric.current >= preferredPercentage ? '#34d399' : '#ef4444';
                 const maxColor = metric.maximum >= preferredPercentage ? '#34d399' : '#ef4444';
                 const waveform = `M ${currentX.toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.12).toFixed(1)} ${baseline.toFixed(1)}, ${(currentX + extension * 0.16).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.24).toFixed(1)} ${(baseline - 5).toFixed(1)} C ${(currentX + extension * 0.3).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.34).toFixed(1)} ${(baseline + 5).toFixed(1)}, ${(currentX + extension * 0.38).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.42).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(peakX - extension * 0.05).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${peakX.toFixed(1)} ${(baseline - 26).toFixed(1)} C ${(peakX + extension * 0.04).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(currentX + extension * 0.56).toFixed(1)} ${(baseline + 10).toFixed(1)}, ${(currentX + extension * 0.62).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.7).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX - extension * 0.04).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${tX.toFixed(1)} ${(baseline - 9).toFixed(1)} C ${(tX + extension * 0.08).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX + extension * 0.14).toFixed(1)} ${(baseline - 3).toFixed(1)}, ${maxX.toFixed(1)} ${baseline.toFixed(1)}`;
                 return <g key={`${metric.category}-${metric.name}`}>
-                  <text x="0" y={rowY + 3} fontSize="9" fontWeight="700" fill="currentColor">{shortenSubject(metric.name).slice(0, 18)}</text>
-                  <line x1={left} x2={currentX} y1={baseline} y2={baseline} stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" />
+                  <text x="2" y={rowY + 3} fontSize="9" fontWeight="700" fill="currentColor">{shortenSubject(metric.name).slice(0, 14)}</text>
+                  <line x1={left} x2={currentX} y1={baseline} y2={baseline} stroke={currentColor} strokeWidth="2.5" strokeLinecap="round" />
                   <path d={waveform} fill="none" stroke={maxColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <circle cx={currentX} cy={baseline} r="2.5" fill="#94a3b8" />
+                  <circle cx={currentX} cy={baseline} r="2.5" fill={currentColor} />
                   <circle cx={maxX} cy={baseline} r="2.5" fill={maxColor} />
-                  <text x={currentX} y={baseline - 7} textAnchor="middle" fontSize="8" fill="#94a3b8">{Math.round(metric.current)}%</text>
+                  <text x={currentX} y={baseline - 7} textAnchor="middle" fontSize="8" fill={currentColor}>{Math.round(metric.current)}%</text>
                   <text x={maxX} y={baseline + 13} textAnchor="middle" fontSize="8" fontWeight="700" fill={maxColor}>{Math.round(metric.maximum)}%</text>
                 </g>;
               })}
