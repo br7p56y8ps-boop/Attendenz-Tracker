@@ -596,7 +596,7 @@ export default function Home() {
     return label;
   };
   const resolveSubjectAlert = (storageKey: string) => {
-    const raw = storageKey.replace(/^(academic:|ward:|sgt:)/, '');
+    const raw = storageKey.replace(/^(academic:|acad:|ward:|sgt:)/, '');
     if (storageKey.startsWith('sgt:')) {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
       return { name: source.find(item => item.id === storageKey.slice(4))?.name || 'Small Group Teaching', category: 'SGT' };
@@ -604,10 +604,11 @@ export default function Home() {
     if (storageKey.startsWith('ward:')) return { name: getPresetWardDisplayName(storageKey.slice(5)), category: 'Ward' };
     const userAdded = userAddedSubjects.find(item => item.id === raw);
     const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS].find(item => item.id === raw || item.name === raw);
-    const registryRef = subjectRegistry.find(ref => ref.id === raw || ref.id === storageKey || ref.name === raw);
-    const restoredRecord = [...customSubjects, ...customWards, ...userAddedSubjects].find(item => item.id === raw);
-    const readable = registryRef?.name || userAdded?.name || preset?.name || (restoredRecord && 'name' in restoredRecord ? restoredRecord.name : undefined);
-    const displayName = readable ? getPresetSubjectDisplayName(readable) : restoredSubjectFallback(raw);
+    const custom = customSubjects.find(item => item.id === raw);
+    const readable = getPresetSubjectDisplayName(preset?.name || '') || userAdded?.name || custom?.name || preset?.name;
+    const registryRef = subjectRegistry.find(ref => ref.id === raw || ref.id === storageKey);
+    const resolvedName = readable || registryRef?.name;
+    const displayName = resolvedName || restoredSubjectFallback(raw);
     const registryCategory = registryRef?.kind === 'sgt'
       ? 'SGT'
       : registryRef?.kind === 'integrated'
@@ -726,8 +727,8 @@ export default function Home() {
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
           <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
-          {overallTotal === 0 ? <p className="mt-3 py-8 text-center text-xs text-muted-foreground">No attendance data yet.</p> : <svg viewBox="0 0 300 112" className="mt-1 h-24 w-full" role="img" aria-label="Grouped PQRST attendance ECG chart"><path d="M24 8V92H292" fill="none" stroke="currentColor" strokeOpacity=".35" /><path d="M24 71H292M24 50H292M24 29H292" fill="none" stroke="currentColor" strokeOpacity=".1" strokeDasharray="2 3" /><text x="2" y="12" fontSize="7" fill="currentColor">100%</text><text x="7" y="53" fontSize="7" fill="currentColor">50%</text><text x="13" y="94" fontSize="7" fill="currentColor">0%</text>{groupedEcgPaths.map(group => <path key={group.label} d={group.path} fill="none" stroke={group.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />)}</svg>}
-          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[8px] font-bold text-muted-foreground">{groupedEcgPaths.map(group => <span key={group.label} className={cn('flex min-w-0 min-h-6 items-center gap-1 leading-3', !group.hasData && 'opacity-50')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.hasData ? group.color : '#94a3b8' }} /><span className="min-w-0">{group.label}</span></span>)}</div>
+          {overallTotal === 0 ? <p className="mt-3 py-8 text-center text-xs text-muted-foreground">No attendance data yet.</p> : <svg viewBox="0 0 300 112" className="mt-1 h-32 w-full" role="img" aria-label="Grouped PQRST attendance ECG chart"><path d="M24 8V92H292" fill="none" stroke="currentColor" strokeOpacity=".35" /><path d="M24 71H292M24 50H292M24 29H292" fill="none" stroke="currentColor" strokeOpacity=".1" strokeDasharray="2 3" /><text x="2" y="12" fontSize="7" fill="currentColor">100%</text><text x="7" y="53" fontSize="7" fill="currentColor">50%</text><text x="13" y="94" fontSize="7" fill="currentColor">0%</text>{groupedEcgPaths.map(group => <path key={group.label} d={group.path} fill="none" stroke={group.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />)}</svg>}
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0 text-[8px] font-bold text-muted-foreground">{groupedEcgPaths.map(group => <span key={group.label} className={cn('flex min-w-0 min-h-5 items-center gap-1 leading-3', !group.hasData && 'opacity-50')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.hasData ? group.color : '#94a3b8' }} /><span className="min-w-0">{group.label}</span></span>)}</div>
         </button>
         <div className="grid min-h-0 grid-rows-2 gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
@@ -817,7 +818,7 @@ export default function Home() {
         </div>
       ) : undefined}
     >
-      {showMarkAttendance ? <motion.div key="attendance-view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} className="min-h-0 flex flex-col">
+      {showMarkAttendance ? <motion.div key="attendance-view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} className="min-h-0 flex flex-1 flex-col">
         <div className="home-date-wheel-float" aria-label="Choose date">
           {dateWheel}
         </div>
