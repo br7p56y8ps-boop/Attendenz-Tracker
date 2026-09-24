@@ -95,13 +95,14 @@ export default function Home() {
   const today = new Date();
   const todayStr = toDateString(today);
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
-  const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, presetWardSchedule, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
+  const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, presetWardSchedule, subjectRegistry, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
   const { homeSelections, finishedMap, subjects, wards, preferredPercentage } = useAttendance();
   const [, setLocation] = useLocation();
   const { username } = useAuth();
   const [showMarkAttendance, setShowMarkAttendance] = useState(false);
   const [dashboardActivities, setDashboardActivities] = useState<ActivityItem[]>([]);
   const [activityExpanded, setActivityExpanded] = useState(false);
+  const restoredSubjectLabels = useRef(new Map<string, string>());
 
   /* ── Update notice ── */
   const [installedVersion] = useState<string>(() => {
@@ -588,8 +589,11 @@ export default function Home() {
     }));
   }, [subjects, userAddedSubjects, wards]);
   const restoredSubjectFallback = (raw: string) => {
-    const suffix = raw.replace(/^(ua_|academic:|subject:)/, '').replace(/[_-]+/g, ' ').trim();
-    return suffix ? `Restored Subject ${suffix}` : 'Restored Subject';
+    const existing = restoredSubjectLabels.current.get(raw);
+    if (existing) return existing;
+    const label = `Restored Subject ${restoredSubjectLabels.current.size + 1}`;
+    restoredSubjectLabels.current.set(raw, label);
+    return label;
   };
   const resolveSubjectAlert = (storageKey: string) => {
     const raw = storageKey.replace(/^(academic:|ward:|sgt:)/, '');
@@ -600,19 +604,46 @@ export default function Home() {
     if (storageKey.startsWith('ward:')) return { name: getPresetWardDisplayName(storageKey.slice(5)), category: 'Ward' };
     const userAdded = userAddedSubjects.find(item => item.id === raw);
     const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS].find(item => item.id === raw || item.name === raw);
-    const readable = userAdded?.name || preset?.name;
+    const registryRef = subjectRegistry.find(ref => ref.id === raw || ref.id === storageKey || ref.name === raw);
+    const restoredRecord = [...customSubjects, ...customWards, ...userAddedSubjects].find(item => item.id === raw);
+    const readable = registryRef?.name || userAdded?.name || preset?.name || (restoredRecord && 'name' in restoredRecord ? restoredRecord.name : undefined);
     const displayName = readable ? getPresetSubjectDisplayName(readable) : restoredSubjectFallback(raw);
-    return { name: displayName, category: getDashboardSubjectKind(displayName, undefined, userAddedSubjects) };
+    const registryCategory = registryRef?.kind === 'sgt'
+      ? 'SGT'
+      : registryRef?.kind === 'integrated'
+        ? 'Integrated'
+        : registryRef?.kind === 'preset-ward' || registryRef?.kind === 'ward-rotation'
+          ? 'Ward'
+          : undefined;
+    return { name: displayName, category: registryCategory || getDashboardSubjectKind(displayName, undefined, userAddedSubjects) };
   };
-  const subjectPotentialMetrics = useMemo(() => Object.entries(subjects).map(([storageKey, item]) => {
-    const resolved = resolveSubjectAlert(storageKey);
-    const planned = Math.max(item.attended + item.missed, getSubjectPlannedTotal(resolved.name));
-    const conducted = item.attended + item.missed;
-    const remaining = Math.max(0, planned - conducted);
-    const current = conducted === 0 ? 0 : (item.attended / conducted) * 100;
-    const maximum = planned > 0 ? ((item.attended + remaining) / planned) * 100 : current;
-    return { ...resolved, attended: item.attended, missed: item.missed, current, maximum, remaining, planned };
-  }).filter(item => item.remaining > 0 && item.current < preferredPercentage).sort((a, b) => a.current - b.current).slice(0, 6), [customSubjects, getPresetSubjectDisplayName, getPresetWardDisplayName, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, userAddedSubjects]);
+  const subjectPotentialMetrics = useMemo(() => {
+    const metrics = new Map<string, {
+      name: string;
+      category: string;
+      attended: number;
+      missed: number;
+    }>();
+    Object.entries(subjects).forEach(([storageKey, item]) => {
+      const resolved = resolveSubjectAlert(storageKey);
+      const metricKey = `${resolved.category}:${resolved.name.trim().toLowerCase()}`;
+      const previous = metrics.get(metricKey);
+      metrics.set(metricKey, {
+        name: resolved.name,
+        category: resolved.category,
+        attended: (previous?.attended || 0) + item.attended,
+        missed: (previous?.missed || 0) + item.missed,
+      });
+    });
+    return Array.from(metrics.values()).map(metric => {
+      const planned = Math.max(metric.attended + metric.missed, getSubjectPlannedTotal(metric.name));
+      const conducted = metric.attended + metric.missed;
+      const remaining = Math.max(0, planned - conducted);
+      const current = conducted === 0 ? 0 : (metric.attended / conducted) * 100;
+      const maximum = planned > 0 ? ((metric.attended + remaining) / planned) * 100 : current;
+      return { ...metric, current, maximum, remaining, planned };
+    }).filter(item => item.remaining > 0 && item.current < preferredPercentage).sort((a, b) => a.current - b.current).slice(0, 6);
+  }, [customSubjects, customWards, getPresetSubjectDisplayName, getPresetWardDisplayName, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, subjectRegistry, userAddedSubjects]);
   const statusForEntry = (entry: DayEntry) => {
     const sessionId = entry.card?.sessionId;
     if (!sessionId) return undefined;
@@ -696,7 +727,7 @@ export default function Home() {
           <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
           {overallTotal === 0 ? <p className="mt-3 py-8 text-center text-xs text-muted-foreground">No attendance data yet.</p> : <svg viewBox="0 0 300 112" className="mt-1 h-24 w-full" role="img" aria-label="Grouped PQRST attendance ECG chart"><path d="M24 8V92H292" fill="none" stroke="currentColor" strokeOpacity=".35" /><path d="M24 71H292M24 50H292M24 29H292" fill="none" stroke="currentColor" strokeOpacity=".1" strokeDasharray="2 3" /><text x="2" y="12" fontSize="7" fill="currentColor">100%</text><text x="7" y="53" fontSize="7" fill="currentColor">50%</text><text x="13" y="94" fontSize="7" fill="currentColor">0%</text>{groupedEcgPaths.map(group => <path key={group.label} d={group.path} fill="none" stroke={group.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />)}</svg>}
-          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[8px] font-bold text-muted-foreground">{groupedEcgPaths.map(group => <span key={group.label} className={cn('flex min-w-0 min-h-6 items-center gap-1 leading-3', !group.hasData && 'opacity-50')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.hasData ? group.color : '#94a3b8' }} /><span className="min-w-0">{group.label}{!group.hasData && ' — No data'}</span></span>)}</div>
+          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[8px] font-bold text-muted-foreground">{groupedEcgPaths.map(group => <span key={group.label} className={cn('flex min-w-0 min-h-6 items-center gap-1 leading-3', !group.hasData && 'opacity-50')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.hasData ? group.color : '#94a3b8' }} /><span className="min-w-0">{group.label}</span></span>)}</div>
         </button>
         <div className="grid min-h-0 grid-rows-2 gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
