@@ -114,11 +114,11 @@ export function StickySectionLabel({
       ref={labelRef}
       data-sticky-section-label="true"
       className={cn(
-        'relative top-auto -mx-4 h-8 flex items-center gap-2.5 px-6 py-0 text-left text-xs font-extrabold uppercase tracking-[0.18em] text-primary transition-colors duration-200',
-        isStuck && cn('sticky z-40', offsetClass),
+        'sticky z-40 -mx-4 h-8 flex items-center gap-2.5 px-6 py-0 text-left text-xs font-extrabold uppercase tracking-[0.18em] text-primary transition-colors duration-200',
+        offsetClass,
         isStuck
-          ? 'bg-background border-y border-border/70 shadow-sm isolate before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background'
-          : 'bg-transparent border-transparent shadow-none before:hidden',
+          ? 'bg-background border-y border-border/70 shadow-sm'
+          : 'bg-transparent border-transparent shadow-none',
         className,
       )}
     >

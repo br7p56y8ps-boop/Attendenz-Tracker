@@ -463,16 +463,6 @@ export default function Home() {
     void Promise.all([idbGet('att_dashboard_activity_v1'), idbGet('att_manage_history')]).then(async ([raw, historyRaw]) => {
       let stored: ActivityItem[] = [];
       try { stored = raw ? (JSON.parse(raw) as Array<any>).map(item => ({ ...item, kind: item.kind || 'neutral' as ActivityKind })) : []; } catch { stored = []; }
-      const fallbackTimestamp = (text: string) => stored.find(item => item.text === text)?.timestamp || Date.now();
-      const derived: ActivityItem[] = Object.entries(homeSelections)
-        .filter(([key]) => key.startsWith(todayStr))
-        .map(([key, value]) => {
-          const matched = dayEntries.find(entry => entry.card?.sessionId && key.includes(entry.card.sessionId));
-          const subject = matched?.card?.subject ? shortenSubject(matched.card.subject) : 'Unknown subject';
-          const kindLabel = matched?.card?.isWard ? 'Clinical Rotation' : matched?.card?.tag === 'Small Group' ? 'Small Group Teaching' : 'Lecture';
-          const text = `Marked ${subject} (${kindLabel}) as ${value === 'off' ? 'Off' : value === 'missed' ? 'Bunked' : 'Attended'}`;
-          return { id: `attendance-fallback-${key}`, text, timestamp: fallbackTimestamp(text), kind: (value === 'missed' ? 'missed' : 'attendance') as ActivityKind };
-        });
       let history: ActivityItem[] = [];
       try {
         const entries = historyRaw ? JSON.parse(historyRaw) as Array<any> : [];
@@ -485,11 +475,11 @@ export default function Home() {
           return { id: `history-${entry.id}`, text: `${type}: ${target}`, timestamp: Date.parse(entry.timestamp) || Date.now(), kind };
         });
       } catch { history = []; }
-      const merged = await mergeDashboardActivities([...history, ...derived]);
+      const merged = await mergeDashboardActivities([...stored, ...history]);
       if (!cancelled) setDashboardActivities(merged as ActivityItem[]);
     });
     return () => { cancelled = true; };
-  }, [homeSelections, todayStr, dayEntries]);
+  }, [todayStr]);
   const overallAttended = Object.values(subjects).concat(Object.values(wards)).reduce((sum, item) => sum + item.attended, 0);
   const overallMissed = Object.values(subjects).concat(Object.values(wards)).reduce((sum, item) => sum + item.missed, 0);
   const overallTotal = overallAttended + overallMissed;
@@ -691,7 +681,8 @@ export default function Home() {
   );
   return (
     <Layout
-      mainClassName="flex-1 min-h-0 overflow-hidden"
+      mainClassName="!overflow-hidden"
+      contentClassName="h-full min-h-0 flex flex-col"
       headerTitle={showMarkAttendance ? 'Attendance' : 'Dashboard'}
       headerDescription={showMarkAttendance ? 'Mark and review classes for the selected date' : 'Your attendance overview and daily class pulse'}
       headerRight={showUpdatePill ? (

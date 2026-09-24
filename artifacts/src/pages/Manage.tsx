@@ -1602,8 +1602,8 @@ export default function Manage() {
             'manage-window-surface z-[3] isolate -mx-1 mt-0 min-h-0 flex-1 bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden',
           )}>
           {section === 'academic' && (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 border border-dashed border-border/80 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
+            <div className="min-h-0 flex-1 flex flex-col border border-dashed border-border/80">
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
                 {groupedAcademicSlots.length === 0 ? (
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
                     <p className="text-sm font-semibold text-muted-foreground">
@@ -1669,8 +1669,8 @@ export default function Manage() {
             </div>
           )}
           {section === 'clinical' && (
-            <div className="flex h-0 min-h-0 flex-1 flex-col">
-              <div className="relative z-0 h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 border border-dashed border-border/80 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
+            <div className="h-0 min-h-0 flex-1 flex flex-col border border-dashed border-border/80">
+              <div className="relative z-0 h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
                 {subjectMode === 'custom' && customClinicalCount === 0 ? (
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
                     <p className="text-sm font-semibold text-muted-foreground">
