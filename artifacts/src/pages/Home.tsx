@@ -712,12 +712,12 @@ export default function Home() {
         </div>
         {subjectPotentialMetrics.length === 0 ? <p className="mt-3 text-[10px] text-muted-foreground">Not enough data yet.</p> : (
           <div className="mt-3">
-            <svg viewBox={`0 0 560 ${subjectPotentialMetrics.length * 60 + 40}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
-              <line x1="164" x2="164" y1="16" y2={subjectPotentialMetrics.length * 60 + 25} stroke="currentColor" strokeOpacity=".45" />
-              <line x1="164" x2="540" y1={subjectPotentialMetrics.length * 60 + 25} y2={subjectPotentialMetrics.length * 60 + 25} stroke="currentColor" strokeOpacity=".45" />
-              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={164 + (376 * tick) / 100} y={subjectPotentialMetrics.length * 60 + 37} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
+            <svg viewBox={`0 0 560 ${subjectPotentialMetrics.length * 46 + 34}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
+              <line x1="164" x2="164" y1="10" y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              <line x1="164" x2="540" y1={subjectPotentialMetrics.length * 46 + 24} y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={164 + (376 * tick) / 100} y={subjectPotentialMetrics.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
               {subjectPotentialMetrics.map((metric, index) => {
-                const rowY = 40 + index * 60;
+                const rowY = 34 + index * 46;
                 const left = 164;
                 const width = 376;
                 const baseline = rowY;

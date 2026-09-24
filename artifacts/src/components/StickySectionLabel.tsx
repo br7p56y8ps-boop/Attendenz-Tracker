@@ -13,50 +13,61 @@ interface StickySectionLabelProps {
 }
 
 const STICKY_LABEL_SELECTOR = '[data-sticky-section-label="true"]';
+const PLACEHOLDER_ATTRIBUTE = 'data-sticky-section-placeholder';
 
 function findScrollParent(element: HTMLElement): HTMLElement | Window {
   const main = element.closest('main');
   if (main) return main;
   let parent = element.parentElement;
   while (parent) {
-    const style = window.getComputedStyle(parent);
-    const overflowY = style.overflowY;
-    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
-      return parent;
-    }
+    const overflowY = window.getComputedStyle(parent).overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return parent;
     parent = parent.parentElement;
   }
   return window;
 }
 
-function getScrollPosition(scrollParent: HTMLElement | Window): number {
-  return scrollParent instanceof HTMLElement ? scrollParent.scrollTop : window.scrollY;
+function getLabels(scrollParent: HTMLElement | Window): HTMLElement[] {
+  const labels = scrollParent instanceof HTMLElement
+    ? Array.from(scrollParent.querySelectorAll<HTMLElement>(STICKY_LABEL_SELECTOR))
+    : Array.from(document.querySelectorAll<HTMLElement>(STICKY_LABEL_SELECTOR));
+  return labels.filter(label => findScrollParent(label) === scrollParent);
 }
 
-function getScrollportTop(scrollParent: HTMLElement | Window): number {
-  return scrollParent instanceof HTMLElement ? scrollParent.getBoundingClientRect().top : 0;
+function getPinTop(scrollParent: HTMLElement | Window): number {
+  const source = scrollParent instanceof HTMLElement ? scrollParent : document.documentElement;
+  const styles = window.getComputedStyle(source);
+  const headerHeight = Number.parseFloat(styles.getPropertyValue('--app-header-height')) || 0;
+  const rootFontSize = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+  return headerHeight + rootFontSize * 0.5;
 }
 
-function getStickyTop(element: HTMLElement): number {
-  const computedTop = Number.parseFloat(window.getComputedStyle(element).top);
-  return Number.isFinite(computedTop) ? computedTop : 0;
+function getPlaceholder(label: HTMLElement): HTMLElement {
+  const existing = label.previousElementSibling;
+  if (existing instanceof HTMLElement && existing.hasAttribute(PLACEHOLDER_ATTRIBUTE)) return existing;
+  const placeholder = document.createElement('div');
+  placeholder.setAttribute(PLACEHOLDER_ATTRIBUTE, 'true');
+  placeholder.style.display = 'none';
+  placeholder.setAttribute('aria-hidden', 'true');
+  label.parentElement?.insertBefore(placeholder, label);
+  return placeholder;
 }
 
-function getActiveLabel(scrollParent: HTMLElement | Window, currentScroll: number): HTMLElement | null {
-  const labels = Array.from(
-    scrollParent instanceof HTMLElement
-      ? scrollParent.querySelectorAll<HTMLElement>(STICKY_LABEL_SELECTOR)
-      : document.querySelectorAll<HTMLElement>(STICKY_LABEL_SELECTOR),
-  ).filter(label => findScrollParent(label) === scrollParent);
+function resetLabel(label: HTMLElement): void {
+  label.style.position = '';
+  label.style.top = '';
+  label.style.left = '';
+  label.style.width = '';
+  label.style.zIndex = '';
+  label.style.marginLeft = '';
+  label.style.marginRight = '';
+  const placeholder = getPlaceholder(label);
+  placeholder.style.display = 'none';
+  placeholder.style.height = '';
+}
 
-  let active: HTMLElement | null = null;
-  for (const label of labels) {
-    const threshold = Number.parseFloat(label.dataset.stickyThreshold || '');
-    if (Number.isFinite(threshold) && currentScroll > threshold + 1) {
-      active = label;
-    }
-  }
-  return active;
+function clearLabels(labels: HTMLElement[]): void {
+  labels.forEach(resetLabel);
 }
 
 export function StickySectionLabel({
@@ -73,31 +84,38 @@ export function StickySectionLabel({
     if (!labelEl) return;
 
     const scrollParent = findScrollParent(labelEl);
-    const offsetTokens = offsetClass.split(/\s+/).filter(Boolean);
-    const measureThreshold = () => {
-      // Measure the label in normal flow. A previously sticky label otherwise
-      // reports the shared sticky-slot position and causes early release when
-      // another section expands or collapses above it.
-      const wasStuck = labelEl.classList.contains('sticky');
-      if (wasStuck) labelEl.classList.remove('sticky', ...offsetTokens);
-      const currentScroll = getScrollPosition(scrollParent);
-      const labelTop = labelEl.getBoundingClientRect().top;
-      const scrollportTop = getScrollportTop(scrollParent);
-      labelEl.classList.add('sticky', ...offsetTokens);
-      const stickyTop = getStickyTop(labelEl);
-      if (!wasStuck) labelEl.classList.remove('sticky', ...offsetTokens);
-      const labelTopInScrollport = labelTop - scrollportTop;
-      labelEl.dataset.stickyThreshold = String(currentScroll + labelTopInScrollport - stickyTop);
-    };
-
     let frame: number | null = null;
+
     const checkPosition = () => {
       frame = null;
-      measureThreshold();
-      const currentScroll = getScrollPosition(scrollParent);
-      const activeLabel = getActiveLabel(scrollParent, currentScroll);
+      const labels = getLabels(scrollParent);
+      clearLabels(labels);
+      const scrollportRect = scrollParent instanceof HTMLElement
+        ? scrollParent.getBoundingClientRect()
+        : { top: 0, bottom: window.innerHeight };
+      const pinTop = getPinTop(scrollParent);
+      const pinY = scrollportRect.top + pinTop;
+      const activeLabel = labels.reduce<HTMLElement | null>((active, candidate) => {
+        const candidateTop = candidate.getBoundingClientRect().top;
+        return candidateTop <= pinY + 1 ? candidate : active;
+      }, null);
+
+      if (activeLabel) {
+        const rect = activeLabel.getBoundingClientRect();
+        const placeholder = getPlaceholder(activeLabel);
+        placeholder.style.display = 'block';
+        placeholder.style.height = `${rect.height}px`;
+        activeLabel.style.position = 'fixed';
+        activeLabel.style.top = `${pinY}px`;
+        activeLabel.style.left = `${rect.left}px`;
+        activeLabel.style.width = `${rect.width}px`;
+        activeLabel.style.marginLeft = '0';
+        activeLabel.style.marginRight = '0';
+        activeLabel.style.zIndex = '40';
+      }
       setIsStuck(activeLabel === labelEl);
     };
+
     const scheduleCheck = () => {
       if (frame === null) frame = window.requestAnimationFrame(checkPosition);
     };
@@ -110,7 +128,7 @@ export function StickySectionLabel({
       scrollParent.removeEventListener('scroll', scheduleCheck);
       if (scrollParent !== window) window.removeEventListener('scroll', scheduleCheck);
       window.removeEventListener('resize', scheduleCheck);
-      delete labelEl.dataset.stickyThreshold;
+      resetLabel(labelEl);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
   }, [offsetClass]);
@@ -121,7 +139,7 @@ export function StickySectionLabel({
       data-sticky-section-label="true"
       className={cn(
         'relative top-auto -mx-4 h-8 flex items-center gap-2.5 px-6 py-0 text-left text-xs font-extrabold uppercase tracking-[0.18em] text-primary transition-colors duration-200',
-        isStuck && cn('sticky z-40', offsetClass),
+        isStuck && 'z-40',
         isStuck
           ? 'bg-background border-y border-border/70 shadow-sm isolate before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-background'
           : 'bg-transparent border-transparent shadow-none before:hidden',
