@@ -95,10 +95,13 @@ export function StickySectionLabel({
         : { top: 0, bottom: window.innerHeight };
       const pinTop = getPinTop(scrollParent);
       const pinY = scrollportRect.top + pinTop;
-      const activeLabel = labels.reduce<HTMLElement | null>((active, candidate) => {
-        const candidateTop = candidate.getBoundingClientRect().top;
-        return candidateTop <= pinY + 1 ? candidate : active;
-      }, null);
+      const currentScroll = scrollParent instanceof HTMLElement ? scrollParent.scrollTop : window.scrollY;
+      const activeLabel = currentScroll > 0
+        ? labels.reduce<HTMLElement | null>((active, candidate) => {
+            const candidateTop = candidate.getBoundingClientRect().top;
+            return candidateTop <= pinY + 1 ? candidate : active;
+          }, null)
+        : null;
 
       if (activeLabel) {
         const rect = activeLabel.getBoundingClientRect();

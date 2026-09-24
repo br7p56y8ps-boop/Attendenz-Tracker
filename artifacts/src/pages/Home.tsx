@@ -713,13 +713,13 @@ export default function Home() {
         {subjectPotentialMetrics.length === 0 ? <p className="mt-3 text-[10px] text-muted-foreground">Not enough data yet.</p> : (
           <div className="mt-3">
             <svg viewBox={`0 0 560 ${subjectPotentialMetrics.length * 46 + 34}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
-              <line x1="164" x2="164" y1="10" y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
-              <line x1="164" x2="540" y1={subjectPotentialMetrics.length * 46 + 24} y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
-              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={164 + (376 * tick) / 100} y={subjectPotentialMetrics.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
+              <line x1="124" x2="124" y1="10" y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              <line x1="124" x2="540" y1={subjectPotentialMetrics.length * 46 + 24} y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={124 + (416 * tick) / 100} y={subjectPotentialMetrics.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
               {subjectPotentialMetrics.map((metric, index) => {
                 const rowY = 34 + index * 46;
-                const left = 164;
-                const width = 376;
+                const left = 124;
+                const width = 416;
                 const baseline = rowY;
                 const currentX = left + (width * Math.min(100, Math.max(0, metric.current))) / 100;
                 const maxX = left + (width * Math.min(100, Math.max(metric.current, metric.maximum))) / 100;
@@ -789,7 +789,7 @@ export default function Home() {
         <div className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain pb-0 scroll-fade-viewport scroll-reachability">
         {/* ── Content ── */}
         {!hasAnything ? (
-          <div className="mt-2 rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+          <div className="flex min-h-full items-center justify-center text-center">
             <div className="flex flex-col items-center">
               <ClipboardCheck className="mb-3 h-10 w-10 text-primary" />
               <h3 className="mb-2 text-lg font-semibold text-foreground">
