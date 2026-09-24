@@ -426,6 +426,11 @@ function buildOccurrences(input: {
     if (input.subjectMode === 'custom') {
       for (const subject of input.customSubjects) {
         if (subject.subjectType === 'allied-parent' || !isWithinDates(localDate, subject.startDate, subject.endDate, subject.vacationPeriods)) continue;
+        if (subject.subjectType === 'allied' && subject.parentName === 'Small Group Teaching') {
+          const sgtKey = getSGTKey(subject.id);
+          const conducted = (input.subjects[sgtKey]?.attended || 0) + (input.subjects[sgtKey]?.missed || 0);
+          if (input.finishedMap[sgtKey] || subject.plannedClasses <= conducted) continue;
+        }
         const registryItem = input.subjectRegistry.find(item => item.id === subject.id);
         const domain = registryItem?.domain || (subject.category?.toLowerCase().includes('clinical') ? 'clinical' : 'academic');
         const category: ReminderCategory = registryItem?.kind === 'sgt' ? 'sgt' : domain === 'clinical' ? 'clinical' : 'academic';
@@ -502,6 +507,9 @@ function buildOccurrences(input: {
 
       for (const subject of input.userAddedSubjects) {
         if (subject.subjectType !== 'allied' || subject.parentName !== 'Small Group Teaching') continue;
+        const sgtKey = getSGTKey(subject.id);
+        const conducted = (input.subjects[sgtKey]?.attended || 0) + (input.subjects[sgtKey]?.missed || 0);
+        if (input.finishedMap[sgtKey] || subject.plannedClasses <= conducted) continue;
         const subjectRows = rowsForSubject(subject);
         const finalPlanned = finalPlannedDateForSubject(subject.plannedClasses, subject.name, input.subjectRegistry, input.subjects, input.wards, input.finishedMap, (candidateDate, candidateLocalDate) => isWithinDates(candidateLocalDate, subject.startDate, subject.endDate, subject.vacationPeriods) ? subjectRows.filter(row => row.day === dayAbbreviation(candidateDate) && Boolean(parseTime(row.time))).length : 0);
         for (const row of rowsForSubject(subject)) {
@@ -513,8 +521,8 @@ function buildOccurrences(input: {
             localDate,
             startMinute: parsed.startMinute,
             endMinute: parsed.endMinute,
-            attendanceMarked: selectionIsMarked(input.homeSelections, localDate, getSGTKey(subject.id), subjectRowSessionId(subject, row), subject.name),
-            status: occurrenceStatus(input.homeSelections, localDate, getSGTKey(subject.id), subjectRowSessionId(subject, row), subject.name, input.subjects[getSGTKey(subject.id)], Boolean(input.finishedMap[getSGTKey(subject.id)]), subject.plannedClasses),
+            attendanceMarked: selectionIsMarked(input.homeSelections, localDate, sgtKey, subjectRowSessionId(subject, row), subject.name),
+            status: occurrenceStatus(input.homeSelections, localDate, sgtKey, subjectRowSessionId(subject, row), subject.name, input.subjects[sgtKey], Boolean(input.finishedMap[sgtKey]), subject.plannedClasses),
             subjectLabel: subjectDisplayLabel(subject.name, input.subjectRegistry.find(item => item.id === subject.id), 'sgt'),
             category: 'sgt',
             ...reminderFlags(subjectAttentionForReference(input.subjectRegistry.find(item => item.id === subject.id), input.subjects, input.wards, input.finishedMap, subject.plannedClasses, input.preferredPercentage)),

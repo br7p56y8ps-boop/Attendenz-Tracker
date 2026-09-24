@@ -1603,7 +1603,7 @@ export default function Manage() {
           )}>
           {section === 'academic' && (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
+              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 border border-dashed border-border/80 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
                 {groupedAcademicSlots.length === 0 ? (
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
                     <p className="text-sm font-semibold text-muted-foreground">

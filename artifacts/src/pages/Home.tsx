@@ -561,8 +561,12 @@ export default function Home() {
       const group = key.startsWith('ward:') ? groups[2] : key.startsWith('sgt:') || userAdded?.parentName === 'Small Group Teaching' ? groups[3] : /surg/i.test(`${presetCategory} ${userAdded?.parentName || ''}`) ? groups[1] : groups[0];
       group.values.push((item.attended / conducted) * 100);
     });
-    return groups.map(group => ({ ...group, path: makePqrstPath(Array.from({ length: 10 }, (_, index) => group.values[index % Math.max(1, group.values.length)] ?? overallPercentage)) }));
+    return groups.filter(group => group.values.length > 0).map(group => ({ ...group, path: makePqrstPath(Array.from({ length: 10 }, (_, index) => group.values[index % group.values.length])) }));
   }, [overallPercentage, subjects]);
+  const restoredSubjectFallback = (raw: string) => {
+    const suffix = raw.replace(/^(ua_|academic:|subject:)/, '').replace(/[_-]+/g, ' ').trim();
+    return suffix ? `Restored Subject ${suffix}` : 'Restored Subject';
+  };
   const resolveSubjectAlert = (storageKey: string) => {
     const raw = storageKey.replace(/^(academic:|ward:|sgt:)/, '');
     if (storageKey.startsWith('sgt:')) {
@@ -573,7 +577,7 @@ export default function Home() {
     const userAdded = userAddedSubjects.find(item => item.id === raw);
     const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS].find(item => item.id === raw || item.name === raw);
     const readable = userAdded?.name || preset?.name;
-    return { name: readable ? getPresetSubjectDisplayName(readable) : 'Unknown subject', category: userAdded?.parentName === 'Small Group Teaching' ? 'SGT' : 'Lecture' };
+    return { name: readable ? getPresetSubjectDisplayName(readable) : restoredSubjectFallback(raw), category: userAdded?.parentName === 'Small Group Teaching' ? 'SGT' : 'Lecture' };
   };
   const subjectPotentialMetrics = useMemo(() => Object.entries(subjects).map(([storageKey, item]) => {
     const resolved = resolveSubjectAlert(storageKey);
@@ -654,14 +658,15 @@ export default function Home() {
     </div>
   );
   const dashboard = (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="space-y-4 pb-4">
-      <div className="flex items-end justify-between gap-3">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 flex items-end justify-between gap-3 pb-3">
         <div>
           <p className="text-sm font-semibold text-muted-foreground">{timeOfDay},</p>
           <h1 className="text-2xl font-extrabold tracking-tight text-foreground">{username}</h1>
         </div>
         <p className="text-xs font-bold text-muted-foreground">{shortDate}</p>
       </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-4 pb-4 scroll-fade-viewport scroll-reachability">
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
           <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
@@ -681,10 +686,12 @@ export default function Home() {
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Today at a Glance</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{glanceEntries.length === 0 ? <p className="text-xs text-muted-foreground">No remaining classes today.</p> : glanceEntries.map(entry => { const status = statusForEntry(entry); const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet'; const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground'; return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="min-w-[132px] rounded-xl border border-border bg-muted/30 p-3 text-left shadow-[0_2px_8px_rgba(0,0,0,0.22)]"><p className="truncate text-xs font-bold">{entry.card?.subject}</p><p className="mt-1 text-[10px] text-muted-foreground">{entry.time}</p><span className={cn('mt-2 block text-[10px] font-extrabold', color)}>{label}</span></button>; })}</div></section>
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectPotentialMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectPotentialMetrics.slice(0, 3).map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', metric.current < preferredPercentage ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{metric.name} <span className="text-[9px] font-bold text-muted-foreground">({metric.category})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>
       <section className="glass-card rounded-2xl border border-border p-4"><div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span></div><div className="mt-3 space-y-3">{subjectPotentialMetrics.length === 0 ? <p className="text-[10px] text-muted-foreground">Not enough data yet.</p> : subjectPotentialMetrics.map(metric => { const currentWidth = Math.min(100, Math.max(0, metric.current)); const maxWidth = Math.min(100, Math.max(currentWidth, metric.maximum)); const maxColor = metric.maximum >= preferredPercentage ? '#34d399' : '#f87171'; return <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="block w-full text-left"><div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold"><span className="truncate">{metric.name} <span className="text-[9px] text-muted-foreground">({metric.category})</span></span><span className="shrink-0" style={{ color: maxColor }}>Max: {Math.round(metric.maximum)}%</span></div><svg viewBox="0 0 100 8" className="h-2.5 w-full" preserveAspectRatio="none" aria-label={`${metric.name} current and maximum percentage`}><rect x="0" y="0" width={maxWidth} height="8" rx="4" fill={maxColor} fillOpacity=".5" /><rect x="0" y="0" width={currentWidth} height="8" rx="4" fill="#94a3b8" /></svg></button>; })}<p className="text-[10px] text-muted-foreground">Grey shows current attendance; the second segment shows maximum possible attendance.</p></div></section>
+      </div>
     </motion.div>
   );
   return (
     <Layout
+      mainClassName="flex-1 min-h-0 overflow-hidden"
       headerTitle={showMarkAttendance ? 'Attendance' : 'Dashboard'}
       headerDescription={showMarkAttendance ? 'Mark and review classes for the selected date' : 'Your attendance overview and daily class pulse'}
       headerRight={showUpdatePill ? (
@@ -707,11 +714,11 @@ export default function Home() {
         </div>
       ) : undefined}
     >
-      {showMarkAttendance ? <motion.div key="attendance-view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} className="min-h-0 flex flex-col home-page-content">
-        <button type="button" onClick={() => setShowMarkAttendance(false)} className="mb-2 self-start text-xs font-bold text-primary">← Dashboard</button>
+      {showMarkAttendance ? <motion.div key="attendance-view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} className="min-h-0 flex flex-col">
         <div className="home-date-wheel-float" aria-label="Choose date">
           {dateWheel}
         </div>
+        <button type="button" onClick={() => setShowMarkAttendance(false)} className="mb-2 self-start text-xs font-bold text-primary">← Dashboard</button>
         <div className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain pb-0 scroll-fade-viewport scroll-reachability">
         {/* ── Content ── */}
         {!hasAnything ? (

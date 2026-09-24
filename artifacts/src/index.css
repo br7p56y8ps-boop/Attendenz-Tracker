@@ -153,6 +153,7 @@ body {
   font-weight: 700;
   line-height: 1.1;
   transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 160ms ease, box-shadow 180ms ease;
+  box-shadow: none !important;
 }
 .action-button:active:not(:disabled) {
   transform: scale(0.98);
