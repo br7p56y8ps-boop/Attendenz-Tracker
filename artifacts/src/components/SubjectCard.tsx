@@ -6,7 +6,7 @@ import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ModalSheet } from '@/components/ui/modal-sheet';
-import { formatAttendanceActivity, recordDashboardActivity } from '@/lib/activity';
+import { formatManualAttendanceActivity, recordDashboardActivity } from '@/lib/activity';
 
 interface SubjectCardProps {
   subject: string;
@@ -114,7 +114,7 @@ export const SubjectCard = ({
     if (showLimitMessage) setShowLimitMessage(false);
     currentDataRef.current = { attended: newAttended, missed: newMissed };
     updateFn(attendanceKey, newAttended, newMissed);
-    void recordDashboardActivity(formatAttendanceActivity(displayName, isWard ? 'Clinical Rotation' : isSGT ? 'Small Group Teaching' : 'Lecture', field === 'missed' ? 'Bunked' : 'Attended'), field === 'missed' ? 'missed' : 'attendance');
+    void recordDashboardActivity(formatManualAttendanceActivity(displayName, isWard ? 'Clinical Rotation' : isSGT ? 'Small Group Teaching' : 'Lecture', newAttended, newMissed), 'edit');
     return true;
   };
 

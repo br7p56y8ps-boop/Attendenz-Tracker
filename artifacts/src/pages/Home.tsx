@@ -28,6 +28,17 @@ function addDays(date: Date, days: number): Date {
   result.setDate(result.getDate() + days);
   return result;
 }
+
+function smoothLinePath(points: Array<{ x: number; y: number }>): string {
+  if (points.length === 0) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  return points.reduce((path, point, index) => {
+    if (index === 0) return `M ${point.x} ${point.y}`;
+    const previous = points[index - 1];
+    const midpoint = (previous.x + point.x) / 2;
+    return `${path} C ${midpoint} ${previous.y}, ${midpoint} ${point.y}, ${point.x} ${point.y}`;
+  }, '');
+}
 // Returns 1 if a>b, -1 if a<b, 0 if equal
 function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -578,6 +589,23 @@ export default function Home() {
     const maximum = planned > 0 ? ((item.attended + remaining) / planned) * 100 : current;
     return { ...resolved, attended: item.attended, missed: item.missed, current, maximum, remaining, planned };
   }).filter(item => item.remaining > 0 && item.current < preferredPercentage).sort((a, b) => a.current - b.current).slice(0, 6), [customSubjects, getPresetSubjectDisplayName, getPresetWardDisplayName, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, userAddedSubjects]);
+  const maxPercentageChart = useMemo(() => {
+    const width = 600;
+    const height = 210;
+    const left = 34;
+    const right = 12;
+    const top = 20;
+    const bottom = 44;
+    const plotWidth = width - left - right;
+    const plotHeight = height - top - bottom;
+    const count = subjectPotentialMetrics.length;
+    const xFor = (index: number) => count <= 1 ? left + plotWidth / 2 : left + (plotWidth * index) / (count - 1);
+    const yFor = (value: number) => top + plotHeight * (1 - Math.min(100, Math.max(0, value)) / 100);
+    const current = subjectPotentialMetrics.map((metric, index) => ({ x: xFor(index), y: yFor(metric.current), value: metric.current }));
+    const maximum = subjectPotentialMetrics.map((metric, index) => ({ x: xFor(index), y: yFor(metric.maximum), value: metric.maximum }));
+    const area = current.length > 0 ? `${smoothLinePath(current)} L ${current[current.length - 1].x} ${top + plotHeight} L ${current[0].x} ${top + plotHeight} Z` : '';
+    return { width, height, left, top, plotHeight, current, maximum, area };
+  }, [subjectPotentialMetrics]);
   const statusForEntry = (entry: DayEntry) => {
     const sessionId = entry.card?.sessionId;
     if (!sessionId) return undefined;
@@ -670,12 +698,32 @@ export default function Home() {
       </div>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Today’s Activity</h2></div>
-        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.25rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3rem_1.5rem_minmax(0,1fr)] items-center gap-2 text-xs"><time className="text-right text-[9px] font-bold text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-6 w-6 items-center justify-center rounded-full', color)}><Icon className="h-3 w-3" /></span><span className="min-w-0 font-semibold text-foreground">{item.text}</span></div>; })}</div>}
+        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.25rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{item.text}</span></div>; })}</div>}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Today at a Glance</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{glanceEntries.length === 0 ? <p className="text-xs text-muted-foreground">No remaining classes today.</p> : glanceEntries.map(entry => { const status = statusForEntry(entry); const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet'; const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground'; return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="min-w-[132px] rounded-xl border border-border bg-muted/30 p-3 text-left shadow-[0_2px_8px_rgba(0,0,0,0.22)]"><p className="truncate text-xs font-bold">{entry.card?.subject}</p><p className="mt-1 text-[10px] text-muted-foreground">{entry.time}</p><span className={cn('mt-2 block text-[10px] font-extrabold', color)}>{label}</span></button>; })}</div></section>
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectPotentialMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectPotentialMetrics.slice(0, 3).map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', metric.current < preferredPercentage ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{metric.name} <span className="text-[9px] font-bold text-muted-foreground">({metric.category})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>
-      <section className="glass-card rounded-2xl border border-border p-4"><div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span></div><div className="mt-3 space-y-3">{subjectPotentialMetrics.length === 0 ? <p className="text-[10px] text-muted-foreground">Not enough data yet.</p> : subjectPotentialMetrics.map(metric => { const currentWidth = Math.min(100, Math.max(0, metric.current)); const maxWidth = Math.min(100, Math.max(currentWidth, metric.maximum)); const maxColor = metric.maximum >= preferredPercentage ? '#34d399' : '#f87171'; return <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="block w-full text-left"><div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold"><span className="truncate">{metric.name} <span className="text-[9px] text-muted-foreground">({metric.category})</span></span><span className="shrink-0" style={{ color: maxColor }}>Max: {Math.round(metric.maximum)}%</span></div><svg viewBox="0 0 100 8" className="h-2.5 w-full" preserveAspectRatio="none" aria-label={`${metric.name} current and maximum percentage`}><rect x="0" y="0" width={maxWidth} height="8" rx="4" fill={maxColor} fillOpacity=".5" /><rect x="0" y="0" width={currentWidth} height="8" rx="4" fill="#94a3b8" /></svg></button>; })}<p className="text-[10px] text-muted-foreground">Grey shows current attendance; the second segment shows maximum possible attendance.</p></div></section>
+      <section className="glass-card rounded-2xl border border-border p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2>
+          <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span>
+        </div>
+        {subjectPotentialMetrics.length === 0 ? <p className="mt-3 text-[10px] text-muted-foreground">Not enough data yet.</p> : (
+          <div className="mt-3">
+            <svg viewBox={`0 0 ${maxPercentageChart.width} ${maxPercentageChart.height}`} className="h-52 w-full" role="img" aria-label="Current and maximum possible attendance by subject">
+              <defs><linearGradient id="current-attendance-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#60a5fa" stopOpacity=".28" /><stop offset="100%" stopColor="#60a5fa" stopOpacity=".03" /></linearGradient></defs>
+              {[0, 25, 50, 75, 100].map(value => { const y = maxPercentageChart.top + maxPercentageChart.plotHeight * (1 - value / 100); return <g key={value}><line x1={maxPercentageChart.left} x2={maxPercentageChart.width - 12} y1={y} y2={y} stroke="currentColor" strokeOpacity=".12" /><text x="2" y={y + 3} fontSize="9" fill="currentColor" opacity=".65">{value}%</text></g>; })}
+              <path d={maxPercentageChart.area} fill="url(#current-attendance-fill)" />
+              <path d={smoothLinePath(maxPercentageChart.current)} fill="none" stroke="#60a5fa" strokeWidth="2.5" strokeLinecap="round" />
+              <path d={smoothLinePath(maxPercentageChart.maximum)} fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" />
+              {maxPercentageChart.current.map((point, index) => <g key={`current-${subjectPotentialMetrics[index].name}`}><circle cx={point.x} cy={point.y} r="3.5" fill="#60a5fa" /><text x={point.x} y={point.y - 8} textAnchor="middle" fontSize="9" fontWeight="700" fill="#60a5fa">{Math.round(point.value)}%</text></g>)}
+              {maxPercentageChart.maximum.map((point, index) => <g key={`maximum-${subjectPotentialMetrics[index].name}`}><circle cx={point.x} cy={point.y} r="3.5" fill="#34d399" /><text x={point.x} y={point.y + 15} textAnchor="middle" fontSize="9" fontWeight="700" fill="#34d399">{Math.round(point.value)}%</text></g>)}
+              {subjectPotentialMetrics.map((metric, index) => <text key={`label-${metric.name}`} x={maxPercentageChart.current[index].x} y={maxPercentageChart.height - 10} textAnchor="middle" fontSize="8" fill="currentColor">{shortenSubject(metric.name).slice(0, 14)}</text>)}
+            </svg>
+            <div className="mt-1 flex items-center justify-center gap-4 text-[9px] font-bold text-muted-foreground"><span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#60a5fa]" />Current</span><span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-[#34d399]" />Maximum possible</span></div>
+          </div>
+        )}
+      </section>
       </div>
     </motion.div>
   );

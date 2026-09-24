@@ -12,6 +12,10 @@ export function formatAttendanceActivity(subject: string, category: string, stat
   return `Marked ${subject} (${category}) as ${status}`;
 }
 
+export function formatManualAttendanceActivity(subject: string, category: string, attended: number, missed: number): string {
+  return `Updated ${subject} (${category}): Attended ${attended} / Missed ${missed}`;
+}
+
 let activityQueue: Promise<void> = Promise.resolve();
 
 const uniqueActivityId = (timestamp: number) => `activity-${timestamp}-${Math.random().toString(36).slice(2, 10)}`;

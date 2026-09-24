@@ -446,7 +446,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
           </button>
         ) : (
           <button key={s} type="button" onClick={() => handleSelection(s)}
-            className={cn('attendance-option-button flex-1 h-11 rounded-2xl text-xs sm:text-sm font-extrabold border transition-all bg-background/70 text-muted-foreground shadow-sm',
+            className={cn('attendance-option-button flex-1 h-11 rounded-2xl text-xs sm:text-sm font-extrabold border transition-all bg-background/70 text-muted-foreground',
               s === 'attended' && 'hover:bg-emerald-500/10 hover:text-emerald-600', s === 'missed' && 'hover:bg-rose-500/10 hover:text-rose-600', s === 'off' && 'hover:bg-amber-500/10 hover:text-amber-600')}>
             {s === 'off' ? 'Holiday' : s === 'attended' ? 'Attended' : 'Missed'}
           </button>
