@@ -563,9 +563,9 @@ export default function Home() {
     const width = 268 / Math.max(1, points.length);
     return points.map((value, index) => {
       const x = 24 + index * width;
-      const baseline = 76 - (value * 0.22);
+      const baseline = 80 - (value * 0.32);
       const next = points[index + 1] ?? value;
-      const nextBaseline = 76 - (next * 0.22);
+      const nextBaseline = 80 - (next * 0.32);
       return `M ${x.toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.22).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.32).toFixed(1)} ${(baseline - 5).toFixed(1)} L ${(x + width * 0.42).toFixed(1)} ${(baseline + 4).toFixed(1)} L ${(x + width * 0.52).toFixed(1)} ${(baseline - 29).toFixed(1)} L ${(x + width * 0.62).toFixed(1)} ${(baseline + 14).toFixed(1)} L ${(x + width * 0.72).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.79).toFixed(1)} ${(baseline - 7).toFixed(1)} Q ${(x + width * 0.85).toFixed(1)} ${(baseline - 11).toFixed(1)} ${(x + width * 0.91).toFixed(1)} ${(baseline - 7).toFixed(1)} L ${(x + width).toFixed(1)} ${nextBaseline.toFixed(1)}`;
     }).join(' ');
   };
@@ -597,18 +597,24 @@ export default function Home() {
   };
   const resolveSubjectAlert = (storageKey: string) => {
     const raw = storageKey.replace(/^(academic:|acad:|ward:|sgt:)/, '');
+    const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const matchesKey = (value: string | undefined) => Boolean(value && (value === raw || value === storageKey || normalize(value) === normalize(raw) || normalize(value) === normalize(storageKey)));
     if (storageKey.startsWith('sgt:')) {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-      return { name: source.find(item => item.id === storageKey.slice(4))?.name || 'Small Group Teaching', category: 'SGT' };
+      const sgt = source.find(item => matchesKey(item.id) || matchesKey(item.name) || matchesKey(item.name.replace(/\s*SGT\s*$/i, '')));
+      return { name: sgt?.name || restoredSubjectFallback(raw), category: 'SGT' };
     }
-    if (storageKey.startsWith('ward:')) return { name: getPresetWardDisplayName(storageKey.slice(5)), category: 'Ward' };
-    const userAdded = userAddedSubjects.find(item => item.id === raw);
-    const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS].find(item => item.id === raw || item.name === raw);
-    const custom = customSubjects.find(item => item.id === raw);
-    const readable = getPresetSubjectDisplayName(preset?.name || '') || userAdded?.name || custom?.name || preset?.name;
-    const registryRef = subjectRegistry.find(ref => ref.id === raw || ref.id === storageKey);
-    const resolvedName = readable || registryRef?.name;
-    const displayName = resolvedName || restoredSubjectFallback(raw);
+    const userAdded = userAddedSubjects.find(item => matchesKey(item.id));
+    const custom = customSubjects.find(item => matchesKey(item.id));
+    const presetSubjects = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS];
+    const preset = [...presetSubjects, ...WARD_SUBJECTS].find(item => matchesKey(item.id) || matchesKey(item.name));
+    const customWard = customWards.find(item => matchesKey(item.id) || matchesKey(item.name));
+    const presetName = preset && 'name' in preset
+      ? (WARD_SUBJECTS.includes(preset as typeof WARD_SUBJECTS[number]) ? getPresetWardDisplayName(preset.name) : getPresetSubjectDisplayName(preset.name))
+      : undefined;
+    const readable = userAdded?.name || custom?.name || customWard?.name || presetName || preset?.name;
+    const registryRef = subjectRegistry.find(ref => matchesKey(ref.id));
+    const displayName = readable || registryRef?.name || restoredSubjectFallback(raw);
     const registryCategory = registryRef?.kind === 'sgt'
       ? 'SGT'
       : registryRef?.kind === 'integrated'
@@ -616,7 +622,7 @@ export default function Home() {
         : registryRef?.kind === 'preset-ward' || registryRef?.kind === 'ward-rotation'
           ? 'Ward'
           : undefined;
-    return { name: displayName, category: registryCategory || getDashboardSubjectKind(displayName, undefined, userAddedSubjects) };
+    return { name: displayName, category: storageKey.startsWith('ward:') ? 'Ward' : registryCategory || getDashboardSubjectKind(displayName, undefined, userAddedSubjects) };
   };
   const subjectPotentialMetrics = useMemo(() => {
     const metrics = new Map<string, {
@@ -727,7 +733,7 @@ export default function Home() {
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
           <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
-          {overallTotal === 0 ? <p className="mt-3 py-8 text-center text-xs text-muted-foreground">No attendance data yet.</p> : <svg viewBox="0 0 300 112" className="mt-1 h-32 w-full" role="img" aria-label="Grouped PQRST attendance ECG chart"><path d="M24 8V92H292" fill="none" stroke="currentColor" strokeOpacity=".35" /><path d="M24 71H292M24 50H292M24 29H292" fill="none" stroke="currentColor" strokeOpacity=".1" strokeDasharray="2 3" /><text x="2" y="12" fontSize="7" fill="currentColor">100%</text><text x="7" y="53" fontSize="7" fill="currentColor">50%</text><text x="13" y="94" fontSize="7" fill="currentColor">0%</text>{groupedEcgPaths.map(group => <path key={group.label} d={group.path} fill="none" stroke={group.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />)}</svg>}
+          {overallTotal === 0 ? <p className="mt-3 py-8 text-center text-xs text-muted-foreground">No attendance data yet.</p> : <svg viewBox="0 0 300 96" preserveAspectRatio="none" className="mt-1 h-32 w-full" role="img" aria-label="Grouped PQRST attendance ECG chart"><path d="M24 8V92H292" fill="none" stroke="currentColor" strokeOpacity=".35" /><path d="M24 71H292M24 50H292M24 29H292" fill="none" stroke="currentColor" strokeOpacity=".1" strokeDasharray="2 3" /><text x="2" y="12" fontSize="7" fill="currentColor">100%</text><text x="7" y="53" fontSize="7" fill="currentColor">50%</text><text x="13" y="94" fontSize="7" fill="currentColor">0%</text>{groupedEcgPaths.map(group => <path key={group.label} d={group.path} fill="none" stroke={group.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />)}</svg>}
           <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0 text-[8px] font-bold text-muted-foreground">{groupedEcgPaths.map(group => <span key={group.label} className={cn('flex min-w-0 min-h-5 items-center gap-1 leading-3', !group.hasData && 'opacity-50')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.hasData ? group.color : '#94a3b8' }} /><span className="min-w-0">{group.label}</span></span>)}</div>
         </button>
         <div className="grid min-h-0 grid-rows-2 gap-3">
