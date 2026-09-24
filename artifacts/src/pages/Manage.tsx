@@ -1599,7 +1599,7 @@ export default function Manage() {
         )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-0 min-h-0 flex-1 bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden border border-border',
+            'manage-window-surface z-[3] isolate -mx-1 mt-0 min-h-0 flex-1 bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden rounded-xl border border-border',
           )}>
           {section === 'academic' && (
             <div className="min-h-0 flex-1 flex flex-col">
@@ -1706,7 +1706,7 @@ export default function Manage() {
         </section>
         {section === 'academic' && (
           <div className="shrink-0 px-0 pt-0">
-            <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="-mt-px flex min-h-10 w-full items-center justify-center gap-1.5 rounded-t-none rounded-b-xl border border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
+            <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#007AFF] py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
               <Plus className="h-3.5 w-3.5" /> Add Slot
             </button>
           </div>

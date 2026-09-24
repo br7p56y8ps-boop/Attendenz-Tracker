@@ -19,7 +19,7 @@ function findScrollParent(element: HTMLElement): HTMLElement | Window {
   while (parent) {
     const style = window.getComputedStyle(parent);
     const overflowY = style.overflowY;
-    if ((overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') && parent.scrollHeight > parent.clientHeight) {
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
       return parent;
     }
     parent = parent.parentElement;
@@ -76,12 +76,13 @@ export function StickySectionLabel({
       const wasStuck = labelEl.classList.contains('sticky');
       if (wasStuck) labelEl.classList.remove('sticky', ...offsetTokens);
       const currentScroll = getScrollPosition(scrollParent);
-      const rectTop = labelEl.getBoundingClientRect().top;
+      const labelTop = labelEl.getBoundingClientRect().top;
       const scrollportTop = getScrollportTop(scrollParent);
       labelEl.classList.add('sticky', ...offsetTokens);
       const stickyTop = getStickyTop(labelEl);
       if (!wasStuck) labelEl.classList.remove('sticky', ...offsetTokens);
-      labelEl.dataset.stickyThreshold = String(currentScroll + rectTop - (scrollportTop + stickyTop));
+      const labelTopInScrollport = labelTop - scrollportTop;
+      labelEl.dataset.stickyThreshold = String(currentScroll + labelTopInScrollport - stickyTop);
     };
 
     let frame: number | null = null;
