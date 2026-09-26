@@ -27,6 +27,11 @@ export function formatManualAttendanceDelta(subject: string, category: string, t
 let activityQueue: Promise<void> = Promise.resolve();
 
 const uniqueActivityId = (timestamp: number) => `activity-${timestamp}-${Math.random().toString(36).slice(2, 10)}`;
+export const DASHBOARD_ACTIVITY_UPDATED_EVENT = 'attendenz:activity-updated';
+
+function notifyDashboardActivityUpdated(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(DASHBOARD_ACTIVITY_UPDATED_EVENT));
+}
 
 export function recordDashboardActivity(text: string, kind: DashboardActivityKind, timestamp = Date.now()): Promise<boolean> {
   const task = activityQueue.then(async () => {
@@ -39,6 +44,7 @@ export function recordDashboardActivity(text: string, kind: DashboardActivityKin
         .sort((a, b) => b.timestamp - a.timestamp)
         .slice(0, 50);
       await idbSet('att_dashboard_activity_v1', JSON.stringify(merged));
+      notifyDashboardActivityUpdated();
       return true;
     } catch (error) {
       console.error('Dashboard activity persistence failed.', error);

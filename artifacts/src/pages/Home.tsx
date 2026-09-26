@@ -12,7 +12,7 @@ import { ArrowUpCircle, X, MoonStar, ClipboardCheck, Pencil, Plus, Minus, Calend
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { idbGet } from '@/lib/idb';
-import { mergeDashboardActivities, type DashboardActivityItem } from '@/lib/activity';
+import { DASHBOARD_ACTIVITY_UPDATED_EVENT, mergeDashboardActivities, type DashboardActivityItem } from '@/lib/activity';
 import { shortenSubject } from '@/components/HomeCard';
 
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -488,7 +488,8 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([idbGet('att_dashboard_activity_v1'), idbGet('att_manage_history')]).then(async ([raw, historyRaw]) => {
+    const loadActivities = async () => {
+      const [raw, historyRaw] = await Promise.all([idbGet('att_dashboard_activity_v1'), idbGet('att_manage_history')]);
       let stored: ActivityItem[] = [];
       try { stored = raw ? (JSON.parse(raw) as Array<any>).map(item => ({ ...item, kind: item.kind || 'neutral' as ActivityKind })) : []; } catch { stored = []; }
       let history: ActivityItem[] = [];
@@ -505,12 +506,15 @@ export default function Home() {
       } catch { history = []; }
       const merged = await mergeDashboardActivities([...stored, ...history]);
       if (!cancelled) setDashboardActivities(merged as ActivityItem[]);
-    });
-    return () => { cancelled = true; };
+    };
+    const onActivityUpdated = () => { void loadActivities(); };
+    window.addEventListener(DASHBOARD_ACTIVITY_UPDATED_EVENT, onActivityUpdated);
+    void loadActivities();
+    return () => {
+      cancelled = true;
+      window.removeEventListener(DASHBOARD_ACTIVITY_UPDATED_EVENT, onActivityUpdated);
+    };
   }, [todayStr]);
-  const overallAttended = Object.values(subjects).concat(Object.values(wards)).reduce((sum, item) => sum + item.attended, 0);
-  const overallMissed = Object.values(subjects).concat(Object.values(wards)).reduce((sum, item) => sum + item.missed, 0);
-  const overallTotal = overallAttended + overallMissed;
   const dashboardClassEntries = dayEntries.filter(entry => entry.kind === 'card');
   const tomorrowDate = addDays(today, 1);
   const tomorrowDateStr = toDateString(tomorrowDate);
@@ -559,39 +563,86 @@ export default function Home() {
     return false;
   };
   const glanceEntries = dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry) && !isEntryVacation(entry));
-  const makePqrstPath = (points: number[]) => {
-    const width = 268 / Math.max(1, points.length);
-    const graphTop = 8;
-    const graphBottom = 92;
-    const clampY = (value: number) => Math.max(graphTop, Math.min(graphBottom, value));
-    return points.map((value, index) => {
-      const x = 24 + index * width;
-      const baseline = clampY(graphBottom - (Math.max(0, Math.min(100, value)) * (graphBottom - graphTop) / 100));
-      const next = points[index + 1] ?? value;
-      const nextBaseline = clampY(graphBottom - (Math.max(0, Math.min(100, next)) * (graphBottom - graphTop) / 100));
-      const y = (offset: number) => clampY(baseline + offset).toFixed(1);
-      return `M ${x.toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.22).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.32).toFixed(1)} ${y(-5)} L ${(x + width * 0.42).toFixed(1)} ${y(4)} L ${(x + width * 0.52).toFixed(1)} ${y(-29)} L ${(x + width * 0.62).toFixed(1)} ${y(14)} L ${(x + width * 0.72).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.79).toFixed(1)} ${y(-7)} Q ${(x + width * 0.85).toFixed(1)} ${y(-11)} ${(x + width * 0.91).toFixed(1)} ${y(-7)} L ${(x + width).toFixed(1)} ${nextBaseline.toFixed(1)}`;
-    }).join(' ');
-  };
-  const groupedEcgPaths = useMemo(() => {
-    const groups = [{ label: 'Medicine & Allied', color: '#38bdf8', values: [] as number[] }, { label: 'Surgery & Allied', color: '#a78bfa', values: [] as number[] }, { label: 'Ward', color: '#34d399', values: [] as number[] }, { label: 'SGT', color: '#f59e0b', values: [] as number[] }];
-    Object.entries(subjects).concat(Object.entries(wards)).forEach(([key, item]) => {
-      const conducted = item.attended + item.missed;
-      if (!conducted) return;
-      const raw = key.replace(/^(academic:|ward:|sgt:)/, '');
-      const userAdded = userAddedSubjects.find(subject => subject.id === raw);
-      const presetCategory = CATEGORIES.find(category => category.subjects.some(subject => subject.id === raw || subject.name === raw))?.name || '';
-      const group = key.startsWith('ward:') ? groups[2] : key.startsWith('sgt:') || userAdded?.parentName === 'Small Group Teaching' ? groups[3] : /surg/i.test(`${presetCategory} ${userAdded?.parentName || ''}`) ? groups[1] : groups[0];
-      group.values.push((item.attended / conducted) * 100);
+  const monthlyAttendanceGroups = useMemo(() => {
+    const groupDefinitions = [
+      { id: 'medicine', label: 'Medicine & Allied', color: '#38bdf8' },
+      { id: 'surgery', label: 'Surgery & Allied', color: '#a78bfa' },
+      { id: 'ward', label: 'Ward', color: '#34d399' },
+      { id: 'sgt', label: 'SGT', color: '#f59e0b' },
+    ] as const;
+    type GroupId = typeof groupDefinitions[number]['id'];
+    type MonthlyTotals = { attended: number; conducted: number };
+    const totals = new Map<string, Map<GroupId, MonthlyTotals>>();
+    const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const resolveGroup = (attendanceKey: string): GroupId => {
+      const raw = attendanceKey.replace(/^(academic:|acad:|ward:|sgt:)/, '');
+      const matchesToken = (value: string | undefined) => {
+        if (!value) return false;
+        const candidates = [value, value.replace(/^(academic:|acad:|ward:|sgt:)/, '')].map(normalize);
+        const target = normalize(raw);
+        return candidates.some(candidate => target === candidate || target.startsWith(`${candidate}-`) || target.startsWith(`${candidate}_`));
+      };
+      if (attendanceKey.startsWith('ward:')) return 'ward';
+      if (attendanceKey.startsWith('sgt:')) return 'sgt';
+      const registryRef = subjectRegistry.find(ref => matchesToken(ref.id) || matchesToken(ref.name));
+      if (registryRef?.kind === 'sgt' || registryRef?.parentName === 'Small Group Teaching') return 'sgt';
+      const userAdded = userAddedSubjects.find(subject => matchesToken(subject.id) || matchesToken(subject.name));
+      if (userAdded?.parentName === 'Small Group Teaching') return 'sgt';
+      const custom = customSubjects.find(subject => matchesToken(subject.id) || matchesToken(subject.name));
+      if (custom?.parentName === 'Small Group Teaching') return 'sgt';
+      const category = CATEGORIES.find(item => item.subjects.some(subject => matchesToken(subject.id) || matchesToken(subject.name)))?.name || registryRef?.parentName || userAdded?.parentName || custom?.parentName || '';
+      return /surg|obstetric|gynaec|gynec/i.test(category) ? 'surgery' : 'medicine';
+    };
+    Object.entries(homeSelections).forEach(([key, selection]) => {
+      if (selection !== 'attended' && selection !== 'missed') return;
+      const dateStr = key.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+      const separator = key.charAt(10);
+      if (separator !== '-' && separator !== '_') return;
+      const attendanceKey = key.slice(11);
+      if (!attendanceKey) return;
+      const month = dateStr.slice(0, 7);
+      const group = resolveGroup(attendanceKey);
+      const monthTotals = totals.get(month) || new Map<GroupId, MonthlyTotals>();
+      const current = monthTotals.get(group) || { attended: 0, conducted: 0 };
+      current.conducted += 1;
+      if (selection === 'attended') current.attended += 1;
+      monthTotals.set(group, current);
+      totals.set(month, monthTotals);
     });
-    return groups.map(group => ({
-      ...group,
-      hasData: group.values.length > 0,
-      path: group.values.length > 0
-        ? makePqrstPath(Array.from({ length: 10 }, (_, index) => group.values[index % group.values.length]))
-        : '',
-    }));
-  }, [subjects, userAddedSubjects, wards]);
+    const months = Array.from(totals.keys()).sort();
+    const firstMonth = months[0] || todayStr.slice(0, 7);
+    const monthDates: string[] = [];
+    const cursor = new Date(`${firstMonth}-01T12:00:00`);
+    const last = new Date(`${todayStr.slice(0, 7)}-01T12:00:00`);
+    for (; cursor <= last; cursor.setMonth(cursor.getMonth() + 1)) {
+      monthDates.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+    }
+    const groups = groupDefinitions.map(definition => {
+      const points = monthDates.map(month => {
+        const value = totals.get(month)?.get(definition.id);
+        return { month, percentage: value && value.conducted > 0 ? (value.attended / value.conducted) * 100 : null };
+      });
+      return { ...definition, points, hasData: points.some(point => point.percentage !== null) };
+    }).filter(group => group.hasData);
+    return { months: monthDates, groups };
+  }, [homeSelections, subjectRegistry, userAddedSubjects, customSubjects, todayStr]);
+  const monthlyChartPath = (points: Array<{ percentage: number | null }>, row: number, rowHeight: number, width: number, left: number) => {
+    const usableWidth = width - left - 6;
+    const plotted = points.map((point, index) => point.percentage === null ? null : { index, x: left + (points.length <= 1 ? usableWidth / 2 : index * usableWidth / (points.length - 1)), y: 12 + row * rowHeight + (100 - point.percentage) * (rowHeight - 18) / 100 });
+    const segments: Array<Array<{ index: number; x: number; y: number }>> = [];
+    plotted.forEach(point => {
+      if (point === null) segments.push([]);
+      else if (segments.length === 0) segments.push([point]);
+      else segments[segments.length - 1].push(point);
+    });
+    return segments.filter(segment => segment.length > 0).map(segment => segment.map((point, index) => {
+      if (index === 0) return `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+      const previous = segment[index - 1];
+      const dx = (point.x - previous.x) / 3;
+      return `C ${(previous.x + dx).toFixed(1)} ${previous.y.toFixed(1)}, ${(point.x - dx).toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+    }).join(' ')).join(' ');
+  };
   const restoredSubjectFallback = (raw: string) => {
     const existing = restoredSubjectLabels.current.get(raw);
     if (existing) return existing;
@@ -737,8 +788,27 @@ export default function Home() {
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
           <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
-          {overallTotal === 0 ? <p className="mt-3 py-8 text-center text-xs text-muted-foreground">No attendance data yet.</p> : <svg viewBox="0 0 300 96" preserveAspectRatio="none" className="mt-1 h-32 w-full" role="img" aria-label="Grouped PQRST attendance ECG chart"><defs><clipPath id="overall-ecg-plot-clip"><rect x="24" y="8" width="268" height="84" /></clipPath></defs><path d="M24 8V92H292" fill="none" stroke="currentColor" strokeOpacity=".35" /><path d="M24 71H292M24 50H292M24 29H292" fill="none" stroke="currentColor" strokeOpacity=".1" strokeDasharray="2 3" /><text x="2" y="12" fontSize="7" fill="currentColor">100%</text><text x="7" y="53" fontSize="7" fill="currentColor">50%</text><text x="13" y="94" fontSize="7" fill="currentColor">0%</text><g clipPath="url(#overall-ecg-plot-clip)">{groupedEcgPaths.map(group => <path key={group.label} d={group.path} fill="none" stroke={group.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />)}</g></svg>}
-          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0 text-[8px] font-bold text-muted-foreground">{groupedEcgPaths.map(group => <span key={group.label} className={cn('flex min-w-0 min-h-5 items-center gap-1 leading-3', !group.hasData && 'opacity-50')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.hasData ? group.color : '#94a3b8' }} /><span className="min-w-0">{group.label}</span></span>)}</div>
+          <svg viewBox="0 0 300 132" className="mt-2 h-36 w-full" role="img" aria-label="Monthly grouped attendance line chart">
+            <path d="M24 12V116H294" fill="none" stroke="currentColor" strokeOpacity=".3" />
+            {monthlyAttendanceGroups.groups.map((group, index) => {
+              const rowHeight = 104 / Math.max(1, monthlyAttendanceGroups.groups.length);
+              const path = monthlyChartPath(group.points, index, rowHeight, 300, 24);
+              return <g key={group.id}>
+                <path d={path} fill="none" stroke={group.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                {group.points.filter(point => point.percentage !== null).map(point => {
+                  const pointIndex = group.points.findIndex(candidate => candidate.month === point.month);
+                  const x = monthlyAttendanceGroups.months.length <= 1 ? 150 : 24 + pointIndex * 270 / (monthlyAttendanceGroups.months.length - 1);
+                  const y = 12 + index * rowHeight + (100 - point.percentage!) * (rowHeight - 18) / 100;
+                  return <circle key={`${group.id}-${point.month}`} cx={x} cy={y} r="2.2" fill={group.color} />;
+                })}
+              </g>;
+            })}
+            {monthlyAttendanceGroups.months.map((month, index) => {
+              const x = monthlyAttendanceGroups.months.length <= 1 ? 150 : 24 + index * 270 / (monthlyAttendanceGroups.months.length - 1);
+              return <text key={month} x={x} y="129" textAnchor="middle" fontSize="6" fill="currentColor">{new Date(`${month}-01T12:00:00`).toLocaleDateString([], { month: 'short' })}</text>;
+            })}
+          </svg>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0 text-[8px] font-bold text-muted-foreground">{monthlyAttendanceGroups.groups.map(group => <span key={group.id} className="flex min-w-0 min-h-5 items-center gap-1 leading-3"><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} /><span className="min-w-0">{group.label}</span></span>)}</div>
         </button>
         <div className="grid min-h-0 grid-rows-2 gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
