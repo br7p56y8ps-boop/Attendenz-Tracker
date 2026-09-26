@@ -86,7 +86,11 @@ self.addEventListener('install', (e) => {
     const cache = await caches.open(SHELL);
     const indexUrl = `${self.registration.scope}index.html`;
     const response = await fetch(indexUrl, { cache: 'no-store', redirect: 'follow' });
-    if (!response.ok) return;
+    if (!response.ok) {
+      const error = new Error(`Precache index request failed: ${response.status}`);
+      console.error(error);
+      throw error;
+    }
     await cache.put(indexUrl, response.clone());
     const html = await response.text();
     const assets = new Set([indexUrl]);
@@ -94,16 +98,26 @@ self.addEventListener('install', (e) => {
       try {
         const url = new URL(match[1], self.registration.scope);
         if (url.origin === self.location.origin) assets.add(url.href);
-      } catch {}
+      } catch (error) {
+        console.error('Precache asset URL is invalid.', match[1], error);
+        throw error;
+      }
     }
     await Promise.all(Array.from(assets).map(async (url) => {
       if (url === indexUrl) return;
       try {
         const asset = await fetch(url, { cache: 'no-store' });
-        if (asset.ok && asset.status === 200) await cache.put(url, asset);
-      } catch {}
+        if (!asset.ok || asset.status !== 200) throw new Error(`Precache asset request failed: ${url} (${asset.status})`);
+        await cache.put(url, asset);
+      } catch (error) {
+        console.error('Precache asset failed.', url, error);
+        throw error;
+      }
     }));
-  })().catch(() => {}));
+  })().catch(error => {
+    console.error('Service-worker installation precache failed.', error);
+    throw error;
+  }));
 });
 
 self.addEventListener('message', (e) => {
