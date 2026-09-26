@@ -561,12 +561,16 @@ export default function Home() {
   const glanceEntries = dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry) && !isEntryVacation(entry));
   const makePqrstPath = (points: number[]) => {
     const width = 268 / Math.max(1, points.length);
+    const graphTop = 8;
+    const graphBottom = 92;
+    const clampY = (value: number) => Math.max(graphTop, Math.min(graphBottom, value));
     return points.map((value, index) => {
       const x = 24 + index * width;
-      const baseline = 80 - (value * 0.32);
+      const baseline = clampY(graphBottom - (Math.max(0, Math.min(100, value)) * (graphBottom - graphTop) / 100));
       const next = points[index + 1] ?? value;
-      const nextBaseline = 80 - (next * 0.32);
-      return `M ${x.toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.22).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.32).toFixed(1)} ${(baseline - 5).toFixed(1)} L ${(x + width * 0.42).toFixed(1)} ${(baseline + 4).toFixed(1)} L ${(x + width * 0.52).toFixed(1)} ${(baseline - 29).toFixed(1)} L ${(x + width * 0.62).toFixed(1)} ${(baseline + 14).toFixed(1)} L ${(x + width * 0.72).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.79).toFixed(1)} ${(baseline - 7).toFixed(1)} Q ${(x + width * 0.85).toFixed(1)} ${(baseline - 11).toFixed(1)} ${(x + width * 0.91).toFixed(1)} ${(baseline - 7).toFixed(1)} L ${(x + width).toFixed(1)} ${nextBaseline.toFixed(1)}`;
+      const nextBaseline = clampY(graphBottom - (Math.max(0, Math.min(100, next)) * (graphBottom - graphTop) / 100));
+      const y = (offset: number) => clampY(baseline + offset).toFixed(1);
+      return `M ${x.toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.22).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.32).toFixed(1)} ${y(-5)} L ${(x + width * 0.42).toFixed(1)} ${y(4)} L ${(x + width * 0.52).toFixed(1)} ${y(-29)} L ${(x + width * 0.62).toFixed(1)} ${y(14)} L ${(x + width * 0.72).toFixed(1)} ${baseline.toFixed(1)} L ${(x + width * 0.79).toFixed(1)} ${y(-7)} Q ${(x + width * 0.85).toFixed(1)} ${y(-11)} ${(x + width * 0.91).toFixed(1)} ${y(-7)} L ${(x + width).toFixed(1)} ${nextBaseline.toFixed(1)}`;
     }).join(' ');
   };
   const groupedEcgPaths = useMemo(() => {

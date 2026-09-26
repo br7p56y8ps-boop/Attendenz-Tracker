@@ -19,6 +19,14 @@ const RESTORE_PRESERVED_KEYS = [
   'att_session',
   'att_idb_migrated_v1',
 ];
+const RESTORE_REGISTRY_KEYS = [
+  'att_subject_mode',
+  'att_custom_subjects',
+  'att_custom_wards',
+  'att_user_added_subjects',
+  'att_preset_subject_renames',
+  'att_preset_ward_renames',
+];
 
 async function collectUserData(includeSnapshots = false): Promise<Record<string, string>> {
   const localData: Record<string, string> = {};
@@ -325,8 +333,12 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
 
       await flushStorageWrites();
       const entries = Object.entries(validatedData);
+      const currentData = await idbGetAllChecked();
+      const currentRegistryEntries = RESTORE_REGISTRY_KEYS
+        .filter(key => currentData[key] !== undefined && validatedData[key] === undefined)
+        .map(key => [key, currentData[key]] as [string, string]);
       await storageClearChecked(RESTORE_PRESERVED_KEYS);
-      await storageCommitChecked([...entries, ['att_app_version', APP_VERSION]]);
+      await storageCommitChecked([...currentRegistryEntries, ...entries, ['att_app_version', APP_VERSION]]);
 
       // Force startup migration after any uploaded backup restore.
       const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];
