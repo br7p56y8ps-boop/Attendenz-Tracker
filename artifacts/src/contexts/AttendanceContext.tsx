@@ -8,7 +8,7 @@ export type SelectionType = 'off' | 'missed' | 'attended';
 
 const SGT_KEY_PREFIX = 'sgt:';
 export const getSGTKey = (id: string) => `${SGT_KEY_PREFIX}${id}`;
-export const getAcademicAttendanceKey = (subjectId: string) => `academic:${subjectId}`;
+export const getAcademicAttendanceKey = (subjectId: string) => subjectId.startsWith('int:') ? subjectId : `academic:${subjectId}`;
 export const getWardAttendanceKey = (wardId: string) => `ward:${wardId}`;
 export const isSGTKey = (key: string) => key.startsWith(SGT_KEY_PREFIX);
 
@@ -558,7 +558,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
           ? [getSGTKey(ref.id), ref.name]
           : ref.domain === 'clinical'
             ? [canonical, `ward-${ref.name}`, ref.name]
-            : [canonical, ref.name];
+            : ref.kind === 'integrated'
+              ? [canonical, `academic:${ref.id}`, ref.name]
+              : [canonical, ref.name];
         if (ref.domain === 'clinical' && ref.kind !== 'sgt') knownWardKeys.add(canonical);
         else knownSubjectKeys.add(canonical);
         const source = aliases.find(k => (ref.domain === 'clinical' && ref.kind !== 'sgt' ? currentWards[k] : currentSubjects[k]) !== undefined);

@@ -600,7 +600,7 @@ export default function Home() {
     return label;
   };
   const resolveSubjectAlert = (storageKey: string) => {
-    const raw = storageKey.replace(/^(academic:|acad:|ward:|sgt:)/, '');
+    const raw = storageKey.replace(/^(academic:|acad:|ward:|sgt:|int:)/, '');
     const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
     const matchesKey = (value: string | undefined) => Boolean(value && (value === raw || value === storageKey || normalize(value) === normalize(raw) || normalize(value) === normalize(storageKey)));
     if (storageKey.startsWith('sgt:')) {
@@ -737,7 +737,7 @@ export default function Home() {
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
           <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
-          {overallTotal === 0 ? <p className="mt-3 py-8 text-center text-xs text-muted-foreground">No attendance data yet.</p> : <svg viewBox="0 0 300 96" preserveAspectRatio="none" className="mt-1 h-32 w-full" role="img" aria-label="Grouped PQRST attendance ECG chart"><path d="M24 8V92H292" fill="none" stroke="currentColor" strokeOpacity=".35" /><path d="M24 71H292M24 50H292M24 29H292" fill="none" stroke="currentColor" strokeOpacity=".1" strokeDasharray="2 3" /><text x="2" y="12" fontSize="7" fill="currentColor">100%</text><text x="7" y="53" fontSize="7" fill="currentColor">50%</text><text x="13" y="94" fontSize="7" fill="currentColor">0%</text>{groupedEcgPaths.map(group => <path key={group.label} d={group.path} fill="none" stroke={group.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />)}</svg>}
+          {overallTotal === 0 ? <p className="mt-3 py-8 text-center text-xs text-muted-foreground">No attendance data yet.</p> : <svg viewBox="0 0 300 96" preserveAspectRatio="none" className="mt-1 h-32 w-full" role="img" aria-label="Grouped PQRST attendance ECG chart"><defs><clipPath id="overall-ecg-plot-clip"><rect x="24" y="8" width="268" height="84" /></clipPath></defs><path d="M24 8V92H292" fill="none" stroke="currentColor" strokeOpacity=".35" /><path d="M24 71H292M24 50H292M24 29H292" fill="none" stroke="currentColor" strokeOpacity=".1" strokeDasharray="2 3" /><text x="2" y="12" fontSize="7" fill="currentColor">100%</text><text x="7" y="53" fontSize="7" fill="currentColor">50%</text><text x="13" y="94" fontSize="7" fill="currentColor">0%</text><g clipPath="url(#overall-ecg-plot-clip)">{groupedEcgPaths.map(group => <path key={group.label} d={group.path} fill="none" stroke={group.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />)}</g></svg>}
           <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0 text-[8px] font-bold text-muted-foreground">{groupedEcgPaths.map(group => <span key={group.label} className={cn('flex min-w-0 min-h-5 items-center gap-1 leading-3', !group.hasData && 'opacity-50')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.hasData ? group.color : '#94a3b8' }} /><span className="min-w-0">{group.label}</span></span>)}</div>
         </button>
         <div className="grid min-h-0 grid-rows-2 gap-3">

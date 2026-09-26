@@ -507,6 +507,7 @@ function buildOccurrences(input: {
 
       for (const subject of input.userAddedSubjects) {
         if (subject.subjectType !== 'allied' || subject.parentName !== 'Small Group Teaching') continue;
+        if (!isWithinDates(localDate, subject.startDate, subject.endDate, subject.vacationPeriods)) continue;
         const sgtKey = getSGTKey(subject.id);
         const conducted = (input.subjects[sgtKey]?.attended || 0) + (input.subjects[sgtKey]?.missed || 0);
         if (input.finishedMap[sgtKey] || subject.plannedClasses <= conducted) continue;
