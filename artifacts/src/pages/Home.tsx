@@ -71,7 +71,7 @@ function getDashboardSubjectKind(subject: string, card?: { isWard?: boolean; isS
   const userAdded = userAddedSubjects.find(item => item.name === subject);
   if (userAdded?.parentName === 'Small Group Teaching') return 'SGT';
   if (INTEGRATED_SUBJECTS.some(item => item.name === subject || item.id === subject)) return 'Integrated';
-  if (WARD_SUBJECTS.some(item => item.name === subject || item.id === subject)) return 'Clinical Rotation';
+  if (WARD_SUBJECTS.some(item => item.name === subject || item.id === subject)) return 'Ward';
   return 'Lecture';
 }
 
@@ -567,6 +567,7 @@ export default function Home() {
     const definitions = [
       { id: 'medicine', label: 'Medicine & Allied', color: '#3b82f6' },
       { id: 'surgery', label: 'Surgery & Allied', color: '#a855f7' },
+      { id: 'integrated', label: 'Integrated', color: '#14b8a6' },
       { id: 'ward', label: 'Ward', color: '#22c55e' },
       { id: 'sgt', label: 'SGT', color: '#f59e0b' },
     ] as const;
@@ -585,11 +586,13 @@ export default function Home() {
       if (attendanceKey.startsWith('ward:')) return 'ward';
       if (attendanceKey.startsWith('sgt:')) return 'sgt';
       const registryRef = subjectRegistry.find(ref => matchesToken(ref.id) || matchesToken(ref.name));
+      if (registryRef?.kind === 'integrated') return 'integrated';
       if (registryRef?.kind === 'sgt' || registryRef?.parentName === 'Small Group Teaching') return 'sgt';
       const userAdded = userAddedSubjects.find(subject => matchesToken(subject.id) || matchesToken(subject.name));
       if (userAdded?.parentName === 'Small Group Teaching') return 'sgt';
       const custom = customSubjects.find(subject => matchesToken(subject.id) || matchesToken(subject.name));
       if (custom?.parentName === 'Small Group Teaching') return 'sgt';
+      if (/integrated/i.test(`${registryRef?.parentName || ''} ${userAdded?.parentName || ''} ${custom?.parentName || ''}`)) return 'integrated';
       const category = CATEGORIES.find(item => item.subjects.some(subject => matchesToken(subject.id) || matchesToken(subject.name)))?.name || registryRef?.parentName || userAdded?.parentName || custom?.parentName || '';
       return /surg|obstetric|gynaec|gynec/i.test(category) ? 'surgery' : 'medicine';
     };
@@ -621,20 +624,31 @@ export default function Home() {
     const plot = { left: 30, right: 294, top: 8, bottom: 104 };
     const xFor = (index: number) => months.length <= 1 ? (plot.left + plot.right) / 2 : plot.left + index * (plot.right - plot.left) / (months.length - 1);
     const yFor = (percentage: number) => plot.bottom - Math.max(0, Math.min(100, percentage)) * (plot.bottom - plot.top) / 100;
-    const smoothPath = (points: Array<{ x: number; y: number }>) => {
-      if (points.length === 0) return '';
-      if (points.length === 1) return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
-      return points.map((point, index) => {
-        if (index === 0) return `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
-        const previous = points[index - 1];
-        const next = points[index + 1] || point;
-        const before = points[index - 2] || previous;
-        const controlInX = previous.x + (point.x - before.x) / 6;
-        const controlInY = previous.y + (point.y - before.y) / 6;
-        const controlOutX = point.x - (next.x - previous.x) / 6;
-        const controlOutY = point.y - (next.y - previous.y) / 6;
-        return `C ${controlInX.toFixed(1)} ${controlInY.toFixed(1)}, ${controlOutX.toFixed(1)} ${controlOutY.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
-      }).join(' ');
+    const ecgPath = (monthly: Array<{ percentage: number | null; x: number; y: number | null }>) => {
+      const segments: string[] = [];
+      let previousEndY = yFor(0);
+      let index = 0;
+      while (index < monthly.length) {
+        while (index < monthly.length && monthly[index].percentage === null) index += 1;
+        if (index >= monthly.length) break;
+        const runStart = index;
+        while (index + 1 < monthly.length && monthly[index + 1].percentage !== null) index += 1;
+        const runEnd = index;
+        for (let pointIndex = runStart; pointIndex <= runEnd; pointIndex += 1) {
+          const point = monthly[pointIndex];
+          const startX = pointIndex === runStart ? (pointIndex === 0 ? plot.left : point.x) : monthly[pointIndex - 1].x;
+          const endX = pointIndex < monthly.length - 1 ? monthly[pointIndex + 1].x : plot.right;
+          const width = Math.max(8, endX - startX);
+          const startY = pointIndex === runStart ? (runStart === 0 ? yFor(0) : previousEndY) : previousEndY;
+          const endY = point.y!;
+          const peakPercentage = Math.min(100, Math.max(point.percentage!, point.percentage! + 16));
+          const peakY = Math.max(plot.top, yFor(peakPercentage));
+          segments.push(`M ${startX.toFixed(1)} ${startY.toFixed(1)} C ${(startX + width * 0.10).toFixed(1)} ${startY.toFixed(1)}, ${(startX + width * 0.16).toFixed(1)} ${(startY - 4).toFixed(1)}, ${(startX + width * 0.22).toFixed(1)} ${startY.toFixed(1)} C ${(startX + width * 0.28).toFixed(1)} ${startY.toFixed(1)}, ${(startX + width * 0.31).toFixed(1)} ${(startY + 4).toFixed(1)}, ${(startX + width * 0.35).toFixed(1)} ${startY.toFixed(1)} C ${(startX + width * 0.41).toFixed(1)} ${startY.toFixed(1)}, ${(startX + width * 0.44).toFixed(1)} ${peakY.toFixed(1)}, ${(startX + width * 0.50).toFixed(1)} ${peakY.toFixed(1)} C ${(startX + width * 0.56).toFixed(1)} ${peakY.toFixed(1)}, ${(startX + width * 0.60).toFixed(1)} ${(startY + 7).toFixed(1)}, ${(startX + width * 0.65).toFixed(1)} ${startY.toFixed(1)} C ${(startX + width * 0.72).toFixed(1)} ${startY.toFixed(1)}, ${(startX + width * 0.76).toFixed(1)} ${(startY - 7).toFixed(1)}, ${(startX + width * 0.82).toFixed(1)} ${(startY - 7).toFixed(1)} C ${(startX + width * 0.89).toFixed(1)} ${(startY - 7).toFixed(1)}, ${(endX - width * 0.08).toFixed(1)} ${endY.toFixed(1)}, ${endX.toFixed(1)} ${endY.toFixed(1)}`);
+          previousEndY = endY;
+        }
+        index += 1;
+      }
+      return segments.join(' ');
     };
     const groups = definitions.map(definition => {
       const monthly = months.map((month, index) => {
@@ -646,14 +660,8 @@ export default function Home() {
         const monthTotals = totals.get(value.month)?.get(definition.id);
         return { attended: sum.attended + (monthTotals?.attended || 0), conducted: sum.conducted + (monthTotals?.conducted || 0) };
       }, { attended: 0, conducted: 0 });
-      const segments: Array<Array<{ x: number; y: number }>> = [];
-      monthly.forEach(value => {
-        if (value.y === null) segments.push([]);
-        else if (segments.length === 0) segments.push([{ x: value.x, y: value.y }]);
-        else segments[segments.length - 1].push({ x: value.x, y: value.y });
-      });
-      return { ...definition, monthly, path: segments.filter(segment => segment.length > 0).map(smoothPath).join(' '), conducted: all.conducted, percentage: all.conducted > 0 ? (all.attended / all.conducted) * 100 : 0 };
-    }).filter(group => group.conducted > 0);
+      return { ...definition, monthly, path: ecgPath(monthly), conducted: all.conducted, percentage: all.conducted > 0 ? (all.attended / all.conducted) * 100 : 0 };
+    });
     return { months, groups, plot };
   }, [homeSelections, subjectRegistry, userAddedSubjects, customSubjects, todayStr]);
   const restoredSubjectFallback = (raw: string) => {
@@ -799,24 +807,26 @@ export default function Home() {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-4 pb-4 scroll-fade-viewport scroll-reachability">
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
-          <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-3 text-left transition-transform active:scale-[0.98]">
-          <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
-          <svg viewBox="0 0 300 136" className="mt-1 h-32 w-full" role="img" aria-label="Monthly grouped attendance waveform chart">
-            <g stroke="currentColor" strokeOpacity=".14" strokeDasharray="2 3">
-              <line x1="30" x2="294" y1="8" y2="8" />
-              <line x1="30" x2="294" y1="56" y2="56" />
-              <line x1="30" x2="294" y1="104" y2="104" />
-            </g>
-            <g fill="currentColor" opacity=".55" fontSize="7" textAnchor="end">
-              <text x="27" y="11">100%</text>
-              <text x="27" y="59">50%</text>
-              <text x="27" y="107">0%</text>
-            </g>
-            {overallAttendanceWave.groups.map(group => <path key={group.id} d={group.path} fill="none" stroke={group.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />)}
-            {overallAttendanceWave.months.map((month, index) => <text key={month} x={overallAttendanceWave.months.length <= 1 ? 162 : 30 + index * 264 / (overallAttendanceWave.months.length - 1)} y="119" textAnchor="middle" fontSize="7" fill="currentColor" opacity=".65">{new Date(`${month}-01T12:00:00`).toLocaleDateString([], { month: 'short' })}</text>)}
-          </svg>
-          <div className="mt-0.5 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[7px] font-semibold text-muted-foreground">{overallAttendanceWave.groups.map(group => <span key={group.id} className="flex min-w-0 items-start gap-1 leading-3"><i className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} /><span className="min-w-0 whitespace-normal break-words">{group.label} {Math.round(group.percentage)}%</span></span>)}</div>
-        </button>
+        <section className="glass-card flex h-[11rem] min-h-0 flex-col rounded-2xl border border-border p-3 text-left">
+          <h2 className="shrink-0 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Today at a Glance</h2>
+          <div className="relative mt-2 min-h-0 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+            {glanceEntries.length === 0 ? <p className="py-2 text-xs text-muted-foreground">No remaining classes today.</p> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
+              {glanceEntries.map(entry => {
+                const status = statusForEntry(entry);
+                const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet';
+                const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
+                const subject = entry.card?.subject || 'Unknown subject';
+                const kind = getDashboardSubjectKind(subject, entry.card, userAddedSubjects);
+                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="relative flex w-full min-w-0 items-center gap-2 text-left">
+                  <span className="absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card bg-primary" />
+                  <span className="min-w-0 flex-1 whitespace-normal break-words text-[10px] font-bold leading-3 text-foreground">{subject} <span className="text-[8px] font-semibold text-muted-foreground">({kind})</span></span>
+                  <span className="w-[3.5rem] shrink-0 text-right text-[8px] text-muted-foreground">{entry.time}</span>
+                  <span className={cn('w-[3.5rem] shrink-0 text-right text-[8px] font-extrabold', color)}>{label}</span>
+                </button>;
+              })}
+            </div>}
+          </div>
+        </section>
         <div className="grid min-h-0 grid-rows-2 gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
           <button type="button" onClick={() => { setSelectedDateStr(toDateString(addDays(today, 1))); setShowMarkAttendance(true); }} className="min-h-11 rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><p className="mt-1 truncate text-[10px] text-muted-foreground">{tomorrowPreview}</p></button>
@@ -827,7 +837,18 @@ export default function Home() {
         {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.5rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{item.text.replace(/\(Small Group Teaching\)/g, '(SGT)')}</span></div>; })}</div>}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
-      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Today at a Glance</h2><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{glanceEntries.length === 0 ? <p className="text-xs text-muted-foreground">No remaining classes today.</p> : glanceEntries.map(entry => { const status = statusForEntry(entry); const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet'; const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground'; const subject = entry.card?.subject || 'Unknown subject'; const kind = getDashboardSubjectKind(subject, entry.card, userAddedSubjects); return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="min-w-[132px] rounded-xl border border-border bg-muted/30 p-3 text-left shadow-[0_2px_8px_rgba(0,0,0,0.22)]"><p className="truncate text-xs font-bold">{shortenSubject(subject)} <span className="text-[9px] font-semibold text-muted-foreground">({kind})</span></p><p className="mt-1 text-[10px] text-muted-foreground">{entry.time}</p><span className={cn('mt-2 block text-[10px] font-extrabold', color)}>{label}</span></button>; })}</div></section>
+      <section className="glass-card rounded-2xl border border-border p-3">
+        <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
+        <svg viewBox="0 0 300 136" className="mt-1 h-32 w-full" role="img" aria-label="Monthly grouped attendance waveform chart">
+          <g stroke="currentColor" strokeOpacity=".14" strokeDasharray="2 3">
+            <line x1="30" x2="294" y1="8" y2="8" /><line x1="30" x2="294" y1="56" y2="56" /><line x1="30" x2="294" y1="104" y2="104" />
+          </g>
+          <g fill="currentColor" opacity=".55" fontSize="7" textAnchor="end"><text x="27" y="11">100%</text><text x="27" y="59">50%</text><text x="27" y="107">0%</text></g>
+          {overallAttendanceWave.groups.map(group => group.path && <path key={group.id} d={group.path} fill="none" stroke={group.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />)}
+          {overallAttendanceWave.months.map((month, index) => <text key={month} x={overallAttendanceWave.months.length <= 1 ? 162 : 30 + index * 264 / (overallAttendanceWave.months.length - 1)} y="119" textAnchor="middle" fontSize="7" fill="currentColor" opacity=".65">{new Date(`${month}-01T12:00:00`).toLocaleDateString([], { month: 'short' })}</text>)}
+        </svg>
+        <div className="mt-0.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[7px] font-semibold text-muted-foreground">{overallAttendanceWave.groups.map(group => <span key={group.id} className={cn('inline-flex min-w-0 items-center gap-1 leading-3 whitespace-normal break-words', !group.conducted && 'opacity-60')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.conducted ? group.color : '#94a3b8' }} />{group.label}</span>)}</div>
+      </section>
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectPotentialMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectPotentialMetrics.slice(0, 3).map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', metric.current < preferredPercentage ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between">
