@@ -563,16 +563,16 @@ export default function Home() {
     return false;
   };
   const glanceEntries = dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry) && !isEntryVacation(entry));
-  const overallAttendanceGroups = useMemo(() => {
+  const overallAttendanceHeatmap = useMemo(() => {
     const definitions = [
-      { id: 'medicine', label: 'Medicine & Allied', color: '#3b82f6' },
-      { id: 'surgery', label: 'Surgery & Allied', color: '#a855f7' },
-      { id: 'ward', label: 'Ward', color: '#22c55e' },
-      { id: 'sgt', label: 'SGT', color: '#f59e0b' },
+      { id: 'medicine', label: 'Medicine & Allied' },
+      { id: 'surgery', label: 'Surgery & Allied' },
+      { id: 'ward', label: 'Ward' },
+      { id: 'sgt', label: 'SGT' },
     ] as const;
     type GroupId = typeof definitions[number]['id'];
     type Totals = { attended: number; conducted: number };
-    const totals = new Map<GroupId, Totals>(definitions.map(definition => [definition.id, { attended: 0, conducted: 0 }]));
+    const totals = new Map<string, Map<GroupId, Totals>>();
     const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
     const resolveGroup = (attendanceKey: string): GroupId => {
       const raw = attendanceKey.replace(/^(academic:|acad:|ward:|sgt:)/, '');
@@ -593,24 +593,53 @@ export default function Home() {
       const category = CATEGORIES.find(item => item.subjects.some(subject => matchesToken(subject.id) || matchesToken(subject.name)))?.name || registryRef?.parentName || userAdded?.parentName || custom?.parentName || '';
       return /surg|obstetric|gynaec|gynec/i.test(category) ? 'surgery' : 'medicine';
     };
-    const addRecord = (key: string, record: { attended: number; missed: number }) => {
-      const conducted = Math.max(0, record.attended) + Math.max(0, record.missed);
-      if (!conducted) return;
-      const group = totals.get(resolveGroup(key))!;
-      group.attended += Math.max(0, record.attended);
-      group.conducted += conducted;
+    Object.entries(homeSelections).forEach(([key, selection]) => {
+      if (selection !== 'attended' && selection !== 'missed') return;
+      const dateStr = key.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+      const separator = key.charAt(10);
+      if (separator !== '-' && separator !== '_') return;
+      const attendanceKey = key.slice(11);
+      if (!attendanceKey) return;
+      const month = dateStr.slice(0, 7);
+      const groupId = resolveGroup(attendanceKey);
+      const monthGroups = totals.get(month) || new Map<GroupId, Totals>();
+      const group = monthGroups.get(groupId) || { attended: 0, conducted: 0 };
+      group.conducted += 1;
+      if (selection === 'attended') group.attended += 1;
+      monthGroups.set(groupId, group);
+      totals.set(month, monthGroups);
+    });
+    const dataMonths = Array.from(totals.keys()).sort();
+    const firstMonth = dataMonths[0] || todayStr.slice(0, 7);
+    const months: string[] = [];
+    const cursor = new Date(`${firstMonth}-01T12:00:00`);
+    const lastMonth = new Date(`${todayStr.slice(0, 7)}-01T12:00:00`);
+    for (; cursor <= lastMonth; cursor.setMonth(cursor.getMonth() + 1)) {
+      months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+    }
+    const preferred = Number.isFinite(preferredPercentage) ? preferredPercentage : 75;
+    const tierColor = (percentage: number | null) => {
+      if (percentage === null) return 'hsl(var(--muted))';
+      if (percentage >= preferred) return '#22c55e';
+      if (percentage >= preferred - 10) return '#eab308';
+      if (percentage >= preferred - 20) return '#f97316';
+      return '#ef4444';
     };
-    Object.entries(subjects).forEach(([key, record]) => addRecord(key, record));
-    Object.entries(wards).forEach(([key, record]) => addRecord(key, record));
     const groups = definitions.map(definition => {
-      const group = totals.get(definition.id)!;
-      const percentage = group.conducted > 0 ? (group.attended / group.conducted) * 100 : 0;
-      return { ...definition, ...group, percentage };
+      const monthValues = months.map(month => {
+        const value = totals.get(month)?.get(definition.id);
+        const percentage = value && value.conducted > 0 ? (value.attended / value.conducted) * 100 : null;
+        return { month, percentage, color: tierColor(percentage) };
+      });
+      const all = monthValues.reduce((sum, value) => {
+        const monthTotals = totals.get(value.month)?.get(definition.id);
+        return { attended: sum.attended + (monthTotals?.attended || 0), conducted: sum.conducted + (monthTotals?.conducted || 0) };
+      }, { attended: 0, conducted: 0 });
+      return { ...definition, months: monthValues, conducted: all.conducted, percentage: all.conducted > 0 ? (all.attended / all.conducted) * 100 : 0 };
     }).filter(group => group.conducted > 0);
-    const attended = groups.reduce((sum, group) => sum + group.attended, 0);
-    const conducted = groups.reduce((sum, group) => sum + group.conducted, 0);
-    return { groups, overallPercentage: conducted > 0 ? (attended / conducted) * 100 : 0, conducted };
-  }, [subjects, wards, subjectRegistry, userAddedSubjects, customSubjects, preferredPercentage]);
+    return { months, groups };
+  }, [homeSelections, subjectRegistry, userAddedSubjects, customSubjects, preferredPercentage, todayStr]);
   const restoredSubjectFallback = (raw: string) => {
     const existing = restoredSubjectLabels.current.get(raw);
     if (existing) return existing;
@@ -756,24 +785,17 @@ export default function Home() {
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
           <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-3 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
-          <svg viewBox="0 0 128 128" className="mt-0.5 h-28 w-full" role="img" aria-label="Overall attendance donut chart">
-            <g transform="rotate(-90 64 64)">
-              <circle cx="64" cy="64" r="36" fill="none" stroke="currentColor" strokeOpacity=".1" strokeWidth="14" />
-              {(() => {
-                const circumference = 2 * Math.PI * 36;
-                let offset = 0;
-                return overallAttendanceGroups.groups.map(group => {
-                  const length = circumference * group.conducted / overallAttendanceGroups.conducted;
-                  const slice = <circle key={group.id} cx="64" cy="64" r="36" fill="none" stroke={group.color} strokeWidth="14" strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset} />;
-                  offset += length;
-                  return slice;
-                });
-              })()}
-            </g>
-            <text x="64" y="62" textAnchor="middle" fontSize="17" fontWeight="800" fill="currentColor">{Math.round(overallAttendanceGroups.overallPercentage)}%</text>
-            <text x="64" y="73" textAnchor="middle" fontSize="6" fill="currentColor" opacity=".65">Overall</text>
-          </svg>
-          <div className="mt-0.5 space-y-0.5 text-[7px] font-bold text-muted-foreground">{overallAttendanceGroups.groups.map(group => <span key={group.id} className="flex min-w-0 min-h-4 items-start gap-1 leading-3"><i className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} /><span className="min-w-0 flex-1 whitespace-normal break-words">{group.label}</span><span className="w-8 shrink-0 text-right">{Math.round(group.percentage)}%</span></span>)}</div>
+          <div className="mt-1 overflow-x-auto">
+            {overallAttendanceHeatmap.groups.length === 0 ? <p className="py-2 text-[8px] text-muted-foreground">No attendance data yet.</p> : <div className="grid min-w-max gap-y-1" style={{ gridTemplateColumns: `minmax(82px, 1fr) repeat(${overallAttendanceHeatmap.months.length}, 20px)` }}>
+              <span />
+              {overallAttendanceHeatmap.months.map(month => <span key={month} className="text-center text-[7px] font-semibold text-muted-foreground">{new Date(`${month}-01T12:00:00`).toLocaleDateString([], { month: 'short' })}</span>)}
+              {overallAttendanceHeatmap.groups.map(group => <span key={group.id} className="contents">
+                <span className="min-w-0 pr-1 text-[7px] font-semibold leading-3 text-muted-foreground whitespace-normal break-words">{group.label} <span className="font-bold">{Math.round(group.percentage)}%</span></span>
+                {group.months.map(value => <span key={`${group.id}-${value.month}`} className="h-5 w-5 rounded-[4px]" style={{ backgroundColor: value.color }} aria-label={`${group.label} ${value.month}: ${value.percentage === null ? 'no data' : `${Math.round(value.percentage)} percent`}`} />)}
+              </span>)}
+            </div>}
+          </div>
+          {overallAttendanceHeatmap.groups.length > 0 && <p className="mt-1 text-[7px] text-muted-foreground">Greener = healthier</p>}
         </button>
         <div className="grid min-h-0 grid-rows-2 gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
