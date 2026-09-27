@@ -565,10 +565,10 @@ export default function Home() {
   const glanceEntries = dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry) && !isEntryVacation(entry));
   const overallAttendanceGroups = useMemo(() => {
     const definitions = [
-      { id: 'medicine', label: 'Medicine & Allied' },
-      { id: 'surgery', label: 'Surgery & Allied' },
-      { id: 'ward', label: 'Ward' },
-      { id: 'sgt', label: 'SGT' },
+      { id: 'medicine', label: 'Medicine & Allied', color: '#3b82f6' },
+      { id: 'surgery', label: 'Surgery & Allied', color: '#a855f7' },
+      { id: 'ward', label: 'Ward', color: '#22c55e' },
+      { id: 'sgt', label: 'SGT', color: '#f59e0b' },
     ] as const;
     type GroupId = typeof definitions[number]['id'];
     type Totals = { attended: number; conducted: number };
@@ -602,16 +602,10 @@ export default function Home() {
     };
     Object.entries(subjects).forEach(([key, record]) => addRecord(key, record));
     Object.entries(wards).forEach(([key, record]) => addRecord(key, record));
-    const preferred = Number.isFinite(preferredPercentage) ? preferredPercentage : null;
-    const healthColor = (percentage: number) => {
-      if (preferred === null || percentage >= preferred) return '#22c55e';
-      if (percentage < preferred - 5) return '#ef4444';
-      return '#eab308';
-    };
     const groups = definitions.map(definition => {
       const group = totals.get(definition.id)!;
       const percentage = group.conducted > 0 ? (group.attended / group.conducted) * 100 : 0;
-      return { ...definition, ...group, percentage, color: healthColor(percentage) };
+      return { ...definition, ...group, percentage };
     }).filter(group => group.conducted > 0);
     const attended = groups.reduce((sum, group) => sum + group.attended, 0);
     const conducted = groups.reduce((sum, group) => sum + group.conducted, 0);
@@ -760,26 +754,26 @@ export default function Home() {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-4 pb-4 scroll-fade-viewport scroll-reachability">
       <div className="grid grid-cols-[1.2fr_1fr] gap-3">
-          <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-4 text-left transition-transform active:scale-[0.98]">
+          <button type="button" onClick={() => setLocation('/subjects')} className="glass-card rounded-2xl border border-border p-3 text-left transition-transform active:scale-[0.98]">
           <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
-          <svg viewBox="0 0 160 160" className="mt-1 h-40 w-full" role="img" aria-label="Overall attendance donut chart">
-            <g transform="rotate(-90 80 80)">
-              <circle cx="80" cy="80" r="49" fill="none" stroke="currentColor" strokeOpacity=".1" strokeWidth="18" />
+          <svg viewBox="0 0 128 128" className="mt-0.5 h-28 w-full" role="img" aria-label="Overall attendance donut chart">
+            <g transform="rotate(-90 64 64)">
+              <circle cx="64" cy="64" r="36" fill="none" stroke="currentColor" strokeOpacity=".1" strokeWidth="14" />
               {(() => {
-                const circumference = 2 * Math.PI * 49;
+                const circumference = 2 * Math.PI * 36;
                 let offset = 0;
                 return overallAttendanceGroups.groups.map(group => {
                   const length = circumference * group.conducted / overallAttendanceGroups.conducted;
-                  const slice = <circle key={group.id} cx="80" cy="80" r="49" fill="none" stroke={group.color} strokeWidth="18" strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset} />;
+                  const slice = <circle key={group.id} cx="64" cy="64" r="36" fill="none" stroke={group.color} strokeWidth="14" strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-offset} />;
                   offset += length;
                   return slice;
                 });
               })()}
             </g>
-            <text x="80" y="78" textAnchor="middle" fontSize="21" fontWeight="800" fill="currentColor">{Math.round(overallAttendanceGroups.overallPercentage)}%</text>
-            <text x="80" y="91" textAnchor="middle" fontSize="7" fill="currentColor" opacity=".65">Overall</text>
+            <text x="64" y="62" textAnchor="middle" fontSize="17" fontWeight="800" fill="currentColor">{Math.round(overallAttendanceGroups.overallPercentage)}%</text>
+            <text x="64" y="73" textAnchor="middle" fontSize="6" fill="currentColor" opacity=".65">Overall</text>
           </svg>
-          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0 text-[8px] font-bold text-muted-foreground">{overallAttendanceGroups.groups.map(group => <span key={group.id} className="flex min-w-0 min-h-5 items-center gap-1 leading-3"><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} /><span className="min-w-0 truncate">{group.label} {Math.round(group.percentage)}%</span></span>)}</div>
+          <div className="mt-0.5 space-y-0.5 text-[7px] font-bold text-muted-foreground">{overallAttendanceGroups.groups.map(group => <span key={group.id} className="flex min-w-0 min-h-4 items-start gap-1 leading-3"><i className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} /><span className="min-w-0 flex-1 whitespace-normal break-words">{group.label}</span><span className="w-8 shrink-0 text-right">{Math.round(group.percentage)}%</span></span>)}</div>
         </button>
         <div className="grid min-h-0 grid-rows-2 gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
