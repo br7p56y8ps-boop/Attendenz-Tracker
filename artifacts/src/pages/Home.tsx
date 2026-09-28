@@ -889,7 +889,7 @@ export default function Home() {
             <line x1="30" x2="294" y1="8" y2="8" /><line x1="30" x2="294" y1="56" y2="56" /><line x1="30" x2="294" y1="104" y2="104" />
           </g>
           <g fill="currentColor" opacity=".55" fontSize="7" textAnchor="end"><text x="27" y="11">100%</text><text x="27" y="59">50%</text><text x="27" y="107">0%</text></g>
-          {overallAttendanceWave.groups.map(group => group.path && <path key={group.id} d={group.path} fill="none" stroke={group.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />)}
+          {overallAttendanceWave.groups.map(group => group.conducted > 0 && group.path && <path key={group.id} d={group.path} fill="none" stroke={group.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />)}
           {overallAttendanceWave.months.map((month, index) => <text key={month} x={overallAttendanceWave.months.length <= 1 ? 162 : 30 + index * 264 / (overallAttendanceWave.months.length - 1)} y="119" textAnchor="middle" fontSize="7" fill="currentColor" opacity=".65">{new Date(`${month}-01T12:00:00`).toLocaleDateString([], { month: 'short' })}</text>)}
         </svg>
         <div className="mt-0.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[7px] font-semibold text-muted-foreground">{overallAttendanceWave.groups.map(group => <span key={group.id} className={cn('inline-flex min-w-0 items-center gap-1 leading-3 whitespace-normal break-words', !group.conducted && 'opacity-60')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.conducted ? group.color : '#94a3b8' }} />{group.label}</span>)}</div>
