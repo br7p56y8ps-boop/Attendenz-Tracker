@@ -622,7 +622,12 @@ export default function Home() {
     }
     return false;
   };
-  const glanceEntries = dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry) && !isEntryVacation(entry));
+  const glanceEntries = dashboardClassEntries
+    .filter(entry => !isEntryVacation(entry))
+    .sort((a, b) => {
+      const completedOrder = Number(isCompletedPlannedEntry(a)) - Number(isCompletedPlannedEntry(b));
+      return completedOrder || ((rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
+    });
   const restoredSubjectFallback = (raw: string) => {
     const existing = restoredSubjectLabels.current.get(raw);
     if (existing) return existing;
@@ -697,8 +702,27 @@ export default function Home() {
         storageKey: previous?.storageKey ?? storageKey,
       });
     });
+    const addCanonical = (id: string, isWard: boolean) => {
+      const key = isWard ? getWardAttendanceKey(id) : getAcademicAttendanceKey(id);
+      if (!metrics.has(`${isWard ? 'Ward' : 'Lecture'}:${id.trim().toLowerCase()}`)) addRecords({ [key]: { attended: 0, missed: 0 } }, isWard);
+    };
     addRecords(subjects, false);
     addRecords(wards, true);
+    if (subjectMode === 'preloaded') {
+      [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS].forEach(item => addCanonical(item.id, false));
+      WARD_SUBJECTS.filter(item => item.name.toLowerCase() !== 'holiday').forEach(item => {
+        const id = getSubjectIdByName(item.name, 'clinical');
+        if (id) addCanonical(id, true);
+      });
+      userAddedSubjects.forEach(item => isSGTSubjectRecord(item)
+        ? addRecords({ [getSGTKey(item.id)]: { attended: 0, missed: 0 } }, false)
+        : addCanonical(item.id, false));
+    } else {
+      customSubjects.forEach(item => isSGTSubjectRecord(item)
+        ? addRecords({ [getSGTKey(item.id)]: { attended: 0, missed: 0 } }, false)
+        : addCanonical(item.id, false));
+      customWards.forEach(item => addCanonical(item.id, true));
+    }
     return Array.from(metrics.values()).map(metric => {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
       const rawId = metric.rawId.trim().toLowerCase();
@@ -825,12 +849,14 @@ export default function Home() {
             {glanceEntries.length === 0 ? <p className="py-2 text-xs text-muted-foreground">No remaining classes today.</p> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
               {glanceEntries.map(entry => {
                 const status = statusForEntry(entry);
-                const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet';
-                const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
+                const completed = isCompletedPlannedEntry(entry);
+                const label = completed ? 'Completed' : status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet';
+                const color = completed ? 'text-muted-foreground' : status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
+                const rowMuted = completed ? 'opacity-55' : '';
                 const subject = entry.card?.subject || 'Unknown subject';
                 const kind = getDashboardSubjectKind(subject, entry.card, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
-                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(4.5rem,auto)] grid-rows-2 items-center gap-x-2 text-left">
-                  <span className="absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card bg-primary" />
+                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className={cn('relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(4.5rem,auto)] grid-rows-2 items-center gap-x-2 text-left', rowMuted)}>
+                  <span className={cn('absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card', completed ? 'bg-muted-foreground' : 'bg-primary')} />
                   <span className="min-w-0 break-words text-[10px] font-bold leading-3 text-foreground">{subject}</span>
                   <span className="min-w-0 text-right text-[8px] text-muted-foreground">{entry.time}</span>
                   <span className="min-w-0 text-[8px] font-semibold leading-3 text-muted-foreground">({kind})</span>

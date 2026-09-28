@@ -30,8 +30,8 @@ function readReleaseConfig(): ReleaseConfig {
     throw new Error(`Unable to read ${releaseConfigPath}: ${cause instanceof Error ? cause.message : 'invalid JSON'}`);
   }
 
-  if (!config.version || !/^\d+\.\d+(?:\.\d+)?$/.test(config.version)) {
-    throw new Error(`Release version must use two or three numeric parts, for example 1.7 or 1.6.6; received ${config.version || 'missing'}.`);
+  if (!config.version || !/^\d+\.\d+\.\d+$/.test(config.version)) {
+    throw new Error(`Release version must use three numeric parts, for example 1.6.6; received ${config.version || 'missing'}.`);
   }
   if (config.releaseType !== 'major' && config.releaseType !== 'minor') {
     throw new Error(`Release type must be major or minor; received ${config.releaseType || 'missing'}.`);
