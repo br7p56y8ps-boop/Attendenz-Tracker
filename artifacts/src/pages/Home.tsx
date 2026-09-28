@@ -624,7 +624,7 @@ export default function Home() {
     if (storageKey.startsWith('sgt:')) {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
       const sgt = source.find(item => matchesKey(item.id) || matchesKey(item.name) || matchesKey(item.name.replace(/\s*SGT\s*$/i, '')));
-      return { name: sgt?.name || restoredSubjectFallback(raw), category: 'SGT' };
+      return { name: sgt?.name || restoredSubjectFallback(raw), category: 'SGT', isResolved: Boolean(sgt) };
     }
     const userAdded = userAddedSubjects.find(item => matchesKey(item.id));
     const custom = customSubjects.find(item => matchesKey(item.id));
@@ -644,7 +644,7 @@ export default function Home() {
         : registryRef?.kind === 'preset-ward' || registryRef?.kind === 'ward-rotation'
           ? 'Ward'
           : undefined;
-    return { name: displayName, category: storageKey.startsWith('ward:') ? 'Ward' : registryCategory || getDashboardSubjectKind(displayName, undefined, subjectMode, userAddedSubjects, customSubjects, subjectRegistry) };
+    return { name: displayName, category: storageKey.startsWith('ward:') ? 'Ward' : registryCategory || getDashboardSubjectKind(displayName, undefined, subjectMode, userAddedSubjects, customSubjects, subjectRegistry), isResolved: Boolean(readable || registryRef) };
   };
   const subjectPotentialMetrics = useMemo(() => {
     const metrics = new Map<string, {
@@ -652,9 +652,12 @@ export default function Home() {
       category: string;
       attended: number;
       missed: number;
+      manuallyFinished: boolean;
+      resolved: boolean;
     }>();
     Object.entries(subjects).forEach(([storageKey, item]) => {
       const resolved = resolveSubjectAlert(storageKey);
+      if (!resolved.isResolved) return;
       const metricKey = `${resolved.category}:${resolved.name.trim().toLowerCase()}`;
       const previous = metrics.get(metricKey);
       metrics.set(metricKey, {
@@ -662,6 +665,8 @@ export default function Home() {
         category: resolved.category,
         attended: (previous?.attended || 0) + item.attended,
         missed: (previous?.missed || 0) + item.missed,
+        manuallyFinished: Boolean(previous?.manuallyFinished || finishedMap[storageKey]),
+        resolved: true,
       });
     });
     return Array.from(metrics.values()).map(metric => {
@@ -671,8 +676,8 @@ export default function Home() {
       const current = conducted === 0 ? 0 : (metric.attended / conducted) * 100;
       const maximum = planned > 0 ? ((metric.attended + remaining) / planned) * 100 : current;
       return { ...metric, current, maximum, remaining, planned };
-    }).filter(item => item.remaining > 0 && item.current < preferredPercentage).sort((a, b) => a.current - b.current).slice(0, 6);
-  }, [customSubjects, customWards, getPresetSubjectDisplayName, getPresetWardDisplayName, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, subjectRegistry, userAddedSubjects]);
+    }).filter(item => item.resolved && !item.manuallyFinished && item.remaining > 0 && item.current < preferredPercentage).sort((a, b) => a.current - b.current);
+  }, [customSubjects, customWards, finishedMap, getPresetSubjectDisplayName, getPresetWardDisplayName, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, subjectRegistry, userAddedSubjects]);
   const statusForEntry = (entry: DayEntry) => {
     if (entry.kind !== 'card' || !entry.card?.sessionId) return undefined;
     const card = entry.card;
@@ -796,7 +801,7 @@ export default function Home() {
         {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.5rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{renderActivityText(item.text.replace(/\(Small Group Teaching\)/g, '(SGT)'))}</span></div>; })}</div>}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
-      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectPotentialMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectPotentialMetrics.slice(0, 3).map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', metric.current < preferredPercentage ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectPotentialMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectPotentialMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2>

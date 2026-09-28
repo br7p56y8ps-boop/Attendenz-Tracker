@@ -18,7 +18,7 @@ import {
 } from '@/lib/utils';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
 import { ModalSheet } from '@/components/ui/modal-sheet';
-import { storageSetItem } from '@/lib/idb';
+import { idbGetAllChecked, storageCommitChecked, storageSetItem } from '@/lib/idb';
 import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import {
@@ -46,6 +46,130 @@ const inlineErrCls =
   'text-[11px] font-semibold text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2';
 const CREATE_NEW = '__create_new__';
 const DAY_AFTER_HOLIDAY_INDEX = 6; // Saturday follows the app-wide Friday holiday boundary.
+
+const CASCADE_STORAGE_KEYS = [
+  'attendance_tracker_subjects_preset', 'attendance_tracker_subjects_custom', 'attendance_tracker_subjects',
+  'attendance_tracker_ward_preset', 'attendance_tracker_ward_custom', 'attendance_tracker_ward',
+  'attendance_tracker_home_selections_preset', 'attendance_tracker_home_selections_custom', 'attendance_tracker_home_selections',
+  'attendance_tracker_finished_map_preset', 'attendance_tracker_finished_map_custom', 'attendance_tracker_finished_map',
+  'attendance_tracker_orphaned_records',
+] as const;
+
+const CASCADE_ALIAS_KEYS = new Set([
+  'att_user_added_subjects', 'att_custom_subjects', 'att_custom_wards', 'att_preset_timetable', 'att_timetable',
+]);
+
+const removeNamesFromTimetable = (timetable: Record<string, unknown>, names: Set<string>): boolean => {
+  let changed = false;
+  for (const day of Object.keys(timetable)) {
+    if (!Array.isArray(timetable[day])) continue;
+    const next = (timetable[day] as any[]).map(slot => {
+      if (!slot || !Array.isArray(slot.subjects)) return slot;
+      const subjects = slot.subjects.filter((name: unknown) => typeof name !== 'string' || !names.has(name.trim().toLowerCase()));
+      return subjects.length === slot.subjects.length ? slot : { ...slot, subjects };
+    }).filter(slot => slot?.type === 'ward' || slot?.type === 'ward_replacement' || slot?.subjects?.length > 0);
+    if (JSON.stringify(next) !== JSON.stringify(timetable[day])) { timetable[day] = next; changed = true; }
+  }
+  return changed;
+};
+
+const cascadeDeleteStoredEntity = async (ids: string[], type: 'subject' | 'ward', names: string[]): Promise<void> => {
+  const exactKeys = new Set(ids.flatMap(id => [id, `academic:${id}`, `sgt:${id}`, `ward:${id}`, `int:${id}`].map(key => key.toLowerCase())));
+  const nameSet = new Set(names.map(name => name.trim().toLowerCase()).filter(Boolean));
+  const allData = await idbGetAllChecked();
+  const entries: Array<[string, string]> = [];
+
+  for (const key of CASCADE_STORAGE_KEYS) {
+    const raw = allData[key];
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown> | unknown[];
+      if (key === 'attendance_tracker_orphaned_records' && Array.isArray(parsed)) {
+        const next = parsed.filter(record => {
+          const originalKey = typeof record === 'object' && record !== null && typeof (record as { originalKey?: unknown }).originalKey === 'string'
+            ? String((record as { originalKey: string }).originalKey).toLowerCase()
+            : '';
+          return !exactKeys.has(originalKey) && !ids.some(id => originalKey === id.toLowerCase());
+        });
+        if (next.length !== parsed.length) entries.push([key, JSON.stringify(next)]);
+        continue;
+      }
+      if (!parsed || Array.isArray(parsed)) continue;
+      const isWardStore = key.includes('_ward_') || key.endsWith('_ward');
+      const isSharedEntityStore = key.includes('_home_selections') || key.includes('_finished_map');
+      const shouldClean = isSharedEntityStore || (type === 'ward' ? isWardStore : !isWardStore);
+      const next = { ...parsed };
+      let changed = false;
+      if (shouldClean) {
+        for (const storedKey of Object.keys(next)) {
+          const lower = storedKey.toLowerCase();
+          if (exactKeys.has(lower)) { delete next[storedKey]; changed = true; continue; }
+          if (key.includes('home_selections')) {
+            const rest = lower.replace(/^\d{4}-\d{2}-\d{2}[-_]/, '');
+            if ([...exactKeys].some(exact => rest === exact || rest.startsWith(`${exact}-`) || rest.startsWith(`${exact}_`))) {
+              delete next[storedKey]; changed = true;
+            }
+          }
+        }
+      }
+      if (changed) entries.push([key, JSON.stringify(next)]);
+    } catch { /* preserve malformed unrelated data */ }
+  }
+
+  for (const key of ['att_preset_timetable', 'att_timetable']) {
+    const raw = allData[key];
+    if (!raw) continue;
+    try {
+      const timetable = JSON.parse(raw);
+      if (timetable && typeof timetable === 'object' && !Array.isArray(timetable) && removeNamesFromTimetable(timetable, nameSet)) {
+        entries.push([key, JSON.stringify(timetable)]);
+      }
+    } catch { /* preserve malformed unrelated data */ }
+  }
+
+  for (const key of Object.keys(allData)) {
+    if (!key.startsWith('att_curriculum_bundle_')) continue;
+    try {
+      const bundle = JSON.parse(allData[key]) as Record<string, string>;
+      let changed = false;
+      for (const alias of CASCADE_STORAGE_KEYS) {
+        if (bundle[alias] === undefined || alias === 'attendance_tracker_orphaned_records') continue;
+        const isWardStore = alias.includes('_ward_') || alias.endsWith('_ward');
+        if ((type === 'ward') !== isWardStore) continue;
+        const map = JSON.parse(bundle[alias]) as Record<string, unknown>;
+        if (!map || Array.isArray(map)) continue;
+        for (const storedKey of Object.keys(map)) {
+          const lower = storedKey.toLowerCase();
+          const rest = lower.replace(/^\d{4}-\d{2}-\d{2}[-_]/, '');
+          if (exactKeys.has(lower) || (alias.includes('home_selections') && [...exactKeys].some(exact => rest === exact || rest.startsWith(`${exact}-`) || rest.startsWith(`${exact}_`)))) {
+            delete map[storedKey];
+            changed = true;
+          }
+        }
+        if (changed) bundle[alias] = JSON.stringify(map);
+      }
+      for (const alias of CASCADE_ALIAS_KEYS) {
+        if (bundle[alias] === undefined) continue;
+        if (alias.includes('timetable')) {
+          const timetable = JSON.parse(bundle[alias]);
+          if (timetable && typeof timetable === 'object' && !Array.isArray(timetable)) {
+            changed = removeNamesFromTimetable(timetable as Record<string, unknown>, nameSet) || changed;
+            if (changed) bundle[alias] = JSON.stringify(timetable);
+          }
+        } else if (alias === 'att_user_added_subjects' || alias === 'att_custom_subjects' || alias === 'att_custom_wards') {
+          const list = JSON.parse(bundle[alias]);
+          if (Array.isArray(list)) {
+            const next = list.filter(item => !ids.includes(item?.id) && !nameSet.has(String(item?.name || '').trim().toLowerCase()));
+            if (next.length !== list.length) { bundle[alias] = JSON.stringify(next); changed = true; }
+          }
+        }
+      }
+      if (changed) entries.push([key, JSON.stringify(bundle)]);
+    } catch { /* preserve malformed unrelated bundle */ }
+  }
+
+  if (entries.length > 0) await storageCommitChecked(entries);
+};
 
 const genId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
@@ -1146,7 +1270,7 @@ export default function Manage() {
     if (!item) return;
     setDeleteSheet({
       title: `Delete "${item.name}"?`,
-      lines: ['This subject and all its attendance records will be permanently removed.', 'This action cannot be undone.'],
+      lines: ['Deleting this subject will permanently remove its attendance records, planned classes, and any vacation or exam periods.', 'This action cannot be undone. Continue?'],
       onConfirm: () => {
         recordHistory('Deleted Subject', { name: item.name, store, id, category: isSGTRecord(item) ? 'SGT' : section === 'clinical' ? 'Clinical' : 'Academic' });
         try {
@@ -1157,6 +1281,13 @@ export default function Manage() {
               : customSubjects.filter(x => x.subjectType === 'allied' && getEffectiveParentName(x)?.toLowerCase() === item.name.toLowerCase());
             for (const k of kids) namesToPurge.push(k.name);
           }
+          const idsToPurge = [id];
+          if (item.subjectType === 'allied-parent') {
+            const kids = store === 'userAdded'
+              ? userAddedSubjects.filter(x => x.subjectType === 'allied' && getEffectiveParentName(x)?.toLowerCase() === item.name.toLowerCase())
+              : customSubjects.filter(x => x.subjectType === 'allied' && getEffectiveParentName(x)?.toLowerCase() === item.name.toLowerCase());
+            idsToPurge.push(...kids.map(k => k.id));
+          }
           if (store === 'userAdded') removeUserAddedSubject(id);
           else removeCustomSubject(id);
           if (isSGTRecord(item)) {
@@ -1164,6 +1295,7 @@ export default function Manage() {
           } else {
             for (const n of namesToPurge) removeSubjectData(n, getAcademicAttendanceKey(item.id));
           }
+          void cascadeDeleteStoredEntity(idsToPurge, 'subject', namesToPurge);
             setDeleteSheet(null); showToast(`Deleted "${item.name}".`);
             void notifyManageChange(`${item.name} was removed from your routine.`);
         } catch { showToast('Delete failed — please try again.', 'err'); }
@@ -1174,14 +1306,16 @@ export default function Manage() {
   const requestDeleteWard = (store: 'preset' | 'custom', ref: number | string) => {
     if (store === 'preset') {
       const idx = ref as number; const e = presetWardSchedule[idx]; if (!e) return;
+      if (!e.addedByUser) { showToast('Preset wards cannot be deleted.', 'info'); return; }
       setDeleteSheet({
         title: `Delete rotation "${e.ward}"?`,
-        lines: ['This rotation period', 'Calendar / schedule entries', 'All attendance records for this ward'],
+        lines: ['Deleting this rotation will permanently remove its attendance records, planned classes, and any vacation or exam periods.', 'This action cannot be undone. Continue?'],
         onConfirm: () => {
           recordHistory('Deleted Rotation', { ward: e.ward, index: idx });
           try {
             removePresetWardEntry(idx);
             if (presetWardSchedule.filter(x => x.ward === e.ward).length <= 1) removeWardData(e.ward);
+            void cascadeDeleteStoredEntity([`preset-ward:${e.ward}`], 'ward', [e.ward]);
             setDeleteSheet(null); showToast(`Deleted "${e.ward}".`);
             void notifyManageChange(`${e.ward} was removed from your routine.`);
           } catch { showToast('Delete failed — please try again.', 'err'); }
@@ -1191,12 +1325,13 @@ export default function Manage() {
       const w = customWards.find(x => x.id === ref); if (!w) return;
       setDeleteSheet({
         title: `Delete rotation "${w.name}"?`,
-        lines: ['This rotation card', 'Calendar / schedule entries', 'All attendance records for this ward'],
+        lines: ['Deleting this rotation will permanently remove its attendance records, planned classes, and any vacation or exam periods.', 'This action cannot be undone. Continue?'],
         onConfirm: () => {
           recordHistory('Deleted Ward', { name: w.name, id: w.id });
           try {
             removeCustomWard(w.id);
             removeWardData(w.name, getWardAttendanceKey(w.id));
+            void cascadeDeleteStoredEntity([w.id], 'ward', [w.name]);
             setDeleteSheet(null); showToast(`Deleted "${w.name}".`);
             void notifyManageChange(`${w.name} was removed from your routine.`);
           } catch { showToast('Delete failed — please try again.', 'err'); }
