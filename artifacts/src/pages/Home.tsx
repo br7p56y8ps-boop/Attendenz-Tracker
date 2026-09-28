@@ -713,8 +713,8 @@ export default function Home() {
         <p className="text-xs font-bold text-muted-foreground">{shortDate}</p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-4 pb-4 scroll-fade-viewport scroll-reachability">
-      <div className="grid grid-cols-[1.2fr_1fr] gap-3">
-        <section className="glass-card flex h-[11rem] min-h-0 flex-col rounded-2xl border border-border p-3 text-left">
+      <div className="grid grid-cols-[1.2fr_1fr] items-stretch gap-3">
+        <section className="glass-card flex min-h-0 flex-col rounded-2xl border border-border p-3 text-left">
           <h2 className="shrink-0 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Today at a Glance</h2>
           <div className="relative mt-2 min-h-0 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
             {glanceEntries.length === 0 ? <p className="py-2 text-xs text-muted-foreground">No remaining classes today.</p> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
@@ -734,7 +734,7 @@ export default function Home() {
             </div>}
           </div>
         </section>
-        <div className="grid min-h-0 grid-rows-2 gap-3">
+        <div className="flex flex-col gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
           <button type="button" onClick={() => { setSelectedDateStr(toDateString(addDays(today, 1))); setShowMarkAttendance(true); }} className="min-h-11 rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><p className="mt-1 truncate text-[10px] text-muted-foreground">{tomorrowPreview}</p></button>
         </div>
