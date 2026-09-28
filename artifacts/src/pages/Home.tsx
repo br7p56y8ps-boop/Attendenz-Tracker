@@ -702,27 +702,8 @@ export default function Home() {
         storageKey: previous?.storageKey ?? storageKey,
       });
     });
-    const addCanonical = (id: string, isWard: boolean) => {
-      const key = isWard ? getWardAttendanceKey(id) : getAcademicAttendanceKey(id);
-      if (!metrics.has(`${isWard ? 'Ward' : 'Lecture'}:${id.trim().toLowerCase()}`)) addRecords({ [key]: { attended: 0, missed: 0 } }, isWard);
-    };
     addRecords(subjects, false);
     addRecords(wards, true);
-    if (subjectMode === 'preloaded') {
-      [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS].forEach(item => addCanonical(item.id, false));
-      WARD_SUBJECTS.filter(item => item.name.toLowerCase() !== 'holiday').forEach(item => {
-        const id = getSubjectIdByName(item.name, 'clinical');
-        if (id) addCanonical(id, true);
-      });
-      userAddedSubjects.forEach(item => isSGTSubjectRecord(item)
-        ? addRecords({ [getSGTKey(item.id)]: { attended: 0, missed: 0 } }, false)
-        : addCanonical(item.id, false));
-    } else {
-      customSubjects.forEach(item => isSGTSubjectRecord(item)
-        ? addRecords({ [getSGTKey(item.id)]: { attended: 0, missed: 0 } }, false)
-        : addCanonical(item.id, false));
-      customWards.forEach(item => addCanonical(item.id, true));
-    }
     return Array.from(metrics.values()).map(metric => {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
       const rawId = metric.rawId.trim().toLowerCase();
@@ -748,9 +729,9 @@ export default function Home() {
       const current = conducted === 0 ? 0 : (metric.attended / conducted) * 100;
       const maximum = planned && planned > 0 ? ((metric.attended + remaining) / planned) * 100 : current;
       return { ...metric, current, maximum, remaining, planned: planned ?? 0 };
-    }).filter(item => !item.manuallyFinished && item.planned > 0 && item.remaining > 0).sort((a, b) => a.current - b.current);
+    }).filter(item => item.planned > 0 && item.remaining > 0).sort((a, b) => a.current - b.current);
   }, [customSubjects, customWards, finishedMap, getCustomWardTotalPlanned, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, subjectRegistry, userAddedSubjects, wards]);
-  const subjectAlertMetrics = allPotentialMetrics.filter(item => item.current < preferredPercentage && !item.manuallyFinished && item.planned > 0 && item.remaining > 0);
+  const subjectAlertMetrics = allPotentialMetrics.filter(item => item.current < preferredPercentage);
   const statusForEntry = (entry: DayEntry) => {
     if (entry.kind !== 'card' || !entry.card?.sessionId) return undefined;
     const card = entry.card;
