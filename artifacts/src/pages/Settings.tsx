@@ -371,7 +371,16 @@ export default function Settings() {
 
 
   const rollbackUpdateState = async (): Promise<boolean> => {
-    const keys = ['att_pwa_update_ready', 'att_pwa_latest_version', 'att_pwa_update_summary', 'att_just_updated'];
+    const keys = [
+      'att_pwa_update_ready',
+      'att_pwa_latest_version',
+      'att_pwa_update_summary',
+      'att_pwa_release_type',
+      'att_pwa_update_mode',
+      'att_pwa_activation_pending_version',
+      'att_pending_update_restore',
+      'att_just_updated',
+    ];
     const results = await Promise.allSettled(keys.map(key => storageRemoveItemChecked(key)));
     const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failures.length > 0) {
@@ -1476,10 +1485,10 @@ export default function Settings() {
               <p className="text-muted-foreground text-xs leading-relaxed text-left">We recommend creating a <strong className="text-foreground">Full App Backup</strong> before updating to ensure all your attendance records and preferences remain 100% safe.</p>
               <div className="flex flex-col gap-2 pt-1">
                 <button type="button" onClick={() => handleApplyUpdate(true)} className="action-button action-button--transfer w-full">
-                  <Download className="w-4 h-4" /><span>Backup & Continue</span>
+                  <Download className="w-4 h-4" /><span>Backup & Update</span>
                 </button>
-                <button type="button" onClick={() => handleApplyUpdate(false)} className="action-button action-button--neutral w-full">Skip Backup</button>
-                <button type="button" onClick={() => setShowUpdatePrompt(false)} className="action-button action-button--cancel w-full">Cancel</button>
+                <button type="button" onClick={() => handleApplyUpdate(false)} className="action-button action-button--neutral w-full">Update</button>
+                <button type="button" onClick={() => { localStorage.setItem('att_update_gate_dismissed_version', serverVersion); setShowUpdatePrompt(false); }} className="action-button action-button--cancel w-full">Remind Later</button>
               </div>
         </ModalSheet>
 

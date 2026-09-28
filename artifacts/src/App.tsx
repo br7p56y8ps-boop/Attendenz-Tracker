@@ -4,6 +4,7 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CustomDataProvider } from '@/contexts/CustomDataContext';
+import { useCustomData } from '@/contexts/CustomDataContext';
 import { initStorageAndMigrate, flushStorageWrites, storageRemoveItem, storageRemoveItemChecked, storageSetItem, recoverPendingDeleteAll } from '@/lib/idb';
 import { ensureCurriculumMigration } from '@/lib/curriculumStore';
 import { WhatsNewPopup } from '@/components/WhatsNewPopup';
@@ -70,6 +71,7 @@ function AuthGate() {
 
 function MainAppFlow() {
   const [arrivedAfterUpdate] = useState<boolean>(() => localStorage.getItem('att_just_updated') === 'true');
+  const { setWhatsNewOpen } = useCustomData();
   const [restoreError, setRestoreError] = useState(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
     const justUpdated = localStorage.getItem('att_just_updated') === 'true';
@@ -132,6 +134,7 @@ function MainAppFlow() {
           await storageSetItem(HAS_SEEN_WELCOME_KEY, 'true');
           await storageRemoveItem('att_just_updated');
           if (arrivedAfterUpdate) void notifyUpdateCompleted(APP_VERSION);
+          if (arrivedAfterUpdate) setWhatsNewOpen(true);
           setShowWelcome(false);
         }}
       />
