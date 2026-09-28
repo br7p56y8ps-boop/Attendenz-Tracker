@@ -726,7 +726,7 @@ export default function Home() {
       return { ...metric, current, maximum, remaining, planned: planned ?? 0 };
     }).filter(item => !item.manuallyFinished && item.planned > 0 && item.remaining > 0).sort((a, b) => a.current - b.current);
   }, [customSubjects, customWards, finishedMap, getCustomWardTotalPlanned, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, subjectRegistry, userAddedSubjects, wards]);
-  const subjectAlertMetrics = allPotentialMetrics.filter(item => item.current < preferredPercentage);
+  const subjectAlertMetrics = allPotentialMetrics.filter(item => item.current < preferredPercentage && !item.manuallyFinished && item.planned > 0 && item.remaining > 0);
   const statusForEntry = (entry: DayEntry) => {
     if (entry.kind !== 'card' || !entry.card?.sessionId) return undefined;
     const card = entry.card;
@@ -872,7 +872,7 @@ export default function Home() {
                 const extension = Math.max(24, maxX - currentX);
                 const peakX = currentX + extension * 0.48;
                 const tX = currentX + extension * 0.78;
-                const currentColor = metric.current >= preferredPercentage ? '#34d399' : '#ef4444';
+                const currentColor = '#94a3b8';
                 const maxColor = metric.maximum >= preferredPercentage ? '#34d399' : '#ef4444';
                 const waveform = `M ${currentX.toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.12).toFixed(1)} ${baseline.toFixed(1)}, ${(currentX + extension * 0.16).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.24).toFixed(1)} ${(baseline - 5).toFixed(1)} C ${(currentX + extension * 0.3).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.34).toFixed(1)} ${(baseline + 5).toFixed(1)}, ${(currentX + extension * 0.38).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.42).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(peakX - extension * 0.05).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${peakX.toFixed(1)} ${(baseline - 26).toFixed(1)} C ${(peakX + extension * 0.04).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(currentX + extension * 0.56).toFixed(1)} ${(baseline + 10).toFixed(1)}, ${(currentX + extension * 0.62).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.7).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX - extension * 0.04).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${tX.toFixed(1)} ${(baseline - 9).toFixed(1)} C ${(tX + extension * 0.08).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX + extension * 0.14).toFixed(1)} ${(baseline - 3).toFixed(1)}, ${maxX.toFixed(1)} ${baseline.toFixed(1)}`;
                 const nameLines = wrapDashboardSvgLabel(shortenSubject(metric.name), 18);
@@ -882,11 +882,13 @@ export default function Home() {
                     <tspan x="2" dy="10" fontSize="8" fontWeight="600" fill="currentColor" opacity=".75">({metric.category})</tspan>
                   </text>
                   <line x1={left} x2={currentX} y1={baseline} y2={baseline} stroke={currentColor} strokeWidth="2.5" strokeLinecap="round" />
-                  <path d={waveform} fill="none" stroke={maxColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   <circle cx={currentX} cy={baseline} r="2.5" fill={currentColor} />
-                  <circle cx={maxX} cy={baseline} r="2.5" fill={maxColor} />
                   <text x={currentX} y={baseline - 7} textAnchor="middle" fontSize="8" fill={currentColor}>{Math.round(metric.current)}%</text>
-                  <text x={maxX} y={baseline + 13} textAnchor="middle" fontSize="8" fontWeight="700" fill={maxColor}>{Math.round(metric.maximum)}%</text>
+                  {metric.current < 100 && <>
+                    <path d={waveform} fill="none" stroke={maxColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx={maxX} cy={baseline} r="2.5" fill={maxColor} />
+                    <text x={maxX} y={baseline + 13} textAnchor="middle" fontSize="8" fontWeight="700" fill={maxColor}>{Math.round(metric.maximum)}%</text>
+                  </>}
                 </g>;
               })}
             </svg>
