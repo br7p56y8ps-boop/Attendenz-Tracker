@@ -636,11 +636,16 @@ export default function Home() {
     return label;
   };
   const resolveSubjectAlert = (storageKey: string) => {
-    const isSGTKey = /^(?:sgt)[:-]/i.test(storageKey);
-    const isWardKey = /^(?:ward)[:-]/i.test(storageKey);
-    const raw = storageKey.replace(/^(academic|acad|ward|sgt|int)[:-]/i, '');
+    const isSGTKey = /^(?:sgt)[:\-_]/i.test(storageKey);
+    const isWardKey = /^(?:ward)[:\-_]/i.test(storageKey);
+    const rawCandidates = [storageKey];
+    let raw = storageKey;
+    while (/^(academic|acad|ward|sgt|int)[:\-_]/i.test(raw)) {
+      raw = raw.replace(/^(academic|acad|ward|sgt|int)[:\-_]/i, '');
+      rawCandidates.push(raw);
+    }
     const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-    const matchesKey = (value: string | undefined) => Boolean(value && (value === raw || value === storageKey || normalize(value) === normalize(raw) || normalize(value) === normalize(storageKey)));
+    const matchesKey = (value: string | undefined) => Boolean(value && rawCandidates.some(candidate => value === candidate || normalize(value) === normalize(candidate)));
     if (isSGTKey) {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
       const sgt = source.find(item => matchesKey(item.id) || matchesKey(item.name) || matchesKey(item.name.replace(/\s*SGT\s*$/i, '')));

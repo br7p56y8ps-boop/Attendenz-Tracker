@@ -554,16 +554,24 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
           : ref.domain === 'clinical'
             ? getWardAttendanceKey(ref.id)
             : getAcademicAttendanceKey(ref.id);
+        const id = ref.id.replace(/^(academic|acad|ward|sgt|int)[:\-_]/i, '');
         const aliases = ref.kind === 'sgt'
-          ? [getSGTKey(ref.id), ref.name]
+          ? [getSGTKey(ref.id), `sgt:${id}`, `sgt-${id}`, `sgt_${id}`, ref.name]
           : ref.domain === 'clinical'
-            ? [canonical, `ward-${ref.name}`, ref.name]
+            ? [canonical, `ward:${id}`, `ward-${ref.name}`, `ward_${ref.name}`, `ward-${id}`, `ward_${id}`, ref.name]
             : ref.kind === 'integrated'
-              ? [canonical, `academic:${ref.id}`, ref.name]
-              : [canonical, ref.name];
-        if (ref.domain === 'clinical' && ref.kind !== 'sgt') knownWardKeys.add(canonical);
-        else knownSubjectKeys.add(canonical);
-        const source = aliases.find(k => (ref.domain === 'clinical' && ref.kind !== 'sgt' ? currentWards[k] : currentSubjects[k]) !== undefined);
+              ? [canonical, `int:${id}`, `int-${id}`, `int_${id}`, `academic:int:${id}`, `academic-int:${id}`, `academic_int:${id}`, ref.name]
+              : [canonical, `academic:${id}`, `acad:${id}`, `academic-${id}`, `academic_${id}`, `acad-${id}`, `acad_${id}`, ref.name];
+        const aliasSet = new Set(aliases.map(alias => alias.toLowerCase()));
+        if (ref.domain === 'clinical' && ref.kind !== 'sgt') {
+          knownWardKeys.add(canonical);
+          aliases.forEach(alias => knownWardKeys.add(alias));
+        } else {
+          knownSubjectKeys.add(canonical);
+          aliases.forEach(alias => knownSubjectKeys.add(alias));
+        }
+        const store = ref.domain === 'clinical' && ref.kind !== 'sgt' ? currentWards : currentSubjects;
+        const source = Object.keys(store).find(key => aliasSet.has(key.toLowerCase()));
         if (!source || source === canonical) continue;
         if (ref.domain === 'clinical' && ref.kind !== 'sgt') {
           if (nextWards[canonical] === undefined) nextWards[canonical] = currentWards[source];
@@ -584,13 +592,13 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       for (const key of Object.keys(currentSubjects)) {
-        if (key.startsWith('academic:') || key.startsWith('sgt:') || migratedSubjectAliases.has(key)) continue;
+        if (knownSubjectKeys.has(key) || migratedSubjectAliases.has(key)) continue;
         orphaned.push({ originalKey: key, type: 'subject', data: currentSubjects[key] });
         delete nextSubjects[key];
         delete nextFinished[key];
       }
       for (const key of Object.keys(currentWards)) {
-        if (key.startsWith('ward:') || migratedWardAliases.has(key)) continue;
+        if (knownWardKeys.has(key) || migratedWardAliases.has(key)) continue;
         orphaned.push({ originalKey: key, type: 'ward', data: currentWards[key] });
         delete nextWards[key];
         delete nextFinished[key];
@@ -605,7 +613,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       for (const [finishedKey, finished] of Object.entries(currentFinished)) {
-        if (nextFinished[finishedKey] !== undefined && (finishedKey.startsWith('academic:') || finishedKey.startsWith('ward:') || finishedKey.startsWith('sgt:'))) continue;
+        if (nextFinished[finishedKey] !== undefined && (knownSubjectKeys.has(finishedKey) || knownWardKeys.has(finishedKey) || migratedSubjectAliases.has(finishedKey) || migratedWardAliases.has(finishedKey))) continue;
         if (nextSubjects[finishedKey] === undefined && nextWards[finishedKey] === undefined) {
           orphaned.push({ originalKey: finishedKey, type: 'finished', data: finished });
           delete nextFinished[finishedKey];
