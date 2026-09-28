@@ -673,6 +673,7 @@ export default function Home() {
       isWard: boolean;
       plannedHint?: number;
       rawId: string;
+      storageKey: string;
     }>();
     const addRecords = (records: Record<string, { attended: number; missed: number }>, isWard: boolean) => Object.entries(records).forEach(([storageKey, item]) => {
       const resolved = resolveSubjectAlert(storageKey);
@@ -693,6 +694,7 @@ export default function Home() {
         isWard,
         plannedHint: previous?.plannedHint ?? resolved.plannedHint,
         rawId: previous?.rawId ?? storageKey.replace(/^(academic:|acad:|ward:|sgt:|int:)/, ''),
+        storageKey: previous?.storageKey ?? storageKey,
       });
     });
     addRecords(subjects, false);
@@ -705,22 +707,24 @@ export default function Home() {
         || source.find(item => item.name.trim().toLowerCase() === nameKey);
       const customWardItem = customWards.find(item => item.id.trim().toLowerCase() === rawId)
         || customWards.find(item => item.name.trim().toLowerCase() === nameKey);
-      const registryItem = subjectRegistry.find(item => item.id.trim().toLowerCase() === rawId);
+      const registryItem = subjectRegistry.find(item => {
+        const registryId = item.id.trim().toLowerCase();
+        return registryId === rawId || registryId === metric.storageKey.trim().toLowerCase();
+      });
       const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS]
-        .find(item => item.id.trim().toLowerCase() === rawId || item.name.trim().toLowerCase() === nameKey);
+        .find(item => ('id' in item && item.id.trim().toLowerCase() === rawId) || item.name.trim().toLowerCase() === nameKey);
+      const presetPlanned = preset && 'total' in preset ? preset.total : undefined;
       const planned = metric.plannedHint ?? registryItem?.planned ?? (metric.isWard
         ? subjectMode === 'custom' && customWardItem
           ? getCustomWardTotalPlanned(customWardItem.startDate, customWardItem.endDate, customWardItem.vacationPeriods)
           : getPresetWardTotalPlanned(metric.name)
-        : sourceItem?.plannedClasses ?? (preset && INTEGRATED_SUBJECTS.some(item => item.id === preset.id) ? preset.total : getSubjectPlannedTotal(metric.name)));
+        : sourceItem?.plannedClasses ?? presetPlanned);
       const conducted = metric.attended + metric.missed;
-      const hasAttendance = conducted > 0;
-      const effectivePlanned = planned > 0 ? planned : hasAttendance ? conducted + 1 : 0;
-      const remaining = Math.max(0, effectivePlanned - conducted);
+      const remaining = planned === undefined ? 0 : Math.max(0, planned - conducted);
       const current = conducted === 0 ? 0 : (metric.attended / conducted) * 100;
-      const maximum = effectivePlanned > 0 ? ((metric.attended + remaining) / effectivePlanned) * 100 : current;
-      return { ...metric, current, maximum, remaining, planned: effectivePlanned, hasAttendance };
-    }).filter(item => !item.manuallyFinished && (item.planned > 0 || item.hasAttendance) && (item.remaining > 0 || item.hasAttendance)).sort((a, b) => a.current - b.current);
+      const maximum = planned && planned > 0 ? ((metric.attended + remaining) / planned) * 100 : current;
+      return { ...metric, current, maximum, remaining, planned: planned ?? 0 };
+    }).filter(item => !item.manuallyFinished && item.planned > 0 && item.remaining > 0).sort((a, b) => a.current - b.current);
   }, [customSubjects, customWards, finishedMap, getCustomWardTotalPlanned, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, subjectRegistry, userAddedSubjects, wards]);
   const subjectAlertMetrics = allPotentialMetrics.filter(item => item.current < preferredPercentage);
   const statusForEntry = (entry: DayEntry) => {
