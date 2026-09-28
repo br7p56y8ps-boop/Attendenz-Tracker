@@ -1487,7 +1487,7 @@ export default function Settings() {
                 <button type="button" onClick={() => handleApplyUpdate(true)} className="action-button action-button--transfer w-full">
                   <Download className="w-4 h-4" /><span>Backup & Update</span>
                 </button>
-                <button type="button" onClick={() => handleApplyUpdate(false)} className="action-button action-button--neutral w-full">Update</button>
+                <button type="button" onClick={() => handleApplyUpdate(false)} className="action-button action-button--neutral w-full">Update without Backup</button>
                 <button type="button" onClick={() => { localStorage.setItem('att_update_gate_dismissed_version', serverVersion); setShowUpdatePrompt(false); }} className="action-button action-button--cancel w-full">Remind Later</button>
               </div>
         </ModalSheet>
