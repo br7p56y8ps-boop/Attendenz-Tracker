@@ -3,17 +3,17 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import { Heart, Stethoscope, Syringe, Calendar, Hospital } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 
 const NAV_ITEMS = [
   { path: '/',          label: 'Home',      description: 'Classes and attendance by date', Icon: Heart },
   { path: '/subjects',  label: 'Subjects',  description: 'Progress, targets, and subject groups', Icon: Stethoscope },
   { path: '/add-new',   label: 'Manage',    description: 'Build your academic and clinical routine', Icon: Syringe },
-  { path: '/calendar',  label: 'Timetable', description: 'Weekly routine, rotations, and statistics', Icon: Calendar },
+  { path: '/calendar',  label: 'Timetable', description: 'Weekly routine, clinical postings, and rotations', Icon: Calendar },
   { path: '/account',   label: 'Settings',  description: 'Preferences, backups, and app settings', Icon: Hospital },
 ] as const;
 
-export const Layout = ({ children, headerRight, headerBottom, mainClassName, contentClassName, bottomNavClassName }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode; mainClassName?: string; contentClassName?: string; bottomNavClassName?: string }) => {
+export const Layout = ({ children, headerRight, headerBottom, headerTitle, headerDescription, mainClassName, contentClassName, bottomNavClassName }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode; headerTitle?: React.ReactNode; headerDescription?: React.ReactNode; mainClassName?: string; contentClassName?: string; bottomNavClassName?: string }) => {
   const [location, setLocation] = useLocation();
   const headerRef = useRef<HTMLElement>(null);
   const navTouchStartX = useRef<number | null>(null);
@@ -38,15 +38,15 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
 
   return (
     <div
-      className="app-shell min-h-[100dvh] pb-0 bg-background flex flex-col text-foreground transition-colors duration-300"
+      className="app-shell h-[100dvh] pb-0 bg-background flex flex-col text-foreground transition-colors duration-300"
       style={{ '--app-header-height': `${headerHeight}px`, '--app-bottom-nav-height': '4.5rem', '--app-bottom-nav-offset': '0px' } as React.CSSProperties}
     >
       <header ref={headerRef} className="fixed inset-x-0 top-0 z-50 border-b border-black/20 dark:border-white/20 bg-card rounded-b-[28px] shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
-        <div className="max-w-3xl mx-auto w-full px-4 pt-[env(safe-area-inset-top)] py-3">
-          <div className="flex items-center justify-between gap-3 min-h-[4.5rem]">
-            <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{currentItem.label}</h1>
-              <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{currentItem.description}</p>
+        <div className="max-w-3xl mx-auto w-full px-4 pt-[env(safe-area-inset-top)] py-2">
+          <div className="flex items-center justify-between gap-3 min-h-0">
+            <div className="min-w-0 space-y-0.5">
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{headerTitle ?? currentItem.label}</h1>
+              {(headerDescription ?? currentItem.description) && <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{headerDescription ?? currentItem.description}</p>}
             </div>
             {headerRight}
           </div>
@@ -54,7 +54,7 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
         </div>
       </header>
 
-      <main className={cn('flex-1 max-w-3xl mx-auto w-full px-4', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom))' }}>
+      <main className={cn('flex-1 min-h-0 max-w-3xl mx-auto w-full px-4 overflow-y-auto', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom))' }}>
         <div key={location} className={contentClassName}>
           {children}
         </div>
@@ -65,7 +65,7 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
         transition={{ type: 'spring', stiffness: 260, damping: 26 }}
         className={cn(
           'fixed bottom-0 left-0 right-0 md:left-0 md:right-0 md:w-full',
-          'bottom-nav-surface bg-card border-x-0 border-b-0 border-t border-black/20 dark:border-white/20 rounded-t-[28px] rounded-b-none pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-[0_-16px_40px_rgba(0,0,0,0.25)] z-40',
+          'bottom-nav-surface bg-card/90 backdrop-blur-xl overflow-hidden border-x-0 border-b-0 border-t border-black/20 dark:border-white/20 rounded-t-[28px] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-none z-40',
           'transition-all duration-300', bottomNavClassName
         )}
       >
@@ -74,12 +74,22 @@ export const Layout = ({ children, headerRight, headerBottom, mainClassName, con
             const active = location === path;
             return (
               <button type="button" key={path} onClick={() => setLocation(path)} className={cn(
-                'flex flex-col items-center justify-center flex-1 h-full space-y-1 transition-all duration-300 relative rounded-2xl active:scale-90',
-                active ? 'text-primary filter drop-shadow-[0_0_8px_rgba(10,132,255,0.4)]' : 'text-muted-foreground/60 hover:text-foreground'
+                'relative flex h-full flex-1 flex-col items-center justify-center transition-colors duration-200 active:scale-95',
+                active ? 'text-primary' : 'text-muted-foreground/60 hover:text-foreground'
               )}>
-                {active && <motion.span layoutId="selected-tab-indicator" className="absolute inset-0 -z-10 rounded-2xl bg-primary/10" transition={{ type: 'spring', stiffness: 420, damping: 32 }} />}
-                <Icon className={cn('w-6 h-6 transition-transform duration-300', active ? 'scale-110' : 'scale-100')} strokeWidth={active ? 2.5 : 2} />
-                <span className={cn('text-[10px] font-medium tracking-wide transition-all duration-300', active ? 'font-bold text-primary' : 'text-muted-foreground/60')}>{label}</span>
+                {active && <motion.span layoutId="selected-tab-indicator" className="absolute inset-1 rounded-2xl bg-primary/10" transition={{ duration: 0.25, ease: 'easeOut' }} />}
+                <span className="relative z-10 flex flex-col items-center gap-0.5">
+                  <Icon className="h-5 w-5" strokeWidth={active ? 2.5 : 2} />
+                  <AnimatePresence initial={false} mode="popLayout">
+                    <motion.span
+                      initial={{ opacity: 0, y: 3 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 3 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                      className="text-[9px] font-bold leading-none"
+                    >{label}</motion.span>
+                  </AnimatePresence>
+                </span>
               </button>
             );
           })}

@@ -62,11 +62,9 @@ export const WARD_SUBJECTS = [
 // B5: dates authored in human dd/mm/yy via D(); stored value is yyyy-mm-dd.
 export const WARD_SCHEDULE = [
   { start: D('24/01/26'), end: D('27/02/26'), ward: 'General Surgery' },
-  { start: D('28/02/26'), end: D('13/03/26'), ward: 'Pediatrics' },
-  { start: D('14/03/26'), end: D('27/03/26'), ward: 'Holiday' },
+  { start: D('28/02/26'), end: D('13/03/26'), ward: 'Pediatrics', vacationPeriods: [{ start: D('14/03/26'), end: D('27/03/26') }] },
   { start: D('28/03/26'), end: D('10/04/26'), ward: 'Pediatrics' },
-  { start: D('11/04/26'), end: D('22/05/26'), ward: 'Internal Medicine' },
-  { start: D('23/05/26'), end: D('05/06/26'), ward: 'Holiday' },
+  { start: D('11/04/26'), end: D('22/05/26'), ward: 'Internal Medicine', vacationPeriods: [{ start: D('23/05/26'), end: D('05/06/26') }] },
   { start: D('06/06/26'), end: D('12/06/26'), ward: 'Internal Medicine' },
   { start: D('13/06/26'), end: D('26/06/26'), ward: 'Dermatology' },
   { start: D('27/06/26'), end: D('03/07/26'), ward: 'Urology' },
@@ -75,8 +73,7 @@ export const WARD_SCHEDULE = [
   { start: D('18/07/26'), end: D('07/08/26'), ward: 'Orthopaedics' },
   { start: D('08/08/26'), end: D('18/09/26'), ward: 'Obstetrics & Gynaecology' },
   { start: D('19/09/26'), end: D('02/10/26'), ward: 'Psychiatry' },
-  { start: D('03/10/26'), end: D('16/10/26'), ward: 'Otolaryngology' },
-  { start: D('17/10/26'), end: D('23/10/26'), ward: 'Holiday' },
+  { start: D('03/10/26'), end: D('16/10/26'), ward: 'Otolaryngology', vacationPeriods: [{ start: D('17/10/26'), end: D('23/10/26') }] },
   { start: D('24/10/26'), end: D('06/11/26'), ward: 'Ophthalmology' },
 ];
 

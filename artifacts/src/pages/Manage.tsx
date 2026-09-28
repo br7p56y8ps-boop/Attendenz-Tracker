@@ -1,7 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { useLocation } from 'wouter';
-import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { CountStepper } from '@/components/CountStepper';
 import {
@@ -20,13 +17,12 @@ import {
   getSubjectColor,
 } from '@/lib/utils';
 import { triggerConfirmationFeedback } from '@/lib/feedback';
-import { useModalAccessibility } from '@/components/ui/dialog';
-import { storageSetItem } from '@/lib/idb';
+import { ModalSheet } from '@/components/ui/modal-sheet';
+import { idbGetAllChecked, storageCommitChecked, storageSetItem } from '@/lib/idb';
 import { notifyManageChange } from '@/lib/webPush';
 import { PRESET_PARENTS, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
-import { getCurricula } from '@/lib/curriculumStore';
 import {
-  Plus, Trash2, X, AlertTriangle,
+  Plus, Trash2, Undo2, X, AlertTriangle,
   GraduationCap, Stethoscope,
   Check, ChevronDown, ChevronRight, SendToBack, Pencil,
 } from 'lucide-react';
@@ -51,6 +47,138 @@ const inlineErrCls =
 const CREATE_NEW = '__create_new__';
 const DAY_AFTER_HOLIDAY_INDEX = 6; // Saturday follows the app-wide Friday holiday boundary.
 
+const CASCADE_STORAGE_KEYS = [
+  'attendance_tracker_subjects_preset', 'attendance_tracker_subjects_custom', 'attendance_tracker_subjects',
+  'attendance_tracker_ward_preset', 'attendance_tracker_ward_custom', 'attendance_tracker_ward',
+  'attendance_tracker_home_selections_preset', 'attendance_tracker_home_selections_custom', 'attendance_tracker_home_selections',
+  'attendance_tracker_finished_map_preset', 'attendance_tracker_finished_map_custom', 'attendance_tracker_finished_map',
+  'attendance_tracker_orphaned_records', 'att_preset_ward_schedule',
+] as const;
+
+const CASCADE_ALIAS_KEYS = new Set([
+  'att_user_added_subjects', 'att_custom_subjects', 'att_custom_wards', 'att_preset_timetable', 'att_timetable', 'att_preset_ward_schedule',
+]);
+
+const removeNamesFromTimetable = (timetable: Record<string, unknown>, names: Set<string>): boolean => {
+  let changed = false;
+  for (const day of Object.keys(timetable)) {
+    if (!Array.isArray(timetable[day])) continue;
+    const next = (timetable[day] as any[]).map(slot => {
+      if (!slot || !Array.isArray(slot.subjects)) return slot;
+      const subjects = slot.subjects.filter((name: unknown) => typeof name !== 'string' || !names.has(name.trim().toLowerCase()));
+      return subjects.length === slot.subjects.length ? slot : { ...slot, subjects };
+    }).filter(slot => slot?.type === 'ward' || slot?.type === 'ward_replacement' || slot?.subjects?.length > 0);
+    if (JSON.stringify(next) !== JSON.stringify(timetable[day])) { timetable[day] = next; changed = true; }
+  }
+  return changed;
+};
+
+const cascadeDeleteStoredEntity = async (ids: string[], type: 'subject' | 'ward', names: string[]): Promise<void> => {
+  const exactKeys = new Set(ids.flatMap(id => [id, `academic:${id}`, `sgt:${id}`, `ward:${id}`, `int:${id}`].map(key => key.toLowerCase())));
+  const nameSet = new Set(names.map(name => name.trim().toLowerCase()).filter(Boolean));
+  const allData = await idbGetAllChecked();
+  const entries: Array<[string, string]> = [];
+
+  for (const key of CASCADE_STORAGE_KEYS) {
+    const raw = allData[key];
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown> | unknown[];
+      if (key === 'attendance_tracker_orphaned_records' && Array.isArray(parsed)) {
+        const next = parsed.filter(record => {
+          const originalKey = typeof record === 'object' && record !== null && typeof (record as { originalKey?: unknown }).originalKey === 'string'
+            ? String((record as { originalKey: string }).originalKey).toLowerCase()
+            : '';
+          return !exactKeys.has(originalKey) && !ids.some(id => originalKey === id.toLowerCase());
+        });
+        if (next.length !== parsed.length) entries.push([key, JSON.stringify(next)]);
+        continue;
+      }
+      if (key === 'att_preset_ward_schedule' && Array.isArray(parsed)) {
+        const next = parsed.filter(entry => typeof entry !== 'object' || entry === null || !nameSet.has(String((entry as { ward?: unknown }).ward || '').trim().toLowerCase()));
+        if (next.length !== parsed.length) entries.push([key, JSON.stringify(next)]);
+        continue;
+      }
+      if (!parsed || Array.isArray(parsed)) continue;
+      const isWardStore = key.includes('_ward_') || key.endsWith('_ward');
+      const isSharedEntityStore = key.includes('_home_selections') || key.includes('_finished_map');
+      const shouldClean = isSharedEntityStore || (type === 'ward' ? isWardStore : !isWardStore);
+      const next = { ...parsed };
+      let changed = false;
+      if (shouldClean) {
+        for (const storedKey of Object.keys(next)) {
+          const lower = storedKey.toLowerCase();
+          if (exactKeys.has(lower)) { delete next[storedKey]; changed = true; continue; }
+          if (key.includes('home_selections')) {
+            const rest = lower.replace(/^\d{4}-\d{2}-\d{2}[-_]/, '');
+            if ([...exactKeys].some(exact => rest === exact || rest.startsWith(`${exact}-`) || rest.startsWith(`${exact}_`))) {
+              delete next[storedKey]; changed = true;
+            }
+          }
+        }
+      }
+      if (changed) entries.push([key, JSON.stringify(next)]);
+    } catch { /* preserve malformed unrelated data */ }
+  }
+
+  for (const key of ['att_preset_timetable', 'att_timetable']) {
+    const raw = allData[key];
+    if (!raw) continue;
+    try {
+      const timetable = JSON.parse(raw);
+      if (timetable && typeof timetable === 'object' && !Array.isArray(timetable) && removeNamesFromTimetable(timetable, nameSet)) {
+        entries.push([key, JSON.stringify(timetable)]);
+      }
+    } catch { /* preserve malformed unrelated data */ }
+  }
+
+  for (const key of Object.keys(allData)) {
+    if (!key.startsWith('att_curriculum_bundle_')) continue;
+    try {
+      const bundle = JSON.parse(allData[key]) as Record<string, string>;
+      let changed = false;
+      for (const alias of CASCADE_STORAGE_KEYS) {
+        if (bundle[alias] === undefined || alias === 'attendance_tracker_orphaned_records') continue;
+        const isWardStore = alias.includes('_ward_') || alias.endsWith('_ward');
+        if ((type === 'ward') !== isWardStore) continue;
+        const map = JSON.parse(bundle[alias]) as Record<string, unknown>;
+        if (!map || Array.isArray(map)) continue;
+        for (const storedKey of Object.keys(map)) {
+          const lower = storedKey.toLowerCase();
+          const rest = lower.replace(/^\d{4}-\d{2}-\d{2}[-_]/, '');
+          if (exactKeys.has(lower) || (alias.includes('home_selections') && [...exactKeys].some(exact => rest === exact || rest.startsWith(`${exact}-`) || rest.startsWith(`${exact}_`)))) {
+            delete map[storedKey];
+            changed = true;
+          }
+        }
+        if (changed) bundle[alias] = JSON.stringify(map);
+      }
+      for (const alias of CASCADE_ALIAS_KEYS) {
+        if (bundle[alias] === undefined) continue;
+        if (alias.includes('timetable') || alias === 'att_preset_ward_schedule') {
+          const timetable = JSON.parse(bundle[alias]);
+          if (alias === 'att_preset_ward_schedule' && Array.isArray(timetable)) {
+            const next = timetable.filter(entry => typeof entry !== 'object' || entry === null || !nameSet.has(String((entry as { ward?: unknown }).ward || '').trim().toLowerCase()));
+            if (next.length !== timetable.length) { bundle[alias] = JSON.stringify(next); changed = true; }
+          } else if (timetable && typeof timetable === 'object' && !Array.isArray(timetable)) {
+            changed = removeNamesFromTimetable(timetable as Record<string, unknown>, nameSet) || changed;
+            if (changed) bundle[alias] = JSON.stringify(timetable);
+          }
+        } else if (alias === 'att_user_added_subjects' || alias === 'att_custom_subjects' || alias === 'att_custom_wards') {
+          const list = JSON.parse(bundle[alias]);
+          if (Array.isArray(list)) {
+            const next = list.filter(item => !ids.includes(item?.id) && !nameSet.has(String(item?.name || '').trim().toLowerCase()));
+            if (next.length !== list.length) { bundle[alias] = JSON.stringify(next); changed = true; }
+          }
+        }
+      }
+      if (changed) entries.push([key, JSON.stringify(bundle)]);
+    } catch { /* preserve malformed unrelated bundle */ }
+  }
+
+  if (entries.length > 0) await storageCommitChecked(entries);
+};
+
 const genId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 const splitRange = (range: string): { start: string; end: string } => {
@@ -59,36 +187,16 @@ const splitRange = (range: string): { start: string; end: string } => {
   if (m) return { start: m[1], end: m[2] };
   return { start: '09:00 AM', end: '10:00 AM' };
 };
-function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, footer, heightClass = 'max-h-[85vh]', bodyClassName = 'overflow-y-auto', dense = false }: {
+function OverlayModal({ open, onClose, children, maxW = 'max-w-md', header, footer, heightClass = 'max-h-[80dvh]', bodyClassName = 'overflow-y-auto', dense = false }: {
   open: boolean; onClose: () => void; children: React.ReactNode; maxW?: string;
   header?: React.ReactNode; footer?: React.ReactNode; heightClass?: string; bodyClassName?: string; dense?: boolean;
 }) {
-  const modalRef = useModalAccessibility(open, onClose);
-
-  if (!open) return null;
-  if (typeof document === 'undefined') return null;
-  return createPortal(
-    <div ref={modalRef} className="fixed inset-0 z-[120] flex items-end justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, y: 48 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 48 }}
-        layout
-        transition={{ type: 'spring', damping: 26, stiffness: 320, layout: { type: 'spring', damping: 28, stiffness: 300 } }}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Manage dialog"
-        tabIndex={-1}
-        className={cn('modal-sheet-content relative bg-card backdrop-blur-2xl border border-border/80 rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.42)] w-full max-h-[min(70dvh,48rem)] min-h-[12rem] flex flex-col overflow-hidden', maxW, heightClass)}
-        onClick={e => e.stopPropagation()}
-      >
-        {header && <div className={cn('shrink-0 border-b border-border/40', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
-        <div className={cn('flex-1 min-h-0', bodyClassName)}>{children}</div>
-        {footer && <div className={cn('shrink-0 border-t border-border/40', dense ? 'px-3 sm:px-4 pb-2.5 sm:pb-3 pt-1.5' : 'px-4 sm:px-5 pb-4 sm:pb-5 pt-3')}>{footer}</div>}
-      </motion.div>
-    </div>,
-    document.body
+  return (
+    <ModalSheet open={open} onClose={onClose} maxWidth={maxW} className={heightClass} bodyClassName={bodyClassName} ariaLabel="Manage dialog"
+      header={header && <div className={cn('shrink-0', dense ? 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5' : 'px-4 sm:px-5 pt-4 sm:pt-5 pb-3')}>{header}</div>}
+      footer={footer && <div className={cn('shrink-0', dense ? 'px-3 sm:px-4 pb-2.5 sm:pb-3 pt-1.5' : 'px-4 sm:px-5 pb-4 sm:pb-5 pt-3')}>{footer}</div>}>
+      <div className="min-h-0">{children}</div>
+    </ModalSheet>
   );
 }
 
@@ -159,7 +267,7 @@ interface EditWardState {
 }
 interface EditSlotState {
   day: number; index: number; startTime: string; endTime: string; targetDay: number;
-  subjects: Array<{ name: string; planned: number; id: string }>;
+  subjects: Array<{ name: string; planned: number; id: string; canonicalId?: string }>;
   multiSelectMode: boolean;
 }
 const newRow = (usedDays: string[]): ScheduleRow => {
@@ -230,21 +338,21 @@ const formatHistoryDetail = (entry: any): string => {
     case 'Deleted Rotation':
       return d.ward || d.name || '';
     case 'Edited Subject':
-      return d.new?.name || d.old?.name || '';
+      return `${d.name || d.new?.name || d.old?.name || ''}: ${(d.changes || []).join('; ') || 'updated'}`;
     case 'Edited Ward':
-      return d.new?.name || d.old?.name || '';
+      return `${d.name || d.new?.name || d.old?.name || ''}: ${(d.changes || []).join('; ') || 'updated'}`;
     case 'Changed Parent':
       return `→ ${d.newParent || 'Single'}`;
     case 'Changed Clinical Subject':
       return `${d.name || ''}: ${d.from || '—'} → ${d.to || ''}`;
     case 'Added Subject':
-      return (d.names || []).join(', ');
+      return d.details?.length ? d.details.map((item: any) => `${item.name} · ${item.schedule || 'schedule not set'} · ${item.planned ?? 0} planned`).join('; ') : (d.names || []).join(', ');
     case 'Added Rotation':
       return `${d.name || ''} (${d.start || ''} – ${d.end || ''})`;
     case 'Added SGT':
       return `${d.name || ''} under ${d.clinicalSubject || ''} · ${d.planned || 0} planned`;
     case 'Edited Planned':
-      return `${d.name || ''}: → ${d.planned ?? ''}`;
+      return `${d.name || ''}: planned classes updated to ${d.planned ?? ''}`;
     default:
       return '';
   }
@@ -321,7 +429,7 @@ function VacationEditor({ vacations, onChange }: {
             <div key={v.id} className="flex items-center gap-1.5">
               <input type="date" value={v.start} onChange={e => onChange(vacations.map(x => x.id === v.id ? { ...x, start: e.target.value } : x))} className={cn(inputCls, 'h-8 text-center text-xs')} />
               <input type="date" value={v.end} onChange={e => onChange(vacations.map(x => x.id === v.id ? { ...x, end: e.target.value } : x))} className={cn(inputCls, 'h-8 text-center text-xs')} />
-              <button type="button" onClick={() => onChange(vacations.filter(x => x.id !== v.id))} className="shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer">Remove</button>
+              <button type="button" onClick={() => onChange(vacations.filter(x => x.id !== v.id))} className="action-button action-button--danger action-button--icon action-button--compact" aria-label="Remove day and time"><Undo2 className="w-3.5 h-3.5" /></button>
             </div>
           ))}
           <button type="button" onClick={() => onChange([...vacations, { id: genId('vac'), start: '', end: '' }])} className={cn(btnGhost, 'w-full flex items-center justify-center gap-1.5')}>
@@ -356,7 +464,6 @@ export default function Manage() {
     getPresetWardDisplayName,
   } = useCustomData();
   const { removeSubjectData, removeWardData, removeAttendanceByKey, reopenFinishedIfPlanIncreased } = useAttendance();
-  const [, setLocation] = useLocation();
 
   const [note, setNote] = useState<{ msg: string; kind: 'ok' | 'err' | 'info' } | null>(null);
   const noteTimer = useRef<number | null>(null);
@@ -364,12 +471,17 @@ export default function Manage() {
     if (kind === 'ok') triggerConfirmationFeedback('success');
     if (noteTimer.current) window.clearTimeout(noteTimer.current);
     setNote({ msg, kind });
-    noteTimer.current = window.setTimeout(() => setNote(null), 2600);
+    noteTimer.current = window.setTimeout(() => setNote(null), 10000);
   };
   useEffect(() => () => { if (noteTimer.current) window.clearTimeout(noteTimer.current); }, []);
 
   const [formError, setFormError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!formError && !editError) return;
+    const timer = window.setTimeout(() => { setFormError(null); setEditError(null); }, 10000);
+    return () => window.clearTimeout(timer);
+  }, [formError, editError]);
   const [moreOpen, setMoreOpen] = useState(false);
   const [section, setSection] = useState<'academic' | 'clinical'>('academic');
   const [returnToMoreAfterAdd, setReturnToMoreAfterAdd] = useState(false);
@@ -411,7 +523,7 @@ export default function Manage() {
   const [slotMoveStart, setSlotMoveStart] = useState('09:00 AM');
   const [slotMoveEnd, setSlotMoveEnd] = useState('10:00 AM');
   const [slotConflict, setSlotConflict] = useState<{ messages: string[]; onConfirm: () => void } | null>(null);
-  const [slotRemove, setSlotRemove] = useState<{ subject: string; day: number; index: number; time: string; start: string; end: string } | null>(null);
+  const [slotRemove, setSlotRemove] = useState<{ subject: string; subjectId?: string; day: number; index: number; time: string; start: string; end: string } | null>(null);
   const [slotRemoveConfirm, setSlotRemoveConfirm] = useState(false);
   const [slotRemoveAllConfirm, setSlotRemoveAllConfirm] = useState(false);
   const [showMoveForm, setShowMoveForm] = useState(false);
@@ -426,7 +538,6 @@ export default function Manage() {
   const [addSlotPlanned, setAddSlotPlanned] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const [noActiveCurriculumMessage, setNoActiveCurriculumMessage] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
   const [historyClearEntry, setHistoryClearEntry] = useState<any | null>(null);
   const [editDataOpen, setEditDataOpen] = useState(false);
@@ -547,19 +658,10 @@ export default function Manage() {
   }, [subjectMode, userAddedSubjects, customSubjects]);
 
   const openMoreMenu = () => {
-    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
-      setNoActiveCurriculumMessage(true);
-      return;
-    }
     setMoreMenuOpen(true);
   };
 
   const openEditDataFromMore = () => {
-    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
-      setMoreMenuOpen(false);
-      setNoActiveCurriculumMessage(true);
-      return;
-    }
     setMoreMenuOpen(false);
     setReturnToMoreAfterEditData(true);
     setEditDataOpen(true);
@@ -618,8 +720,14 @@ export default function Manage() {
       const updated = prev.filter(item => item.id !== entry.id);
       try {
         localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-        void storageSetItem(HISTORY_KEY, JSON.stringify(updated));
-      } catch {}
+        void storageSetItem(HISTORY_KEY, JSON.stringify(updated)).catch(error => {
+          console.error('Manage history persistence failed.', error);
+          showToast('Could not save the history change.');
+        });
+      } catch (error) {
+        console.error('Manage history persistence failed.', error);
+        showToast('Could not save the history change.');
+      }
       return updated;
     });
     setHistoryClearEntry(null);
@@ -644,10 +752,6 @@ export default function Manage() {
 
   const openAddSlot = () => { setAddSlotSubject(''); setAddSlotStart('09:00 AM'); setAddSlotEnd('10:00 AM'); setAddSlotPlanned(0); setFormError(null); setAddSlotOpen(true); setAddSuccess(false); };
   const openAddFromMore = () => {
-    if (!getCurricula().some(curriculum => curriculum.status === 'active')) {
-      setNoActiveCurriculumMessage(true);
-      return;
-    }
     setMoreMenuOpen(false);
     setReturnToMoreAfterAdd(true);
     setFormError(null);
@@ -788,7 +892,7 @@ export default function Manage() {
         })));
       }
       const academicItems = items.filter((i: any) => i.subjectType !== 'allied-parent');
-      if (academicItems.length > 0) recordHistory('Added Subject', { names: academicItems.map((i: any) => i.name) });
+      if (academicItems.length > 0) recordHistory('Added Subject', { names: academicItems.map((i: any) => i.name), details: academicItems.map((i: any) => ({ name: i.name, schedule: i.rows.map((row: any) => `${row.day} ${row.time}`).join(', '), planned: i.plannedClasses })) });
       setSubjectName(''); setPlanned(''); setSubjectRows([newRow([])]); setStagedChildren([]); setNewParentName(''); setChildStart(''); setChildEnd('');
       setFormError(null); showToast(items.length > 1 ? `${items.length} items added.` : 'Added successfully.');
       void notifyManageChange(items.length > 1 ? 'Your routine was updated successfully.' : `${items[0]?.name || 'Subject'} was added to your routine.`);
@@ -866,6 +970,7 @@ export default function Manage() {
         addCustomWards([{ name, startDate: start, endDate: end, morningTime, eveningTime, vacationPeriods: vacationData }]);
       }
       recordHistory('Added Rotation', { name, start, end });
+      if (vacations.length > 0) recordHistory('Set Vacation / Exam Period', { name, periods: vacationData });
       setWardName(''); setWardStart(''); setWardEnd(''); setWardVacations([]);
       setFormError(null); showToast('Rotation added.');
       void notifyManageChange(`${name} was added to your rotation schedule.`);
@@ -944,6 +1049,7 @@ export default function Manage() {
         if (subjectMode === 'preloaded') addUserAddedSubjects([newSubject as any]);
         else addCustomSubjects([newSubject as any]);
         recordHistory('Added SGT', { name: finalSgtName, clinicalSubject: clinicalSubjectName, planned: pc });
+        if (sgtVacations.length > 0) recordHistory('Set Vacation / Exam Period', { name: finalSgtName, periods: sgtVacations.map(v => ({ start: v.start, end: v.end })) });
         setSgtClinicalSubject(''); setSgtName(''); setSgtStartDate(''); setSgtEndDate(''); setSgtRows([newRow([])]); setSgtVacations([]);
         setFormError(null); showToast(`SGT added with ${pc} planned classes.`);
         void notifyManageChange(`${finalSgtName} was added to your routine.`);
@@ -974,7 +1080,10 @@ export default function Manage() {
         const cs = customSubjects.find(c => c.name === s && !isSGTRecord(c));
         if (cs) planned = cs.plannedClasses;
       }
-      return { name: s, planned, id: genId('sel') };
+      const canonicalId = subjectMode === 'preloaded'
+        ? userAddedSubjects.find(u => u.name === s && !isSGTRecord(u))?.id || getSubjectIdByName(s, 'academic') || undefined
+        : customSubjects.find(c => c.name === s && !isSGTRecord(c))?.id;
+      return { name: s, planned, id: genId('sel'), canonicalId };
     });
     setEditSlot({ day, index, startTime: start, endTime: end, targetDay: day, subjects, multiSelectMode: subjects.length > 1 });
     setSelectedSubjects([]); setSlotMoveTargetDay(day); setSlotMoveStart(start); setSlotMoveEnd(end);
@@ -1105,10 +1214,9 @@ export default function Manage() {
       const slot = presetTimetable[slotRemove.day]?.[slotRemove.index];
       if (slot) {
         const remaining = slot.subjects.filter(s => s !== slotRemove.subject);
-        updatePresetTimetableSlot(slotRemove.day, slotRemove.index, slot.time, remaining, slotRemove.day);
         const subject = subjectMode === 'preloaded'
-          ? userAddedSubjects.find(u => u.name.toLowerCase() === slotRemove.subject.toLowerCase() && !isSGTRecord(u))
-          : customSubjects.find(c => c.name.toLowerCase() === slotRemove.subject.toLowerCase() && !isSGTRecord(c));
+          ? userAddedSubjects.find(u => (slotRemove.subjectId ? u.id === slotRemove.subjectId : u.name.toLowerCase() === slotRemove.subject.toLowerCase()) && !isSGTRecord(u))
+          : customSubjects.find(c => (slotRemove.subjectId ? c.id === slotRemove.subjectId : c.name.toLowerCase() === slotRemove.subject.toLowerCase()) && !isSGTRecord(c));
         if (subject) {
           if (subjectMode === 'preloaded') {
             const schedules = (subject.schedules || []) as Array<{ day: string; start: string; end: string }>;
@@ -1116,9 +1224,11 @@ export default function Manage() {
             updateUserAddedSubject(subject.id, { schedules: filtered, days: filtered.map(s => s.day).join(', ') } as any);
           } else {
             const schedules = (subject.schedules || []) as Array<{ day: string; time: string }>;
-            const filtered = schedules.filter(s => !((s as any).day === DAY_ABBRS[slotRemove.day] && (s as any).start === slotRemove.start && (s as any).end === slotRemove.end));
+            const filtered = schedules.filter(s => !(s.day === DAY_ABBRS[slotRemove.day] && canonicalizeTimeRange(s.time) === canonicalizeTimeRange(slotRemove.time)));
             updateCustomSubject(subject.id, { schedules: filtered, days: filtered.map(s => s.day).join(', ') });
           }
+        } else {
+          updatePresetTimetableSlot(slotRemove.day, slotRemove.index, slot.time, remaining, slotRemove.day);
         }
         recordHistory('Removed from Slot', { subject: slotRemove.subject, day: slotRemove.day, time: slotRemove.time });
         showToast(`Removed "${slotRemove.subject}" from slot.`);
@@ -1136,9 +1246,10 @@ export default function Manage() {
       if (slot) {
         updatePresetTimetableSlot(editSlot.day, editSlot.index, slot.time, [], editSlot.day);
         for (const s of slot.subjects) {
+          const canonicalId = editSlot.subjects.find(item => item.name === s)?.canonicalId;
           const subject = subjectMode === 'preloaded'
-            ? userAddedSubjects.find(u => u.name.toLowerCase() === s.toLowerCase() && !isSGTRecord(u))
-            : customSubjects.find(c => c.name.toLowerCase() === s.toLowerCase() && !isSGTRecord(c));
+            ? userAddedSubjects.find(u => (canonicalId ? u.id === canonicalId : u.name.toLowerCase() === s.toLowerCase()) && !isSGTRecord(u))
+            : customSubjects.find(c => (canonicalId ? c.id === canonicalId : c.name.toLowerCase() === s.toLowerCase()) && !isSGTRecord(c));
           if (subject) {
             if (subjectMode === 'preloaded') {
               const schedules = (subject.schedules || []) as Array<{ day: string; start: string; end: string }>;
@@ -1167,7 +1278,7 @@ export default function Manage() {
     if (!item) return;
     setDeleteSheet({
       title: `Delete "${item.name}"?`,
-      lines: ['This subject and all its attendance records will be permanently removed.', 'This action cannot be undone.'],
+      lines: ['Deleting this subject will permanently remove its attendance records, planned classes, and any vacation or exam periods.', 'This action cannot be undone. Continue?'],
       onConfirm: () => {
         recordHistory('Deleted Subject', { name: item.name, store, id, category: isSGTRecord(item) ? 'SGT' : section === 'clinical' ? 'Clinical' : 'Academic' });
         try {
@@ -1178,6 +1289,13 @@ export default function Manage() {
               : customSubjects.filter(x => x.subjectType === 'allied' && getEffectiveParentName(x)?.toLowerCase() === item.name.toLowerCase());
             for (const k of kids) namesToPurge.push(k.name);
           }
+          const idsToPurge = [id];
+          if (item.subjectType === 'allied-parent') {
+            const kids = store === 'userAdded'
+              ? userAddedSubjects.filter(x => x.subjectType === 'allied' && getEffectiveParentName(x)?.toLowerCase() === item.name.toLowerCase())
+              : customSubjects.filter(x => x.subjectType === 'allied' && getEffectiveParentName(x)?.toLowerCase() === item.name.toLowerCase());
+            idsToPurge.push(...kids.map(k => k.id));
+          }
           if (store === 'userAdded') removeUserAddedSubject(id);
           else removeCustomSubject(id);
           if (isSGTRecord(item)) {
@@ -1185,6 +1303,7 @@ export default function Manage() {
           } else {
             for (const n of namesToPurge) removeSubjectData(n, getAcademicAttendanceKey(item.id));
           }
+          void cascadeDeleteStoredEntity(idsToPurge, 'subject', namesToPurge);
             setDeleteSheet(null); showToast(`Deleted "${item.name}".`);
             void notifyManageChange(`${item.name} was removed from your routine.`);
         } catch { showToast('Delete failed — please try again.', 'err'); }
@@ -1195,9 +1314,10 @@ export default function Manage() {
   const requestDeleteWard = (store: 'preset' | 'custom', ref: number | string) => {
     if (store === 'preset') {
       const idx = ref as number; const e = presetWardSchedule[idx]; if (!e) return;
+      if (!e.addedByUser) { showToast('Preset wards cannot be deleted.', 'info'); return; }
       setDeleteSheet({
         title: `Delete rotation "${e.ward}"?`,
-        lines: ['This rotation period', 'Calendar / schedule entries', 'All attendance records for this ward'],
+        lines: ['Deleting this rotation will permanently remove its attendance records, planned classes, and any vacation or exam periods.', 'This action cannot be undone. Continue?'],
         onConfirm: () => {
           recordHistory('Deleted Rotation', { ward: e.ward, index: idx });
           try {
@@ -1212,12 +1332,13 @@ export default function Manage() {
       const w = customWards.find(x => x.id === ref); if (!w) return;
       setDeleteSheet({
         title: `Delete rotation "${w.name}"?`,
-        lines: ['This rotation card', 'Calendar / schedule entries', 'All attendance records for this ward'],
+        lines: ['Deleting this rotation will permanently remove its attendance records, planned classes, and any vacation or exam periods.', 'This action cannot be undone. Continue?'],
         onConfirm: () => {
           recordHistory('Deleted Ward', { name: w.name, id: w.id });
           try {
             removeCustomWard(w.id);
             removeWardData(w.name, getWardAttendanceKey(w.id));
+            void cascadeDeleteStoredEntity([w.id], 'ward', [w.name]);
             setDeleteSheet(null); showToast(`Deleted "${w.name}".`);
             void notifyManageChange(`${w.name} was removed from your routine.`);
           } catch { showToast('Delete failed — please try again.', 'err'); }
@@ -1303,14 +1424,25 @@ export default function Manage() {
       const rp = rowProblem(editSubject.rows);
       if (rp) { setEditError(rp); return; }
     }
-    recordHistory('Edited Subject', { old: { name: editSubject.originalName }, new: { name: editSubject.name }, category: editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' ? 'SGT' : undefined });
+    const subjectRows = editSubject.subjectType === 'allied-parent' ? [] : buildRowsFromForm(editSubject.rows);
+    const subjectChanges = editSubject.subjectType === 'allied-parent'
+      ? [`renamed to ${editSubject.name}`]
+      : [
+          editSubject.name !== editSubject.originalName ? `renamed to ${editSubject.name}` : '',
+          `schedule updated to ${subjectRows.map(row => `${row.day} ${row.time}`).join(', ')}`,
+          `planned classes updated to ${editSubject.plannedClasses}`,
+          editSubject.subjectType === 'allied' && editSubject.parentName ? `parent set to ${editSubject.parentName}` : '',
+          editSubject.startDate && editSubject.endDate ? `dates set to ${editSubject.startDate}–${editSubject.endDate}` : '',
+          editSubject.vacationPeriods?.length ? `vacation/exam periods set to ${editSubject.vacationPeriods.map(period => `${period.start}–${period.end}`).join(', ')}` : '',
+        ].filter(Boolean);
+    recordHistory('Edited Subject', { name: editSubject.name, old: { name: editSubject.originalName }, new: { name: editSubject.name }, changes: subjectChanges, category: editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' ? 'SGT' : undefined });
     try {
       if (editSubject.subjectType === 'allied-parent') {
         const patch = { name: editSubject.name };
         if (editSubject.store === 'userAdded') updateUserAddedSubject(editSubject.id, patch);
         else updateCustomSubject(editSubject.id, patch);
       } else {
-        const rows = buildRowsFromForm(editSubject.rows);
+        const rows = subjectRows;
         const isSGT = editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching';
         let plannedClasses = editSubject.plannedClasses;
         if (isSGT) {
@@ -1372,11 +1504,18 @@ export default function Manage() {
       setEditError(`A ward named "${editWard.name}" already exists.`); return;
     }
 
-    recordHistory('Edited Ward', { old: { name: editWard.originalName }, new: { name: editWard.name } });
+    const morningTime = canonicalTimeRange(editWard.mornStart, editWard.mornEnd);
+    const eveningTime = canonicalTimeRange(editWard.eveStart, editWard.eveEnd);
+    const vacationData = (editWard.vacationPeriods || []).map(v => ({ start: v.start, end: v.end }));
+    const wardChanges = [
+      editWard.name.trim() !== editWard.originalName ? `renamed to ${editWard.name.trim()}` : '',
+      `dates changed to ${editWard.startDate}–${editWard.endDate}`,
+      `morning session time changed to ${morningTime}`,
+      `evening session time changed to ${eveningTime}`,
+      vacationData.length ? `vacation/exam periods set to ${vacationData.map(period => `${period.start}–${period.end}`).join(', ')}` : 'vacation/exam periods cleared',
+    ].filter(Boolean);
+    recordHistory('Edited Ward', { name: editWard.name.trim(), old: { name: editWard.originalName }, new: { name: editWard.name.trim() }, changes: wardChanges });
     try {
-      const morningTime = canonicalTimeRange(editWard.mornStart, editWard.mornEnd);
-      const eveningTime = canonicalTimeRange(editWard.eveStart, editWard.eveEnd);
-      const vacationData = (editWard.vacationPeriods || []).map(v => ({ start: v.start, end: v.end }));
       if (editWard.store === 'preset') {
         if (editWard.name.trim() !== editWard.originalName) {
           renamePresetWard(editWard.originalName, editWard.name.trim());
@@ -1420,7 +1559,7 @@ export default function Manage() {
       if (subjectMode === 'preloaded') {
         const seenWards = new Set<string>();
         WARD_SUBJECTS.forEach(w => { seenWards.add(w.name); presetItems.push({ id: `ward:${w.name}`, name: w.name, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(w.name) }); });
-        presetWardSchedule.forEach(e => { if (!seenWards.has(e.ward)) { seenWards.add(e.ward); presetItems.push({ id: `ward:${e.ward}`, name: e.ward, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(e.ward) }); } });
+        presetWardSchedule.forEach(e => { if (e.ward.trim().toLowerCase() !== 'holiday' && !seenWards.has(e.ward)) { seenWards.add(e.ward); presetItems.push({ id: `ward:${e.ward}`, name: e.ward, store: 'preset-ward' as const, category: 'Clinical' as const, deletable: false, planned: getPresetWardTotalPlanned(e.ward) }); } });
         userAddedSubjects.filter(s => isSGTRecord(s)).forEach(s => addedItems.push({ id: s.id, name: s.name, store: 'sgt' as const, category: 'SGT' as const, deletable: true, planned: s.plannedClasses }));
       } else {
         customWards.forEach(w => addedItems.push({ id: w.id, name: w.name, store: 'custom-ward' as const, category: 'Clinical' as const, deletable: true, planned: getCustomWardTotalPlanned(w.startDate, w.endDate, w.vacationPeriods) }));
@@ -1489,7 +1628,8 @@ export default function Manage() {
   const renderRowList = (
     rows: ScheduleRow[],
     onUpdate: (id: string, patch: Partial<ScheduleRow>) => void,
-    onRemove: (id: string) => void
+    onRemove: (id: string) => void,
+    iconRemove = false,
   ) => (
     <div className="space-y-2">
       {rows.map(r => (
@@ -1507,7 +1647,9 @@ export default function Manage() {
           </select>
           <TimeField value={r.startTime} onChange={v => onUpdate(r.id, { startTime: v })} ariaLabel="start" />
           <TimeField value={r.endTime} onChange={v => onUpdate(r.id, { endTime: v })} ariaLabel="end" />
-          <button type="button" onClick={() => onRemove(r.id)} className="shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer">Remove</button>
+          <button type="button" onClick={() => onRemove(r.id)} className={cn(iconRemove ? 'action-button action-button--danger action-button--icon action-button--compact' : 'shrink-0 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer')} aria-label={iconRemove ? 'Remove day and time' : 'Remove'}>
+            {iconRemove ? <Undo2 className="w-3.5 h-3.5" /> : 'Remove'}
+          </button>
         </div>
       ))}
     </div>
@@ -1589,8 +1731,8 @@ export default function Manage() {
 
   return (
     <Layout
-      mainClassName="h-[100dvh] min-h-0 overflow-hidden"
-      contentClassName="h-full min-h-0"
+      mainClassName="flex-1 min-h-0 overflow-hidden"
+      contentClassName="h-full min-h-0 overflow-hidden"
       bottomNavClassName="border-t-0"
       headerRight={
         <button type="button" onClick={openMoreMenu} className="min-w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-primary hover:from-primary/30 hover:to-primary/20 transition-all active:scale-95 cursor-pointer shadow-sm" title="More" aria-label="More Manage Actions">
@@ -1599,16 +1741,7 @@ export default function Manage() {
         </button>
       }
     >
-      {noActiveCurriculumMessage && createPortal(
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-end justify-center bg-black/80 backdrop-blur-sm" onClick={() => setNoActiveCurriculumMessage(false)}>
-          <motion.div initial={{ y: 36, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 36, opacity: 0 }} className="modal-sheet-content !min-h-0 w-full max-w-md rounded-t-3xl bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_24px_80px_rgba(0,0,0,0.42)]" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-foreground">No Active Curricula</h3>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">There are no Active Curricula. Reopen or Create a new Active Curricula from <button type="button" onClick={() => { setNoActiveCurriculumMessage(false); setLocation('/account'); }} className="font-semibold text-blue-500 hover:text-blue-400">Setting&apos;s</button> Curriculum Management to Add/Edit a Subject data.</p>
-            <button type="button" onClick={() => setNoActiveCurriculumMessage(false)} className="action-button action-button--cancel mt-3 w-full min-h-10">Close</button>
-          </motion.div>
-        </motion.div>, document.body
-      )}
-      <div className="flex h-full min-h-0 flex-col gap-1 scroll-reachability">
+      <div className="flex h-full min-h-0 flex-col gap-1 overflow-hidden scroll-reachability">
         <div className="shrink-0">{manageSectionSwitcher}</div>
         {manageDaySelector && (
           <div className="shrink-0 rounded-3xl border border-border/80 bg-background px-2 py-2 shadow-md">
@@ -1626,22 +1759,23 @@ export default function Manage() {
         )}
         <section
           className={cn(
-            'manage-window-surface z-[3] isolate -mx-1 mt-0 min-h-0 flex-1 bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden',
+            'manage-window-surface z-[3] isolate mt-0 min-h-0 flex-1 w-full bg-transparent p-0 shadow-none space-y-0 relative flex flex-col overflow-hidden rounded-xl border border-border',
           )}>
           {section === 'academic' && (
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 flex flex-col">
               <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
                 {groupedAcademicSlots.length === 0 ? (
-                  <div className="flex min-h-full items-center justify-center px-6 text-center">
-                    <p className="text-sm font-semibold text-muted-foreground">
-                      {subjectMode === 'custom' && customAcademicCount === 0 ? (
-                        <>No Lecture Subject added yet. Tap <button type="button" onClick={openMoreMenu} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button> to add a new Subject.</>
-                      ) : selectedDayIsHoliday ? (
-                        'Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.'
-                      ) : (
-                        'No planned Lecture Classes for today!'
-                      )}
-                    </p>
+                  <div className="flex min-h-full flex-col items-center justify-center px-6 text-center">
+                    {selectedDayIsHoliday ? (
+                      <>
+                        <p className="text-base font-extrabold text-primary">Detox Day</p>
+                        <p className="mt-2 max-w-xs text-sm font-semibold leading-relaxed text-muted-foreground">Enjoy your rest day! No lectures or clinical ward postings are scheduled for today.</p>
+                      </>
+                    ) : subjectMode === 'custom' && customAcademicCount === 0 ? (
+                      <p className="text-sm font-semibold text-muted-foreground">No Lecture Subject added yet. Tap <button type="button" onClick={openMoreMenu} className="font-extrabold text-primary hover:text-primary/80 cursor-pointer">More</button> to add a new Subject.</p>
+                    ) : (
+                      <p className="text-sm font-semibold text-muted-foreground">No planned Lecture Classes for today!</p>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -1688,16 +1822,11 @@ export default function Manage() {
                   </>
                 )}
               </div>
-              <div className="shrink-0 px-3 py-2">
-                <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-cyan-400 py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
-                  <Plus className="h-3.5 w-3.5" /> Add Slot
-                </button>
-              </div>
             </div>
           )}
           {section === 'clinical' && (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 border border-dashed border-border/80 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
+            <div className="h-0 min-h-0 flex-1 flex flex-col">
+              <div className="relative z-0 h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain !bg-transparent space-y-2 px-4 py-3" style={{ overscrollBehaviorY: 'contain' }}>
                 {subjectMode === 'custom' && customClinicalCount === 0 ? (
                   <div className="flex min-h-full items-center justify-center px-6 text-center">
                     <p className="text-sm font-semibold text-muted-foreground">
@@ -1735,6 +1864,13 @@ export default function Manage() {
             </div>
           )}
         </section>
+        {section === 'academic' && (
+          <div className="shrink-0 px-0 pt-0">
+            <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#007AFF] py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
+              <Plus className="h-3.5 w-3.5" /> Add Slot
+            </button>
+          </div>
+        )}
         {/* Add New Modal */}
         <OverlayModal
           open={moreOpen}
@@ -1742,12 +1878,12 @@ export default function Manage() {
           maxW="max-w-lg"
           heightClass="!max-h-[80dvh]"
           dense
-          bodyClassName={section === 'academic' ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}
+          bodyClassName={section === 'academic' ? 'flex min-h-0 flex-col overflow-y-auto' : 'overflow-y-auto'}
           header={
             <div>
-              <div className="flex items-center justify-between">
+              <div className="text-center">
                 <h3 className="text-sm font-bold text-foreground">{section === 'academic' ? 'Add New Subject' : 'Add New Clinical Item'}</h3>
-                <button type="button" onClick={closeAddModal} className="action-button action-button--close action-button--icon" aria-label="Close Add New"><X className="w-4 h-4" /></button>
+                <p className="mt-1 text-[10px] text-muted-foreground">Create a subject, rotation, or teaching item.</p>
               </div>
 
               {/* Static type selector */}
@@ -1851,7 +1987,7 @@ export default function Manage() {
                                   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-3 pr-1" style={{ overscrollBehaviorY: 'contain' }}>
                   <div>
                     <label className={labelCls}>Day & Time</label>
-                    {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow)}
+                    {renderRowList(subjectRows, updateSubjectRow, removeSubjectRow, true)}
                     <button type="button" onClick={addSubjectRow} disabled={subjectRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
                       <Plus className="w-3.5 h-3.5" /> Add Another Day & Time
                     </button>
@@ -1942,7 +2078,7 @@ export default function Manage() {
                     <div>
                       <label className={labelCls}>Schedules (Day + Time)</label>
                       <p className={descCls}>Add weekly SGT class days and times.</p>
-                      {renderRowList(sgtRows, updateSgtRow, removeSgtRow)}
+                      {renderRowList(sgtRows, updateSgtRow, removeSgtRow, true)}
                       <button type="button" onClick={addSgtRow} disabled={sgtRows.length >= 7} className={cn(btnGhost, 'w-full mt-2 flex items-center justify-center gap-1.5')}>
                         <Plus className="w-3.5 h-3.5" /> Add Another Day & Time
                       </button>
@@ -1969,16 +2105,15 @@ export default function Manage() {
           heightClass=""
           header={
             <div>
-              <div className="flex items-center justify-between">
+              <div className="text-center">
                 <div>
                   <h3 className="text-sm font-bold text-foreground">Edit {section === 'academic' ? 'Academic' : 'Clinical'} Data</h3>
                   <p className="text-[10px] text-muted-foreground">
                     {section === 'clinical'
-                      ? 'Planned for clinical items are auto-calculated and cannot be edited.'
+                      ? 'Planned for clinical items are auto-calculated and cannot be edited. Vacation or exam periods can be edited from the clinical edit window.'
                       : subjectMode === 'custom' ? 'Edit planned classes or delete Custom routine items.' : 'Edit planned classes or delete user-added items.'}
                   </p>
                 </div>
-                <button type="button" onClick={closeEditData} className="action-button action-button--close action-button--icon" aria-label="Close Edit Data"><X className="w-4 h-4" /></button>
               </div>
 
               {/* Active-mode data selector */}
@@ -2156,12 +2291,7 @@ export default function Manage() {
           open={addSlotOpen}
           onClose={() => { setAddSlotOpen(false); setFormError(null); setAddSuccess(false); }}
           maxW="max-w-sm"
-          header={
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">Add Slot</h3>
-              <button type="button" onClick={() => { setAddSlotOpen(false); setFormError(null); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
-            </div>
-          }
+          header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Add Slot</h3><p className="mt-1 text-[10px] text-muted-foreground">Add a class to the selected academic day.</p></div>}
           footer={
             <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5 border-2 border-cyan-400/90')}>
               <Plus className="w-3.5 h-3.5" /> Add Slot
@@ -2197,12 +2327,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* More menu */}
-        <OverlayModal open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} maxW="max-w-md" header={
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-foreground">More</h3>
-            <button type="button" onClick={() => setMoreMenuOpen(false)} className="action-button action-button--close action-button--icon" aria-label="Close More Menu"><X className="w-4 h-4" /></button>
-          </div>
-        }>
+        <OverlayModal open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} maxW="max-w-md" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">More</h3><p className="mt-1 text-[10px] text-muted-foreground">Choose a Manage action.</p></div>}>
           <div className="p-4 sm:p-5 space-y-2">
             <button type="button" onClick={openAddFromMore} className="w-full flex items-center gap-3 rounded-xl border border-border/70 bg-background/50 px-3 py-3 text-left hover:bg-muted/30 transition-colors cursor-pointer">
               <Plus className="w-4 h-4 text-primary shrink-0" />
@@ -2220,12 +2345,8 @@ export default function Manage() {
         </OverlayModal>
 
         {/* History Modal */}
-        <OverlayModal open={historyOpen} onClose={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} maxW="max-w-md">
+        <OverlayModal open={historyOpen} onClose={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} maxW="max-w-md" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Recent Activity</h3><p className="mt-1 text-[10px] text-muted-foreground">Review recent changes made in Manage.</p></div>}>
           <div className="p-4 sm:p-5 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">Recent Activity</h3>
-              <button type="button" onClick={() => { setHistoryOpen(false); setMoreMenuOpen(true); }} className="action-button action-button--close action-button--icon"><X className="w-4 h-4" /></button>
-            </div>
             <div className="space-y-2">
               {historyEntries.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-5">No Manage actions yet.</p>
@@ -2242,11 +2363,11 @@ export default function Manage() {
                         <button
                           type="button"
                           onClick={(event) => { event.stopPropagation(); setHistoryClearEntry(entry); }}
-                          className="action-button action-button--close px-2 py-1 text-[10px]"
+                          className="action-button action-button--close action-button--icon"
                           aria-label={`Clear ${entry.type} history entry`}
                           title="Clear This History Entry Only"
                         >
-                          Clear
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -2259,16 +2380,9 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Clear History Entry Modal */}
-        <OverlayModal open={!!historyClearEntry} onClose={() => setHistoryClearEntry(null)} maxW="max-w-md">
+        <OverlayModal open={!!historyClearEntry} onClose={() => setHistoryClearEntry(null)} maxW="max-w-md" header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Clear This History Entry?</h3><p className="mt-1 text-[10px] text-muted-foreground">Only this displayed history record will be removed.</p></div>}>
           {historyClearEntry && (
             <div className="p-4 sm:p-5 space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-muted-foreground" /></div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">Clear This History Entry?</h3>
-                  <p className="text-[10px] text-muted-foreground">Only this displayed history record will be removed.</p>
-                </div>
-              </div>
               <div className="rounded-xl border border-border/60 bg-background px-3 py-2">
                 <p className="text-xs font-semibold text-foreground">{historyClearEntry.type} · {getHistoryCategory(historyClearEntry)}</p>
                 {formatHistoryDetail(historyClearEntry) && <p className="text-[10px] text-muted-foreground mt-0.5">{formatHistoryDetail(historyClearEntry)}</p>}
@@ -2294,7 +2408,7 @@ export default function Manage() {
             </>
           }
           footer={
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2">
               <button type="button" onClick={() => { setEditSubject(null); setEditError(null); }} className={cn(btnCancel, editSubject?.subjectType === 'allied' && 'text-destructive hover:text-destructive')}>Cancel</button>
               <button type="button" onClick={saveEditSubject} className={btnPrimary}>Save Changes</button>
             </div>
@@ -2364,19 +2478,9 @@ export default function Manage() {
           open={!!editWard}
           onClose={() => { setEditWard(null); setEditError(null); }}
           maxW="max-w-lg"
-          header={
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Edit Rotation</h3>
-                <p className="text-[10px] text-muted-foreground mt-1">Change dates, session times, or vacations. Rename is disabled.</p>
-              </div>
-              <button type="button" onClick={() => { setEditWard(null); setEditError(null); }} className="action-button action-button--close action-button--icon shrink-0" aria-label="Close Edit Rotation">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          }
+          header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Edit Rotation</h3><p className="mt-1 text-[10px] text-muted-foreground">Change dates, session times, or vacations. Rename is disabled.</p></div>}
           footer={
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2">
               <button type="button" onClick={saveEditWard} className={btnPrimary}>Save Changes</button>
             </div>
           }
@@ -2422,14 +2526,14 @@ export default function Manage() {
               </div>
             ) : slotConflict ? (
               <div className="grid grid-cols-3 gap-2">
-                <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full')}>Remove Slot</button>
+                <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full')}>Remove</button>
                 <button type="button" onClick={() => setSlotConflict(null)} className={cn(btnCancel, 'w-full')}>Cancel</button>
                 <button type="button" onClick={() => { const fn = slotConflict.onConfirm; setSlotConflict(null); fn(); }} className={cn(btnPrimary, 'w-full')}>Merge Anyway</button>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 <button type="button" onClick={() => setSlotRemoveAllConfirm(true)} className={cn(btnDanger, 'w-full flex items-center justify-center gap-1.5')}>
-                  <Trash2 className="w-3.5 h-3.5" /> Remove Slot
+                  <Trash2 className="w-3.5 h-3.5" /> Remove
                 </button>
                 <button type="button" onClick={closeEditSlot} className={cn(btnCancel, 'w-full')}>Cancel</button>
                 {editSlot.multiSelectMode ? (
@@ -2474,7 +2578,7 @@ export default function Manage() {
                           <span className="text-[10px] text-muted-foreground">Planned: {s.planned}</span>
                           <button type="button" onClick={(e) => {
                             e.stopPropagation();
-                            setSlotRemove({ subject: s.name, day: editSlot.day, index: editSlot.index, time: canonicalTimeRange(editSlot.startTime, editSlot.endTime), start: editSlot.startTime, end: editSlot.endTime });
+                            setSlotRemove({ subject: s.name, subjectId: s.canonicalId, day: editSlot.day, index: editSlot.index, time: canonicalTimeRange(editSlot.startTime, editSlot.endTime), start: editSlot.startTime, end: editSlot.endTime });
                             setSlotRemoveConfirm(true);
                           }} className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10">
                             <X className="w-3.5 h-3.5" />
@@ -2515,22 +2619,15 @@ export default function Manage() {
                 </>
               ) : (
                 <>
-                  <p className="text-[10px] text-muted-foreground bg-muted/20 rounded-lg px-3 py-1.5">
-                    Currently: <span className="font-semibold text-foreground">{DAY_ABBRS[editSlot.day]} {canonicalTimeRange(editSlot.startTime, editSlot.endTime)}</span>
-                  </p>
-                  <div>
-                    <label className={labelCls}>Target Day</label>
-                    <select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={inputCls}>
-                      {DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}
-                    </select>
+                  <div className="pb-1 text-center">
+                    <p className="text-sm font-extrabold" style={{ color: getSubjectColor(editSlot.subjects[0].name) }}>{editSlot.subjects[0].name}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">Currently: {DAY_ABBRS[editSlot.day]} ({canonicalTimeRange(editSlot.startTime, editSlot.endTime)})</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
+                    <div><label className={labelCls}>Target Day</label><select value={slotMoveTargetDay} onChange={e => setSlotMoveTargetDay(parseInt(e.target.value, 10))} className={cn(inputCls, 'text-center')}>{DAY_ABBRS.map((abbr, i) => <option key={abbr} value={i}>{abbr}</option>)}</select></div>
+                    <div><label className={labelCls}>Planned No.</label><div aria-label="Planned number (autocalculated)" className="flex min-h-10 items-center justify-center rounded-xl border border-transparent bg-muted/30 px-3 text-xs font-semibold text-muted-foreground">{editSlot.subjects[0].planned} (Autocalculated)</div></div>
                     <div><label className={labelCls}>Start</label><TimeField value={slotMoveStart} onChange={setSlotMoveStart} ariaLabel="move start" /></div>
                     <div><label className={labelCls}>End</label><TimeField value={slotMoveEnd} onChange={setSlotMoveEnd} ariaLabel="move end" /></div>
-                  </div>
-                  <div className="bg-muted/30 p-2 rounded-lg">
-                    <span className="text-xs font-bold" style={{ color: getSubjectColor(editSlot.subjects[0].name) }}>{editSlot.subjects[0].name}</span>
-                    <p className="text-[10px] text-muted-foreground mt-1">Planned: {editSlot.subjects[0].planned} (read-only — edit in Edit Data)</p>
                   </div>
                 </>
               )}
@@ -2539,7 +2636,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Slot Remove Confirm Modal */}
-        <OverlayModal open={slotRemoveConfirm} onClose={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }}>
+        <OverlayModal open={slotRemoveConfirm} onClose={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }} header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Remove from Slot?</h3><p className="mt-1 text-[10px] text-muted-foreground">Confirm removing this subject from its scheduled slot.</p></div>}>
           {slotRemove && (
             <div className="p-4 sm:p-5 space-y-3">
               <div className="flex items-start gap-3">
@@ -2558,7 +2655,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Whole Slot Remove Confirm Modal */}
-        <OverlayModal open={slotRemoveAllConfirm} onClose={() => setSlotRemoveAllConfirm(false)}>
+        <OverlayModal open={slotRemoveAllConfirm} onClose={() => setSlotRemoveAllConfirm(false)} header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Remove This Slot?</h3><p className="mt-1 text-[10px] text-muted-foreground">All subjects in this time slot will be removed.</p></div>}>
           <div className="p-4 sm:p-5 space-y-3">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-rose-500" /></div>
@@ -2575,7 +2672,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Delete Confirm Modal */}
-        <OverlayModal open={!!deleteSheet} onClose={() => setDeleteSheet(null)}>
+        <OverlayModal open={!!deleteSheet} onClose={() => setDeleteSheet(null)} header={deleteSheet ? <div className="text-center"><h3 className="text-sm font-bold text-foreground">{deleteSheet.title}</h3><p className="mt-1 text-[10px] text-muted-foreground">Confirm the items to permanently remove.</p></div> : undefined}>
           {deleteSheet && (
             <div className="p-4 sm:p-5 space-y-3">
               <div className="flex items-start gap-3">
@@ -2597,7 +2694,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Conflict Sheet Modal */}
-        <OverlayModal open={!!conflictSheet} onClose={() => setConflictSheet(null)}>
+        <OverlayModal open={!!conflictSheet} onClose={() => setConflictSheet(null)} header={conflictSheet ? <div className="text-center"><h3 className="text-sm font-bold text-foreground">Conflict Detected</h3><p className="mt-1 text-[10px] text-muted-foreground">Review the issues before proceeding.</p></div> : undefined}>
           {conflictSheet && (
             <div className="p-4 sm:p-5 space-y-3">
               <div className="flex items-start gap-3">

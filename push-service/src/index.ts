@@ -5,6 +5,7 @@ const MAX_OCCURRENCES = 500;
 const DEVICE_TTL_DAYS = 45;
 const DEFAULT_ALLOWED_ORIGIN = 'https://benz-attendance-tracker.pages.dev';
 const CATEGORY_VALUES = new Set(['academic', 'clinical', 'sgt', 'ward']);
+// Keep this list synchronized with artifacts/src/lib/webPush.ts.
 const DOCUMENTED_PUSH_ENDPOINTS = [
   'https://fcm.googleapis.com/',
   'https://updates.push.services.mozilla.com/',
@@ -13,6 +14,17 @@ const DOCUMENTED_PUSH_ENDPOINTS = [
 ] as const;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
+function compareVersions(left: string, right: string): number {
+  const parse = (value: string) => value.split(/[.+-]/, 1)[0].split('.').map(part => Number.parseInt(part, 10) || 0);
+  const a = parse(left);
+  const b = parse(right);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) - (b[i] || 0);
+  }
+  return 0;
+}
+// Cloudflare Worker isolates do not share memory; durable cross-isolate limiting
+// would require an external store. Expired buckets are pruned on each request.
 const rateLimitBuckets = new Map<string, { startedAt: number; count: number }>();
 
 export interface Env {
@@ -120,7 +132,7 @@ const error = (message: string, status: number, origin: string): Response =>
 function allowedOrigin(request: Request, env: Env): string {
   const configured = env.ALLOWED_ORIGIN || DEFAULT_ALLOWED_ORIGIN;
   const requestOrigin = request.headers.get('Origin');
-  return requestOrigin === configured ? configured : configured;
+  return requestOrigin === configured ? configured : DEFAULT_ALLOWED_ORIGIN;
 }
 
 function hasAllowedOrigin(request: Request, env: Env): boolean {
@@ -270,6 +282,9 @@ function clientAddress(request: Request): string {
 
 function consumeRateLimit(request: Request, deviceId?: string): boolean {
   const now = Date.now();
+  for (const [key, bucket] of rateLimitBuckets) {
+    if (now - bucket.startedAt >= RATE_LIMIT_WINDOW_MS) rateLimitBuckets.delete(key);
+  }
   const keys = [`ip:${clientAddress(request)}`, deviceId ? `device:${deviceId}` : null].filter((key): key is string => Boolean(key));
   for (const key of keys) {
     const existing = rateLimitBuckets.get(key);
@@ -530,9 +545,9 @@ function listLeadNames(rows: OccurrenceRow[], limit = 6): string {
 }
 
 function leadReminderDetails(item: OccurrenceRow): { title: string; description: string } {
-  if (item.attentionLevel === 'mustAttend') return { title: 'Must Attend Reminder', description: 'This class is important for your attendance.\nAttending it is advised to keep you on track.' };
-  if (item.attentionLevel === 'needAttention') return { title: 'Need Attention Reminder', description: 'This class needs your attention.\nAttending it helps keep your attendance at a safe level.' };
-  return { title: 'Safe to Miss Reminder', description: 'You are currently on track.\nMissing this class should still be okay and keep you on track.' };
+  if (item.attentionLevel === 'mustAttend') return { title: 'Must Attend Reminder', description: 'This class is important for your attendance. Attending it will help you stay on track.' };
+  if (item.attentionLevel === 'needAttention') return { title: 'Need Attention Reminder', description: 'This class needs your attention. Attending it will help keep your attendance at a safe level.' };
+  return { title: 'Safe to Miss Reminder', description: 'You are currently on track. Missing this class should still be okay and keep you on track.' };
 }
 
 async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): Promise<void> {
@@ -584,7 +599,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
   }
 
   if (scheduleDate === clock.date && device.unmarked_attendance_today && isWithinFiveMinuteWindow(currentMinute, 22 * 60)) {
-    const unmarked = occurrences.filter(item => item.startMinute < currentMinute && item.status === 'unmarked' && !item.isFinalForSubject);
+    const unmarked = occurrences.filter(item => item.startMinute < currentMinute && item.status === 'unmarked');
     if (unmarked.length > 0) {
       await deliverIfNew(env, device, `${device.device_id}:unmarked:${clock.date}`, 'Attendance Still Unmarked', `${unmarked.length} Class${unmarked.length === 1 ? '' : 'es'} from today still need an attendance status: ${listNames(unmarked)}.`, url);
     }
@@ -622,7 +637,7 @@ async function runScheduled(env: Env, scheduledAt: number): Promise<void> {
   for (const device of devices.results || []) {
     try {
       const releaseVersion = env.RELEASE_VERSION;
-      if (device.update_available && releaseVersion && device.app_version !== releaseVersion) {
+      if (device.update_available && releaseVersion && compareVersions(device.app_version, releaseVersion) < 0) {
         await deliverIfNew(env, device, `${device.device_id}:update-available:${releaseVersion}`, 'Update Available', `A new version ${releaseVersion} is ready. Open the app to review and update.`, DEFAULT_ALLOWED_ORIGIN);
       }
       await processDevice(env, device, scheduledAt);

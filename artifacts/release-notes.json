@@ -1,23 +1,18 @@
 {
-  "1.6.14": {
+  "1.6.15": {
     "upgrades": [
-      { "title": "Better night reminders", "summary": "Nightly summaries now arrive at your chosen time and are split into clear groups." },
-      { "title": "Better update experience", "summary": "Updates now guide you clearly through backing up, downloading, installing, and finishing." },
-      { "title": "Safer data protection", "summary": "Your attendance records and preferences are better protected during app updates." },
-      { "title": "More reliable offline use", "summary": "The app is better prepared to keep working when your internet connection is unavailable." },
-      { "title": "Clearer progress feedback", "summary": "You can easily see what the app is doing while a backup or update is in progress." },
-      { "title": "Simpler choices", "summary": "You can update with a backup for extra peace of mind or update directly when you prefer." },
-      { "title": "A more polished experience", "summary": "Everyday screens and recovery steps feel smoother, clearer, and easier to follow." }
+      { "title": "A clearer home screen", "summary": "See attendance, tomorrow's class, alerts, progress, and today's activity at a glance." },
+      { "title": "Smoother pop-ups and scrolling", "summary": "Screens open, close, and scroll more consistently, with easier dismiss gestures and clearer actions." },
+      { "title": "Simpler holidays and curricula", "summary": "Vacation periods replace holiday placeholders, while curriculum changes are carried over more safely." },
+      { "title": "More dependable reminders", "summary": "Notifications are filtered more carefully and updates are handled more safely." },
+      { "title": "A clearer activity history", "summary": "Attendance changes and subject edits now appear in an easier-to-follow activity timeline." }
     ],
     "fixes": [
-      { "title": "More accurate nightly alerts", "summary": "Reminders for the next day are now correctly scheduled around midnight." },
-      { "title": "Smarter reminders", "summary": "Reminders now avoid false alerts for holidays, days off, and completed classes." },
-      { "title": "More accurate upcoming classes", "summary": "Upcoming views now focus on classes that still need your attention." },
-      { "title": "More dependable updates", "summary": "The app stays on your current version until you choose to install an available update." },
-      { "title": "Safer reopening", "summary": "Closing the app during an available update keeps your current version ready when you return." },
-      { "title": "More trustworthy recovery", "summary": "The app does a better job of helping you return safely after an interrupted update or restore." },
-      { "title": "Smoother daily use", "summary": "Progress screens and common actions now feel more consistent and predictable." },
-      { "title": "Improved nightly reminders", "summary": "Nightly summaries now show the correct day's schedule and keep risk and schedule alerts separate." }
+      { "title": "Section labels stay in place", "summary": "Section labels now pin neatly below the app bar while you scroll through Settings, Subjects, and Timetable." },
+      { "title": "A more reliable Manage tab", "summary": "Manage windows scroll correctly, borders stay complete, Add Slot is easier to find, and Edit Slot is clearer." },
+      { "title": "A tidier attendance dashboard", "summary": "Home scrolling, Detox Day, Overall Attendance, and the Max Percentage chart now fit together more cleanly." },
+      { "title": "More accurate activity entries", "summary": "Attendance actions no longer create duplicates, stay in order, and keep undo and redo behavior intact." },
+      { "title": "Safer data and reminders", "summary": "Delete and restore actions are safer, failures are easier to notice, and finished SGT subjects no longer send reminders." }
     ]
   }
 }

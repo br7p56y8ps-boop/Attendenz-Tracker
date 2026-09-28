@@ -109,6 +109,15 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, 'dist/public'),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          exportPdf: ['jspdf'],
+          exportSpreadsheet: ['xlsx-js-style'],
+        },
+      },
+    },
   },
   server: {
     port,

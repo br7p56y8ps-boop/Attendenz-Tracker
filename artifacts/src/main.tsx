@@ -178,7 +178,7 @@ if ('serviceWorker' in navigator) {
           localStorage.setItem('att_pwa_update_ready', 'true');
           localStorage.setItem('att_pwa_latest_version', j.version);
           localStorage.setItem('att_pwa_release_type', releaseType);
-          localStorage.setItem('att_pwa_update_mode', updateMode === 'automatic' ? 'manual' : updateMode);
+          localStorage.setItem('att_pwa_update_mode', updateMode);
           if (typeof j.summary === 'string') localStorage.setItem('att_pwa_update_summary', j.summary);
           window.dispatchEvent(new CustomEvent('attendenz:update-ready'));
         } else {

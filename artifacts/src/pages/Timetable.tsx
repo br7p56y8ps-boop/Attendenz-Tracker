@@ -1,14 +1,26 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
-import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useCustomData, parseDayList } from '@/contexts/CustomDataContext';
-import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, canonicalizeTimeRange, pctColor, getAttendanceStatus, formatPercentage } from '@/lib/utils';
-import { CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
+import { cn, getSubjectColor, formatISODateDDMMYY, parseRangeToMinutes, canonicalizeTimeRange } from '@/lib/utils';
 
 const DEFAULT_DAYS_ORDER = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const DAY_INDEX_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 const DAY_AFTER_HOLIDAY_INDEX = 6; // Saturday follows the app-wide Friday holiday boundary.
+
+function shortenSubject(name: string) {
+  const map: Record<string, string> = {
+    'Surgery': 'Surg.', 'Obstetrics & Gynaecology': 'Obs & Gyn.', 'Pediatrics': 'Peds.',
+    'Orthopedics': 'Ortho.', 'Ophthalmology': 'Ophtha.', 'Otolaryngology': 'ENT',
+    'Dermatology': 'Derm.', 'Psychiatry': 'Psych.', 'Physical Medicine': 'PMR',
+    'Radiology': 'Radio.', 'Radiotherapy': 'RadioT.', 'Nuclear Medicine': 'Nuc Med.',
+    'Neurosurgery': 'NeuroS.', 'Pediatric Surgery': 'Peds Surg.', 'Burn & Plastic Surgery': 'Plastic S.',
+    'Internal Medicine': 'Medicine', 'Phase Integrated Teaching': 'Phase Integrated',
+    'Departmental Integrated Teaching': 'Dept. Integrated'
+  };
+  const short = map[name] || name;
+  return short.length > 24 ? `${short.slice(0, 23)}…` : short;
+}
 
 function getDisplayDayOrder(
   subjectMode: 'preloaded' | 'custom',
@@ -36,26 +48,6 @@ function getDisplayDayOrder(
     return Object.keys(DAY_INDEX_MAP).find(name => DAY_INDEX_MAP[name] === dayIndex) || 'Sat';
   });
 }
-
-function shortenSubject(name: string) {
-  const map: Record<string, string> = {
-    'Surgery': 'Surg.', 'Obstetrics & Gynaecology': 'Obs & Gyn.', 'Pediatrics': 'Peds.',
-    'Orthopedics': 'Ortho.', 'Ophthalmology': 'Ophtha.', 'Otolaryngology': 'ENT',
-    'Dermatology': 'Derm.', 'Psychiatry': 'Psych.', 'Physical Medicine': 'PMR',
-    'Radiology': 'Radio.', 'Radiotherapy': 'RadioT.', 'Nuclear Medicine': 'Nuc Med.',
-    'Neurosurgery': 'NeuroS.', 'Pediatric Surgery': 'Peds Surg.', 'Burn & Plastic Surgery': 'Plastic S.',
-    'Internal Medicine': 'Medicine', 'Phase Integrated Teaching': 'Phase Integrated',
-    'Departmental Integrated Teaching': 'Dept. Integrated'
-  };
-  const short = map[name] || name;
-  return short.length > 24 ? `${short.slice(0, 23)}…` : short;
-}
-
-const categoryBadgeClass = (category: 'Lecture' | 'Ward' | 'SGT') => category === 'SGT'
-  ? 'bg-purple-500/10 text-purple-500 border-purple-500/25'
-  : category === 'Ward'
-    ? 'bg-sky-500/10 text-sky-500 border-sky-500/25'
-    : 'bg-primary/10 text-primary border-primary/25';
 
 /* ── Minute-based grid columns ── */
 interface GridColumn { id: string; start: number; end: number; base: boolean; }
@@ -92,17 +84,11 @@ const coveredByBase = (r: { start: number; end: number }): boolean => {
 };
 
 export default function Timetable() {
-  const { subjects, wards, homeSelections, preferredPercentage } = useAttendance();
   const {
     customSubjects, customWards, userAddedSubjects,
     subjectMode, presetTimetable, presetWardSchedule,
-    getCurrentPresetWard, getCurrentCustomWard,
-    getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned, getSubjectIdByName,
   } = useCustomData();
   const today = new Date();
-  const target = preferredPercentage || 75;
-  const [monthSel, setMonthSel] = useState<number | null>(null);
-  const [attnOpen, setAttnOpen] = useState(false);
 
   /* ── SGT entries for the weekly grid ── */
   const todayStr = useMemo(() => {
@@ -137,132 +123,11 @@ export default function Timetable() {
     return entries;
   }, [subjectMode, userAddedSubjects, customSubjects, todayStr]);
 
-  /* ── STATISTICS ── */
-  const allEntities = useMemo(() => {
-    const list: Array<{ name: string; id?: string; isWard: boolean; planned: number; category: 'Lecture' | 'Ward' | 'SGT'; isSGT?: boolean; sgtId?: string; periodEnd?: string }> = [];
-    if (subjectMode === 'preloaded') {
-      const wardPeriodEnds = new Map<string, string>();
-      presetWardSchedule.forEach(e => {
-        const currentEnd = wardPeriodEnds.get(e.ward);
-        if (!currentEnd || e.end > currentEnd) wardPeriodEnds.set(e.ward, e.end);
-      });
-      CATEGORIES.forEach(c => c.subjects.forEach(s => list.push({ name: s.name, isWard: false, planned: getSubjectPlannedTotal(s.name), category: 'Lecture' })));
-      INTEGRATED_SUBJECTS.forEach(s => list.push({ name: s.name, isWard: false, planned: getSubjectPlannedTotal(s.name), category: 'Lecture' }));
-      WARD_SUBJECTS.forEach(w => list.push({ name: w.name, isWard: true, planned: getPresetWardTotalPlanned(w.name), category: 'Ward', periodEnd: wardPeriodEnds.get(w.name) }));
-      userAddedSubjects.forEach(u => {
-        if (u.subjectType === 'allied-parent') return;
-        if (u.parentName === 'Small Group Teaching') {
-          list.push({ name: u.name, id: u.id, isWard: false, planned: u.plannedClasses, category: 'SGT', isSGT: true, sgtId: u.id, periodEnd: (u as any).endDate });
-        } else {
-          list.push({ name: u.name, id: u.id, isWard: false, planned: u.plannedClasses, category: 'Lecture', periodEnd: (u as any).endDate });
-        }
-      });
-      presetWardSchedule.forEach(e => {
-        if (!list.some(x => x.isWard && x.name === e.ward)) {
-          list.push({ name: e.ward, isWard: true, planned: getPresetWardTotalPlanned(e.ward), category: 'Ward', periodEnd: wardPeriodEnds.get(e.ward) || e.end });
-        }
-      });
-    } else {
-      customSubjects.forEach(s => {
-        if (s.subjectType === 'allied-parent') return;
-        if (s.parentName === 'Small Group Teaching') {
-          list.push({ name: s.name, id: s.id, isWard: false, planned: s.plannedClasses, category: 'SGT', isSGT: true, sgtId: s.id, periodEnd: (s as any).endDate });
-        } else {
-          list.push({ name: s.name, id: s.id, isWard: false, planned: s.plannedClasses, category: 'Lecture', periodEnd: (s as any).endDate });
-        }
-      });
-      customWards.forEach(w => list.push({ name: w.name, isWard: true, planned: getCustomWardTotalPlanned(w.startDate, w.endDate), category: 'Ward', periodEnd: w.endDate }));
-    }
-    return list;
-  }, [subjectMode, customSubjects, customWards, userAddedSubjects, presetWardSchedule, getSubjectPlannedTotal, getPresetWardTotalPlanned, getCustomWardTotalPlanned]);
-
-  const getEntityAttendanceKey = (e: { name: string; id?: string; isWard: boolean; isSGT?: boolean; sgtId?: string }): string | null => {
-    if (e.isSGT && e.sgtId) return getSGTKey(e.sgtId);
-    const id = e.id || getSubjectIdByName(e.name, e.isWard ? 'clinical' : 'academic');
-    if (!id) return null;
-    return e.isWard ? getWardAttendanceKey(id) : getAcademicAttendanceKey(id);
-  };
-
-  const overall = useMemo(() => {
-    let att = 0, mis = 0, planned = 0, off = 0;
-    allEntities.forEach(e => {
-      const key = getEntityAttendanceKey(e);
-      const d = key ? (e.isWard ? wards : subjects)[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-      att += Number(d.attended) || 0; mis += Number(d.missed) || 0; planned += Number(e.planned) || 0;
-    });
-    for (const sel of Object.values(homeSelections)) if (sel === 'off') off += 1;
-    const conducted = att + mis;
-    const pct = conducted === 0 ? 0 : (att / conducted) * 100;
-    const maxMissable = Math.floor(planned * (1 - target / 100));
-    const canMiss = Math.max(0, maxMissable - mis);
-    return { att, mis, off, planned, pct, conducted, canMiss };
-  }, [allEntities, subjects, wards, homeSelections, target]);
-
-  const attention = useMemo(() => {
-    const out: Array<{ name: string; category: 'Lecture' | 'Ward' | 'SGT'; pct: number; needed: number }> = [];
-    allEntities.forEach(e => {
-      const key = getEntityAttendanceKey(e);
-      const d = key ? (e.isWard ? wards : subjects)[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-      const conducted = d.attended + d.missed;
-      if (conducted === 0) return;
-      const remaining = Math.max(0, e.planned - conducted);
-      if (remaining <= 0) return; // exclude completed subjects
-      if ((e.isWard || e.category === 'SGT') && e.periodEnd && e.periodEnd < todayStr) return; // exclude finished clinical placements
-      const pct = (d.attended / conducted) * 100;
-      const rawReq = Math.max(0, Math.ceil(e.planned * (target / 100)) - d.attended);
-      if (pct < target || rawReq > remaining) out.push({ name: e.name, category: e.category, pct, needed: rawReq });
-    });
-    return out.sort((a, b) => a.pct - b.pct).slice(0, 6);
-  }, [allEntities, subjects, wards, target, todayStr]);
-
-  /* ── NEW: Prediction of Maximum Possible Attendance ── */
-  const predictionItems = useMemo(() => {
-    const result: Array<{ name: string; category: 'Lecture' | 'Ward' | 'SGT'; currentPct: number; remaining: number; maxPossiblePct: number; planned: number; attended: number }> = [];
-    allEntities.forEach(e => {
-      const key = getEntityAttendanceKey(e);
-      const d = key ? (e.isWard ? wards : subjects)[key] || { attended: 0, missed: 0 } : { attended: 0, missed: 0 };
-      const conducted = d.attended + d.missed;
-      const remaining = Math.max(0, e.planned - conducted);
-        if (remaining <= 0) return;
-        if ((e.isWard || e.category === 'SGT') && e.periodEnd && e.periodEnd < todayStr) return;
-        const currentPct = conducted === 0 ? 0 : (d.attended / conducted) * 100;
-      const maxPossiblePct = (d.attended + remaining) / e.planned * 100;
-      result.push({
-        name: e.name,
-        category: e.category,
-        currentPct,
-        remaining,
-        maxPossiblePct,
-        planned: e.planned,
-        attended: d.attended,
-      });
-    });
-    return result.sort((a, b) => a.maxPossiblePct - b.maxPossiblePct);
-  }, [allEntities, subjects, wards, todayStr]);
-
-  const months = useMemo(() => {
-    const now = new Date();
-    const buckets: Array<{ key: string; label: string; att: number; mis: number }> = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      buckets.push({ key, label: d.toLocaleString('en-US', { month: 'short' }), att: 0, mis: 0 });
-    }
-    for (const [k, sel] of Object.entries(homeSelections)) {
-      const mKey = k.slice(0, 7);
-      const b = buckets.find(x => x.key === mKey);
-      if (!b) continue;
-      if (sel === 'attended') b.att += 1;
-      else if (sel === 'missed') b.mis += 1;
-    }
-    return buckets.map(b => ({ ...b, pct: b.att + b.mis === 0 ? null : (b.att / (b.att + b.mis)) * 100 }));
-  }, [homeSelections]);
-
   /* ── ROTATION WHEEL ── */
   const allRotations = useMemo(() => {
     const list: { name: string; start: string; end: string }[] = [];
     if (subjectMode === 'preloaded') {
-      presetWardSchedule.forEach(ws => list.push({ name: ws.ward, start: ws.start, end: ws.end }));
+      presetWardSchedule.filter(ws => ws.ward.trim().toLowerCase() !== 'holiday').forEach(ws => list.push({ name: ws.ward, start: ws.start, end: ws.end }));
     } else {
       customWards.forEach(w => list.push({ name: w.name, start: w.startDate, end: w.endDate }));
     }
@@ -270,33 +135,6 @@ export default function Timetable() {
     return list;
   }, [subjectMode, customWards, presetWardSchedule]);
 
-  const currentRotationInfo = useMemo(() => {
-    if (subjectMode === 'preloaded') {
-      const cur = getCurrentPresetWard(today);
-      if (!cur || cur.ward === 'Holiday') return null;
-      const y = today.getFullYear();
-      const m = String(today.getMonth() + 1).padStart(2, '0');
-      const d = String(today.getDate()).padStart(2, '0');
-      const todayStr2 = `${y}-${m}-${d}`;
-      const entry = presetWardSchedule.find(e => todayStr2 >= e.start && todayStr2 <= e.end);
-      if (!entry) return null;
-      return { name: cur.ward, start: entry.start, end: entry.end };
-    } else {
-      const cur = getCurrentCustomWard();
-      if (!cur || cur.name === 'Holiday') return null;
-      return { name: cur.name, start: cur.startDate, end: cur.endDate };
-    }
-  }, [subjectMode, getCurrentPresetWard, getCurrentCustomWard, presetWardSchedule, today]);
-
-  const rotation = useMemo(() => {
-    if (!currentRotationInfo) return null;
-    const start = new Date(currentRotationInfo.start + 'T12:00:00');
-    const end = new Date(currentRotationInfo.end + 'T12:00:00');
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
-    const total = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
-    const done = Math.min(total, Math.max(0, Math.round((today.getTime() - start.getTime()) / 86400000) + 1));
-    return { name: currentRotationInfo.name, total, done, pct: (done / total) * 100 };
-  }, [currentRotationInfo, today]);
 
   const currentIndex = useMemo(() => {
     if (allRotations.length === 0) return 0;
@@ -521,15 +359,6 @@ export default function Timetable() {
   }, [activeTimetable, subjectMode, columns, sgtEntries, displayDaysOrder]);
 
   const dense = columns.length >= 6;
-  const overallStatus = getAttendanceStatus(overall.pct, target, {
-    isFinished: overall.planned > 0 && overall.conducted >= overall.planned,
-    hasPlannedClasses: overall.planned > 0,
-  });
-  const overallColor = overallStatus === 'green' ? 'text-success' : overallStatus === 'yellow' ? 'text-warning' : overallStatus === 'neutral' ? 'text-muted-foreground' : 'text-destructive';
-  const overallHex = pctColor(overall.pct, target, {
-    isFinished: overall.planned > 0 && overall.conducted >= overall.planned,
-    hasPlannedClasses: overall.planned > 0,
-  });
   const rotationStatus = (r: { start: string; end: string }) => {
     const s = new Date(r.start + 'T12:00:00');
     const e = new Date(r.end + 'T12:00:00');
@@ -653,116 +482,6 @@ export default function Timetable() {
           )}
         </section>
 
-        <StickySectionLabel label="Statistics" stackIndex={2} zClass="z-40" />
-
-        {/* ═══════════ STATISTICS ═══════════ */}
-        <section className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-3.5 space-y-4">
-            <div>
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Overall — every subject & ward combined</p>
-              <div className="flex items-center gap-3">
-                <div className="relative w-11 h-11 shrink-0">
-                  <svg width="44" height="44" className="transform -rotate-90">
-                    <circle cx="22" cy="22" r="18" strokeWidth="4" className="text-muted/20" stroke="currentColor" fill="transparent" />
-                    <circle cx="22" cy="22" r="18" strokeWidth="4" stroke={overallHex} strokeDasharray={2 * Math.PI * 18} strokeDashoffset={(2 * Math.PI * 18) * (1 - Math.min(100, overall.pct) / 100)} strokeLinecap="round" fill="transparent" />
-                  </svg>
-                  <span className={cn('absolute inset-0 flex items-center justify-center text-[9px] font-extrabold', overallColor)}>{formatPercentage(overall.pct)}</span>
-                </div>
-                <div className="flex-1 min-w-0 text-left">
-                  <p className="text-[10px] text-muted-foreground font-medium">
-                    Attended <strong className="text-foreground">{overall.att}</strong> · Missed <strong className="text-foreground">{overall.mis}</strong> · Off <strong className="text-foreground">{overall.off}</strong>
-                  </p>
-                  <p className="text-[9px] text-muted-foreground/70 mt-0.5">of every class that happened — lectures + wards together</p>
-                </div>
-                <span className="text-[9px] font-extrabold px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shrink-0">Can miss {overall.canMiss}</span>
-              </div>
-            </div>
-            {rotation && (
-              <div className="border-t border-border/40 pt-3">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-1.5">Current posting · info only</p>
-                <div className="flex justify-between text-[9px] font-semibold text-muted-foreground mb-1">
-                  <span className="truncate">Where you are today: <strong className="text-foreground">{rotation.name}</strong></span>
-                  <span>{rotation.done}/{rotation.total} days</span>
-                </div>
-                <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
-                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${rotation.pct}%` }} />
-                </div>
-                <p className="text-[8px] text-muted-foreground/60 mt-1">This line does not change the numbers above.</p>
-              </div>
-            )}
-            <div className="border-t border-border/40 pt-3">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2">Last 6 Months</p>
-              <div className="flex items-end justify-between gap-1.5 h-14">
-                {months.map((m, i) => {
-                  const monthColor = m.pct === null ? undefined : pctColor(m.pct, target, { isFinished: true, hasPlannedClasses: true });
-                  return (
-                    <button key={m.key} type="button" onClick={() => setMonthSel(prev => prev === i ? null : i)} className="flex-1 flex flex-col items-center gap-1 cursor-pointer">
-                      <div className={cn('w-full rounded-t-md transition-all', monthSel === i ? 'bg-primary' : m.pct === null ? 'bg-muted/30' : '')} style={{ height: m.pct === null ? 4 : `${Math.max(8, m.pct * 0.4)}px`, ...(monthSel === i || !monthColor ? {} : { backgroundColor: monthColor }) }} />
-                      <span className="text-[8px] font-bold text-muted-foreground">{m.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {monthSel !== null && months[monthSel] && (
-                <p className="text-[10px] text-foreground font-semibold text-center mt-2">
-                  {months[monthSel].label}: {months[monthSel].pct === null ? 'no classes' : `${formatPercentage(months[monthSel].pct)} (${months[monthSel].att}/${months[monthSel].att + months[monthSel].mis})`}
-                </p>
-              )}
-            </div>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-xl border border-rose-500/15 bg-rose-500/[0.03] p-3">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-rose-500 mb-2">Needs Attention</p>
-              {attention.length === 0 ? (
-                <p className="text-[10px] text-emerald-500 font-semibold">All remaining subjects on track.</p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {attention.map(a => (
-                    <button key={a.name} type="button" onClick={() => setAttnOpen(o => !o)} className="action-button action-button--danger px-2 py-1 text-[9px]">
-                      <span className="mr-1">{shortenSubject(a.name)}</span>
-                      <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider', categoryBadgeClass(a.category))}>{a.category}</span>
-                      <span className="ml-1">{formatPercentage(a.pct)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {attnOpen && attention.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {attention.map(a => (
-                    <p key={a.name} className="text-[10px] text-muted-foreground">
-                      <strong className="text-foreground">{a.name}</strong> <span className="text-[9px] font-bold uppercase tracking-wider text-primary">({a.category})</span> — attend next <strong className="text-rose-500">{a.needed}</strong> to recover.
-                    </p>
-                  ))}
-                </div>
-              )}
-              </div>
-
-              {/* ── NEW: Prediction Section ── */}
-              <div className="rounded-xl border border-emerald-500/15 bg-emerald-500/[0.03] p-3">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-500 mb-2">Maximum Possible Attendance</p>
-              {predictionItems.length === 0 ? (
-                <p className="text-[10px] text-muted-foreground font-semibold">No remaining classes for prediction.</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {predictionItems.map(item => {
-                    const maxStatus = getAttendanceStatus(item.maxPossiblePct, target, { hasPlannedClasses: item.planned > 0 });
-                    const maxColor = maxStatus === 'green' ? 'text-success' : maxStatus === 'yellow' ? 'text-warning' : maxStatus === 'neutral' ? 'text-muted-foreground' : 'text-destructive';
-                    return (
-                      <div key={item.name} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 bg-muted/20 rounded-lg px-3 py-1.5">
-                        <span className="min-w-0 text-xs font-bold text-foreground truncate" style={{ color: getSubjectColor(item.name) }}>{shortenSubject(item.name)} <span className={cn('ml-1 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider align-middle', categoryBadgeClass(item.category))}>{item.category}</span></span>
-                        <div className="contents">
-                          <span className="text-[10px] text-muted-foreground">Now {formatPercentage(item.currentPct)}</span>
-                          <span className="text-[10px] text-muted-foreground">Left {item.remaining}</span>
-                          <span className={cn('text-xs font-extrabold', maxColor)}>Max {formatPercentage(item.maxPossiblePct)}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
     </Layout>
   );

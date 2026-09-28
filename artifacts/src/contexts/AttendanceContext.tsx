@@ -8,7 +8,7 @@ export type SelectionType = 'off' | 'missed' | 'attended';
 
 const SGT_KEY_PREFIX = 'sgt:';
 export const getSGTKey = (id: string) => `${SGT_KEY_PREFIX}${id}`;
-export const getAcademicAttendanceKey = (subjectId: string) => `academic:${subjectId}`;
+export const getAcademicAttendanceKey = (subjectId: string) => subjectId.startsWith('int:') ? subjectId : `academic:${subjectId}`;
 export const getWardAttendanceKey = (wardId: string) => `ward:${wardId}`;
 export const isSGTKey = (key: string) => key.startsWith(SGT_KEY_PREFIX);
 
@@ -154,7 +154,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
 
       localStorage.setItem(MODE_SEPARATION_FLAG, 'true');
       storageSetItem(MODE_SEPARATION_FLAG, 'true');
-    } catch {}
+    } catch (error) {
+      console.error('Attendance mode migration failed; existing data was preserved.', error);
+    }
   };
 
   useEffect(() => {
@@ -522,7 +524,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         setSubjects(newSubjects);
         setHomeSelections(newHomeSelections);
       }
-    } catch {}
+    } catch (error) {
+      console.error('SGT attendance migration failed; existing data was preserved.', error);
+    }
   };
 
   const migrateAttendanceToIDs = async (mode: 'preloaded' | 'custom', registry: Array<{ id: string; name: string; domain: 'academic' | 'clinical'; kind: string }>) => {
@@ -554,7 +558,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
           ? [getSGTKey(ref.id), ref.name]
           : ref.domain === 'clinical'
             ? [canonical, `ward-${ref.name}`, ref.name]
-            : [canonical, ref.name];
+            : ref.kind === 'integrated'
+              ? [canonical, `academic:${ref.id}`, ref.name]
+              : [canonical, ref.name];
         if (ref.domain === 'clinical' && ref.kind !== 'sgt') knownWardKeys.add(canonical);
         else knownSubjectKeys.add(canonical);
         const source = aliases.find(k => (ref.domain === 'clinical' && ref.kind !== 'sgt' ? currentWards[k] : currentSubjects[k]) !== undefined);
@@ -617,7 +623,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         [flag, 'true'],
       ]);
       setSubjects(nextSubjects); setWards(nextWards); setHomeSelections(nextSelections); setFinishedMap(nextFinished);
-    } catch {}
+    } catch (error) {
+      console.error('Attendance ID migration failed; existing data was preserved.', error);
+    }
   };
 
   const removeAttendanceEntitiesForMode = useStableCallback((mode: 'preloaded' | 'custom', entities: Array<{ key: string; type: 'subject' | 'ward'; legacyKey?: string }>) => {
@@ -667,9 +675,15 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       if (wardsChanged) entries.push([keys.wardsKey, JSON.stringify(wardData)]);
       if (selectionsChanged) entries.push([keys.homeSelectionsKey, JSON.stringify(selectionData)]);
       if (finishedChanged) entries.push([keys.finishedMapKey, JSON.stringify(finishedData)]);
-      if (entries.length > 0) void storageCommitChecked(entries).catch(() => undefined);
+      if (entries.length > 0) {
+        void storageCommitChecked(entries).catch(error => {
+          console.error('Attendance entity cleanup migration failed; existing data was preserved.', error);
+        });
+      }
       if (mode === subjectMode) { setSubjects(subjectData); setWards(wardData); setHomeSelections(selectionData); setFinishedMap(finishedData); }
-    } catch {}
+    } catch (error) {
+      console.error('Attendance entity cleanup failed; existing data was preserved.', error);
+    }
   });
 
   const getHomeSelection = useStableCallback((
