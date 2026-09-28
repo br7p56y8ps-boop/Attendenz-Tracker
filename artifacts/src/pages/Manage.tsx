@@ -52,11 +52,11 @@ const CASCADE_STORAGE_KEYS = [
   'attendance_tracker_ward_preset', 'attendance_tracker_ward_custom', 'attendance_tracker_ward',
   'attendance_tracker_home_selections_preset', 'attendance_tracker_home_selections_custom', 'attendance_tracker_home_selections',
   'attendance_tracker_finished_map_preset', 'attendance_tracker_finished_map_custom', 'attendance_tracker_finished_map',
-  'attendance_tracker_orphaned_records',
+  'attendance_tracker_orphaned_records', 'att_preset_ward_schedule',
 ] as const;
 
 const CASCADE_ALIAS_KEYS = new Set([
-  'att_user_added_subjects', 'att_custom_subjects', 'att_custom_wards', 'att_preset_timetable', 'att_timetable',
+  'att_user_added_subjects', 'att_custom_subjects', 'att_custom_wards', 'att_preset_timetable', 'att_timetable', 'att_preset_ward_schedule',
 ]);
 
 const removeNamesFromTimetable = (timetable: Record<string, unknown>, names: Set<string>): boolean => {
@@ -91,6 +91,11 @@ const cascadeDeleteStoredEntity = async (ids: string[], type: 'subject' | 'ward'
             : '';
           return !exactKeys.has(originalKey) && !ids.some(id => originalKey === id.toLowerCase());
         });
+        if (next.length !== parsed.length) entries.push([key, JSON.stringify(next)]);
+        continue;
+      }
+      if (key === 'att_preset_ward_schedule' && Array.isArray(parsed)) {
+        const next = parsed.filter(entry => typeof entry !== 'object' || entry === null || !nameSet.has(String((entry as { ward?: unknown }).ward || '').trim().toLowerCase()));
         if (next.length !== parsed.length) entries.push([key, JSON.stringify(next)]);
         continue;
       }
@@ -150,9 +155,12 @@ const cascadeDeleteStoredEntity = async (ids: string[], type: 'subject' | 'ward'
       }
       for (const alias of CASCADE_ALIAS_KEYS) {
         if (bundle[alias] === undefined) continue;
-        if (alias.includes('timetable')) {
+        if (alias.includes('timetable') || alias === 'att_preset_ward_schedule') {
           const timetable = JSON.parse(bundle[alias]);
-          if (timetable && typeof timetable === 'object' && !Array.isArray(timetable)) {
+          if (alias === 'att_preset_ward_schedule' && Array.isArray(timetable)) {
+            const next = timetable.filter(entry => typeof entry !== 'object' || entry === null || !nameSet.has(String((entry as { ward?: unknown }).ward || '').trim().toLowerCase()));
+            if (next.length !== timetable.length) { bundle[alias] = JSON.stringify(next); changed = true; }
+          } else if (timetable && typeof timetable === 'object' && !Array.isArray(timetable)) {
             changed = removeNamesFromTimetable(timetable as Record<string, unknown>, nameSet) || changed;
             if (changed) bundle[alias] = JSON.stringify(timetable);
           }
@@ -1315,7 +1323,6 @@ export default function Manage() {
           try {
             removePresetWardEntry(idx);
             if (presetWardSchedule.filter(x => x.ward === e.ward).length <= 1) removeWardData(e.ward);
-            void cascadeDeleteStoredEntity([`preset-ward:${e.ward}`], 'ward', [e.ward]);
             setDeleteSheet(null); showToast(`Deleted "${e.ward}".`);
             void notifyManageChange(`${e.ward} was removed from your routine.`);
           } catch { showToast('Delete failed — please try again.', 'err'); }

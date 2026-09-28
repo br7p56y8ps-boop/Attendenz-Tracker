@@ -332,6 +332,15 @@ export default function Home() {
     day: 'numeric',
     year: 'numeric',
   });
+  const isKnownAcademicEntry = (name: string) => {
+    const normalized = name.trim().toLowerCase();
+    return [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS].some(subject => subject.name.trim().toLowerCase() === normalized)
+      || userAddedSubjects.some(subject => subject.name.trim().toLowerCase() === normalized)
+      || customSubjects.some(subject => subject.name.trim().toLowerCase() === normalized)
+      || subjectRegistry.some(subject => subject.name.trim().toLowerCase() === normalized)
+      || Boolean(getSubjectIdByName(name, 'academic'));
+  };
+  const isKnownWardEntry = (name: string) => Boolean(getSubjectIdByName(name, 'clinical')) || customWards.some(ward => ward.name.trim().toLowerCase() === name.trim().toLowerCase());
 
   const dayEntries = useMemo<DayEntry[]>(() => {
     const entries: DayEntry[] = [];
@@ -342,7 +351,7 @@ export default function Home() {
             slot.type === 'ward_replacement'
               ? presetWardObj?.eveningTime || slot.time
               : presetWardObj?.morningTime || slot.time;
-          if (isWardHoliday || !currentWard) {
+          if (isWardHoliday || !currentWard || !isKnownWardEntry(currentWard)) {
             entries.push({ id: `holiday-${idx}`, time: effectiveTime, kind: 'holiday', holidayTime: effectiveTime });
           } else {
             entries.push({
@@ -363,7 +372,7 @@ export default function Home() {
           }
           return;
         }
-        slot.subjects.forEach((subject, subIdx) => {
+        slot.subjects.filter(isKnownAcademicEntry).forEach((subject, subIdx) => {
           entries.push({
             id: `${idx}-${subIdx}`,
             time: slot.time,
@@ -467,6 +476,10 @@ export default function Home() {
     selectedDateStr,
     customWard,
     todayCustomSubjects,
+    customSubjects,
+    customWards,
+    getSubjectIdByName,
+    subjectRegistry,
     userAddedSubjects,
     selectedTodayAbbr,
   ]);
@@ -579,7 +592,7 @@ export default function Home() {
         : ward
           ? (() => { const resolved = getSubjectIdByName(entry.subject!, 'clinical'); return resolved ? getWardAttendanceKey(resolved) : null; })()
           : (() => { const resolved = getSubjectIdByName(entry.subject!, 'academic'); return resolved ? getAcademicAttendanceKey(resolved) : null; })();
-      if (!id) return true;
+      if (!id) return false;
       const record = ward ? wards[id] : subjects[id];
       const conducted = (record?.attended || 0) + (record?.missed || 0);
       const planned = ward
@@ -646,7 +659,7 @@ export default function Home() {
           : undefined;
     return { name: displayName, category: storageKey.startsWith('ward:') ? 'Ward' : registryCategory || getDashboardSubjectKind(displayName, undefined, subjectMode, userAddedSubjects, customSubjects, subjectRegistry), isResolved: Boolean(readable || registryRef) };
   };
-  const subjectPotentialMetrics = useMemo(() => {
+  const allPotentialMetrics = useMemo(() => {
     const metrics = new Map<string, {
       name: string;
       category: string;
@@ -654,8 +667,9 @@ export default function Home() {
       missed: number;
       manuallyFinished: boolean;
       resolved: boolean;
+      isWard: boolean;
     }>();
-    Object.entries(subjects).forEach(([storageKey, item]) => {
+    const addRecords = (records: Record<string, { attended: number; missed: number }>, isWard: boolean) => Object.entries(records).forEach(([storageKey, item]) => {
       const resolved = resolveSubjectAlert(storageKey);
       if (!resolved.isResolved) return;
       const metricKey = `${resolved.category}:${resolved.name.trim().toLowerCase()}`;
@@ -667,17 +681,29 @@ export default function Home() {
         missed: (previous?.missed || 0) + item.missed,
         manuallyFinished: Boolean(previous?.manuallyFinished || finishedMap[storageKey]),
         resolved: true,
+        isWard,
       });
     });
+    addRecords(subjects, false);
+    addRecords(wards, true);
     return Array.from(metrics.values()).map(metric => {
-      const planned = Math.max(metric.attended + metric.missed, getSubjectPlannedTotal(metric.name));
+      const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+      const rawId = metric.name.trim().toLowerCase();
+      const sourceItem = source.find(item => item.name.trim().toLowerCase() === rawId);
+      const customWardItem = customWards.find(item => item.name.trim().toLowerCase() === rawId);
+      const planned = metric.isWard
+        ? subjectMode === 'custom' && customWardItem
+          ? getCustomWardTotalPlanned(customWardItem.startDate, customWardItem.endDate, customWardItem.vacationPeriods)
+          : getPresetWardTotalPlanned(metric.name)
+        : sourceItem?.plannedClasses ?? getSubjectPlannedTotal(metric.name);
       const conducted = metric.attended + metric.missed;
       const remaining = Math.max(0, planned - conducted);
       const current = conducted === 0 ? 0 : (metric.attended / conducted) * 100;
       const maximum = planned > 0 ? ((metric.attended + remaining) / planned) * 100 : current;
       return { ...metric, current, maximum, remaining, planned };
-    }).filter(item => item.resolved && !item.manuallyFinished && item.remaining > 0 && item.current < preferredPercentage).sort((a, b) => a.current - b.current);
-  }, [customSubjects, customWards, finishedMap, getPresetSubjectDisplayName, getPresetWardDisplayName, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, subjectRegistry, userAddedSubjects]);
+    }).filter(item => item.resolved && !item.manuallyFinished && item.planned > 0 && item.remaining > 0).sort((a, b) => a.current - b.current);
+  }, [customSubjects, customWards, finishedMap, getCustomWardTotalPlanned, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, subjectRegistry, userAddedSubjects, wards]);
+  const subjectAlertMetrics = allPotentialMetrics.filter(item => item.current < preferredPercentage);
   const statusForEntry = (entry: DayEntry) => {
     if (entry.kind !== 'card' || !entry.card?.sessionId) return undefined;
     const card = entry.card;
@@ -801,19 +827,19 @@ export default function Home() {
         {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.5rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{renderActivityText(item.text.replace(/\(Small Group Teaching\)/g, '(SGT)'))}</span></div>; })}</div>}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
-      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectPotentialMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectPotentialMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectAlertMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectAlertMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2>
           <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span>
         </div>
-        {subjectPotentialMetrics.length === 0 ? <p className="mt-3 text-[10px] text-muted-foreground">Not enough data yet.</p> : (
+        {allPotentialMetrics.length === 0 ? <p className="mt-3 text-[10px] text-muted-foreground">Not enough data yet.</p> : (
           <div className="mt-3">
-            <svg viewBox={`0 0 560 ${subjectPotentialMetrics.length * 46 + 34}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
-              <line x1="112" x2="112" y1="10" y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
-              <line x1="112" x2="540" y1={subjectPotentialMetrics.length * 46 + 24} y2={subjectPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
-              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={112 + (428 * tick) / 100} y={subjectPotentialMetrics.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
-              {subjectPotentialMetrics.map((metric, index) => {
+            <svg viewBox={`0 0 560 ${allPotentialMetrics.length * 46 + 34}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
+              <line x1="112" x2="112" y1="10" y2={allPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              <line x1="112" x2="540" y1={allPotentialMetrics.length * 46 + 24} y2={allPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={112 + (428 * tick) / 100} y={allPotentialMetrics.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
+              {allPotentialMetrics.map((metric, index) => {
                 const rowY = 34 + index * 46;
                 const left = 112;
                 const width = 428;
