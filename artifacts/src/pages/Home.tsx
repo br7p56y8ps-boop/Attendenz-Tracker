@@ -635,9 +635,21 @@ export default function Home() {
     }).filter(item => item.remaining > 0 && item.current < preferredPercentage).sort((a, b) => a.current - b.current).slice(0, 6);
   }, [customSubjects, customWards, getPresetSubjectDisplayName, getPresetWardDisplayName, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, subjectRegistry, userAddedSubjects]);
   const statusForEntry = (entry: DayEntry) => {
-    const sessionId = entry.card?.sessionId;
-    if (!sessionId) return undefined;
-    return Object.entries(homeSelections).find(([key]) => key.startsWith(todayStr) && key.includes(sessionId))?.[1];
+    if (entry.kind !== 'card' || !entry.card?.sessionId) return undefined;
+    const card = entry.card;
+    const attendanceKey = card.isSGT && card.sgtId
+      ? getSGTKey(card.sgtId)
+      : (() => {
+          const resolved = getSubjectIdByName(
+            card.isWard ? (card.subtitle || card.subject) : card.subject,
+            card.isWard ? 'clinical' : 'academic'
+          );
+          return resolved
+            ? (card.isWard ? getWardAttendanceKey(resolved) : getAcademicAttendanceKey(resolved))
+            : null;
+        })();
+    if (!attendanceKey) return undefined;
+    return homeSelections[`${todayStr}-${attendanceKey}-${card.sessionId}`];
   };
   const timeOfDay = new Date().getHours() < 12 ? 'Good Morning' : new Date().getHours() < 18 ? 'Good Afternoon' : 'Good Evening';
   const shortDate = new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -726,7 +738,7 @@ export default function Home() {
                 const kind = getDashboardSubjectKind(subject, entry.card, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
                 return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="relative flex w-full min-w-0 items-center gap-2 text-left">
                   <span className="absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card bg-primary" />
-                  <span className="min-w-0 flex-1 whitespace-normal break-words text-[10px] font-bold leading-3 text-foreground">{subject} <span className="text-[8px] font-semibold text-muted-foreground">({kind})</span></span>
+                  <span className="min-w-[7rem] flex-1 whitespace-normal break-words text-[10px] font-bold leading-3 text-foreground" style={{ overflowWrap: 'normal', wordBreak: 'normal' }}>{subject} <span className="text-[8px] font-semibold text-muted-foreground">({kind})</span></span>
                   <span className="w-[3.5rem] shrink-0 text-right text-[8px] text-muted-foreground">{entry.time}</span>
                   <span className={cn('w-[3.5rem] shrink-0 text-right text-[8px] font-extrabold', color)}>{label}</span>
                 </button>;
