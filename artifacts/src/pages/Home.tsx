@@ -99,6 +99,13 @@ function wrapDashboardSvgLabel(value: string, maxChars = 22): string[] {
   return lines.slice(0, 2);
 }
 
+function renderActivityText(text: string): React.ReactNode {
+  return text.split(/(Attended|Bunked|Missed|Off|Holiday)/g).map((part, index) => {
+    const color = part === 'Attended' ? 'text-emerald-500' : part === 'Bunked' || part === 'Missed' ? 'text-rose-500' : part === 'Off' || part === 'Holiday' ? 'text-amber-500' : null;
+    return color ? <span key={`${part}-${index}`} className={color}>{part}</span> : <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>;
+  });
+}
+
 export default function Home() {
   const today = new Date();
   const todayStr = toDateString(today);
@@ -468,6 +475,14 @@ export default function Home() {
   const isCompletedPlannedEntry = (entry: DayEntry): boolean => {
     if (entry.kind !== 'card' || !entry.card) return false;
     const c = entry.card;
+    const vacationPeriods = c.isWard
+      ? subjectMode === 'custom'
+        ? customWards.find(w => w.name.toLowerCase() === (c.subtitle || c.subject).toLowerCase())?.vacationPeriods || []
+        : presetWardSchedule.filter(w => w.ward.toLowerCase() === (c.subtitle || c.subject).toLowerCase()).flatMap(w => w.vacationPeriods || [])
+      : c.isSGT && c.sgtId
+        ? (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects).find(item => item.id === c.sgtId)?.vacationPeriods || []
+        : [];
+    if (vacationPeriods.some(period => selectedDateStr >= period.start && selectedDateStr <= period.end)) return false;
     const id = c.isSGT && c.sgtId
       ? getSGTKey(c.sgtId)
       : (() => {
@@ -506,7 +521,7 @@ export default function Home() {
         history = entries.map(entry => {
           const type = String(entry.type || 'Updated routine');
           const data = entry.data || {};
-          const rawTarget = data.name || data.subject || data.ward || data.names?.join(', ') || data.clinicalSubject || 'routine';
+          const rawTarget = data.name || data.new?.name || data.subject || data.ward || data.names?.join(', ') || data.clinicalSubject || 'routine';
           const target = /ua_|^academic:|^ward:|^sgt:/.test(String(rawTarget)) ? 'Unknown subject' : shortenSubject(String(rawTarget));
           const kind: ActivityKind = /vacation|exam/i.test(type) ? 'vacation' : /percentage|planned/i.test(type) ? 'percentage' : /slot/i.test(type) ? 'slot' : /edit|move|add|delete/i.test(type) ? 'edit' : 'neutral';
           return { id: `history-${entry.id}`, text: `${type}: ${target}`, timestamp: Date.parse(entry.timestamp) || Date.now(), kind };
@@ -552,8 +567,32 @@ export default function Home() {
         schedules.forEach((scheduleItem: any) => entries.push({ subject: subject.name, time: scheduleItem.time || `${scheduleItem.start}–${scheduleItem.end}` }));
       });
     }
-    return entries.sort((a, b) => (rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
-  }, [customSubjects, customWards, getCurrentPresetWard, presetTimetable, subjectMode, tomorrowDate, tomorrowDateStr, tomorrowDay, userAddedSubjects]);
+    const remaining = entries.filter(entry => {
+      if (!entry.subject) return true;
+      const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+      const sgt = source.find(item => item.name === entry.subject && isSGTSubjectRecord(item));
+      const ward = subjectMode === 'custom'
+        ? customWards.find(item => item.name.toLowerCase() === entry.subject!.toLowerCase())
+        : getCurrentPresetWard(tomorrowDate)?.ward.toLowerCase() === entry.subject!.toLowerCase() ? getCurrentPresetWard(tomorrowDate) : undefined;
+      const id = sgt
+        ? getSGTKey(sgt.id)
+        : ward
+          ? (() => { const resolved = getSubjectIdByName(entry.subject!, 'clinical'); return resolved ? getWardAttendanceKey(resolved) : null; })()
+          : (() => { const resolved = getSubjectIdByName(entry.subject!, 'academic'); return resolved ? getAcademicAttendanceKey(resolved) : null; })();
+      if (!id) return true;
+      const record = ward ? wards[id] : subjects[id];
+      const conducted = (record?.attended || 0) + (record?.missed || 0);
+      const planned = ward
+        ? subjectMode === 'custom'
+          ? (() => { const custom = customWards.find(item => item.name.toLowerCase() === entry.subject!.toLowerCase()); return custom ? getCustomWardTotalPlanned(custom.startDate, custom.endDate, custom.vacationPeriods) : 0; })()
+          : getPresetWardTotalPlanned(entry.subject!)
+        : sgt
+          ? sgt.plannedClasses || 0
+          : getSubjectPlannedTotal(entry.subject!);
+      return !finishedMap[id] && !(planned > 0 && conducted >= planned);
+    });
+    return remaining.sort((a, b) => (rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
+  }, [customSubjects, customWards, finishedMap, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getCustomWardTotalPlanned, getPresetWardTotalPlanned, presetTimetable, subjectMode, subjects, tomorrowDate, tomorrowDateStr, tomorrowDay, userAddedSubjects, wards]);
   const tomorrowSubject = tomorrowEntries[0]?.subject;
   const tomorrowIsWard = Boolean(tomorrowSubject && customWards.some(ward => ward.name === tomorrowSubject));
   const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard }, subjectMode, userAddedSubjects, customSubjects, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
@@ -736,11 +775,12 @@ export default function Home() {
                 const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
                 const subject = entry.card?.subject || 'Unknown subject';
                 const kind = getDashboardSubjectKind(subject, entry.card, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
-                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="relative flex w-full min-w-0 items-center gap-2 text-left">
+                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(4.5rem,auto)] grid-rows-2 items-center gap-x-2 text-left">
                   <span className="absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card bg-primary" />
-                  <span className="min-w-[7rem] flex-1 whitespace-normal break-words text-[10px] font-bold leading-3 text-foreground" style={{ overflowWrap: 'normal', wordBreak: 'normal' }}>{subject} <span className="text-[8px] font-semibold text-muted-foreground">({kind})</span></span>
-                  <span className="w-[3.5rem] shrink-0 text-right text-[8px] text-muted-foreground">{entry.time}</span>
-                  <span className={cn('w-[3.5rem] shrink-0 text-right text-[8px] font-extrabold', color)}>{label}</span>
+                  <span className="min-w-0 break-words text-[10px] font-bold leading-3 text-foreground">{subject}</span>
+                  <span className="min-w-0 text-right text-[8px] text-muted-foreground">{entry.time}</span>
+                  <span className="min-w-0 text-[8px] font-semibold leading-3 text-muted-foreground">({kind})</span>
+                  <span className={cn('min-w-0 text-right text-[8px] font-extrabold', color)}>{label}</span>
                 </button>;
               })}
             </div>}
@@ -753,7 +793,7 @@ export default function Home() {
       </div>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Today’s Activity</h2></div>
-        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.5rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{item.text.replace(/\(Small Group Teaching\)/g, '(SGT)')}</span></div>; })}</div>}
+        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.5rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{renderActivityText(item.text.replace(/\(Small Group Teaching\)/g, '(SGT)'))}</span></div>; })}</div>}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectPotentialMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectPotentialMetrics.slice(0, 3).map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', metric.current < preferredPercentage ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>

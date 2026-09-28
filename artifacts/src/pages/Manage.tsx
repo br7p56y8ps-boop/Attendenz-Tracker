@@ -206,21 +206,21 @@ const formatHistoryDetail = (entry: any): string => {
     case 'Deleted Rotation':
       return d.ward || d.name || '';
     case 'Edited Subject':
-      return d.new?.name || d.old?.name || '';
+      return `${d.name || d.new?.name || d.old?.name || ''}: ${(d.changes || []).join('; ') || 'updated'}`;
     case 'Edited Ward':
-      return d.new?.name || d.old?.name || '';
+      return `${d.name || d.new?.name || d.old?.name || ''}: ${(d.changes || []).join('; ') || 'updated'}`;
     case 'Changed Parent':
       return `→ ${d.newParent || 'Single'}`;
     case 'Changed Clinical Subject':
       return `${d.name || ''}: ${d.from || '—'} → ${d.to || ''}`;
     case 'Added Subject':
-      return (d.names || []).join(', ');
+      return d.details?.length ? d.details.map((item: any) => `${item.name} · ${item.schedule || 'schedule not set'} · ${item.planned ?? 0} planned`).join('; ') : (d.names || []).join(', ');
     case 'Added Rotation':
       return `${d.name || ''} (${d.start || ''} – ${d.end || ''})`;
     case 'Added SGT':
       return `${d.name || ''} under ${d.clinicalSubject || ''} · ${d.planned || 0} planned`;
     case 'Edited Planned':
-      return `${d.name || ''}: → ${d.planned ?? ''}`;
+      return `${d.name || ''}: planned classes updated to ${d.planned ?? ''}`;
     default:
       return '';
   }
@@ -760,7 +760,7 @@ export default function Manage() {
         })));
       }
       const academicItems = items.filter((i: any) => i.subjectType !== 'allied-parent');
-      if (academicItems.length > 0) recordHistory('Added Subject', { names: academicItems.map((i: any) => i.name) });
+      if (academicItems.length > 0) recordHistory('Added Subject', { names: academicItems.map((i: any) => i.name), details: academicItems.map((i: any) => ({ name: i.name, schedule: i.rows.map((row: any) => `${row.day} ${row.time}`).join(', '), planned: i.plannedClasses })) });
       setSubjectName(''); setPlanned(''); setSubjectRows([newRow([])]); setStagedChildren([]); setNewParentName(''); setChildStart(''); setChildEnd('');
       setFormError(null); showToast(items.length > 1 ? `${items.length} items added.` : 'Added successfully.');
       void notifyManageChange(items.length > 1 ? 'Your routine was updated successfully.' : `${items[0]?.name || 'Subject'} was added to your routine.`);
@@ -1282,14 +1282,25 @@ export default function Manage() {
       const rp = rowProblem(editSubject.rows);
       if (rp) { setEditError(rp); return; }
     }
-    recordHistory('Edited Subject', { old: { name: editSubject.originalName }, new: { name: editSubject.name }, category: editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' ? 'SGT' : undefined });
+    const subjectRows = editSubject.subjectType === 'allied-parent' ? [] : buildRowsFromForm(editSubject.rows);
+    const subjectChanges = editSubject.subjectType === 'allied-parent'
+      ? [`renamed to ${editSubject.name}`]
+      : [
+          editSubject.name !== editSubject.originalName ? `renamed to ${editSubject.name}` : '',
+          `schedule updated to ${subjectRows.map(row => `${row.day} ${row.time}`).join(', ')}`,
+          `planned classes updated to ${editSubject.plannedClasses}`,
+          editSubject.subjectType === 'allied' && editSubject.parentName ? `parent set to ${editSubject.parentName}` : '',
+          editSubject.startDate && editSubject.endDate ? `dates set to ${editSubject.startDate}–${editSubject.endDate}` : '',
+          editSubject.vacationPeriods?.length ? `vacation/exam periods set to ${editSubject.vacationPeriods.map(period => `${period.start}–${period.end}`).join(', ')}` : '',
+        ].filter(Boolean);
+    recordHistory('Edited Subject', { name: editSubject.name, old: { name: editSubject.originalName }, new: { name: editSubject.name }, changes: subjectChanges, category: editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching' ? 'SGT' : undefined });
     try {
       if (editSubject.subjectType === 'allied-parent') {
         const patch = { name: editSubject.name };
         if (editSubject.store === 'userAdded') updateUserAddedSubject(editSubject.id, patch);
         else updateCustomSubject(editSubject.id, patch);
       } else {
-        const rows = buildRowsFromForm(editSubject.rows);
+        const rows = subjectRows;
         const isSGT = editSubject.subjectType === 'allied' && editSubject.parentName === 'Small Group Teaching';
         let plannedClasses = editSubject.plannedClasses;
         if (isSGT) {
@@ -1351,11 +1362,18 @@ export default function Manage() {
       setEditError(`A ward named "${editWard.name}" already exists.`); return;
     }
 
-    recordHistory('Edited Ward', { old: { name: editWard.originalName }, new: { name: editWard.name } });
+    const morningTime = canonicalTimeRange(editWard.mornStart, editWard.mornEnd);
+    const eveningTime = canonicalTimeRange(editWard.eveStart, editWard.eveEnd);
+    const vacationData = (editWard.vacationPeriods || []).map(v => ({ start: v.start, end: v.end }));
+    const wardChanges = [
+      editWard.name.trim() !== editWard.originalName ? `renamed to ${editWard.name.trim()}` : '',
+      `dates changed to ${editWard.startDate}–${editWard.endDate}`,
+      `morning session time changed to ${morningTime}`,
+      `evening session time changed to ${eveningTime}`,
+      vacationData.length ? `vacation/exam periods set to ${vacationData.map(period => `${period.start}–${period.end}`).join(', ')}` : 'vacation/exam periods cleared',
+    ].filter(Boolean);
+    recordHistory('Edited Ward', { name: editWard.name.trim(), old: { name: editWard.originalName }, new: { name: editWard.name.trim() }, changes: wardChanges });
     try {
-      const morningTime = canonicalTimeRange(editWard.mornStart, editWard.mornEnd);
-      const eveningTime = canonicalTimeRange(editWard.eveStart, editWard.eveEnd);
-      const vacationData = (editWard.vacationPeriods || []).map(v => ({ start: v.start, end: v.end }));
       if (editWard.store === 'preset') {
         if (editWard.name.trim() !== editWard.originalName) {
           renamePresetWard(editWard.originalName, editWard.name.trim());
