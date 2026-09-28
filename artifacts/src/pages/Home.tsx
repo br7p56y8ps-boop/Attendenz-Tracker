@@ -636,10 +636,12 @@ export default function Home() {
     return label;
   };
   const resolveSubjectAlert = (storageKey: string) => {
-    const raw = storageKey.replace(/^(academic:|acad:|ward:|sgt:|int:)/, '');
+    const isSGTKey = /^(?:sgt)[:-]/i.test(storageKey);
+    const isWardKey = /^(?:ward)[:-]/i.test(storageKey);
+    const raw = storageKey.replace(/^(academic|acad|ward|sgt|int)[:-]/i, '');
     const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
     const matchesKey = (value: string | undefined) => Boolean(value && (value === raw || value === storageKey || normalize(value) === normalize(raw) || normalize(value) === normalize(storageKey)));
-    if (storageKey.startsWith('sgt:')) {
+    if (isSGTKey) {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
       const sgt = source.find(item => matchesKey(item.id) || matchesKey(item.name) || matchesKey(item.name.replace(/\s*SGT\s*$/i, '')));
       return { name: sgt?.name || restoredSubjectFallback(raw), category: 'SGT', isResolved: Boolean(sgt), plannedHint: sgt?.plannedClasses };
@@ -653,7 +655,7 @@ export default function Home() {
       ? (WARD_SUBJECTS.includes(preset as typeof WARD_SUBJECTS[number]) ? getPresetWardDisplayName(preset.name) : getPresetSubjectDisplayName(preset.name))
       : undefined;
     const readable = userAdded?.name || custom?.name || customWard?.name || presetName || preset?.name;
-    const registryRef = subjectRegistry.find(ref => matchesKey(ref.id));
+    const registryRef = subjectRegistry.find(ref => matchesKey(ref.id) || normalize(ref.name) === normalize(raw));
     const displayName = readable || registryRef?.name || restoredSubjectFallback(raw);
     const registryCategory = registryRef?.kind === 'sgt'
       ? 'SGT'
@@ -665,7 +667,7 @@ export default function Home() {
     const plannedHint = customWard
       ? getCustomWardTotalPlanned(customWard.startDate, customWard.endDate, customWard.vacationPeriods)
       : userAdded?.plannedClasses ?? custom?.plannedClasses ?? registryRef?.planned;
-    return { name: displayName, category: storageKey.startsWith('ward:') ? 'Ward' : registryCategory || getDashboardSubjectKind(displayName, undefined, subjectMode, userAddedSubjects, customSubjects, subjectRegistry), isResolved: Boolean(readable || registryRef), plannedHint };
+    return { name: displayName, category: isWardKey ? 'Ward' : registryCategory || getDashboardSubjectKind(displayName, undefined, subjectMode, userAddedSubjects, customSubjects, subjectRegistry), isResolved: Boolean(readable || registryRef), plannedHint };
   };
   const allPotentialMetrics = useMemo(() => {
     const metrics = new Map<string, {
@@ -714,7 +716,9 @@ export default function Home() {
         || customWards.find(item => item.name.trim().toLowerCase() === nameKey);
       const registryItem = subjectRegistry.find(item => {
         const registryId = item.id.trim().toLowerCase();
-        return registryId === rawId || registryId === metric.storageKey.trim().toLowerCase();
+        return registryId === rawId
+          || registryId === metric.storageKey.trim().toLowerCase()
+          || item.name.trim().toLowerCase() === nameKey;
       });
       const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS]
         .find(item => ('id' in item && item.id.trim().toLowerCase() === rawId) || item.name.trim().toLowerCase() === nameKey);
@@ -723,7 +727,7 @@ export default function Home() {
         ? subjectMode === 'custom' && customWardItem
           ? getCustomWardTotalPlanned(customWardItem.startDate, customWardItem.endDate, customWardItem.vacationPeriods)
           : getPresetWardTotalPlanned(metric.name)
-        : sourceItem?.plannedClasses ?? presetPlanned);
+        : sourceItem?.plannedClasses ?? presetPlanned ?? (preset ? getSubjectPlannedTotal(metric.name) : undefined));
       const conducted = metric.attended + metric.missed;
       const remaining = planned === undefined ? 0 : Math.max(0, planned - conducted);
       const current = conducted === 0 ? 0 : (metric.attended / conducted) * 100;
