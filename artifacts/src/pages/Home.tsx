@@ -12,6 +12,7 @@ import { ArrowUpCircle, X, MoonStar, ClipboardCheck, Pencil, Plus, Minus, Calend
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { idbGet } from '@/lib/idb';
+import { loadDashboardManualAdjustments, type DashboardManualAdjustment } from '@/lib/dashboardManualAdjustments';
 import { DASHBOARD_ACTIVITY_UPDATED_EVENT, mergeDashboardActivities, type DashboardActivityItem } from '@/lib/activity';
 import { shortenSubject } from '@/components/HomeCard';
 
@@ -103,6 +104,21 @@ export default function Home() {
   const [dashboardActivities, setDashboardActivities] = useState<ActivityItem[]>([]);
   const [activityExpanded, setActivityExpanded] = useState(false);
   const restoredSubjectLabels = useRef(new Map<string, string>());
+  const [manualAdjustments, setManualAdjustments] = useState<DashboardManualAdjustment[]>([]);
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      const next = await loadDashboardManualAdjustments();
+      if (active) setManualAdjustments(next);
+    };
+    void load();
+    const onUpdated = () => { void load(); };
+    window.addEventListener('att-dashboard-manual-adjustments-updated', onUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener('att-dashboard-manual-adjustments-updated', onUpdated);
+    };
+  }, []);
 
   /* ── Update notice ── */
   const [installedVersion] = useState<string>(() => {
@@ -564,18 +580,38 @@ export default function Home() {
   };
   const glanceEntries = dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry) && !isEntryVacation(entry));
   const overallAttendanceWave = useMemo(() => {
+    const categoryColors: Record<string, string> = {
+      'Medicine & Allied': '#3b82f6',
+      'Surgery & Allied': '#a855f7',
+      'Obstetrics & Gynaecology': '#ec4899',
+    };
+    const extraColors = ['#8b5cf6', '#06b6d4', '#f97316', '#84cc16', '#e11d48'];
+    const customParentNames = Array.from(new Set(
+      [...userAddedSubjects, ...customSubjects]
+        .filter(subject => subject.subjectType === 'allied-parent')
+        .map(subject => subject.name.trim())
+        .filter(Boolean)
+    ));
     const definitions = [
-      { id: 'medicine', label: 'Medicine & Allied', color: '#3b82f6' },
-      { id: 'surgery', label: 'Surgery & Allied', color: '#a855f7' },
-      { id: 'integrated', label: 'Integrated', color: '#14b8a6' },
-      { id: 'ward', label: 'Ward', color: '#22c55e' },
-      { id: 'sgt', label: 'SGT', color: '#f59e0b' },
-    ] as const;
-    type GroupId = typeof definitions[number]['id'];
+      ...CATEGORIES.map((category, index) => ({
+        id: `category:${category.name}`,
+        label: category.name,
+        color: categoryColors[category.name] || extraColors[index % extraColors.length],
+      })),
+      { id: 'integrated', label: 'Integrated Teaching', color: '#14b8a6' },
+      { id: 'ward', label: 'Clinical Rotations', color: '#22c55e' },
+      { id: 'sgt', label: 'Small Group Teaching', color: '#f59e0b' },
+      ...customParentNames.map((name, index) => ({
+        id: `custom:${name}`,
+        label: name,
+        color: extraColors[(index + CATEGORIES.length) % extraColors.length],
+      })),
+    ];
+    type GroupId = string;
     type Totals = { attended: number; conducted: number };
     const totals = new Map<string, Map<GroupId, Totals>>();
     const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-    const resolveGroup = (attendanceKey: string): GroupId => {
+    const resolveGroup = (attendanceKey: string): GroupId | null => {
       const raw = attendanceKey.replace(/^(academic:|acad:|ward:|sgt:)/, '');
       const matchesToken = (value: string | undefined) => {
         if (!value) return false;
@@ -586,32 +622,41 @@ export default function Home() {
       if (attendanceKey.startsWith('ward:')) return 'ward';
       if (attendanceKey.startsWith('sgt:')) return 'sgt';
       const registryRef = subjectRegistry.find(ref => matchesToken(ref.id) || matchesToken(ref.name));
-      if (registryRef?.kind === 'integrated') return 'integrated';
+      if (attendanceKey.startsWith('int:') || registryRef?.kind === 'integrated') return 'integrated';
       if (registryRef?.kind === 'sgt' || registryRef?.parentName === 'Small Group Teaching') return 'sgt';
       const userAdded = userAddedSubjects.find(subject => matchesToken(subject.id) || matchesToken(subject.name));
       if (userAdded?.parentName === 'Small Group Teaching') return 'sgt';
       const custom = customSubjects.find(subject => matchesToken(subject.id) || matchesToken(subject.name));
       if (custom?.parentName === 'Small Group Teaching') return 'sgt';
-      if (/integrated/i.test(`${registryRef?.parentName || ''} ${userAdded?.parentName || ''} ${custom?.parentName || ''}`)) return 'integrated';
-      const category = CATEGORIES.find(item => item.subjects.some(subject => matchesToken(subject.id) || matchesToken(subject.name)))?.name || registryRef?.parentName || userAdded?.parentName || custom?.parentName || '';
-      return /surg|obstetric|gynaec|gynec/i.test(category) ? 'surgery' : 'medicine';
+      const category = CATEGORIES.find(item => item.subjects.some(subject => matchesToken(subject.id) || matchesToken(subject.name)));
+      if (category) return `category:${category.name}`;
+      const parent = registryRef?.parentName || userAdded?.parentName || custom?.parentName;
+      if (parent && customParentNames.some(name => normalize(name) === normalize(parent))) return `custom:${parent}`;
+      return null;
+    };
+    const addTotals = (dateStr: string, subjectKey: string, attended: number, conducted: number) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || conducted <= 0) return;
+      const groupId = resolveGroup(subjectKey);
+      if (!groupId) return;
+      const month = dateStr.slice(0, 7);
+      const monthGroups = totals.get(month) || new Map<GroupId, Totals>();
+      const group = monthGroups.get(groupId) || { attended: 0, conducted: 0 };
+      group.conducted += conducted;
+      group.attended += attended;
+      monthGroups.set(groupId, group);
+      totals.set(month, monthGroups);
     };
     Object.entries(homeSelections).forEach(([key, selection]) => {
       if (selection !== 'attended' && selection !== 'missed') return;
       const dateStr = key.slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
       const separator = key.charAt(10);
       if (separator !== '-' && separator !== '_') return;
-      const attendanceKey = key.slice(11);
-      if (!attendanceKey) return;
-      const month = dateStr.slice(0, 7);
-      const groupId = resolveGroup(attendanceKey);
-      const monthGroups = totals.get(month) || new Map<GroupId, Totals>();
-      const group = monthGroups.get(groupId) || { attended: 0, conducted: 0 };
-      group.conducted += 1;
-      if (selection === 'attended') group.attended += 1;
-      monthGroups.set(groupId, group);
-      totals.set(month, monthGroups);
+      addTotals(dateStr, key.slice(11), selection === 'attended' ? 1 : 0, 1);
+    });
+    manualAdjustments.forEach(adjustment => {
+      if (!Number.isFinite(adjustment.delta) || adjustment.delta === 0) return;
+      const amount = Math.abs(Math.trunc(adjustment.delta));
+      addTotals(adjustment.date, adjustment.subjectKey, adjustment.delta > 0 ? amount : 0, amount);
     });
     const dataMonths = Array.from(totals.keys()).sort();
     const firstMonth = dataMonths[0] || todayStr.slice(0, 7);
@@ -663,7 +708,7 @@ export default function Home() {
       return { ...definition, monthly, path: ecgPath(monthly), conducted: all.conducted, percentage: all.conducted > 0 ? (all.attended / all.conducted) * 100 : 0 };
     });
     return { months, groups, plot };
-  }, [homeSelections, subjectRegistry, userAddedSubjects, customSubjects, todayStr]);
+  }, [homeSelections, manualAdjustments, subjectRegistry, userAddedSubjects, customSubjects, todayStr]);
   const restoredSubjectFallback = (raw: string) => {
     const existing = restoredSubjectLabels.current.get(raw);
     if (existing) return existing;
@@ -806,8 +851,8 @@ export default function Home() {
         <p className="text-xs font-bold text-muted-foreground">{shortDate}</p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-4 pb-4 scroll-fade-viewport scroll-reachability">
-      <div className="grid grid-cols-[1.2fr_1fr] gap-3">
-        <section className="glass-card flex h-[11rem] min-h-0 flex-col rounded-2xl border border-border p-3 text-left">
+      <div className="grid h-[11rem] grid-cols-[1.2fr_1fr] items-stretch gap-3">
+        <section className="glass-card flex h-full min-h-0 flex-col rounded-2xl border border-border p-3 text-left">
           <h2 className="shrink-0 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Today at a Glance</h2>
           <div className="relative mt-2 min-h-0 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
             {glanceEntries.length === 0 ? <p className="py-2 text-xs text-muted-foreground">No remaining classes today.</p> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
@@ -827,7 +872,7 @@ export default function Home() {
             </div>}
           </div>
         </section>
-        <div className="grid min-h-0 grid-rows-2 gap-3">
+        <div className="grid h-full min-h-0 grid-rows-2 gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
           <button type="button" onClick={() => { setSelectedDateStr(toDateString(addDays(today, 1))); setShowMarkAttendance(true); }} className="min-h-11 rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><p className="mt-1 truncate text-[10px] text-muted-foreground">{tomorrowPreview}</p></button>
         </div>
