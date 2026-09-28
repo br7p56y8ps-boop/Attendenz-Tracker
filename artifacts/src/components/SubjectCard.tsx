@@ -7,7 +7,6 @@ import { Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { formatManualAttendanceDelta, recordDashboardActivity } from '@/lib/activity';
-import { appendDashboardManualAdjustment } from '@/lib/dashboardManualAdjustments';
 
 interface SubjectCardProps {
   subject: string;
@@ -86,17 +85,6 @@ export const SubjectCard = ({
     const category = isWard ? 'Ward' : isSGT ? 'SGT' : 'Lecture';
     const attendedDelta = final.attended - initial.attended;
     const missedDelta = final.missed - initial.missed;
-    const sessionDelta = attendedDelta !== 0 ? attendedDelta : -missedDelta;
-    if (attendanceKey && sessionDelta !== 0) {
-      const now = new Date();
-      void appendDashboardManualAdjustment({
-        id: `dma_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-        subjectKey: attendanceKey,
-        delta: sessionDelta,
-        date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
-        createdAt: Date.now(),
-      });
-    }
     if (attendedDelta !== 0) {
       void recordDashboardActivity(formatManualAttendanceDelta(displayName, category, 'Attended', attendedDelta), 'edit');
     }

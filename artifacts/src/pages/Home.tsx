@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { HomeCard } from '@/components/HomeCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layout } from '@/components/Layout';
-import { useCustomData } from '@/contexts/CustomDataContext';
+import { isSGTSubjectRecord, useCustomData } from '@/contexts/CustomDataContext';
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSessionId, getCustomSubjectSessionId } from '@/lib/utils';
@@ -12,7 +12,6 @@ import { ArrowUpCircle, X, MoonStar, ClipboardCheck, Pencil, Plus, Minus, Calend
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { idbGet } from '@/lib/idb';
-import { loadDashboardManualAdjustments, type DashboardManualAdjustment } from '@/lib/dashboardManualAdjustments';
 import { DASHBOARD_ACTIVITY_UPDATED_EVENT, mergeDashboardActivities, type DashboardActivityItem } from '@/lib/activity';
 import { shortenSubject } from '@/components/HomeCard';
 
@@ -66,13 +65,21 @@ interface DayEntry {
 type ActivityKind = 'attendance' | 'missed' | 'edit' | 'slot' | 'vacation' | 'percentage' | 'neutral';
 interface ActivityItem extends DashboardActivityItem { kind: ActivityKind; }
 
-function getDashboardSubjectKind(subject: string, card?: { isWard?: boolean; isSGT?: boolean }, userAddedSubjects: Array<{ name: string; parentName?: string } | any> = []): string {
+function getDashboardSubjectKind(
+  subject: string,
+  card: { isWard?: boolean; isSGT?: boolean } | undefined,
+  subjectMode: 'preloaded' | 'custom',
+  userAddedSubjects: Array<{ name: string; subjectType: string; parentName?: string; category?: string }>,
+  customSubjects: Array<{ name: string; subjectType: string; parentName?: string; category?: string }>,
+  subjectRegistry: Array<{ name: string; id: string; kind: string }>,
+): string {
   if (card?.isWard) return 'Ward';
   if (card?.isSGT) return 'SGT';
-  const userAdded = userAddedSubjects.find(item => item.name === subject);
-  if (userAdded?.parentName === 'Small Group Teaching') return 'SGT';
-  if (INTEGRATED_SUBJECTS.some(item => item.name === subject || item.id === subject)) return 'Integrated';
-  if (WARD_SUBJECTS.some(item => item.name === subject || item.id === subject)) return 'Ward';
+  const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
+  const stored = source.find(item => item.name === subject);
+  if (stored && isSGTSubjectRecord(stored)) return 'SGT';
+  const registry = subjectRegistry.find(item => item.name === subject || item.id === subject);
+  if (registry?.kind === 'integrated' || INTEGRATED_SUBJECTS.some(item => item.name === subject || item.id === subject)) return 'Integrated';
   return 'Lecture';
 }
 
@@ -104,21 +111,6 @@ export default function Home() {
   const [dashboardActivities, setDashboardActivities] = useState<ActivityItem[]>([]);
   const [activityExpanded, setActivityExpanded] = useState(false);
   const restoredSubjectLabels = useRef(new Map<string, string>());
-  const [manualAdjustments, setManualAdjustments] = useState<DashboardManualAdjustment[]>([]);
-  useEffect(() => {
-    let active = true;
-    const load = async () => {
-      const next = await loadDashboardManualAdjustments();
-      if (active) setManualAdjustments(next);
-    };
-    void load();
-    const onUpdated = () => { void load(); };
-    window.addEventListener('att-dashboard-manual-adjustments-updated', onUpdated);
-    return () => {
-      active = false;
-      window.removeEventListener('att-dashboard-manual-adjustments-updated', onUpdated);
-    };
-  }, []);
 
   /* ── Update notice ── */
   const [installedVersion] = useState<string>(() => {
@@ -564,7 +556,7 @@ export default function Home() {
   }, [customSubjects, customWards, getCurrentPresetWard, presetTimetable, subjectMode, tomorrowDate, tomorrowDateStr, tomorrowDay, userAddedSubjects]);
   const tomorrowSubject = tomorrowEntries[0]?.subject;
   const tomorrowIsWard = Boolean(tomorrowSubject && customWards.some(ward => ward.name === tomorrowSubject));
-  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard }, userAddedSubjects)})` : 'No classes scheduled for tomorrow.';
+  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard }, subjectMode, userAddedSubjects, customSubjects, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
   const isEntryVacation = (entry: DayEntry) => {
     const card = entry.card;
     if (!card) return false;
@@ -579,136 +571,6 @@ export default function Home() {
     return false;
   };
   const glanceEntries = dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry) && !isEntryVacation(entry));
-  const overallAttendanceWave = useMemo(() => {
-    const categoryColors: Record<string, string> = {
-      'Medicine & Allied': '#3b82f6',
-      'Surgery & Allied': '#a855f7',
-      'Obstetrics & Gynaecology': '#ec4899',
-    };
-    const extraColors = ['#8b5cf6', '#06b6d4', '#f97316', '#84cc16', '#e11d48'];
-    const customParentNames = Array.from(new Set(
-      [...userAddedSubjects, ...customSubjects]
-        .filter(subject => subject.subjectType === 'allied-parent')
-        .map(subject => subject.name.trim())
-        .filter(Boolean)
-    ));
-    const definitions = [
-      ...CATEGORIES.map((category, index) => ({
-        id: `category:${category.name}`,
-        label: category.name,
-        color: categoryColors[category.name] || extraColors[index % extraColors.length],
-      })),
-      { id: 'integrated', label: 'Integrated Teaching', color: '#14b8a6' },
-      { id: 'ward', label: 'Clinical Rotations', color: '#22c55e' },
-      { id: 'sgt', label: 'Small Group Teaching', color: '#f59e0b' },
-      ...customParentNames.map((name, index) => ({
-        id: `custom:${name}`,
-        label: name,
-        color: extraColors[(index + CATEGORIES.length) % extraColors.length],
-      })),
-    ];
-    type GroupId = string;
-    type Totals = { attended: number; conducted: number };
-    const totals = new Map<string, Map<GroupId, Totals>>();
-    const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-    const resolveGroup = (attendanceKey: string): GroupId | null => {
-      const raw = attendanceKey.replace(/^(academic:|acad:|ward:|sgt:)/, '');
-      const matchesToken = (value: string | undefined) => {
-        if (!value) return false;
-        const candidates = [value, value.replace(/^(academic:|acad:|ward:|sgt:)/, '')].map(normalize);
-        const target = normalize(raw);
-        return candidates.some(candidate => target === candidate || target.startsWith(`${candidate}-`) || target.startsWith(`${candidate}_`));
-      };
-      if (attendanceKey.startsWith('ward:')) return 'ward';
-      if (attendanceKey.startsWith('sgt:')) return 'sgt';
-      const registryRef = subjectRegistry.find(ref => matchesToken(ref.id) || matchesToken(ref.name));
-      if (attendanceKey.startsWith('int:') || registryRef?.kind === 'integrated') return 'integrated';
-      if (registryRef?.kind === 'sgt' || registryRef?.parentName === 'Small Group Teaching') return 'sgt';
-      const userAdded = userAddedSubjects.find(subject => matchesToken(subject.id) || matchesToken(subject.name));
-      if (userAdded?.parentName === 'Small Group Teaching') return 'sgt';
-      const custom = customSubjects.find(subject => matchesToken(subject.id) || matchesToken(subject.name));
-      if (custom?.parentName === 'Small Group Teaching') return 'sgt';
-      const category = CATEGORIES.find(item => item.subjects.some(subject => matchesToken(subject.id) || matchesToken(subject.name)));
-      if (category) return `category:${category.name}`;
-      const parent = registryRef?.parentName || userAdded?.parentName || custom?.parentName;
-      if (parent && customParentNames.some(name => normalize(name) === normalize(parent))) return `custom:${parent}`;
-      return null;
-    };
-    const addTotals = (dateStr: string, subjectKey: string, attended: number, conducted: number) => {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || conducted <= 0) return;
-      const groupId = resolveGroup(subjectKey);
-      if (!groupId) return;
-      const month = dateStr.slice(0, 7);
-      const monthGroups = totals.get(month) || new Map<GroupId, Totals>();
-      const group = monthGroups.get(groupId) || { attended: 0, conducted: 0 };
-      group.conducted += conducted;
-      group.attended += attended;
-      monthGroups.set(groupId, group);
-      totals.set(month, monthGroups);
-    };
-    Object.entries(homeSelections).forEach(([key, selection]) => {
-      if (selection !== 'attended' && selection !== 'missed') return;
-      const dateStr = key.slice(0, 10);
-      const separator = key.charAt(10);
-      if (separator !== '-' && separator !== '_') return;
-      addTotals(dateStr, key.slice(11), selection === 'attended' ? 1 : 0, 1);
-    });
-    manualAdjustments.forEach(adjustment => {
-      if (!Number.isFinite(adjustment.delta) || adjustment.delta === 0) return;
-      const amount = Math.abs(Math.trunc(adjustment.delta));
-      addTotals(adjustment.date, adjustment.subjectKey, adjustment.delta > 0 ? amount : 0, amount);
-    });
-    const dataMonths = Array.from(totals.keys()).sort();
-    const firstMonth = dataMonths[0] || todayStr.slice(0, 7);
-    const months: string[] = [];
-    const cursor = new Date(`${firstMonth}-01T12:00:00`);
-    const lastMonth = new Date(`${todayStr.slice(0, 7)}-01T12:00:00`);
-    for (; cursor <= lastMonth; cursor.setMonth(cursor.getMonth() + 1)) {
-      months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
-    }
-    const plot = { left: 30, right: 294, top: 8, bottom: 104 };
-    const xFor = (index: number) => months.length <= 1 ? (plot.left + plot.right) / 2 : plot.left + index * (plot.right - plot.left) / (months.length - 1);
-    const yFor = (percentage: number) => plot.bottom - Math.max(0, Math.min(100, percentage)) * (plot.bottom - plot.top) / 100;
-    const ecgPath = (monthly: Array<{ percentage: number | null; x: number; y: number | null }>) => {
-      const segments: string[] = [];
-      let previousEndY = yFor(0);
-      let index = 0;
-      while (index < monthly.length) {
-        while (index < monthly.length && monthly[index].percentage === null) index += 1;
-        if (index >= monthly.length) break;
-        const runStart = index;
-        while (index + 1 < monthly.length && monthly[index + 1].percentage !== null) index += 1;
-        const runEnd = index;
-        for (let pointIndex = runStart; pointIndex <= runEnd; pointIndex += 1) {
-          const point = monthly[pointIndex];
-          const startX = pointIndex === runStart ? (pointIndex === 0 ? plot.left : point.x) : monthly[pointIndex - 1].x;
-          const endX = pointIndex < monthly.length - 1 ? monthly[pointIndex + 1].x : plot.right;
-          const width = Math.max(8, endX - startX);
-          const startY = pointIndex === runStart ? (runStart === 0 ? yFor(0) : previousEndY) : previousEndY;
-          const endY = point.y!;
-          const peakPercentage = Math.min(100, Math.max(point.percentage!, point.percentage! + 16));
-          const peakY = Math.max(plot.top, yFor(peakPercentage));
-          segments.push(`M ${startX.toFixed(1)} ${startY.toFixed(1)} C ${(startX + width * 0.10).toFixed(1)} ${startY.toFixed(1)}, ${(startX + width * 0.16).toFixed(1)} ${(startY - 4).toFixed(1)}, ${(startX + width * 0.22).toFixed(1)} ${startY.toFixed(1)} C ${(startX + width * 0.28).toFixed(1)} ${startY.toFixed(1)}, ${(startX + width * 0.31).toFixed(1)} ${(startY + 4).toFixed(1)}, ${(startX + width * 0.35).toFixed(1)} ${startY.toFixed(1)} C ${(startX + width * 0.41).toFixed(1)} ${startY.toFixed(1)}, ${(startX + width * 0.44).toFixed(1)} ${peakY.toFixed(1)}, ${(startX + width * 0.50).toFixed(1)} ${peakY.toFixed(1)} C ${(startX + width * 0.56).toFixed(1)} ${peakY.toFixed(1)}, ${(startX + width * 0.60).toFixed(1)} ${(startY + 7).toFixed(1)}, ${(startX + width * 0.65).toFixed(1)} ${startY.toFixed(1)} C ${(startX + width * 0.72).toFixed(1)} ${startY.toFixed(1)}, ${(startX + width * 0.76).toFixed(1)} ${(startY - 7).toFixed(1)}, ${(startX + width * 0.82).toFixed(1)} ${(startY - 7).toFixed(1)} C ${(startX + width * 0.89).toFixed(1)} ${(startY - 7).toFixed(1)}, ${(endX - width * 0.08).toFixed(1)} ${endY.toFixed(1)}, ${endX.toFixed(1)} ${endY.toFixed(1)}`);
-          previousEndY = endY;
-        }
-        index += 1;
-      }
-      return segments.join(' ');
-    };
-    const groups = definitions.map(definition => {
-      const monthly = months.map((month, index) => {
-        const value = totals.get(month)?.get(definition.id);
-        const percentage = value && value.conducted > 0 ? (value.attended / value.conducted) * 100 : null;
-        return { month, percentage, x: xFor(index), y: percentage === null ? null : yFor(percentage) };
-      });
-      const all = monthly.reduce((sum, value) => {
-        const monthTotals = totals.get(value.month)?.get(definition.id);
-        return { attended: sum.attended + (monthTotals?.attended || 0), conducted: sum.conducted + (monthTotals?.conducted || 0) };
-      }, { attended: 0, conducted: 0 });
-      return { ...definition, monthly, path: ecgPath(monthly), conducted: all.conducted, percentage: all.conducted > 0 ? (all.attended / all.conducted) * 100 : 0 };
-    });
-    return { months, groups, plot };
-  }, [homeSelections, manualAdjustments, subjectRegistry, userAddedSubjects, customSubjects, todayStr]);
   const restoredSubjectFallback = (raw: string) => {
     const existing = restoredSubjectLabels.current.get(raw);
     if (existing) return existing;
@@ -743,7 +605,7 @@ export default function Home() {
         : registryRef?.kind === 'preset-ward' || registryRef?.kind === 'ward-rotation'
           ? 'Ward'
           : undefined;
-    return { name: displayName, category: storageKey.startsWith('ward:') ? 'Ward' : registryCategory || getDashboardSubjectKind(displayName, undefined, userAddedSubjects) };
+    return { name: displayName, category: storageKey.startsWith('ward:') ? 'Ward' : registryCategory || getDashboardSubjectKind(displayName, undefined, subjectMode, userAddedSubjects, customSubjects, subjectRegistry) };
   };
   const subjectPotentialMetrics = useMemo(() => {
     const metrics = new Map<string, {
@@ -851,8 +713,8 @@ export default function Home() {
         <p className="text-xs font-bold text-muted-foreground">{shortDate}</p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-4 pb-4 scroll-fade-viewport scroll-reachability">
-      <div className="grid h-[11rem] grid-cols-[1.2fr_1fr] items-stretch gap-3">
-        <section className="glass-card flex h-full min-h-0 flex-col rounded-2xl border border-border p-3 text-left">
+      <div className="grid grid-cols-[1.2fr_1fr] gap-3">
+        <section className="glass-card flex h-[11rem] min-h-0 flex-col rounded-2xl border border-border p-3 text-left">
           <h2 className="shrink-0 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Today at a Glance</h2>
           <div className="relative mt-2 min-h-0 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
             {glanceEntries.length === 0 ? <p className="py-2 text-xs text-muted-foreground">No remaining classes today.</p> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
@@ -861,7 +723,7 @@ export default function Home() {
                 const label = status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet';
                 const color = status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
                 const subject = entry.card?.subject || 'Unknown subject';
-                const kind = getDashboardSubjectKind(subject, entry.card, userAddedSubjects);
+                const kind = getDashboardSubjectKind(subject, entry.card, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
                 return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className="relative flex w-full min-w-0 items-center gap-2 text-left">
                   <span className="absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card bg-primary" />
                   <span className="min-w-0 flex-1 whitespace-normal break-words text-[10px] font-bold leading-3 text-foreground">{subject} <span className="text-[8px] font-semibold text-muted-foreground">({kind})</span></span>
@@ -872,7 +734,7 @@ export default function Home() {
             </div>}
           </div>
         </section>
-        <div className="grid h-full min-h-0 grid-rows-2 gap-3">
+        <div className="grid min-h-0 grid-rows-2 gap-3">
           <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
           <button type="button" onClick={() => { setSelectedDateStr(toDateString(addDays(today, 1))); setShowMarkAttendance(true); }} className="min-h-11 rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><p className="mt-1 truncate text-[10px] text-muted-foreground">{tomorrowPreview}</p></button>
         </div>
@@ -881,18 +743,6 @@ export default function Home() {
         <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Today’s Activity</h2></div>
         {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.5rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{item.text.replace(/\(Small Group Teaching\)/g, '(SGT)')}</span></div>; })}</div>}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
-      </section>
-      <section className="glass-card rounded-2xl border border-border p-3">
-        <div className="flex items-center justify-between"><span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Overall Attendance</span></div>
-        <svg viewBox="0 0 300 136" className="mt-1 h-32 w-full" role="img" aria-label="Monthly grouped attendance waveform chart">
-          <g stroke="currentColor" strokeOpacity=".14" strokeDasharray="2 3">
-            <line x1="30" x2="294" y1="8" y2="8" /><line x1="30" x2="294" y1="56" y2="56" /><line x1="30" x2="294" y1="104" y2="104" />
-          </g>
-          <g fill="currentColor" opacity=".55" fontSize="7" textAnchor="end"><text x="27" y="11">100%</text><text x="27" y="59">50%</text><text x="27" y="107">0%</text></g>
-          {overallAttendanceWave.groups.map(group => group.conducted > 0 && group.path && <path key={group.id} d={group.path} fill="none" stroke={group.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />)}
-          {overallAttendanceWave.months.map((month, index) => <text key={month} x={overallAttendanceWave.months.length <= 1 ? 162 : 30 + index * 264 / (overallAttendanceWave.months.length - 1)} y="119" textAnchor="middle" fontSize="7" fill="currentColor" opacity=".65">{new Date(`${month}-01T12:00:00`).toLocaleDateString([], { month: 'short' })}</text>)}
-        </svg>
-        <div className="mt-0.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[7px] font-semibold text-muted-foreground">{overallAttendanceWave.groups.map(group => <span key={group.id} className={cn('inline-flex min-w-0 items-center gap-1 leading-3 whitespace-normal break-words', !group.conducted && 'opacity-60')}><i className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: group.conducted ? group.color : '#94a3b8' }} />{group.label}</span>)}</div>
       </section>
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectPotentialMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectPotentialMetrics.slice(0, 3).map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className={cn('h-2 w-2 rounded-full', metric.current < preferredPercentage ? 'bg-rose-500' : 'bg-emerald-500')} /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>
       <section className="glass-card rounded-2xl border border-border p-4">
