@@ -59,7 +59,7 @@ const HOME_SELECTIONS_KEY_CUSTOM = 'attendance_tracker_home_selections_custom';
 const FINISHED_MAP_KEY_CUSTOM = 'attendance_tracker_finished_map_custom';
 
 const MODE_SEPARATION_FLAG = 'att_mode_separation_done_v1';
-const ID_MIGRATION_FLAG_PREFIX = 'att_attendance_id_migration_v3_done_';
+const ID_MIGRATION_FLAG_PREFIX = 'att_attendance_id_migration_v4_done_';
 const SGT_MIGRATION_FLAG = 'att_sgt_attendance_migrated_v1';
 const ORPHANED_RECORDS_KEY = 'attendance_tracker_orphaned_records';
 
@@ -554,6 +554,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       const migratedWardAliases = new Set<string>();
       const knownSubjectKeys = new Set<string>();
       const knownWardKeys = new Set<string>();
+      const canonicalByAlias = new Map<string, string>();
       const orphaned: Array<{ originalKey: string; type: 'subject' | 'ward' | 'homeSelection' | 'finished'; data: unknown }> = [];
 
       for (const ref of registry) {
@@ -569,8 +570,9 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
             ? [canonical, `ward:${id}`, `ward-${ref.name}`, `ward_${ref.name}`, `ward-${id}`, `ward_${id}`, ref.name]
             : ref.kind === 'integrated'
               ? [canonical, `int:${id}`, `int-${id}`, `int_${id}`, `academic:int:${id}`, `academic-int:${id}`, `academic_int:${id}`, ref.name]
-              : [canonical, `academic:${id}`, `acad:${id}`, `academic-${id}`, `academic_${id}`, `acad-${id}`, `acad_${id}`, ref.name];
+              : [canonical, `academic:${id}`, `acad:${id}`, `academic:${ref.id}`, `acad:${ref.id}`, `academic-${id}`, `academic_${id}`, `acad-${id}`, `acad_${id}`, ref.name];
         const aliasSet = new Set(aliases.map(alias => alias.toLowerCase()));
+        aliases.forEach(alias => canonicalByAlias.set(alias.toLowerCase(), canonical));
         if (ref.domain === 'clinical' && ref.kind !== 'sgt') {
           knownWardKeys.add(canonical);
           aliases.forEach(alias => knownWardKeys.add(alias));
@@ -599,6 +601,12 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         delete nextFinished[source];
       }
 
+      const oldOrphans: Array<{ originalKey: string; type: string; data: unknown }> = JSON.parse(localStorage.getItem(ORPHANED_RECORDS_KEY) || '[]');
+      for (const orphan of oldOrphans) {
+        if (orphan.type !== 'subject' || !orphan.data || typeof orphan.data !== 'object') continue;
+        const canonical = canonicalByAlias.get(orphan.originalKey.toLowerCase());
+        if (canonical && nextSubjects[canonical] === undefined) nextSubjects[canonical] = orphan.data as AttendanceData;
+      }
       const isProtectedRestoredKey = (key: string) => /^(?:sgt:|academic:ua_|acad:ua_|ward:cw_|int:)/i.test(key);
       for (const key of Object.keys(currentSubjects)) {
         if (isProtectedRestoredKey(key) || knownSubjectKeys.has(key) || migratedSubjectAliases.has(key)) continue;
@@ -629,7 +637,6 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      const oldOrphans = JSON.parse(localStorage.getItem(ORPHANED_RECORDS_KEY) || '[]');
       const orphanJson = JSON.stringify([...oldOrphans, ...orphaned]);
       await storageCommitChecked([
         [keys.subjectsKey, JSON.stringify(nextSubjects)],

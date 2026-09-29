@@ -71,17 +71,17 @@ function getDashboardSubjectKind(
   subjectMode: 'preloaded' | 'custom',
   userAddedSubjects: Array<{ name: string; subjectType: string; parentName?: string; category?: string }>,
   customSubjects: Array<{ name: string; subjectType: string; parentName?: string; category?: string }>,
-  subjectRegistry: Array<{ name: string; id: string; kind: string }>,
+  subjectRegistry: Array<{ name: string; id: string; kind: string; domain?: string }>,
 ): string {
-  if (card?.isWard) return 'Ward';
-  if (card?.isSGT) return 'SGT';
-  const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
   const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const registry = subjectRegistry.find(item => (card?.isWard ? item.domain === 'clinical' : item.domain !== 'clinical') && (normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject)))
+    || subjectRegistry.find(item => normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject));
+  if (registry?.kind === 'sgt' || card?.isSGT) return 'SGT';
+  if (registry?.kind === 'preset-ward' || registry?.kind === 'ward-rotation' || card?.isWard) return 'Ward';
+  if (registry?.kind === 'integrated' || INTEGRATED_SUBJECTS.some(item => normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject))) return 'Integrated';
+  const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
   const stored = source.find(item => normalize(item.name) === normalize(subject));
   if (stored && isSGTSubjectRecord(stored)) return 'SGT';
-  const registry = subjectRegistry.find(item => normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject));
-  if (registry?.kind === 'preset-ward' || registry?.kind === 'ward-rotation') return 'Ward';
-  if (registry?.kind === 'integrated' || INTEGRATED_SUBJECTS.some(item => normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject))) return 'Integrated';
   return 'Lecture';
 }
 
@@ -558,28 +558,28 @@ export default function Home() {
   const tomorrowDateStr = toDateString(tomorrowDate);
   const tomorrowDay = tomorrowDate.getDay();
   const tomorrowEntries = useMemo(() => {
-    const entries: Array<{ subject?: string; time: string; holiday?: string }> = [];
+    const entries: Array<{ subject?: string; time: string; holiday?: string; isWard?: boolean; isSGT?: boolean }> = [];
     if (subjectMode === 'preloaded') {
       if (tomorrowDay === 5) return [{ time: '', holiday: 'Detox Day' }];
       (presetTimetable[tomorrowDay] || []).forEach((slot: any) => {
         if (slot.type === 'ward' || slot.type === 'ward_replacement') {
           const ward = getCurrentPresetWard(tomorrowDate);
-          if (ward?.ward && ward.ward !== 'Holiday') entries.push({ subject: ward.ward, time: ward.morningTime || slot.time });
+          if (ward?.ward && ward.ward !== 'Holiday') entries.push({ subject: ward.ward, time: ward.morningTime || slot.time, isWard: true });
           else entries.push({ time: slot.time || '', holiday: 'Detox Day' });
-        } else (slot.subjects || []).forEach((subject: string) => entries.push({ subject, time: slot.time || '' }));
+        } else (slot.subjects || []).forEach((subject: string) => entries.push({ subject, time: slot.time || '', isWard: false }));
       });
       userAddedSubjects.forEach(subject => {
         if (subject.subjectType !== 'allied' || subject.parentName !== 'Small Group Teaching') return;
         const scheduleForDay = (subject.schedules || []).find((scheduleItem: any) => scheduleItem.day === DAY_ABBRS[tomorrowDay]);
-        if (scheduleForDay) entries.push({ subject: subject.name, time: `${scheduleForDay.start}–${scheduleForDay.end}` });
+        if (scheduleForDay) entries.push({ subject: subject.name, time: `${scheduleForDay.start}–${scheduleForDay.end}`, isSGT: true });
       });
     } else {
       customWards.forEach(ward => {
-        if (tomorrowDateStr >= ward.startDate && tomorrowDateStr <= ward.endDate && ward.name !== 'Holiday') entries.push({ subject: ward.name, time: ward.morningTime || 'Morning Ward' });
+        if (tomorrowDateStr >= ward.startDate && tomorrowDateStr <= ward.endDate && ward.name !== 'Holiday') entries.push({ subject: ward.name, time: ward.morningTime || 'Morning Ward', isWard: true });
       });
       customSubjects.forEach(subject => {
         const schedules = (subject.schedules || []).filter((scheduleItem: any) => scheduleItem.day === DAY_ABBRS[tomorrowDay]);
-        schedules.forEach((scheduleItem: any) => entries.push({ subject: subject.name, time: scheduleItem.time || `${scheduleItem.start}–${scheduleItem.end}` }));
+        schedules.forEach((scheduleItem: any) => entries.push({ subject: subject.name, time: scheduleItem.time || `${scheduleItem.start}–${scheduleItem.end}`, isSGT: isSGTSubjectRecord(subject) }));
       });
     }
     const remaining = entries.filter(entry => {
@@ -620,11 +620,8 @@ export default function Home() {
     return remaining.sort((a, b) => (rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
   }, [customSubjects, customWards, finishedMap, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getCustomWardTotalPlanned, getPresetWardTotalPlanned, presetTimetable, subjectMode, subjects, tomorrowDate, tomorrowDateStr, tomorrowDay, userAddedSubjects, wards]);
   const tomorrowSubject = tomorrowEntries[0]?.subject;
-  const tomorrowIsWard = Boolean(tomorrowSubject && (
-    customWards.some(ward => ward.name.trim().toLowerCase() === tomorrowSubject.trim().toLowerCase())
-    || subjectRegistry.some(ref => (ref.kind === 'preset-ward' || ref.kind === 'ward-rotation') && (ref.name.trim().toLowerCase() === tomorrowSubject.trim().toLowerCase() || ref.id.trim().toLowerCase() === tomorrowSubject.trim().toLowerCase()))
-  ));
-  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard }, subjectMode, userAddedSubjects, customSubjects, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
+  const tomorrowIsWard = Boolean(tomorrowEntries[0]?.isWard);
+  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard, isSGT: tomorrowEntries[0]?.isSGT }, subjectMode, userAddedSubjects, customSubjects, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
   const isEntryVacation = (entry: DayEntry) => {
     const card = entry.card;
     if (!card) return false;
