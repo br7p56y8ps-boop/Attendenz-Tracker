@@ -59,7 +59,8 @@ const HOME_SELECTIONS_KEY_CUSTOM = 'attendance_tracker_home_selections_custom';
 const FINISHED_MAP_KEY_CUSTOM = 'attendance_tracker_finished_map_custom';
 
 const MODE_SEPARATION_FLAG = 'att_mode_separation_done_v1';
-const ID_MIGRATION_FLAG_PREFIX = 'att_attendance_id_migration_v2_done_';
+const ID_MIGRATION_FLAG_PREFIX = 'att_attendance_id_migration_v3_done_';
+const SGT_MIGRATION_FLAG = 'att_sgt_attendance_migrated_v1';
 const ORPHANED_RECORDS_KEY = 'attendance_tracker_orphaned_records';
 
 const USER_ADDED_SUBJECTS_STORAGE = 'att_user_added_subjects';
@@ -71,7 +72,7 @@ const getActualMode = (): 'preloaded' | 'custom' => {
 };
 
 export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
-  const { subjectMode, subjectRegistry } = useCustomData();
+  const { subjectMode, subjectRegistry, userAddedSubjectsHydrated } = useCustomData();
 
   const [subjects, setSubjects] = useState<Record<string, AttendanceData>>({});
   const [wards, setWards] = useState<Record<string, AttendanceData>>({});
@@ -163,7 +164,6 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     migrateModeSeparation();
     const actualMode = getActualMode();
     loadDataForMode(actualMode);
-    migrateSGTData(actualMode);
     try {
       const p = localStorage.getItem(PREFERRED_PERCENTAGE_KEY);
       if (p) setPreferredPercentage(JSON.parse(p));
@@ -172,8 +172,11 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     loadDataForMode(subjectMode);
-    if (subjectRegistry.length > 0) void migrateAttendanceToIDs(subjectMode, subjectRegistry);
-  }, [subjectMode, subjectRegistry]);
+    if (userAddedSubjectsHydrated && subjectRegistry.length > 0) {
+      migrateSGTData(subjectMode);
+      void migrateAttendanceToIDs(subjectMode, subjectRegistry);
+    }
+  }, [subjectMode, subjectRegistry, userAddedSubjectsHydrated]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -461,6 +464,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const migrateSGTData = (mode: 'preloaded' | 'custom') => {
+    if (localStorage.getItem(SGT_MIGRATION_FLAG) === 'true') return;
     try {
       const keys = getStorageKeys(mode);
       const rawSubjects = JSON.parse(localStorage.getItem(keys.subjectsKey) || '{}');
@@ -473,7 +477,10 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
           if (s.parentName === 'Small Group Teaching' && s.id) sgtList.push({ id: s.id, name: s.name });
         });
       }
-      if (sgtList.length === 0) return;
+      if (sgtList.length === 0) {
+        void storageSetItemChecked(SGT_MIGRATION_FLAG, 'true');
+        return;
+      }
       let newSubjects = { ...rawSubjects };
       let newHomeSelections = { ...rawHomeSelections };
       let changed = false;
@@ -524,6 +531,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         setSubjects(newSubjects);
         setHomeSelections(newHomeSelections);
       }
+      void storageSetItemChecked(SGT_MIGRATION_FLAG, 'true');
     } catch (error) {
       console.error('SGT attendance migration failed; existing data was preserved.', error);
     }
@@ -591,14 +599,15 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         delete nextFinished[source];
       }
 
+      const isProtectedRestoredKey = (key: string) => /^(?:sgt:|academic:ua_|acad:ua_|ward:cw_|int:)/i.test(key);
       for (const key of Object.keys(currentSubjects)) {
-        if (knownSubjectKeys.has(key) || migratedSubjectAliases.has(key)) continue;
+        if (isProtectedRestoredKey(key) || knownSubjectKeys.has(key) || migratedSubjectAliases.has(key)) continue;
         orphaned.push({ originalKey: key, type: 'subject', data: currentSubjects[key] });
         delete nextSubjects[key];
         delete nextFinished[key];
       }
       for (const key of Object.keys(currentWards)) {
-        if (knownWardKeys.has(key) || migratedWardAliases.has(key)) continue;
+        if (isProtectedRestoredKey(key) || knownWardKeys.has(key) || migratedWardAliases.has(key)) continue;
         orphaned.push({ originalKey: key, type: 'ward', data: currentWards[key] });
         delete nextWards[key];
         delete nextFinished[key];

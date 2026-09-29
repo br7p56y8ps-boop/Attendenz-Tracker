@@ -76,10 +76,12 @@ function getDashboardSubjectKind(
   if (card?.isWard) return 'Ward';
   if (card?.isSGT) return 'SGT';
   const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-  const stored = source.find(item => item.name === subject);
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const stored = source.find(item => normalize(item.name) === normalize(subject));
   if (stored && isSGTSubjectRecord(stored)) return 'SGT';
-  const registry = subjectRegistry.find(item => item.name === subject || item.id === subject);
-  if (registry?.kind === 'integrated' || INTEGRATED_SUBJECTS.some(item => item.name === subject || item.id === subject)) return 'Integrated';
+  const registry = subjectRegistry.find(item => normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject));
+  if (registry?.kind === 'preset-ward' || registry?.kind === 'ward-rotation') return 'Ward';
+  if (registry?.kind === 'integrated' || INTEGRATED_SUBJECTS.some(item => normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject))) return 'Integrated';
   return 'Lecture';
 }
 
@@ -593,6 +595,12 @@ export default function Home() {
           ? (() => { const resolved = getSubjectIdByName(entry.subject!, 'clinical'); return resolved ? getWardAttendanceKey(resolved) : null; })()
           : (() => { const resolved = getSubjectIdByName(entry.subject!, 'academic'); return resolved ? getAcademicAttendanceKey(resolved) : null; })();
       if (!id) return false;
+      const rangeSource: { startDate?: string; endDate?: string } | undefined = sgt
+        ? sgt
+        : subjectMode === 'custom' && ward
+          ? ward as { startDate?: string; endDate?: string }
+          : undefined;
+      if (rangeSource && ((rangeSource.startDate && tomorrowDateStr < rangeSource.startDate) || (rangeSource.endDate && tomorrowDateStr > rangeSource.endDate))) return false;
       const record = ward ? wards[id] : subjects[id];
       const conducted = (record?.attended || 0) + (record?.missed || 0);
       const planned = ward
@@ -602,12 +610,20 @@ export default function Home() {
         : sgt
           ? sgt.plannedClasses || 0
           : getSubjectPlannedTotal(entry.subject!);
-      return !finishedMap[id] && !(planned > 0 && conducted >= planned);
+      const finished = Boolean(
+        finishedMap[id]
+        || (sgt && (finishedMap[getSGTKey(sgt.id)] || finishedMap[sgt.id] || finishedMap[sgt.name]))
+        || finishedMap[entry.subject!]
+      );
+      return !finished && !(planned > 0 && conducted >= planned);
     });
     return remaining.sort((a, b) => (rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
   }, [customSubjects, customWards, finishedMap, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getCustomWardTotalPlanned, getPresetWardTotalPlanned, presetTimetable, subjectMode, subjects, tomorrowDate, tomorrowDateStr, tomorrowDay, userAddedSubjects, wards]);
   const tomorrowSubject = tomorrowEntries[0]?.subject;
-  const tomorrowIsWard = Boolean(tomorrowSubject && customWards.some(ward => ward.name === tomorrowSubject));
+  const tomorrowIsWard = Boolean(tomorrowSubject && (
+    customWards.some(ward => ward.name.trim().toLowerCase() === tomorrowSubject.trim().toLowerCase())
+    || subjectRegistry.some(ref => (ref.kind === 'preset-ward' || ref.kind === 'ward-rotation') && (ref.name.trim().toLowerCase() === tomorrowSubject.trim().toLowerCase() || ref.id.trim().toLowerCase() === tomorrowSubject.trim().toLowerCase()))
+  ));
   const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard }, subjectMode, userAddedSubjects, customSubjects, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
   const isEntryVacation = (entry: DayEntry) => {
     const card = entry.card;
@@ -623,7 +639,6 @@ export default function Home() {
     return false;
   };
   const glanceEntries = dashboardClassEntries
-    .filter(entry => !isEntryVacation(entry))
     .sort((a, b) => {
       const completedOrder = Number(isCompletedPlannedEntry(a)) - Number(isCompletedPlannedEntry(b));
       return completedOrder || ((rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
@@ -687,6 +702,14 @@ export default function Home() {
       rawId: string;
       storageKey: string;
     }>();
+    const addCanonical = (ref: typeof subjectRegistry[number]) => {
+      const isWard = ref.kind === 'preset-ward' || ref.kind === 'ward-rotation';
+      const canonicalKey = ref.kind === 'sgt' ? getSGTKey(ref.id) : isWard ? getWardAttendanceKey(ref.id) : getAcademicAttendanceKey(ref.id);
+      const category = ref.kind === 'sgt' ? 'SGT' : isWard ? 'Ward' : ref.kind === 'integrated' ? 'Integrated' : 'Lecture';
+      const metricKey = `${category}:${ref.name.trim().toLowerCase()}`;
+      if (!metrics.has(metricKey)) metrics.set(metricKey, { name: ref.name, category, attended: 0, missed: 0, manuallyFinished: false, resolved: true, isWard, plannedHint: ref.planned, rawId: ref.id, storageKey: canonicalKey });
+    };
+    subjectRegistry.forEach(addCanonical);
     const addRecords = (records: Record<string, { attended: number; missed: number }>, isWard: boolean) => Object.entries(records).forEach(([storageKey, item]) => {
       const resolved = resolveSubjectAlert(storageKey);
       const metricKey = `${resolved.category}:${resolved.name.trim().toLowerCase()}`;
@@ -840,8 +863,9 @@ export default function Home() {
               {glanceEntries.map(entry => {
                 const status = statusForEntry(entry);
                 const completed = isCompletedPlannedEntry(entry);
-                const label = completed ? 'Completed' : status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet';
-                const color = completed ? 'text-muted-foreground' : status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
+                const vacation = isEntryVacation(entry);
+                const label = vacation ? 'Vacation / Exam Period' : completed ? 'Completed' : status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet';
+                const color = vacation ? 'text-amber-500' : completed ? 'text-muted-foreground' : status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
                 const rowMuted = completed ? 'opacity-55' : '';
                 const subject = entry.card?.subject || 'Unknown subject';
                 const kind = getDashboardSubjectKind(subject, entry.card, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);

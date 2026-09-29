@@ -44,7 +44,8 @@ function addKnownRecordKeys(known: Set<string>, raw: string | undefined, type: '
     records.forEach(record => {
       if (!record || typeof record.id !== 'string' || !record.id.trim()) return;
       const prefix = type === 'ward' ? 'ward' : record.subjectType === 'allied' && record.parentName === 'Small Group Teaching' ? 'sgt' : 'academic';
-      known.add(`${prefix}:${record.id}`.toLowerCase());
+      const id = record.id.trim();
+      known.add((id.toLowerCase().startsWith(`${prefix}:`) ? id : `${prefix}:${id}`).toLowerCase());
     });
   } catch { /* Ignore malformed unrelated registry values during export. */ }
 }
@@ -55,8 +56,8 @@ function sanitizeExportAttendanceStores(data: Record<string, string>): Record<st
   addKnownRecordKeys(known, data.att_custom_subjects, 'subject');
   addKnownRecordKeys(known, data.att_custom_wards, 'ward');
   CATEGORIES.flatMap(category => category.subjects).forEach(item => known.add(`academic:${item.id}`.toLowerCase()));
-  INTEGRATED_SUBJECTS.forEach(item => known.add(`int:${item.id}`.toLowerCase()));
-  WARD_SUBJECTS.filter(item => item.name.toLowerCase() !== 'holiday').forEach(item => known.add(`ward:${item.id}`.toLowerCase()));
+  INTEGRATED_SUBJECTS.forEach(item => { const id = item.id.trim(); known.add((id.toLowerCase().startsWith('int:') ? id : `int:${id}`).toLowerCase()); });
+  WARD_SUBJECTS.filter(item => item.name.toLowerCase() !== 'holiday').forEach(item => { const id = item.id.trim(); known.add((id.toLowerCase().startsWith('ward:') ? id : `ward:${id}`).toLowerCase()); });
 
   const isKnownEntry = (key: string): boolean => {
     const normalized = key.trim().toLowerCase();

@@ -15,7 +15,7 @@ const DOCUMENTED_PUSH_ENDPOINTS = [
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
 function compareVersions(left: string, right: string): number {
-  const parse = (value: string) => value.split(/[.+-]/, 1)[0].split('.').map(part => Number.parseInt(part, 10) || 0);
+  const parse = (value: string) => value.split(/[.+-]/)[0].split('.').map(part => Number.parseInt(part, 10) || 0);
   const a = parse(left);
   const b = parse(right);
   for (let i = 0; i < Math.max(a.length, b.length); i += 1) {

@@ -554,6 +554,7 @@ interface CustomDataContextType {
   removeCustomWard: (id: string) => void;
   getCurrentCustomWard: () => CustomWard | null;
   userAddedSubjects: UserAddedSubject[];
+  userAddedSubjectsHydrated: boolean;
   addUserAddedSubject: (
     s: Omit<UserAddedSubject, 'id'> & { schedules?: ScheduleRowInput[] }
   ) => UserAddedSubject;
@@ -666,6 +667,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [customSubjects, setCustomSubjects] = useState<CustomSubject[]>([]);
   const [customWards, setCustomWards] = useState<CustomWard[]>([]);
   const [userAddedSubjects, setUserAddedSubjects] = useState<UserAddedSubject[]>([]);
+  const [userAddedSubjectsHydrated, setUserAddedSubjectsHydrated] = useState(false);
   const [subjectMode, setSubjectMode] = useState<SubjectMode>('preloaded');
   const [setupDone, setSetupDone] = useState(false);
   const [whatsNewOpen, setWhatsNewOpenState] = useState(false);
@@ -808,6 +810,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       if (wardRenames) setRenamedPresetWards(JSON.parse(wardRenames));
     } catch {
       /* ignore */
+    } finally {
+      setUserAddedSubjectsHydrated(true);
     }
   }, []);
 
@@ -954,8 +958,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   function getPresetWardTotalPlannedLocal(wardName: string): number {
     const daysSet = new Set<string>();
+    const originalWardName = Object.entries(renamedPresetWards).find(([, renamed]) => renamed.trim().toLowerCase() === wardName.trim().toLowerCase())?.[0] ?? wardName;
     for (const slot of presetWardSchedule) {
-      if (slot.ward !== wardName) continue;
+      if (slot.ward !== wardName && slot.ward !== originalWardName) continue;
       try {
         const start = new Date(slot.start + 'T12:00:00');
         const end = new Date(slot.end + 'T12:00:00');
@@ -2185,6 +2190,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     addPresetWardEntry, updatePresetWardEntry, removePresetWardEntry, renamePresetWard,
     updatePresetTimetableSlot, addSubjectToSlot, updatePresetWardSchedule, updatePresetSubjectTotal,
     getSubjectPlannedTotal, getCurrentPresetWard, getPresetWardTotalPlanned, getCustomWardTotalPlanned,
+    userAddedSubjectsHydrated,
     countSGTPlannedDays, getParentOptions, isExistingParent, getAlliedChildCount,
     getCustomAlliedChildren, getUserAddedAlliedChildren, isSubjectNameTaken, isWardNameTaken,
     findSubjectTimeConflicts, findWardDateConflicts, bulkUpdateSubjectHierarchy,
@@ -2193,7 +2199,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     setPresetSubjectRename, getPresetWardDisplayName, subjectRegistry, getSubjectById, getSubjectIdByName,
   }), [
     exposedCustomSubjects, exposedCustomWards, exposedUserAddedSubjects, exposedPresetTimetable,
-    exposedPresetWardSchedule, exposedPresetSubjectTotals, subjectMode, setupDone, whatsNewOpen,
+    exposedPresetWardSchedule, exposedPresetSubjectTotals, subjectMode, setupDone, whatsNewOpen, userAddedSubjectsHydrated,
     subjectRegistry,
   ]);
 

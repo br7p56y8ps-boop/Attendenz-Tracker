@@ -4,7 +4,7 @@ CREATE TABLE occurrences_backup AS
 SELECT
   occurrence_id, device_id, local_date, start_minute, subject_label, category,
   needs_attention, attention_level, attendance_marked, status, end_minute,
-  is_final_for_subject, created_at
+  0 AS is_final_for_subject, created_at
 FROM occurrences;
 
 CREATE TABLE deliveries_backup AS
