@@ -912,12 +912,16 @@ export default function Home() {
                 const rowMuted = completed ? 'opacity-55' : '';
                 const subject = entry.card?.subject || 'Unknown subject';
                 const kind = getDashboardSubjectKind(subject, entry.card, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
-                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className={cn('relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(4.5rem,auto)] grid-rows-[auto_auto] items-start gap-x-2 text-left', rowMuted)}>
+                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className={cn('relative flex w-full min-w-0 items-start gap-x-2 text-left', rowMuted)}>
                   <span className={cn('absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card', completed ? 'bg-muted-foreground' : 'bg-primary')} />
-                  <span className="min-w-0 break-words text-[10px] font-bold leading-3 text-foreground">{subject}</span>
-                  <span className="min-w-0 text-right text-[8px] text-muted-foreground">{entry.time}</span>
-                  <span className="min-w-0 text-[8px] font-semibold leading-3 text-muted-foreground">({kind})</span>
-                  <span className={cn('min-w-0 text-right text-[8px] font-extrabold', color)}>{label}</span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0">
+                    <span className="min-w-0 break-words text-[10px] font-bold leading-3 text-foreground">{subject}</span>
+                    <span className="min-w-0 text-[8px] font-semibold leading-3 text-muted-foreground">({kind})</span>
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end gap-0 text-right">
+                    <span className="min-w-0 text-[8px] text-muted-foreground">{entry.time}</span>
+                    <span className={cn('min-w-0 text-[8px] font-extrabold', color)}>{label}</span>
+                  </span>
                 </button>;
               })}
             </div>}
