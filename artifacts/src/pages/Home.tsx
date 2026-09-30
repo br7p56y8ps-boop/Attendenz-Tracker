@@ -912,7 +912,7 @@ export default function Home() {
                 const rowMuted = completed ? 'opacity-55' : '';
                 const subject = entry.card?.subject || 'Unknown subject';
                 const kind = getDashboardSubjectKind(subject, entry.card, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
-                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className={cn('relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(4.5rem,auto)] grid-rows-2 items-center gap-x-2 text-left', rowMuted)}>
+                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className={cn('relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(4.5rem,auto)] grid-rows-[auto_auto] items-start gap-x-2 text-left', rowMuted)}>
                   <span className={cn('absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card', completed ? 'bg-muted-foreground' : 'bg-primary')} />
                   <span className="min-w-0 break-words text-[10px] font-bold leading-3 text-foreground">{subject}</span>
                   <span className="min-w-0 text-right text-[8px] text-muted-foreground">{entry.time}</span>
