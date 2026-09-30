@@ -756,7 +756,7 @@ export default function Home() {
     });
     addRecords(subjects, false);
     addRecords(wards, true);
-    return Array.from(metrics.values()).map(metric => {
+    const calculated = Array.from(metrics.values()).map(metric => {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
       const rawId = metric.rawId.trim().toLowerCase();
       const nameKey = metric.name.trim().toLowerCase();
@@ -781,9 +781,31 @@ export default function Home() {
       const remaining = planned === undefined ? 0 : Math.max(0, planned - conducted);
       const current = conducted === 0 ? 0 : (metric.attended / conducted) * 100;
       const maximum = planned && planned > 0 ? ((metric.attended + remaining) / planned) * 100 : current;
-      return { ...metric, current, maximum, remaining, planned: planned ?? 0 };
-    }).filter(item => item.planned > 0 && item.remaining > 0).sort((a, b) => a.current - b.current);
-  }, [customSubjects, customWards, finishedMap, getCustomWardTotalPlanned, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getSubjectPlannedTotal, preferredPercentage, subjectMode, subjects, subjectRegistry, userAddedSubjects, wards]);
+      const placementEligible = (() => {
+        if (metric.category === 'Lecture' || metric.category === 'Integrated') return true;
+        const range = metric.category === 'SGT'
+          ? source.find(item => item.id.trim().toLowerCase() === rawId || item.name.trim().toLowerCase() === nameKey)
+          : subjectMode === 'custom'
+            ? customWardItem
+            : undefined;
+        if (range && ('startDate' in range || 'endDate' in range)) {
+          return (!range.startDate || todayStr >= range.startDate) && (!range.endDate || todayStr <= range.endDate);
+        }
+        if (metric.category === 'Ward' && subjectMode === 'preloaded') {
+          const presetWard = WARD_SUBJECTS.find(item => item.id.trim().toLowerCase() === rawId || item.name.trim().toLowerCase() === nameKey);
+          const wardName = presetWard?.name.trim().toLowerCase() || nameKey;
+          const entries = presetWardSchedule.filter(entry => entry.ward.trim().toLowerCase() === wardName);
+          return entries.length === 0 || entries.some(entry => todayStr >= entry.start && todayStr <= entry.end);
+        }
+        return true;
+      })();
+      return { ...metric, current, maximum, remaining, planned: planned ?? 0, conducted, placementEligible };
+    });
+    if (!calculated.some(item => item.conducted > 0)) return [];
+    return calculated
+      .filter(item => item.planned > 0 && item.remaining > 0 && item.placementEligible)
+      .sort((a, b) => a.current - b.current);
+  }, [customSubjects, customWards, finishedMap, getCustomWardTotalPlanned, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getSubjectPlannedTotal, preferredPercentage, presetWardSchedule, subjectMode, subjects, subjectRegistry, todayStr, userAddedSubjects, wards]);
   const subjectAlertMetrics = allPotentialMetrics.filter(item => item.current < preferredPercentage);
   const statusForEntry = (entry: DayEntry) => {
     if (entry.kind !== 'card' || !entry.card?.sessionId) return undefined;
