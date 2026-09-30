@@ -53,6 +53,7 @@ interface HomeCardSpec {
   tagColor?: string;
   sessionId: string;
   isSGT?: boolean;
+  isIntegrated?: boolean;
   sgtId?: string;
 }
 interface DayEntry {
@@ -67,21 +68,23 @@ interface ActivityItem extends DashboardActivityItem { kind: ActivityKind; }
 
 function getDashboardSubjectKind(
   subject: string,
-  card: { isWard?: boolean; isSGT?: boolean } | undefined,
+  card: { isWard?: boolean; isSGT?: boolean; isIntegrated?: boolean } | undefined,
   subjectMode: 'preloaded' | 'custom',
   userAddedSubjects: Array<{ name: string; subjectType: string; parentName?: string; category?: string }>,
   customSubjects: Array<{ name: string; subjectType: string; parentName?: string; category?: string }>,
   subjectRegistry: Array<{ name: string; id: string; kind: string; domain?: string }>,
 ): string {
+  if (card?.isSGT) return 'SGT';
+  if (card?.isWard) return 'Ward';
+  if (card?.isIntegrated) return 'Integrated';
   const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-  const registry = subjectRegistry.find(item => (card?.isWard ? item.domain === 'clinical' : item.domain !== 'clinical') && (normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject)))
-    || subjectRegistry.find(item => normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject));
-  if (registry?.kind === 'sgt' || card?.isSGT) return 'SGT';
-  if (registry?.kind === 'preset-ward' || registry?.kind === 'ward-rotation' || card?.isWard) return 'Ward';
-  if (registry?.kind === 'integrated' || INTEGRATED_SUBJECTS.some(item => normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject))) return 'Integrated';
   const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
   const stored = source.find(item => normalize(item.name) === normalize(subject));
   if (stored && isSGTSubjectRecord(stored)) return 'SGT';
+  const registry = subjectRegistry.find(item => normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject));
+  if (registry?.kind === 'integrated') return 'Integrated';
+  if (registry?.kind === 'sgt') return 'SGT';
+  if (registry?.kind === 'preset-ward' || registry?.kind === 'ward-rotation') return 'Ward';
   return 'Lecture';
 }
 
@@ -382,6 +385,7 @@ export default function Home() {
             card: {
               subject,
               time: slot.time,
+              isIntegrated: slot.type === 'integrated',
               sessionId: getPresetAcademicSessionId(idx, subIdx),
             },
           });
@@ -558,7 +562,7 @@ export default function Home() {
   const tomorrowDateStr = toDateString(tomorrowDate);
   const tomorrowDay = tomorrowDate.getDay();
   const tomorrowEntries = useMemo(() => {
-    const entries: Array<{ subject?: string; time: string; holiday?: string; isWard?: boolean; isSGT?: boolean }> = [];
+    const entries: Array<{ subject?: string; time: string; holiday?: string; isWard?: boolean; isSGT?: boolean; isIntegrated?: boolean }> = [];
     if (subjectMode === 'preloaded') {
       if (tomorrowDay === 5) return [{ time: '', holiday: 'Detox Day' }];
       (presetTimetable[tomorrowDay] || []).forEach((slot: any) => {
@@ -621,7 +625,7 @@ export default function Home() {
   }, [customSubjects, customWards, finishedMap, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getCustomWardTotalPlanned, getPresetWardTotalPlanned, presetTimetable, subjectMode, subjects, tomorrowDate, tomorrowDateStr, tomorrowDay, userAddedSubjects, wards]);
   const tomorrowSubject = tomorrowEntries[0]?.subject;
   const tomorrowIsWard = Boolean(tomorrowEntries[0]?.isWard);
-  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard, isSGT: tomorrowEntries[0]?.isSGT }, subjectMode, userAddedSubjects, customSubjects, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
+  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard, isSGT: tomorrowEntries[0]?.isSGT, isIntegrated: tomorrowEntries[0]?.isIntegrated }, subjectMode, userAddedSubjects, customSubjects, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
   const isEntryVacation = (entry: DayEntry) => {
     const card = entry.card;
     if (!card) return false;
@@ -650,6 +654,8 @@ export default function Home() {
   const resolveSubjectAlert = (storageKey: string) => {
     const isSGTKey = /^(?:sgt)[:\-_]/i.test(storageKey);
     const isWardKey = /^(?:ward)[:\-_]/i.test(storageKey);
+    const isIntegratedKey = /^(?:int|academic[:\-_]int)[:\-_]/i.test(storageKey);
+    const hasAcademicPrefix = /^(?:academic|acad)[:\-_]/i.test(storageKey);
     const rawCandidates = [storageKey];
     let raw = storageKey;
     while (/^(academic|acad|ward|sgt|int)[:\-_]/i.test(raw)) {
@@ -660,9 +666,12 @@ export default function Home() {
     const matchesKey = (value: string | undefined) => Boolean(value && rawCandidates.some(candidate => value === candidate || normalize(value) === normalize(candidate)));
     const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
     const registryRef = subjectRegistry.find(ref => {
-      if (isSGTKey) return ref.kind === 'sgt' && (matchesKey(ref.id) || normalize(ref.name) === normalize(raw));
-      if (isWardKey) return ref.domain === 'clinical' && ref.kind !== 'sgt' && (matchesKey(ref.id) || normalize(ref.name) === normalize(raw));
-      return ref.domain !== 'clinical' && ref.kind !== 'sgt' && (matchesKey(ref.id) || normalize(ref.name) === normalize(raw));
+      const matches = matchesKey(ref.id) || normalize(ref.name) === normalize(raw);
+      if (isSGTKey) return ref.kind === 'sgt' && matches;
+      if (isWardKey) return ref.domain === 'clinical' && ref.kind !== 'sgt' && matches;
+      if (isIntegratedKey) return ref.kind === 'integrated' && matches;
+      if (hasAcademicPrefix) return ref.domain === 'academic' && ref.kind !== 'integrated' && ref.kind !== 'sgt' && matches;
+      return matches;
     });
     const sgt = isSGTKey ? source.find(item => matchesKey(item.id) || matchesKey(item.name) || matchesKey(item.name.replace(/\s*SGT\s*$/i, ''))) : undefined;
     if (isSGTKey) {
@@ -686,7 +695,8 @@ export default function Home() {
     const plannedHint = customWard
       ? getCustomWardTotalPlanned(customWard.startDate, customWard.endDate, customWard.vacationPeriods)
       : userAdded?.plannedClasses ?? custom?.plannedClasses ?? registryRef?.planned;
-    return { name: displayName, category: isWardKey ? 'Ward' : registryCategory || getDashboardSubjectKind(displayName, undefined, subjectMode, userAddedSubjects, customSubjects, subjectRegistry), isResolved: Boolean(readable || registryRef), plannedHint, rawId: userAdded?.id || custom?.id || registryRef?.id || raw };
+    const category = isWardKey ? 'Ward' : isIntegratedKey ? 'Integrated' : hasAcademicPrefix ? 'Lecture' : registryCategory || getDashboardSubjectKind(displayName, undefined, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
+    return { name: displayName, category, isResolved: Boolean(readable || registryRef), plannedHint, rawId: userAdded?.id || custom?.id || registryRef?.id || raw };
   };
   const allPotentialMetrics = useMemo(() => {
     const metrics = new Map<string, {
@@ -708,7 +718,20 @@ export default function Home() {
       const metricKey = `${category}:${ref.id.trim().toLowerCase()}`;
       if (!metrics.has(metricKey)) metrics.set(metricKey, { name: ref.name, category, attended: 0, missed: 0, manuallyFinished: false, resolved: true, isWard, plannedHint: ref.planned, rawId: ref.id, storageKey: canonicalKey });
     };
-    subjectRegistry.forEach(addCanonical);
+    const canonicalRefs = [...subjectRegistry];
+    const addMissingRef = (ref: typeof subjectRegistry[number]) => {
+      if (!canonicalRefs.some(existing => existing.id === ref.id && existing.kind === ref.kind)) canonicalRefs.push(ref);
+    };
+    if (subjectMode === 'preloaded') {
+      CATEGORIES.forEach(category => category.subjects.forEach(subject => addMissingRef({ id: subject.id, name: subject.name, domain: 'academic', kind: 'preset-academic', planned: subject.total })));
+      INTEGRATED_SUBJECTS.forEach(subject => addMissingRef({ id: subject.id, name: subject.name, domain: 'academic', kind: 'integrated', planned: subject.total }));
+      WARD_SUBJECTS.forEach(ward => addMissingRef({ id: ward.id, name: ward.name, domain: 'clinical', kind: 'preset-ward', planned: getPresetWardTotalPlanned(ward.name) }));
+      userAddedSubjects.forEach(subject => addMissingRef({ id: subject.id, name: subject.name, domain: isSGTSubjectRecord(subject) ? 'clinical' : 'academic', kind: isSGTSubjectRecord(subject) ? 'sgt' : 'user-added', planned: subject.plannedClasses }));
+    } else {
+      customSubjects.forEach(subject => addMissingRef({ id: subject.id, name: subject.name, domain: isSGTSubjectRecord(subject) ? 'clinical' : 'academic', kind: isSGTSubjectRecord(subject) ? 'sgt' : 'custom', planned: subject.plannedClasses }));
+      customWards.forEach(ward => addMissingRef({ id: ward.id, name: ward.name, domain: 'clinical', kind: 'ward-rotation', planned: getCustomWardTotalPlanned(ward.startDate, ward.endDate, ward.vacationPeriods) }));
+    }
+    canonicalRefs.forEach(addCanonical);
     const addRecords = (records: Record<string, { attended: number; missed: number }>, isWard: boolean) => Object.entries(records).forEach(([storageKey, item]) => {
       const resolved = resolveSubjectAlert(storageKey);
       const metricKey = `${resolved.category}:${resolved.rawId.trim().toLowerCase()}`;
@@ -743,9 +766,8 @@ export default function Home() {
         || customWards.find(item => item.name.trim().toLowerCase() === nameKey);
       const registryItem = subjectRegistry.find(item => {
         const registryId = item.id.trim().toLowerCase();
-        return registryId === rawId
-          || registryId === metric.storageKey.trim().toLowerCase()
-          || item.name.trim().toLowerCase() === nameKey;
+        const itemCategory = item.kind === 'sgt' ? 'SGT' : item.kind === 'preset-ward' || item.kind === 'ward-rotation' ? 'Ward' : item.kind === 'integrated' ? 'Integrated' : 'Lecture';
+        return itemCategory === metric.category && (registryId === rawId || registryId === metric.storageKey.trim().toLowerCase());
       });
       const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS]
         .find(item => ('id' in item && item.id.trim().toLowerCase() === rawId) || item.name.trim().toLowerCase() === nameKey);
