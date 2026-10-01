@@ -493,6 +493,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         const rest = split.rest.toLowerCase();
         return refs.find(ref => [...aliasesFor(ref)].some(alias => rest === alias || rest.startsWith(`${alias}-`) || rest.startsWith(`${alias}_`)));
       };
+      if (localStorage.getItem(flag) === 'true') return;
       const adoptOrphans = async () => {
         let orphaned: Array<{ originalKey?: string; type?: string; data?: unknown }> = [];
         try {
@@ -542,19 +543,30 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
             }
             const target = type === 'ward' ? wardsData : subjectsData;
             const previous = target[canonical];
-            target[canonical] = previous
-              ? { attended: previous.attended + value.attended, missed: previous.missed + value.missed }
-              : value;
+            if (previous) {
+              changed = true;
+              continue;
+            }
+            target[canonical] = value;
             changed = true;
           } else if (type === 'homeSelection') {
             if (orphan.data !== 'attended' && orphan.data !== 'missed' && orphan.data !== 'off') {
               retained.push(orphan);
               continue;
             }
-            selectionsData[canonicalHomeKey(originalKey, ref)] = orphan.data;
+            const homeKey = canonicalHomeKey(originalKey, ref);
+            if (selectionsData[homeKey] !== undefined) {
+              changed = true;
+              continue;
+            }
+            selectionsData[homeKey] = orphan.data;
             changed = true;
           } else {
-            finishedData[canonical] = Boolean(finishedData[canonical] || orphan.data);
+            if (finishedData[canonical] !== undefined) {
+              changed = true;
+              continue;
+            }
+            finishedData[canonical] = Boolean(orphan.data);
             changed = true;
           }
         }
@@ -569,8 +581,6 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         ]);
         setSubjects(subjectsData); setWards(wardsData); setHomeSelections(selectionsData); setFinishedMap(finishedData);
       };
-      await adoptOrphans();
-      if (localStorage.getItem(flag) === 'true') return;
       const migrateAttendanceMap = (raw: Record<string, AttendanceData>, isWard: boolean) => {
         const next: Record<string, AttendanceData> = {};
         let changed = false;
@@ -627,7 +637,6 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         [keys.wardsKey, JSON.stringify(wardsResult.next)],
         [keys.homeSelectionsKey, JSON.stringify(selectionsResult.next)],
         [keys.finishedMapKey, JSON.stringify(finishedResult.next)],
-        [flag, 'true'],
       ];
       for (const bundleKey of Object.keys(localStorage)) {
         if (!bundleKey.startsWith('att_curriculum_bundle_')) continue;
@@ -665,6 +674,8 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       }
       await storageCommitChecked(entries);
       setSubjects(subjectsResult.next); setWards(wardsResult.next); setHomeSelections(selectionsResult.next); setFinishedMap(finishedResult.next);
+      await adoptOrphans();
+      await storageSetItemChecked(flag, 'true');
     } catch (error) {
       console.error('Canonical attendance-key migration failed; existing data was preserved.', error);
     }
