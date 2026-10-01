@@ -804,8 +804,8 @@ export default function Settings() {
 
       const migrationFlags = [
         'att_mode_separation_done_v1',
-        'att_attendance_id_migration_v2_done_preloaded',
-        'att_attendance_id_migration_v2_done_custom',
+        'att_attendance_key_migration_v5_done_preloaded',
+        'att_attendance_key_migration_v5_done_custom',
       ];
       await Promise.all(migrationFlags.map(flag => storageRemoveItemChecked(flag)));
 

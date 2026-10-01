@@ -1033,51 +1033,43 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   const saveSubjects = (data: CustomSubject[]) => {
     setCustomSubjects(data);
-    localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(data));
-    storageSetItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(data));
+    void storageSetItemChecked(CUSTOM_SUBJECTS_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveWards = (data: CustomWard[]) => {
     setCustomWards(data);
-    localStorage.setItem(CUSTOM_WARDS_KEY, JSON.stringify(data));
-    storageSetItem(CUSTOM_WARDS_KEY, JSON.stringify(data));
+    void storageSetItemChecked(CUSTOM_WARDS_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveUserAdded = (data: UserAddedSubject[]) => {
     setUserAddedSubjects(data);
-    localStorage.setItem(USER_ADDED_SUBJECTS_KEY, JSON.stringify(data));
-    storageSetItem(USER_ADDED_SUBJECTS_KEY, JSON.stringify(data));
+    void storageSetItemChecked(USER_ADDED_SUBJECTS_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveTimetable = (data: typeof TIMETABLE) => {
     presetTimetableRef.current = data;
     setPresetTimetable(data);
-    localStorage.setItem(PRESET_TIMETABLE_KEY, JSON.stringify(data));
-    storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(data));
+    void storageSetItemChecked(PRESET_TIMETABLE_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveWardSchedule = (data: PresetWardEntry[]) => {
     setPresetWardSchedule(data);
-    localStorage.setItem(PRESET_WARD_SCHEDULE_KEY, JSON.stringify(data));
-    storageSetItem(PRESET_WARD_SCHEDULE_KEY, JSON.stringify(data));
+    void storageSetItemChecked(PRESET_WARD_SCHEDULE_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveTotals = (data: Record<string, number>) => {
     setPresetSubjectTotals(data);
-    localStorage.setItem(PRESET_SUBJECT_TOTALS_KEY, JSON.stringify(data));
-    storageSetItem(PRESET_SUBJECT_TOTALS_KEY, JSON.stringify(data));
+    void storageSetItemChecked(PRESET_SUBJECT_TOTALS_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveRenames = (data: Record<string, string>) => {
     setRenamedPresetSubjects(data);
-    localStorage.setItem(PRESET_RENAMES_KEY, JSON.stringify(data));
-    storageSetItem(PRESET_RENAMES_KEY, JSON.stringify(data));
+    void storageSetItemChecked(PRESET_RENAMES_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveWardRenames = (data: Record<string, string>) => {
     setRenamedPresetWards(data);
-    localStorage.setItem(PRESET_WARD_RENAMES_KEY, JSON.stringify(data));
-    storageSetItem(PRESET_WARD_RENAMES_KEY, JSON.stringify(data));
+    void storageSetItemChecked(PRESET_WARD_RENAMES_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const addCustomSubjects = useStableCallback((items: Array<Omit<CustomSubject, 'id'>>): CustomSubject[] => {

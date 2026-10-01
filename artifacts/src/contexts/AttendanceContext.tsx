@@ -256,44 +256,37 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     isWard: boolean,
     totalCardsOnScreen?: number
   ) => {
-    let markedCount = 0;
-    setHomeSelections(previousSelections => {
-      const previous = previousSelections[homeKey];
-      const newSelections = previous === selection
-        ? Object.fromEntries(Object.entries(previousSelections).filter(([key]) => key !== homeKey))
-        : { ...previousSelections, [homeKey]: selection };
-      markedCount = Object.keys(newSelections).length;
-      persistHomeSelectionsForMode(subjectMode, newSelections);
+    const previous = homeSelections[homeKey];
+    const newSelections = previous === selection
+      ? Object.fromEntries(Object.entries(homeSelections).filter(([key]) => key !== homeKey))
+      : { ...homeSelections, [homeKey]: selection };
+    const markedCount = Object.keys(newSelections).length;
+    persistHomeSelectionsForMode(subjectMode, newSelections);
+    setHomeSelections(newSelections);
 
-      let deltaAttended = previous === 'attended' ? -1 : 0;
-      let deltaMissed = previous === 'missed' ? -1 : 0;
-      if (previous !== selection) {
-        if (selection === 'attended') deltaAttended += 1;
-        if (selection === 'missed') deltaMissed += 1;
-      }
-      if (isWard) {
-        setWards(currentWards => {
-          const current = currentWards[subjectKey] || { attended: 0, missed: 0 };
-          const updated = { ...currentWards, [subjectKey]: {
-            attended: Math.max(0, current.attended + deltaAttended),
-            missed: Math.max(0, current.missed + deltaMissed),
-          }};
-          persistWardsForMode(subjectMode, updated);
-          return updated;
-        });
-      } else {
-        setSubjects(currentSubjects => {
-          const current = currentSubjects[subjectKey] || { attended: 0, missed: 0 };
-          const updated = { ...currentSubjects, [subjectKey]: {
-            attended: Math.max(0, current.attended + deltaAttended),
-            missed: Math.max(0, current.missed + deltaMissed),
-          }};
-          persistSubjectsForMode(subjectMode, updated);
-          return updated;
-        });
-      }
-      return newSelections;
-    });
+    let deltaAttended = previous === 'attended' ? -1 : 0;
+    let deltaMissed = previous === 'missed' ? -1 : 0;
+    if (previous !== selection) {
+      if (selection === 'attended') deltaAttended += 1;
+      if (selection === 'missed') deltaMissed += 1;
+    }
+    if (isWard) {
+      const current = wards[subjectKey] || { attended: 0, missed: 0 };
+      const updated = { ...wards, [subjectKey]: {
+        attended: Math.max(0, current.attended + deltaAttended),
+        missed: Math.max(0, current.missed + deltaMissed),
+      }};
+      persistWardsForMode(subjectMode, updated);
+      setWards(updated);
+    } else {
+      const current = subjects[subjectKey] || { attended: 0, missed: 0 };
+      const updated = { ...subjects, [subjectKey]: {
+        attended: Math.max(0, current.attended + deltaAttended),
+        missed: Math.max(0, current.missed + deltaMissed),
+      }};
+      persistSubjectsForMode(subjectMode, updated);
+      setSubjects(updated);
+    }
 
     const targetCardCount = totalCardsOnScreen || (Object.keys(subjects).length + Object.keys(wards).length);
     if (targetCardCount > 0 && markedCount >= targetCardCount) {
@@ -463,7 +456,6 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
 
   const migrateCanonicalAttendanceKeys = async (mode: 'preloaded' | 'custom', registry: Array<{ id: string; name: string; domain: 'academic' | 'clinical'; kind: string }>) => {
     const flag = `${ID_MIGRATION_FLAG_PREFIX}${mode}`;
-    if (localStorage.getItem(flag) === 'true') return;
     try {
       const keys = getStorageKeys(mode);
       const refs = registry.filter(ref => Boolean(ref.id && ref.name));
@@ -501,6 +493,84 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
         const rest = split.rest.toLowerCase();
         return refs.find(ref => [...aliasesFor(ref)].some(alias => rest === alias || rest.startsWith(`${alias}-`) || rest.startsWith(`${alias}_`)));
       };
+      const adoptOrphans = async () => {
+        let orphaned: Array<{ originalKey?: string; type?: string; data?: unknown }> = [];
+        try {
+          const parsed = JSON.parse(localStorage.getItem('attendance_tracker_orphaned_records') || '[]');
+          if (Array.isArray(parsed)) orphaned = parsed.filter(item => item && typeof item === 'object');
+        } catch { return; }
+        if (orphaned.length === 0) return;
+
+        const keys = getStorageKeys(mode);
+        const readLocalMap = <T,>(key: string): T => {
+          try { return JSON.parse(localStorage.getItem(key) || '{}') as T; } catch { return {} as T; }
+        };
+        const subjectsData = readLocalMap<Record<string, AttendanceData>>(keys.subjectsKey);
+        const wardsData = readLocalMap<Record<string, AttendanceData>>(keys.wardsKey);
+        const selectionsData = readLocalMap<Record<string, SelectionType>>(keys.homeSelectionsKey);
+        const finishedData = readLocalMap<Record<string, boolean>>(keys.finishedMapKey);
+        const retained: typeof orphaned = [];
+        const seen = new Set<string>();
+        let changed = false;
+        const canonicalHomeKey = (originalKey: string, ref: typeof refs[number]): string => {
+          const split = splitHomeKey(originalKey);
+          if (!split) return canonicalFor(ref);
+          const rest = split.rest;
+          const alias = [...aliasesFor(ref)].sort((a, b) => b.length - a.length)
+            .find(candidate => rest.toLowerCase() === candidate || rest.toLowerCase().startsWith(`${candidate}-`) || rest.toLowerCase().startsWith(`${candidate}_`));
+          return alias ? `${split.date}${split.sep}${canonicalFor(ref)}${rest.slice(alias.length)}` : originalKey;
+        };
+
+        for (const orphan of orphaned) {
+          const originalKey = typeof orphan.originalKey === 'string' ? orphan.originalKey : '';
+          const type = typeof orphan.type === 'string' ? orphan.type : '';
+          const dedupeKey = `${type}\u0000${originalKey.toLowerCase()}`;
+          if (!originalKey || seen.has(dedupeKey)) { changed = true; continue; }
+          seen.add(dedupeKey);
+          const isWard = type === 'ward';
+          const ref = type === 'homeSelection' ? findHomeRef(originalKey) : findRef(originalKey, isWard);
+          if (!ref || !['subject', 'ward', 'homeSelection', 'finished'].includes(type)) {
+            retained.push(orphan);
+            continue;
+          }
+          const canonical = canonicalFor(ref);
+          if (type === 'subject' || type === 'ward') {
+            const value = orphan.data && typeof orphan.data === 'object' ? orphan.data as AttendanceData : null;
+            if (!value || !Number.isFinite(value.attended) || !Number.isFinite(value.missed)) {
+              retained.push(orphan);
+              continue;
+            }
+            const target = type === 'ward' ? wardsData : subjectsData;
+            const previous = target[canonical];
+            target[canonical] = previous
+              ? { attended: previous.attended + value.attended, missed: previous.missed + value.missed }
+              : value;
+            changed = true;
+          } else if (type === 'homeSelection') {
+            if (orphan.data !== 'attended' && orphan.data !== 'missed' && orphan.data !== 'off') {
+              retained.push(orphan);
+              continue;
+            }
+            selectionsData[canonicalHomeKey(originalKey, ref)] = orphan.data;
+            changed = true;
+          } else {
+            finishedData[canonical] = Boolean(finishedData[canonical] || orphan.data);
+            changed = true;
+          }
+        }
+        if (!changed) return;
+        const nextOrphans = JSON.stringify(retained);
+        await storageCommitChecked([
+          [keys.subjectsKey, JSON.stringify(subjectsData)],
+          [keys.wardsKey, JSON.stringify(wardsData)],
+          [keys.homeSelectionsKey, JSON.stringify(selectionsData)],
+          [keys.finishedMapKey, JSON.stringify(finishedData)],
+          ['attendance_tracker_orphaned_records', nextOrphans],
+        ]);
+        setSubjects(subjectsData); setWards(wardsData); setHomeSelections(selectionsData); setFinishedMap(finishedData);
+      };
+      await adoptOrphans();
+      if (localStorage.getItem(flag) === 'true') return;
       const migrateAttendanceMap = (raw: Record<string, AttendanceData>, isWard: boolean) => {
         const next: Record<string, AttendanceData> = {};
         let changed = false;
@@ -622,10 +692,13 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
       for (const entity of entities) {
         const target = entity.type === 'ward' ? wardData : subjectData;
         for (const alias of [entity.key, entity.legacyKey].filter((x): x is string => Boolean(x))) {
-          if (Object.prototype.hasOwnProperty.call(target, alias)) {
-            delete target[alias];
-            if (entity.type === 'ward') wardsChanged = true;
-            else subjectsChanged = true;
+          const aliasLower = alias.toLowerCase();
+          for (const storedKey of Object.keys(target)) {
+            if (storedKey.toLowerCase() === aliasLower) {
+              delete target[storedKey];
+              if (entity.type === 'ward') wardsChanged = true;
+              else subjectsChanged = true;
+            }
           }
         }
       }

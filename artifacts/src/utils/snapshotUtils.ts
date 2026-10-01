@@ -63,7 +63,14 @@ function sanitizeExportAttendanceStores(data: Record<string, string>): Record<st
     const normalized = key.trim().toLowerCase();
     if (known.has(normalized)) return true;
     const withoutDate = normalized.replace(/^\d{4}-\d{2}-\d{2}[-_]/, '');
-    return known.has(withoutDate);
+    const candidates = [withoutDate, withoutDate.replace(/^academic:(?:academic|acad):/, 'academic:')];
+    for (const candidate of candidates) {
+      if (known.has(candidate)) return true;
+      for (const token of known) {
+        if (candidate.startsWith(`${token}-`) || candidate.startsWith(`${token}_`)) return true;
+      }
+    }
+    return false;
   };
   const isAttendanceKey = (key: string): boolean => /^(?:\d{4}-\d{2}-\d{2}[-_])?(?:academic|sgt|ward|int):/.test(key.trim().toLowerCase());
 
