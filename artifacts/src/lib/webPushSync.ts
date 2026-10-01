@@ -305,7 +305,7 @@ function reminderFlags(level: ReminderAttentionLevel): { needsAttention: boolean
 
 function attendanceKeyForName(name: string, subjectRegistry: ReturnType<typeof useCustomData>['subjectRegistry']): string {
   const reference = subjectRegistry.find(item => item.name.trim().toLowerCase() === name.trim().toLowerCase());
-  return reference ? subjectAttendanceKey(reference) : name;
+  return reference ? subjectAttendanceKey(reference) : '';
 }
 
 function selectionValue(selections: Record<string, string>, localDate: string, attendanceKey: string, sessionId?: string, label?: string): string | undefined {

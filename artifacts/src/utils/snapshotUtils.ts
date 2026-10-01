@@ -44,8 +44,8 @@ function addKnownRecordKeys(known: Set<string>, raw: string | undefined, type: '
     records.forEach(record => {
       if (!record || typeof record.id !== 'string' || !record.id.trim()) return;
       const prefix = type === 'ward' ? 'ward' : record.subjectType === 'allied' && record.parentName === 'Small Group Teaching' ? 'sgt' : 'academic';
-      const id = record.id.trim();
-      known.add((id.toLowerCase().startsWith(`${prefix}:`) ? id : `${prefix}:${id}`).toLowerCase());
+      const id = record.id.trim().replace(/^(?:academic|acad|ward|sgt|int)[:\-_]/i, '');
+      known.add(`${prefix}:${id}`.toLowerCase());
     });
   } catch { /* Ignore malformed unrelated registry values during export. */ }
 }
@@ -55,9 +55,9 @@ function sanitizeExportAttendanceStores(data: Record<string, string>): Record<st
   addKnownRecordKeys(known, data.att_user_added_subjects, 'subject');
   addKnownRecordKeys(known, data.att_custom_subjects, 'subject');
   addKnownRecordKeys(known, data.att_custom_wards, 'ward');
-  CATEGORIES.flatMap(category => category.subjects).forEach(item => known.add(`academic:${item.id}`.toLowerCase()));
-  INTEGRATED_SUBJECTS.forEach(item => { const id = item.id.trim(); known.add((id.toLowerCase().startsWith('int:') ? id : `int:${id}`).toLowerCase()); });
-  WARD_SUBJECTS.filter(item => item.name.toLowerCase() !== 'holiday').forEach(item => { const id = item.id.trim(); known.add((id.toLowerCase().startsWith('ward:') ? id : `ward:${id}`).toLowerCase()); });
+  CATEGORIES.flatMap(category => category.subjects).forEach(item => known.add(`academic:${item.id.replace(/^(?:academic|acad)[:\-_]/i, '')}`.toLowerCase()));
+  INTEGRATED_SUBJECTS.forEach(item => { const id = item.id.trim().replace(/^int[:\-_]/i, ''); known.add(`int:${id}`.toLowerCase()); });
+  WARD_SUBJECTS.filter(item => item.name.toLowerCase() !== 'holiday').forEach(item => { const id = item.id.trim().replace(/^ward[:\-_]/i, ''); known.add(`ward:${id}`.toLowerCase()); });
 
   const isKnownEntry = (key: string): boolean => {
     const normalized = key.trim().toLowerCase();
@@ -65,7 +65,7 @@ function sanitizeExportAttendanceStores(data: Record<string, string>): Record<st
     const withoutDate = normalized.replace(/^\d{4}-\d{2}-\d{2}[-_]/, '');
     return known.has(withoutDate);
   };
-  const isAttendanceKey = (key: string): boolean => /^(?:\d{4}-\d{2}-\d{2}[-_])?(?:academic|acad|sgt|ward|int):/.test(key.trim().toLowerCase());
+  const isAttendanceKey = (key: string): boolean => /^(?:\d{4}-\d{2}-\d{2}[-_])?(?:academic|sgt|ward|int):/.test(key.trim().toLowerCase());
 
   for (const [storageKey, raw] of Object.entries(data)) {
     if (!EXPORT_ATTENDANCE_STORE_PREFIXES.some(prefix => storageKey.startsWith(prefix))) continue;
@@ -256,7 +256,7 @@ export async function restoreSnapshot(snapshotId: string): Promise<boolean> {
 
     await flushStorageWrites();
     // Force startup migration after any snapshot restore, including newer snapshots.
-    const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];
+    const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_key_migration_v5_done_preloaded', 'att_attendance_key_migration_v5_done_custom'];
     for (const key of migrationFlags) await storageRemoveItemChecked(key);
 
     return true;
@@ -392,7 +392,7 @@ export function importDataFromJSON(file: File, callback: (success: boolean) => v
       await storageCommitChecked([...currentRegistryEntries, ...entries, ['att_app_version', APP_VERSION]]);
 
       // Force startup migration after any uploaded backup restore.
-      const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_id_migration_v2_done_preloaded', 'att_attendance_id_migration_v2_done_custom'];
+      const migrationFlags = ['att_mode_separation_done_v1', 'att_attendance_key_migration_v5_done_preloaded', 'att_attendance_key_migration_v5_done_custom'];
       for (const key of migrationFlags) await storageRemoveItemChecked(key);
 
       callback(true);

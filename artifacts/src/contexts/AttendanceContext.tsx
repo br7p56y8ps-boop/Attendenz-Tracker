@@ -7,10 +7,13 @@ export type AttendanceData = { attended: number; missed: number };
 export type SelectionType = 'off' | 'missed' | 'attended';
 
 const SGT_KEY_PREFIX = 'sgt:';
-export const getSGTKey = (id: string) => `${SGT_KEY_PREFIX}${id}`;
-export const getAcademicAttendanceKey = (subjectId: string) => subjectId.startsWith('int:') ? subjectId : `academic:${subjectId}`;
-export const getWardAttendanceKey = (wardId: string) => `ward:${wardId}`;
+const stripRegistryPrefix = (id: string): string => id.trim().replace(/^(?:academic|acad|ward|sgt|int)[:\-_]/i, '');
+export const getSGTKey = (id: string) => `${SGT_KEY_PREFIX}${stripRegistryPrefix(id)}`;
+export const getAcademicAttendanceKey = (subjectId: string) => /^int[:\-_]/i.test(subjectId) ? `int:${stripRegistryPrefix(subjectId)}` : `academic:${stripRegistryPrefix(subjectId)}`;
+export const getWardAttendanceKey = (wardId: string) => `ward:${stripRegistryPrefix(wardId)}`;
 export const isSGTKey = (key: string) => key.startsWith(SGT_KEY_PREFIX);
+export const getCanonicalAttendanceKey = (ref: { id: string; domain: 'academic' | 'clinical'; kind: string }): string =>
+  ref.kind === 'sgt' ? getSGTKey(ref.id) : ref.domain === 'clinical' ? getWardAttendanceKey(ref.id) : getAcademicAttendanceKey(ref.id);
 
 interface AttendanceContextType {
   subjects: Record<string, AttendanceData>;
@@ -59,12 +62,8 @@ const HOME_SELECTIONS_KEY_CUSTOM = 'attendance_tracker_home_selections_custom';
 const FINISHED_MAP_KEY_CUSTOM = 'attendance_tracker_finished_map_custom';
 
 const MODE_SEPARATION_FLAG = 'att_mode_separation_done_v1';
-const ID_MIGRATION_FLAG_PREFIX = 'att_attendance_id_migration_v4_done_';
-const SGT_MIGRATION_FLAG = 'att_sgt_attendance_migrated_v1';
-const ORPHANED_RECORDS_KEY = 'attendance_tracker_orphaned_records';
+const ID_MIGRATION_FLAG_PREFIX = 'att_attendance_key_migration_v5_done_';
 
-const USER_ADDED_SUBJECTS_STORAGE = 'att_user_added_subjects';
-const CUSTOM_SUBJECTS_STORAGE = 'att_custom_subjects';
 
 const getActualMode = (): 'preloaded' | 'custom' => {
   const m = localStorage.getItem('att_subject_mode');
@@ -173,8 +172,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     loadDataForMode(subjectMode);
     if (userAddedSubjectsHydrated && subjectRegistry.length > 0) {
-      migrateSGTData(subjectMode);
-      void migrateAttendanceToIDs(subjectMode, subjectRegistry);
+      void migrateCanonicalAttendanceKeys(subjectMode, subjectRegistry);
     }
   }, [subjectMode, subjectRegistry, userAddedSubjectsHydrated]);
 
@@ -452,7 +450,7 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
   const removeAttendanceByKey = useStableCallback((key: string) => {
     if (!key) return;
     snapshotBeforeEdit(`Delete attendance key: ${key}`);
-    if (isSGTKey(key) || !key.startsWith('ward-')) {
+    if (isSGTKey(key) || (!key.startsWith('ward:') && !key.startsWith('ward-') && !key.startsWith('ward_'))) {
       removeStoreKey(setSubjects, (d) => persistSubjectsForMode(subjectMode, d), key);
       removeStoreKey(setFinishedMap, (d) => persistFinishedMapForMode(subjectMode, d), key);
       removeHomeSelectionsFor(key);
@@ -463,195 +461,144 @@ export const AttendanceProvider = ({ children }: { children: ReactNode }) => {
     }
   });
 
-  const migrateSGTData = (mode: 'preloaded' | 'custom') => {
-    if (localStorage.getItem(SGT_MIGRATION_FLAG) === 'true') return;
-    try {
-      const keys = getStorageKeys(mode);
-      const rawSubjects = JSON.parse(localStorage.getItem(keys.subjectsKey) || '{}');
-      const rawHomeSelections = JSON.parse(localStorage.getItem(keys.homeSelectionsKey) || '{}');
-      const sgtList: Array<{ id: string; name: string }> = [];
-      const sourceKey = mode === 'preloaded' ? USER_ADDED_SUBJECTS_STORAGE : CUSTOM_SUBJECTS_STORAGE;
-      const sourceRaw = localStorage.getItem(sourceKey);
-      if (sourceRaw) {
-        JSON.parse(sourceRaw).forEach((s: any) => {
-          if (s.parentName === 'Small Group Teaching' && s.id) sgtList.push({ id: s.id, name: s.name });
-        });
-      }
-      if (sgtList.length === 0) {
-        void storageSetItemChecked(SGT_MIGRATION_FLAG, 'true');
-        return;
-      }
-      let newSubjects = { ...rawSubjects };
-      let newHomeSelections = { ...rawHomeSelections };
-      let changed = false;
-      for (const sgt of sgtList) {
-        const sgtKey = getSGTKey(sgt.id);
-        let sgtAtt = 0, sgtMis = 0;
-        for (const [homeKey, sel] of Object.entries(rawHomeSelections)) {
-          if (homeKey.includes(`sgt-${sgt.id}`) || homeKey.includes(`sgt_${sgt.id}`)) {
-            if (sel === 'attended') sgtAtt++;
-            else if (sel === 'missed') sgtMis++;
-          }
-        }
-        if (sgtAtt > 0 || sgtMis > 0) {
-          newSubjects[sgtKey] = { attended: sgtAtt, missed: sgtMis };
-          changed = true;
-          if (newSubjects[sgt.name]) {
-            const old = newSubjects[sgt.name];
-            const newAtt = Math.max(0, old.attended - sgtAtt);
-            const newMis = Math.max(0, old.missed - sgtMis);
-            if (newAtt === 0 && newMis === 0) delete newSubjects[sgt.name];
-            else newSubjects[sgt.name] = { attended: newAtt, missed: newMis };
-          }
-        }
-      }
-      for (const [homeKey, sel] of Object.entries(rawHomeSelections)) {
-        for (const sgt of sgtList) {
-          const oldToken = `sgt-${sgt.id}`;
-          if (homeKey.includes(oldToken)) {
-            const date = homeKey.slice(0, 10);
-            const rest = homeKey.slice(11);
-            const sep = homeKey.charAt(10);
-            const tokenIndex = rest.indexOf(oldToken);
-            const suffix = rest.slice(tokenIndex + oldToken.length);
-            const newRest = `${getSGTKey(sgt.id)}${suffix}`;
-            const newHomeKey = `${date}${sep}${newRest}`;
-            if (newHomeKey !== homeKey) {
-              delete newHomeSelections[homeKey];
-              newHomeSelections[newHomeKey] = sel;
-              changed = true;
-            }
-            break;
-          }
-        }
-      }
-      if (changed) {
-        persistSubjectsForMode(mode, newSubjects);
-        persistHomeSelectionsForMode(mode, newHomeSelections);
-        setSubjects(newSubjects);
-        setHomeSelections(newHomeSelections);
-      }
-      void storageSetItemChecked(SGT_MIGRATION_FLAG, 'true');
-    } catch (error) {
-      console.error('SGT attendance migration failed; existing data was preserved.', error);
-    }
-  };
-
-  const migrateAttendanceToIDs = async (mode: 'preloaded' | 'custom', registry: Array<{ id: string; name: string; domain: 'academic' | 'clinical'; kind: string }>) => {
+  const migrateCanonicalAttendanceKeys = async (mode: 'preloaded' | 'custom', registry: Array<{ id: string; name: string; domain: 'academic' | 'clinical'; kind: string }>) => {
     const flag = `${ID_MIGRATION_FLAG_PREFIX}${mode}`;
     if (localStorage.getItem(flag) === 'true') return;
     try {
       const keys = getStorageKeys(mode);
-      const currentSubjects: Record<string, AttendanceData> = JSON.parse(localStorage.getItem(keys.subjectsKey) || '{}');
-      const currentWards: Record<string, AttendanceData> = JSON.parse(localStorage.getItem(keys.wardsKey) || '{}');
-      const currentSelections: Record<string, SelectionType> = JSON.parse(localStorage.getItem(keys.homeSelectionsKey) || '{}');
-      const currentFinished: Record<string, boolean> = JSON.parse(localStorage.getItem(keys.finishedMapKey) || '{}');
-      const nextSubjects = { ...currentSubjects };
-      const nextWards = { ...currentWards };
-      const nextSelections = { ...currentSelections };
-      const nextFinished = { ...currentFinished };
-      const migratedSubjectAliases = new Set<string>();
-      const migratedWardAliases = new Set<string>();
-      const knownSubjectKeys = new Set<string>();
-      const knownWardKeys = new Set<string>();
-      const canonicalByAlias = new Map<string, string>();
-      const orphaned: Array<{ originalKey: string; type: 'subject' | 'ward' | 'homeSelection' | 'finished'; data: unknown }> = [];
-
-      for (const ref of registry) {
-        const canonical = ref.kind === 'sgt'
-          ? getSGTKey(ref.id)
-          : ref.domain === 'clinical'
-            ? getWardAttendanceKey(ref.id)
-            : getAcademicAttendanceKey(ref.id);
-        const id = ref.id.replace(/^(academic|acad|ward|sgt|int)[:\-_]/i, '');
-        const aliases = ref.kind === 'sgt'
-          ? [getSGTKey(ref.id), `sgt:${id}`, `sgt-${id}`, `sgt_${id}`, ref.name]
-          : ref.domain === 'clinical'
-            ? [canonical, `ward:${id}`, `ward-${ref.name}`, `ward_${ref.name}`, `ward-${id}`, `ward_${id}`, ref.name]
-            : ref.kind === 'integrated'
-              ? [canonical, `int:${id}`, `int-${id}`, `int_${id}`, `academic:int:${id}`, `academic-int:${id}`, `academic_int:${id}`, ref.name]
-              : [canonical, `academic:${id}`, `acad:${id}`, `academic:${ref.id}`, `acad:${ref.id}`, `academic-${id}`, `academic_${id}`, `acad-${id}`, `acad_${id}`, ref.name];
-        const aliasSet = new Set(aliases.map(alias => alias.toLowerCase()));
-        aliases.forEach(alias => canonicalByAlias.set(alias.toLowerCase(), canonical));
-        if (ref.domain === 'clinical' && ref.kind !== 'sgt') {
-          knownWardKeys.add(canonical);
-          aliases.forEach(alias => knownWardKeys.add(alias));
-        } else {
-          knownSubjectKeys.add(canonical);
-          aliases.forEach(alias => knownSubjectKeys.add(alias));
+      const refs = registry.filter(ref => Boolean(ref.id && ref.name));
+      const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const canonicalFor = (ref: typeof refs[number]) => getCanonicalAttendanceKey(ref);
+      const aliasesFor = (ref: typeof refs[number]) => {
+        const canonical = canonicalFor(ref);
+        const base = stripRegistryPrefix(ref.id);
+        const kindAliases = ref.kind === 'sgt'
+          ? [`sgt:${base}`, `sgt:${ref.id}`, `sgt-${base}`, `sgt_${base}`]
+          : ref.kind === 'integrated'
+            ? [`int:${base}`, `int-${base}`, `int_${base}`, `academic:int:${base}`, `academic-int:${base}`, `academic_int:${base}`]
+            : ref.domain === 'clinical'
+              ? [`ward:${base}`, `ward:${ref.id}`, `ward-${base}`, `ward_${base}`, ref.name]
+              : [`academic:${base}`, `acad:${base}`, `academic:${ref.id}`, `acad:${ref.id}`, `academic-${base}`, `academic_${base}`, `acad-${base}`, `acad_${base}`, ref.name];
+        return new Set([canonical, ref.id, ref.name, ...kindAliases].map(value => value.toLowerCase()));
+      };
+      const findRef = (raw: string, isWard: boolean) => {
+        const key = raw.toLowerCase();
+        return refs.find(ref => {
+          if ((ref.domain === 'clinical' && ref.kind !== 'sgt') !== isWard) return false;
+          const aliases = aliasesFor(ref);
+          if (aliases.has(key)) return true;
+          const normalized = normalize(raw);
+          return [...aliases].some(alias => normalize(alias) === normalized);
+        });
+      };
+      const splitHomeKey = (key: string) => {
+        if (!/^\d{4}-\d{2}-\d{2}[-_]/.test(key)) return null;
+        return { date: key.slice(0, 10), sep: key.charAt(10), rest: key.slice(11) };
+      };
+      const findHomeRef = (key: string) => {
+        const split = splitHomeKey(key);
+        if (!split) return undefined;
+        const rest = split.rest.toLowerCase();
+        return refs.find(ref => [...aliasesFor(ref)].some(alias => rest === alias || rest.startsWith(`${alias}-`) || rest.startsWith(`${alias}_`)));
+      };
+      const migrateAttendanceMap = (raw: Record<string, AttendanceData>, isWard: boolean) => {
+        const next: Record<string, AttendanceData> = {};
+        let changed = false;
+        for (const [storedKey, value] of Object.entries(raw)) {
+          const ref = findRef(storedKey, isWard);
+          if (!ref) { next[storedKey] = value; continue; }
+          const canonical = canonicalFor(ref);
+          if (canonical !== storedKey) changed = true;
+          const previous = next[canonical];
+          next[canonical] = previous
+            ? { attended: previous.attended + value.attended, missed: previous.missed + value.missed }
+            : value;
         }
-        const store = ref.domain === 'clinical' && ref.kind !== 'sgt' ? currentWards : currentSubjects;
-        const source = Object.keys(store).find(key => aliasSet.has(key.toLowerCase()));
-        if (!source || source === canonical) continue;
-        if (ref.domain === 'clinical' && ref.kind !== 'sgt') {
-          if (nextWards[canonical] === undefined) nextWards[canonical] = currentWards[source];
-          migratedWardAliases.add(source);
-        } else {
-          if (nextSubjects[canonical] === undefined) nextSubjects[canonical] = currentSubjects[source];
-          migratedSubjectAliases.add(source);
+        return { next, changed };
+      };
+      const migrateSelections = (raw: Record<string, SelectionType>) => {
+        const next: Record<string, SelectionType> = {};
+        let changed = false;
+        for (const [storedKey, value] of Object.entries(raw)) {
+          const split = splitHomeKey(storedKey);
+          const ref = findHomeRef(storedKey);
+          if (!split || !ref) { next[storedKey] = value; continue; }
+          const canonical = canonicalFor(ref);
+          const rest = split.rest;
+          const aliases = [...aliasesFor(ref)].sort((a, b) => b.length - a.length);
+          const alias = aliases.find(candidate => rest.toLowerCase() === candidate || rest.toLowerCase().startsWith(`${candidate}-`) || rest.toLowerCase().startsWith(`${candidate}_`));
+          if (!alias) { next[storedKey] = value; continue; }
+          const suffix = rest.slice(alias.length);
+          const newKey = `${split.date}${split.sep}${canonical}${suffix}`;
+          if (newKey !== storedKey) changed = true;
+          if (next[newKey] === undefined) next[newKey] = value;
         }
-        for (const [homeKey, selection] of Object.entries(currentSelections)) {
-          const rewritten = rewriteHomeKey(homeKey, source, canonical);
-          if (rewritten !== homeKey) {
-            if (nextSelections[rewritten] === undefined) nextSelections[rewritten] = selection;
-            delete nextSelections[homeKey];
-          }
+        return { next, changed };
+      };
+      const migrateFinished = (raw: Record<string, boolean>) => {
+        const next: Record<string, boolean> = {};
+        let changed = false;
+        for (const [storedKey, value] of Object.entries(raw)) {
+          const ref = refs.find(candidate => [...aliasesFor(candidate)].includes(storedKey.toLowerCase()) || normalize(candidate.name) === normalize(storedKey));
+          if (!ref) { next[storedKey] = value; continue; }
+          const canonical = canonicalFor(ref);
+          if (canonical !== storedKey) changed = true;
+          next[canonical] = Boolean(next[canonical] || value);
         }
-        if (nextFinished[canonical] === undefined && currentFinished[source] !== undefined) nextFinished[canonical] = currentFinished[source];
-        delete nextFinished[source];
-      }
-
-      const oldOrphans: Array<{ originalKey: string; type: string; data: unknown }> = JSON.parse(localStorage.getItem(ORPHANED_RECORDS_KEY) || '[]');
-      for (const orphan of oldOrphans) {
-        if (orphan.type !== 'subject' || !orphan.data || typeof orphan.data !== 'object') continue;
-        const canonical = canonicalByAlias.get(orphan.originalKey.toLowerCase());
-        if (canonical && nextSubjects[canonical] === undefined) nextSubjects[canonical] = orphan.data as AttendanceData;
-      }
-      const isProtectedRestoredKey = (key: string) => /^(?:sgt:|academic:ua_|acad:ua_|ward:cw_|int:)/i.test(key);
-      for (const key of Object.keys(currentSubjects)) {
-        if (isProtectedRestoredKey(key) || knownSubjectKeys.has(key) || migratedSubjectAliases.has(key)) continue;
-        orphaned.push({ originalKey: key, type: 'subject', data: currentSubjects[key] });
-        delete nextSubjects[key];
-        delete nextFinished[key];
-      }
-      for (const key of Object.keys(currentWards)) {
-        if (isProtectedRestoredKey(key) || knownWardKeys.has(key) || migratedWardAliases.has(key)) continue;
-        orphaned.push({ originalKey: key, type: 'ward', data: currentWards[key] });
-        delete nextWards[key];
-        delete nextFinished[key];
-      }
-      const knownTokens = [...knownSubjectKeys, ...knownWardKeys, ...migratedSubjectAliases, ...migratedWardAliases].map(k => k.toLowerCase());
-      for (const [homeKey, selection] of Object.entries(currentSelections)) {
-        const rest = homeKey.slice(11).toLowerCase();
-        const recognized = knownTokens.some(token => rest === token || rest.startsWith(`${token}-`) || rest.startsWith(`${token}_`));
-        if (!recognized) {
-          orphaned.push({ originalKey: homeKey, type: 'homeSelection', data: selection });
-          delete nextSelections[homeKey];
-        }
-      }
-      for (const [finishedKey, finished] of Object.entries(currentFinished)) {
-        if (nextFinished[finishedKey] !== undefined && (knownSubjectKeys.has(finishedKey) || knownWardKeys.has(finishedKey) || migratedSubjectAliases.has(finishedKey) || migratedWardAliases.has(finishedKey))) continue;
-        if (nextSubjects[finishedKey] === undefined && nextWards[finishedKey] === undefined) {
-          orphaned.push({ originalKey: finishedKey, type: 'finished', data: finished });
-          delete nextFinished[finishedKey];
-        }
-      }
-
-      const orphanJson = JSON.stringify([...oldOrphans, ...orphaned]);
-      await storageCommitChecked([
-        [keys.subjectsKey, JSON.stringify(nextSubjects)],
-        [keys.wardsKey, JSON.stringify(nextWards)],
-        [keys.homeSelectionsKey, JSON.stringify(nextSelections)],
-        [keys.finishedMapKey, JSON.stringify(nextFinished)],
-        [ORPHANED_RECORDS_KEY, orphanJson],
+        return { next, changed };
+      };
+      const readMap = (key: string): any => { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; } };
+      const subjectsResult = migrateAttendanceMap(readMap(keys.subjectsKey), false);
+      const wardsResult = migrateAttendanceMap(readMap(keys.wardsKey), true);
+      const selectionsResult = migrateSelections(readMap(keys.homeSelectionsKey));
+      const finishedResult = migrateFinished(readMap(keys.finishedMapKey));
+      const entries: Array<[string, string]> = [
+        [keys.subjectsKey, JSON.stringify(subjectsResult.next)],
+        [keys.wardsKey, JSON.stringify(wardsResult.next)],
+        [keys.homeSelectionsKey, JSON.stringify(selectionsResult.next)],
+        [keys.finishedMapKey, JSON.stringify(finishedResult.next)],
         [flag, 'true'],
-      ]);
-      setSubjects(nextSubjects); setWards(nextWards); setHomeSelections(nextSelections); setFinishedMap(nextFinished);
+      ];
+      for (const bundleKey of Object.keys(localStorage)) {
+        if (!bundleKey.startsWith('att_curriculum_bundle_')) continue;
+        try {
+          const bundle = JSON.parse(localStorage.getItem(bundleKey) || '{}') as Record<string, string>;
+          let bundleChanged = false;
+          for (const [storeKey, isWard, migrate] of [
+            ['attendance_tracker_subjects_preset', false, migrateAttendanceMap],
+            ['attendance_tracker_subjects_custom', false, migrateAttendanceMap],
+            ['attendance_tracker_ward_preset', true, migrateAttendanceMap],
+            ['attendance_tracker_ward_custom', true, migrateAttendanceMap],
+          ] as const) {
+            if (bundle[storeKey] === undefined) continue;
+            let parsed: Record<string, any>;
+            try { parsed = JSON.parse(bundle[storeKey]); } catch { continue; }
+            const result = migrate(parsed, isWard);
+            if (result.changed) { bundle[storeKey] = JSON.stringify(result.next); bundleChanged = true; }
+          }
+          for (const storeKey of ['attendance_tracker_home_selections_preset', 'attendance_tracker_home_selections_custom']) {
+            if (bundle[storeKey] === undefined) continue;
+            let parsed: Record<string, SelectionType>;
+            try { parsed = JSON.parse(bundle[storeKey]); } catch { continue; }
+            const result = migrateSelections(parsed);
+            if (result.changed) { bundle[storeKey] = JSON.stringify(result.next); bundleChanged = true; }
+          }
+          for (const storeKey of ['attendance_tracker_finished_map_preset', 'attendance_tracker_finished_map_custom']) {
+            if (bundle[storeKey] === undefined) continue;
+            let parsed: Record<string, boolean>;
+            try { parsed = JSON.parse(bundle[storeKey]); } catch { continue; }
+            const result = migrateFinished(parsed);
+            if (result.changed) { bundle[storeKey] = JSON.stringify(result.next); bundleChanged = true; }
+          }
+          if (bundleChanged) entries.push([bundleKey, JSON.stringify(bundle)]);
+        } catch { /* preserve malformed unrelated bundles */ }
+      }
+      await storageCommitChecked(entries);
+      setSubjects(subjectsResult.next); setWards(wardsResult.next); setHomeSelections(selectionsResult.next); setFinishedMap(finishedResult.next);
     } catch (error) {
-      console.error('Attendance ID migration failed; existing data was preserved.', error);
+      console.error('Canonical attendance-key migration failed; existing data was preserved.', error);
     }
   };
-
   const removeAttendanceEntitiesForMode = useStableCallback((mode: 'preloaded' | 'custom', entities: Array<{ key: string; type: 'subject' | 'ward'; legacyKey?: string }>) => {
     if (entities.length === 0) return;
     const keys = getStorageKeys(mode);

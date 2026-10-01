@@ -3,7 +3,7 @@ import { HomeCard } from '@/components/HomeCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { isSGTSubjectRecord, useCustomData } from '@/contexts/CustomDataContext';
-import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey } from '@/contexts/AttendanceContext';
+import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey, getCanonicalAttendanceKey } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSessionId, getCustomSubjectSessionId } from '@/lib/utils';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
@@ -122,7 +122,6 @@ export default function Home() {
   const [showMarkAttendance, setShowMarkAttendance] = useState(false);
   const [dashboardActivities, setDashboardActivities] = useState<ActivityItem[]>([]);
   const [activityExpanded, setActivityExpanded] = useState(false);
-  const restoredSubjectLabels = useRef(new Map<string, string>());
 
   /* ── Update notice ── */
   const [installedVersion] = useState<string>(() => {
@@ -614,11 +613,7 @@ export default function Home() {
         : sgt
           ? sgt.plannedClasses || 0
           : getSubjectPlannedTotal(entry.subject!);
-      const finished = Boolean(
-        finishedMap[id]
-        || (sgt && (finishedMap[getSGTKey(sgt.id)] || finishedMap[sgt.id] || finishedMap[sgt.name]))
-        || finishedMap[entry.subject!]
-      );
+      const finished = Boolean(finishedMap[id]);
       return !finished && !(planned > 0 && conducted >= planned);
     });
     return remaining.sort((a, b) => (rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
@@ -644,59 +639,27 @@ export default function Home() {
       const completedOrder = Number(isCompletedPlannedEntry(a)) - Number(isCompletedPlannedEntry(b));
       return completedOrder || ((rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
     });
-  const restoredSubjectFallback = (raw: string) => {
-    const existing = restoredSubjectLabels.current.get(raw);
-    if (existing) return existing;
-    const label = `Restored Subject ${restoredSubjectLabels.current.size + 1}`;
-    restoredSubjectLabels.current.set(raw, label);
-    return label;
-  };
   const resolveSubjectAlert = (storageKey: string) => {
-    const isSGTKey = /^(?:sgt)[:\-_]/i.test(storageKey);
-    const isWardKey = /^(?:ward)[:\-_]/i.test(storageKey);
-    const isIntegratedKey = /^(?:int|academic[:\-_]int)[:\-_]/i.test(storageKey);
-    const hasAcademicPrefix = /^(?:academic|acad)[:\-_]/i.test(storageKey);
-    const rawCandidates = [storageKey];
-    let raw = storageKey;
-    while (/^(academic|acad|ward|sgt|int)[:\-_]/i.test(raw)) {
-      raw = raw.replace(/^(academic|acad|ward|sgt|int)[:\-_]/i, '');
-      rawCandidates.push(raw);
+    const registryRef = subjectRegistry.find(ref => getCanonicalAttendanceKey(ref).toLowerCase() === storageKey.trim().toLowerCase());
+    if (!registryRef) {
+      return { name: '', category: 'Lecture', isResolved: false, plannedHint: undefined, rawId: storageKey };
     }
-    const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-    const matchesKey = (value: string | undefined) => Boolean(value && rawCandidates.some(candidate => value === candidate || normalize(value) === normalize(candidate)));
     const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-    const registryRef = subjectRegistry.find(ref => {
-      const matches = matchesKey(ref.id) || normalize(ref.name) === normalize(raw);
-      if (isSGTKey) return ref.kind === 'sgt' && matches;
-      if (isWardKey) return ref.domain === 'clinical' && ref.kind !== 'sgt' && matches;
-      if (isIntegratedKey) return ref.kind === 'integrated' && matches;
-      if (hasAcademicPrefix) return ref.domain === 'academic' && ref.kind !== 'integrated' && ref.kind !== 'sgt' && matches;
-      return matches;
-    });
-    const sgt = isSGTKey ? source.find(item => matchesKey(item.id) || matchesKey(item.name) || matchesKey(item.name.replace(/\s*SGT\s*$/i, ''))) : undefined;
-    if (isSGTKey) {
-      return { name: sgt?.name || registryRef?.name || restoredSubjectFallback(raw), category: 'SGT', isResolved: Boolean(sgt || registryRef), plannedHint: sgt?.plannedClasses ?? registryRef?.planned, rawId: sgt?.id || registryRef?.id || raw };
-    }
-    const userAdded = source.find(item => matchesKey(item.id));
-    const custom = customSubjects.find(item => matchesKey(item.id));
-    const presetSubjects = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS];
-    const preset = (isWardKey ? WARD_SUBJECTS : presetSubjects).find(item => matchesKey(item.id) || matchesKey(item.name));
-    const customWard = isWardKey ? customWards.find(item => matchesKey(item.id) || matchesKey(item.name)) : undefined;
-    const presetName = preset && 'name' in preset
-      ? (WARD_SUBJECTS.includes(preset as typeof WARD_SUBJECTS[number]) ? getPresetWardDisplayName(preset.name) : getPresetSubjectDisplayName(preset.name))
+    const sourceItem = source.find(item => item.id === registryRef.id);
+    const customWard = registryRef.domain === 'clinical' && registryRef.kind !== 'sgt'
+      ? customWards.find(item => item.id === registryRef.id)
       : undefined;
-    const readable = userAdded?.name || custom?.name || customWard?.name || presetName || preset?.name;
-    const displayName = readable || registryRef?.name || restoredSubjectFallback(raw);
-    const registryCategory = registryRef?.kind === 'integrated'
-      ? 'Integrated'
-      : registryRef?.domain === 'clinical'
-        ? 'Ward'
-        : undefined;
+    const category = registryRef.kind === 'sgt'
+      ? 'SGT'
+      : registryRef.kind === 'integrated'
+        ? 'Integrated'
+        : registryRef.domain === 'clinical'
+          ? 'Ward'
+          : 'Lecture';
     const plannedHint = customWard
       ? getCustomWardTotalPlanned(customWard.startDate, customWard.endDate, customWard.vacationPeriods)
-      : userAdded?.plannedClasses ?? custom?.plannedClasses ?? registryRef?.planned;
-    const category = isWardKey ? 'Ward' : isIntegratedKey ? 'Integrated' : hasAcademicPrefix ? 'Lecture' : registryCategory || getDashboardSubjectKind(displayName, undefined, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
-    return { name: displayName, category, isResolved: Boolean(readable || registryRef), plannedHint, rawId: userAdded?.id || custom?.id || registryRef?.id || raw };
+      : sourceItem?.plannedClasses ?? registryRef.planned;
+    return { name: registryRef.name, category, isResolved: true, plannedHint, rawId: registryRef.id };
   };
   const allPotentialMetrics = useMemo(() => {
     const metrics = new Map<string, {
@@ -734,24 +697,20 @@ export default function Home() {
     canonicalRefs.forEach(addCanonical);
     const addRecords = (records: Record<string, { attended: number; missed: number }>, isWard: boolean) => Object.entries(records).forEach(([storageKey, item]) => {
       const resolved = resolveSubjectAlert(storageKey);
+      if (!resolved.isResolved) return;
       const metricKey = `${resolved.category}:${resolved.rawId.trim().toLowerCase()}`;
       const previous = metrics.get(metricKey);
-      const manuallyFinished = Boolean(
-        finishedMap[storageKey]
-        || finishedMap[storageKey.replace(/^(academic:|acad:|ward:|sgt:|int:)/, '')]
-        || finishedMap[`${isWard ? 'ward' : resolved.category === 'SGT' ? 'sgt' : 'academic'}:${storageKey.replace(/^(academic:|acad:|ward:|sgt:|int:)/, '')}`]
-      );
       metrics.set(metricKey, {
         name: resolved.name,
         category: resolved.category,
         attended: (previous?.attended || 0) + item.attended,
         missed: (previous?.missed || 0) + item.missed,
-        manuallyFinished: Boolean(previous?.manuallyFinished || manuallyFinished),
+        manuallyFinished: false,
         resolved: true,
         isWard,
         plannedHint: previous?.plannedHint ?? resolved.plannedHint,
         rawId: previous?.rawId ?? resolved.rawId,
-        storageKey: previous?.storageKey ?? storageKey,
+        storageKey: previous?.storageKey ?? getCanonicalAttendanceKey(subjectRegistry.find(ref => ref.id === resolved.rawId)! ),
       });
     });
     addRecords(subjects, false);
@@ -760,14 +719,11 @@ export default function Home() {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
       const rawId = metric.rawId.trim().toLowerCase();
       const nameKey = metric.name.trim().toLowerCase();
-      const sourceItem = source.find(item => item.id.trim().toLowerCase() === rawId)
-        || source.find(item => item.name.trim().toLowerCase() === nameKey);
-      const customWardItem = customWards.find(item => item.id.trim().toLowerCase() === rawId)
-        || customWards.find(item => item.name.trim().toLowerCase() === nameKey);
+      const sourceItem = source.find(item => item.id.trim().toLowerCase() === rawId);
+      const customWardItem = customWards.find(item => item.id.trim().toLowerCase() === rawId);
       const registryItem = subjectRegistry.find(item => {
-        const registryId = item.id.trim().toLowerCase();
         const itemCategory = item.kind === 'sgt' ? 'SGT' : item.kind === 'preset-ward' || item.kind === 'ward-rotation' ? 'Ward' : item.kind === 'integrated' ? 'Integrated' : 'Lecture';
-        return itemCategory === metric.category && (registryId === rawId || registryId === metric.storageKey.trim().toLowerCase());
+        return itemCategory === metric.category && getCanonicalAttendanceKey(item).toLowerCase() === metric.storageKey.trim().toLowerCase();
       });
       const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS]
         .find(item => ('id' in item && item.id.trim().toLowerCase() === rawId) || item.name.trim().toLowerCase() === nameKey);
