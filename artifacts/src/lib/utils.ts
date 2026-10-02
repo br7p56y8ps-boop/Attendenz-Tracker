@@ -23,7 +23,12 @@ export function parseDateStr(dateStr: string) {
 
 export type AttendanceStatus = 'green' | 'yellow' | 'red' | 'neutral';
 
-/** Stable Home session IDs shared by attendance marking and reminder synchronization. */
+/**
+ * Compatibility-preserving Home session IDs shared by attendance marking and
+ * reminder synchronization. These IDs intentionally retain slot indexes:
+ * changing them would orphan existing per-day home selections. A future
+ * migration must translate old selections before adopting content-derived IDs.
+ */
 export const getPresetAcademicSessionId = (slotIndex: number, subjectIndex: number): string => `${slotIndex}-${subjectIndex}`;
 export const getPresetWardSessionId = (slotIndex: number): string => String(slotIndex);
 export const getScheduleRowSessionId = (subjectId: string, day: string, time: string): string => `${subjectId}:${day}:${time}`;

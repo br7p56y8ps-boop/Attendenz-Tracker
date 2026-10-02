@@ -17,6 +17,7 @@ export type CurriculumBundle = Record<string, string>;
 const CURRICULA_KEY = 'att_curricula_v1';
 const ACTIVE_CURRICULUM_KEY = 'att_active_curriculum_id_v1';
 const CURRICULUM_MIGRATION_KEY = 'att_curriculum_migration_v1_done';
+const CURRICULUM_MIGRATION_QUARANTINE_KEY = 'att_curriculum_migration_quarantine_v1';
 
 const ALIAS_KEYS = [
   'att_subject_mode',
@@ -440,6 +441,7 @@ export async function activateCurriculum(id: string): Promise<void> {
 
 export function ensureCurriculumMigration(): void {
   const migrationComplete = localStorage.getItem(CURRICULUM_MIGRATION_KEY) === 'true';
+  if (migrationComplete) return;
   const existing = getCurricula();
   const active = getActiveCurriculum();
   if (existing.length > 0) {
@@ -448,7 +450,6 @@ export function ensureCurriculumMigration(): void {
       const presetBundle: CurriculumBundle = {
         ...getCurriculumBundle(preset.id),
         ...captureWorkspaceBundle('preset'),
-        'att_subject_mode': 'preloaded',
         'att_curriculum_status': 'Active',
       };
       const removedKeys = [
@@ -459,21 +460,19 @@ export function ensureCurriculumMigration(): void {
         [CURRICULA_KEY, JSON.stringify([{ ...preset, status: 'active', updatedAt: nowIso() }])],
         [`att_curriculum_bundle_${preset.id}`, JSON.stringify(presetBundle)],
         [ACTIVE_CURRICULUM_KEY, preset.id],
-        ['att_subject_mode', 'preloaded'],
         ['att_curriculum_status', 'Active'],
-        ['att_setup_done', 'true'],
       ];
       for (const key of PRESET_ALIAS_KEYS) {
         if (presetBundle[key] !== undefined) entries.push([key, presetBundle[key]]);
       }
-      localStorage.setItem(CURRICULA_KEY, entries[0][1]);
-      localStorage.setItem(`att_curriculum_bundle_${preset.id}`, entries[1][1]);
-      localStorage.setItem(ACTIVE_CURRICULUM_KEY, preset.id);
-      localStorage.setItem('att_subject_mode', 'preloaded');
-      localStorage.setItem('att_curriculum_status', 'Active');
-      localStorage.setItem('att_setup_done', 'true');
+      const quarantine = readJson<Record<string, string>>(CURRICULUM_MIGRATION_QUARANTINE_KEY, {});
+      for (const key of removedKeys) {
+        const value = localStorage.getItem(key);
+        if (value !== null) quarantine[key] = value;
+      }
+      entries.push([CURRICULUM_MIGRATION_QUARANTINE_KEY, JSON.stringify(quarantine)]);
+      entries.push([CURRICULUM_MIGRATION_KEY, 'true']);
       void storageCommitChecked(entries, removedKeys);
-      write(CURRICULUM_MIGRATION_KEY, 'true');
       return;
     }
     if (!active) {
