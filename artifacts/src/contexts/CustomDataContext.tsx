@@ -600,7 +600,8 @@ interface CustomDataContextType {
   getCustomWardTotalPlanned: (
     startDateStr: string,
     endDateStr: string,
-    vacationPeriods?: Array<{ start: string; end: string }>
+    vacationPeriods?: Array<{ start: string; end: string }>,
+    includePresetHolidays?: boolean
   ) => number;
   countSGTPlannedDays: (
     startDateStr: string,
@@ -982,7 +983,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   function getCustomWardTotalPlannedLocal(
     startDateStr: string,
     endDateStr: string,
-    vacationPeriods?: Array<{ start: string; end: string }>
+    vacationPeriods?: Array<{ start: string; end: string }>,
+    includePresetHolidays = false
   ): number {
     let count = 0;
     try {
@@ -990,7 +992,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       const end = new Date(endDateStr + 'T12:00:00');
       const cur = new Date(start);
       while (cur <= end) {
-        if (!isExcludedClinicalDay(cur, vacationPeriods, false)) count++;
+        if (!isExcludedClinicalDay(cur, vacationPeriods, includePresetHolidays)) count++;
         cur.setDate(cur.getDate() + 1);
       }
     } catch {
@@ -1714,9 +1716,10 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const getCustomWardTotalPlanned = useStableCallback((
     startDateStr: string,
     endDateStr: string,
-    vacationPeriods?: Array<{ start: string; end: string }>
-  ): number => subjectMode === 'custom'
-    ? getCustomWardTotalPlannedLocal(startDateStr, endDateStr, vacationPeriods)
+    vacationPeriods?: Array<{ start: string; end: string }>,
+    includePresetHolidays = false
+  ): number => (subjectMode === 'custom' || includePresetHolidays)
+    ? getCustomWardTotalPlannedLocal(startDateStr, endDateStr, vacationPeriods, includePresetHolidays)
     : 0);
 
   const countSGTPlannedDays = useStableCallback((

@@ -346,151 +346,62 @@ export default function Home() {
   };
   const isKnownWardEntry = (name: string) => Boolean(getSubjectIdByName(name, 'clinical')) || customWards.some(ward => ward.name.trim().toLowerCase() === name.trim().toLowerCase());
 
-  const dayEntries = useMemo<DayEntry[]>(() => {
+  const buildDayEntries = (targetDateStr: string, targetDate: Date, targetDayOfWeek: number, targetDayAbbr: string): DayEntry[] => {
+    const targetCustomWard = subjectMode === 'custom'
+      ? customWards.find(w => targetDateStr >= w.startDate && targetDateStr <= w.endDate)
+      : undefined;
+    const targetPresetWardObj = subjectMode === 'preloaded' ? getCurrentPresetWard(targetDate) : null;
+    const targetCurrentWard = subjectMode === 'custom'
+      ? (targetCustomWard ? targetCustomWard.name : null)
+      : (targetPresetWardObj ? targetPresetWardObj.ward : null);
+    const targetIsWardHoliday = targetCurrentWard === 'Holiday';
+    const targetCustomSubjects = subjectMode === 'custom'
+      ? customSubjects.flatMap(subject => {
+          const isSGT = subject.subjectType === 'allied' && subject.parentName === 'Small Group Teaching';
+          if (isSGT && ((subject.startDate && targetDateStr < subject.startDate) || (subject.endDate && targetDateStr > subject.endDate))) return [];
+          if (subject.schedules?.length) return subject.schedules.filter(item => item.day === targetDayAbbr).map(item => ({ id: `${subject.id}-${item.day}-${item.time}`, name: subject.name, time: item.time, isSGT, sgtId: subject.id }));
+          if (subject.days?.split(',').map(day => day.trim()).includes(targetDayAbbr)) return [{ id: subject.id, name: subject.name, time: subject.time || 'Time not set', isSGT, sgtId: subject.id }];
+          return [];
+        })
+      : [];
+    const targetSchedule = subjectMode === 'preloaded' ? (presetTimetable[targetDayOfWeek] || []) : [];
     const entries: DayEntry[] = [];
     if (subjectMode === 'preloaded') {
-      schedule.forEach((slot, idx) => {
+      targetSchedule.forEach((slot, idx) => {
         if (slot.type === 'ward' || slot.type === 'ward_replacement') {
-          const effectiveTime =
-            slot.type === 'ward_replacement'
-              ? presetWardObj?.eveningTime || slot.time
-              : presetWardObj?.morningTime || slot.time;
-          if (isWardHoliday || !currentWard || !isKnownWardEntry(currentWard)) {
-            entries.push({ id: `holiday-${idx}`, time: effectiveTime, kind: 'holiday', holidayTime: effectiveTime });
-          } else {
-            entries.push({
-              id: `ward-${idx}`,
-              time: effectiveTime,
-              kind: 'card',
-              card: {
-                title: 'Clinical Rotation',
-                subtitle: currentWard,
-                tag: slot.type === 'ward_replacement' ? 'Evening' : 'Morning',
-                tagColor: 'primary',
-                subject: currentWard,
-                time: effectiveTime,
-                isWard: true,
-                sessionId: getPresetWardSessionId(idx),
-              },
-            });
-          }
+          const effectiveTime = slot.type === 'ward_replacement' ? targetPresetWardObj?.eveningTime || slot.time : targetPresetWardObj?.morningTime || slot.time;
+          if (targetIsWardHoliday || !targetCurrentWard || !isKnownWardEntry(targetCurrentWard)) entries.push({ id: `holiday-${idx}`, time: effectiveTime, kind: 'holiday', holidayTime: effectiveTime });
+          else entries.push({ id: `ward-${idx}`, time: effectiveTime, kind: 'card', card: { title: 'Clinical Rotation', subtitle: targetCurrentWard, tag: slot.type === 'ward_replacement' ? 'Evening' : 'Morning', tagColor: 'primary', subject: targetCurrentWard, time: effectiveTime, isWard: true, sessionId: getPresetWardSessionId(idx) } });
           return;
         }
-        slot.subjects.filter(isKnownAcademicEntry).forEach((subject, subIdx) => {
-          entries.push({
-            id: `${idx}-${subIdx}`,
-            time: slot.time,
-            kind: 'card',
-            card: {
-              subject,
-              time: slot.time,
-              isIntegrated: slot.type === 'integrated',
-              sessionId: getPresetAcademicSessionId(idx, subIdx),
-            },
-          });
-        });
+        slot.subjects.filter(isKnownAcademicEntry).forEach((subject, subIdx) => entries.push({ id: `${idx}-${subIdx}`, time: slot.time, kind: 'card', card: { subject, time: slot.time, isIntegrated: slot.type === 'integrated', sessionId: getPresetAcademicSessionId(idx, subIdx) } }));
       });
-
-      // SGT subjects
       userAddedSubjects.forEach(u => {
         if (u.subjectType !== 'allied' || !u.parentName || !PRESET_PARENTS.includes(u.parentName)) return;
-        if (u.startDate && u.endDate) {
-          if (selectedDateStr < u.startDate || selectedDateStr > u.endDate) return;
-        }
-        const sch = (u.schedules || []).find(s => s.day === selectedTodayAbbr);
+        if (u.startDate && u.endDate && (targetDateStr < u.startDate || targetDateStr > u.endDate)) return;
+        const sch = (u.schedules || []).find(item => item.day === targetDayAbbr);
         if (!sch) return;
         const time = `${sch.start}–${sch.end}`;
-        const sessionId = `${u.id}:${sch.day}:${sch.start}:${sch.end}`;
-        entries.push({
-          id: `sgt-${u.id}`,
-          time,
-          kind: 'card',
-          card: {
-            subject: u.name,
-            time,
-            tag: 'Small Group',
-            tagColor: 'primary',
-            isSGT: true,
-            sgtId: u.id,
-            sessionId,
-          },
-        });
+        entries.push({ id: `sgt-${u.id}`, time, kind: 'card', card: { subject: u.name, time, tag: 'Small Group', tagColor: 'primary', isSGT: true, sgtId: u.id, sessionId: `${u.id}:${sch.day}:${sch.start}:${sch.end}` } });
       });
     } else {
-      // CUSTOM MODE
-      if (currentWard && !isWardHoliday) {
-        entries.push({
-          id: 'custom-ward-am',
-          time: customWard?.morningTime || 'Morning Ward',
-          kind: 'card',
-          card: {
-            title: 'Clinical Rotation',
-            subtitle: currentWard,
-            tag: 'Morning',
-            tagColor: 'primary',
-            subject: currentWard,
-            time: customWard?.morningTime || 'Morning Ward',
-            isWard: true,
-            sessionId: 'custom-ward-am',
-          },
-        });
-        entries.push({
-          id: 'custom-ward-pm',
-          time: customWard?.eveningTime || 'Evening Ward',
-          kind: 'card',
-          card: {
-            title: 'Clinical Rotation',
-            subtitle: currentWard,
-            tag: 'Evening',
-            tagColor: 'primary',
-            subject: currentWard,
-            time: customWard?.eveningTime || 'Evening Ward',
-            isWard: true,
-            sessionId: 'custom-ward-pm',
-          },
-        });
+      if (targetCurrentWard && !targetIsWardHoliday) {
+        entries.push({ id: 'custom-ward-am', time: targetCustomWard?.morningTime || 'Morning Ward', kind: 'card', card: { title: 'Clinical Rotation', subtitle: targetCurrentWard, tag: 'Morning', tagColor: 'primary', subject: targetCurrentWard, time: targetCustomWard?.morningTime || 'Morning Ward', isWard: true, sessionId: 'custom-ward-am' } });
+        entries.push({ id: 'custom-ward-pm', time: targetCustomWard?.eveningTime || 'Evening Ward', kind: 'card', card: { title: 'Clinical Rotation', subtitle: targetCurrentWard, tag: 'Evening', tagColor: 'primary', subject: targetCurrentWard, time: targetCustomWard?.eveningTime || 'Evening Ward', isWard: true, sessionId: 'custom-ward-pm' } });
       }
-      todayCustomSubjects.forEach(s => {
-        const sessionId = getCustomSubjectSessionId(s.id, selectedTodayAbbr, s.time, Boolean(s.isSGT), s.sgtId);
-        entries.push({
-          id: s.id,
-          time: s.time || 'Time not set',
-          kind: 'card',
-          card: {
-            subject: s.name,
-            time: s.time || 'Time not set',
-            isSGT: s.isSGT,
-            sgtId: s.sgtId,
-            sessionId,
-          },
-        });
+      targetCustomSubjects.forEach(item => {
+        const sessionId = getCustomSubjectSessionId(item.id, targetDayAbbr, item.time, Boolean(item.isSGT), item.sgtId);
+        entries.push({ id: item.id, time: item.time || 'Time not set', kind: 'card', card: { subject: item.name, time: item.time || 'Time not set', isSGT: item.isSGT, sgtId: item.sgtId, sessionId } });
       });
     }
-    entries.sort(
-      (a, b) => (rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440)
-    );
-    return entries;
-  }, [
-    schedule,
-    subjectMode,
-    presetWardObj,
-    currentWard,
-    isWardHoliday,
-    isPast,
-    isTodaySelected,
-    selectedDateStr,
-    customWard,
-    todayCustomSubjects,
-    customSubjects,
-    customWards,
-    getSubjectIdByName,
-    subjectRegistry,
-    userAddedSubjects,
-    selectedTodayAbbr,
-  ]);
+    return entries.sort((a, b) => (rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
+  };
+
+  const dayEntries = buildDayEntries(selectedDateStr, selectedDate, selectedDayOfWeek, selectedTodayAbbr);
+  const todayDayEntries = buildDayEntries(todayStr, today, today.getDay(), DAY_ABBRS[today.getDay()]);
 
   const cardMode: 'today' | 'past' | 'future' = isTodaySelected ? 'today' : isPast ? 'past' : 'future';
-  const isCompletedPlannedEntry = (entry: DayEntry): boolean => {
+  const isCompletedPlannedEntry = (entry: DayEntry, dateStr = selectedDateStr): boolean => {
     if (entry.kind !== 'card' || !entry.card) return false;
     const c = entry.card;
     const vacationPeriods = c.isWard
@@ -500,7 +411,7 @@ export default function Home() {
       : c.isSGT && c.sgtId
         ? (subjectMode === 'preloaded' ? userAddedSubjects : customSubjects).find(item => item.id === c.sgtId)?.vacationPeriods || []
         : [];
-    if (vacationPeriods.some(period => selectedDateStr >= period.start && selectedDateStr <= period.end)) return false;
+    if (vacationPeriods.some(period => dateStr >= period.start && dateStr <= period.end)) return false;
     const id = c.isSGT && c.sgtId
       ? getSGTKey(c.sgtId)
       : (() => {
@@ -556,7 +467,16 @@ export default function Home() {
       window.removeEventListener(DASHBOARD_ACTIVITY_UPDATED_EVENT, onActivityUpdated);
     };
   }, [todayStr]);
-  const dashboardClassEntries = dayEntries.filter(entry => entry.kind === 'card');
+  const visibleActivities = activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4);
+  const yesterdayStr = toDateString(addDays(today, -1));
+  const activityGroups = [
+    { label: 'Today', items: visibleActivities.filter(item => toDateString(new Date(item.timestamp)) === todayStr) },
+    { label: 'Yesterday', items: visibleActivities.filter(item => toDateString(new Date(item.timestamp)) === yesterdayStr) },
+  ];
+  const hasRecentActivity = activityGroups.some(group => group.items.length > 0);
+  const isTodayDetoxDay = subjectMode === 'preloaded' && today.getDay() === 5;
+
+  const dashboardClassEntries = todayDayEntries.filter(entry => entry.kind === 'card');
   const tomorrowDate = addDays(today, 1);
   const tomorrowDateStr = toDateString(tomorrowDate);
   const tomorrowDay = tomorrowDate.getDay();
@@ -621,22 +541,22 @@ export default function Home() {
   const tomorrowSubject = tomorrowEntries[0]?.subject;
   const tomorrowIsWard = Boolean(tomorrowEntries[0]?.isWard);
   const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard, isSGT: tomorrowEntries[0]?.isSGT, isIntegrated: tomorrowEntries[0]?.isIntegrated }, subjectMode, userAddedSubjects, customSubjects, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
-  const isEntryVacation = (entry: DayEntry) => {
+  const isEntryVacation = (entry: DayEntry, dateStr = selectedDateStr) => {
     const card = entry.card;
     if (!card) return false;
     if (card.isWard) {
-      if (subjectMode === 'custom') return Boolean(customWards.find(item => item.name.toLowerCase() === card.subject.toLowerCase())?.vacationPeriods?.some(period => selectedDateStr >= period.start && selectedDateStr <= period.end));
-      return presetWardSchedule.some(entry => entry.vacationPeriods?.some(period => selectedDateStr >= period.start && selectedDateStr <= period.end) ?? false);
+      if (subjectMode === 'custom') return Boolean(customWards.find(item => item.name.toLowerCase() === card.subject.toLowerCase())?.vacationPeriods?.some(period => dateStr >= period.start && dateStr <= period.end));
+      return presetWardSchedule.some(entry => entry.vacationPeriods?.some(period => dateStr >= period.start && dateStr <= period.end) ?? false);
     }
     if (card.isSGT && card.sgtId) {
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-      return Boolean(source.find(item => item.id === card.sgtId)?.vacationPeriods?.some(period => selectedDateStr >= period.start && selectedDateStr <= period.end));
+      return Boolean(source.find(item => item.id === card.sgtId)?.vacationPeriods?.some(period => dateStr >= period.start && dateStr <= period.end));
     }
     return false;
   };
   const glanceEntries = dashboardClassEntries
     .sort((a, b) => {
-      const completedOrder = Number(isCompletedPlannedEntry(a)) - Number(isCompletedPlannedEntry(b));
+      const completedOrder = Number(isCompletedPlannedEntry(a, todayStr)) - Number(isCompletedPlannedEntry(b, todayStr));
       return completedOrder || ((rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
     });
   const resolveSubjectAlert = (storageKey: string) => {
@@ -861,14 +781,14 @@ export default function Home() {
             {glanceEntries.length === 0 ? <p className="py-2 text-xs text-muted-foreground">No remaining classes today.</p> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
               {glanceEntries.map(entry => {
                 const status = statusForEntry(entry);
-                const completed = isCompletedPlannedEntry(entry);
-                const vacation = isEntryVacation(entry);
+                const completed = isCompletedPlannedEntry(entry, todayStr);
+                const vacation = isEntryVacation(entry, todayStr);
                 const label = vacation ? 'Vacation / Exam Period' : completed ? 'Completed' : status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet';
                 const color = vacation ? 'text-amber-500' : completed ? 'text-muted-foreground' : status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
                 const rowMuted = completed ? 'opacity-55' : '';
                 const subject = entry.card?.subject || 'Unknown subject';
                 const kind = getDashboardSubjectKind(subject, entry.card, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
-                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className={cn('relative flex w-full min-w-0 items-start gap-x-2 text-left', rowMuted)}>
+                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className={cn('relative flex w-full min-w-0 items-center gap-x-2 text-left', rowMuted)}>
                   <span className={cn('absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card', completed ? 'bg-muted-foreground' : 'bg-primary')} />
                   <span className="flex min-w-0 flex-1 flex-col gap-0">
                     <span className="min-w-0 break-words text-[10px] font-bold leading-3 text-foreground">{subject}</span>
@@ -889,8 +809,23 @@ export default function Home() {
         </div>
       </div>
       <section className="glass-card rounded-2xl border border-border p-4">
-        <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Today’s Activity</h2></div>
-        {dashboardActivities.length === 0 ? <p className="mt-4 text-xs text-muted-foreground">No activity yet today.</p> : <div className="relative mt-3 space-y-2 before:absolute before:bottom-2 before:left-[4.5rem] before:top-2 before:w-px before:bg-border">{(activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4)).map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{renderActivityText(item.text.replace(/\(Small Group Teaching\)/g, '(SGT)'))}</span></div>; })}</div>}
+        <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Recent Activity</h2></div>
+        {!hasRecentActivity ? (
+          <p className="mt-4 text-xs text-muted-foreground">{isTodayDetoxDay ? 'Detox Day — no activity is expected today.' : 'No recent activity in the last 48 hours.'}</p>
+        ) : (
+          <div className="relative mt-3 space-y-3">
+            {activityGroups.map((group, groupIndex) => (
+              <div key={group.label} className={cn(groupIndex > 0 && 'border-t border-border/60 pt-3')}>
+                <h3 className="mb-2 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">{group.label}</h3>
+                {group.items.length === 0 ? <p className="text-xs text-muted-foreground">{group.label === 'Today' ? 'No activity for today yet.' : 'No activity was recorded yesterday.'}</p> : (
+                  <div className="relative space-y-2 before:absolute before:bottom-2 before:left-[4.5rem] before:top-2 before:w-px before:bg-border">
+                    {group.items.map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{renderActivityText(item.text.replace(/\(Small Group Teaching\)/g, '(SGT)'))}</span></div>; })}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
       <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectAlertMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectAlertMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>
