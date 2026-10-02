@@ -452,7 +452,7 @@ export default function Manage() {
     addCustomWards, updateCustomWard, removeCustomWard,
     addUserAddedSubjects, updateUserAddedSubject, removeUserAddedSubject,
     addPresetWardEntry, updatePresetWardEntry, removePresetWardEntry,
-    updatePresetTimetableSlot, addSubjectToSlot, updatePresetSubjectTotal,
+    updatePresetTimetableSlot, removePresetTimetableSlot, movePresetTimetableSubjects, addSubjectToSlot, updatePresetSubjectTotal,
     getParentOptions, isExistingParent, getAlliedChildCount,
     isSubjectNameTaken, isWardNameTaken, findSubjectTimeConflicts, findWardDateConflicts,
     getSubjectPlannedTotal,
@@ -527,6 +527,7 @@ export default function Manage() {
   const [slotRemove, setSlotRemove] = useState<{ subject: string; subjectId?: string; day: number; index: number; time: string; start: string; end: string } | null>(null);
   const [slotRemoveConfirm, setSlotRemoveConfirm] = useState(false);
   const [slotRemoveAllConfirm, setSlotRemoveAllConfirm] = useState(false);
+  const [slotRemovalInProgress, setSlotRemovalInProgress] = useState(false);
   const [showMoveForm, setShowMoveForm] = useState(false);
   const [deleteSheet, setDeleteSheet] = useState<{ title: string; lines: string[]; onConfirm: () => void } | null>(null);
   const [conflictSheet, setConflictSheet] = useState<{ messages: string[]; onConfirm: () => void } | null>(null);
@@ -1098,47 +1099,7 @@ export default function Manage() {
   const toggleSubjectSelection = (id: string) => setSelectedSubjects(prev => { const n = prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]; setShowMoveForm(n.length > 0); return n; });
   const selectAllSubjects = () => { if (!editSlot) return; if (selectedSubjects.length === editSlot.subjects.length) { setSelectedSubjects([]); setShowMoveForm(false); } else { setSelectedSubjects(editSlot.subjects.map(s => s.id)); setShowMoveForm(true); } };
 
-  const updateSubjectSchedule = (name: string, oldDay: number, newDay: number, oldStart: string, oldEnd: string, newStart: string, newEnd: string) => {
-    const findSubject = () =>
-      subjectMode === 'preloaded'
-        ? userAddedSubjects.find(u => u.name.toLowerCase() === name.toLowerCase() && !isSGTRecord(u))
-        : customSubjects.find(c => c.name.toLowerCase() === name.toLowerCase() && !isSGTRecord(c));
-    const subject = findSubject();
-    if (!subject) return;
-
-    const existing = (subject.schedules || []) as Array<{ day: string; start: string; end: string }> ;
-    let filtered = existing;
-    if (oldDay >= 0) {
-      const oldAbbr = DAY_ABBRS[oldDay];
-      filtered = existing.filter(
-        (sch: any) => !(sch.day === oldAbbr && sch.start === oldStart && sch.end === oldEnd)
-      );
-    }
-    const newAbbr = DAY_ABBRS[newDay];
-    const newEntry: any = { day: newAbbr, start: newStart, end: newEnd };
-    const updated = filtered.some(
-      (sch: any) => sch.day === newAbbr && sch.start === newStart && sch.end === newEnd
-    )
-      ? filtered
-      : [...filtered, newEntry];
-
-    if (subjectMode === 'preloaded') {
-      updateUserAddedSubject(subject.id, {
-        schedules: updated,
-        days: updated.map((sch: any) => sch.day).join(', '),
-      });
-    } else {
-      updateCustomSubject(subject.id, {
-        schedules: updated.map((sch: any) => ({
-          day: sch.day,
-          time: canonicalTimeRange(sch.start, sch.end),
-        })),
-        days: updated.map((sch: any) => sch.day).join(', '),
-      });
-    }
-  };
-
-  const applyMove = (targetIds: string[], targetDay: number, time: string) => {
+  const applyMove = async (targetIds: string[], targetDay: number, time: string) => {
     if (!editSlot) return;
     const subjectsToMove = editSlot.subjects.filter(s => targetIds.includes(s.id));
     const namesToMove = subjectsToMove.map(s => s.name);
@@ -1147,17 +1108,7 @@ export default function Manage() {
     const sourceSlot = presetTimetable[currentDay]?.[currentIndex];
     if (!sourceSlot) return;
 
-    const { start: oldStart, end: oldEnd } = splitRange(sourceSlot.time);
-    const sourceSubjects = sourceSlot.subjects.filter((s: string) => !namesToMove.includes(s));
-
-    // 1) Remove moved subjects from source slot first.
-    updatePresetTimetableSlot(currentDay, currentIndex, sourceSlot.time, sourceSubjects, currentDay);
-
-    // 2) Add moved subjects to target day/time as single-subject slots.
-    namesToMove.forEach(name => addSubjectToSlot(targetDay, time, name));
-
-    // 3) Sync schedule record in correct store.
-    namesToMove.forEach(name => updateSubjectSchedule(name, currentDay, targetDay, oldStart, oldEnd, slotMoveStart, slotMoveEnd));
+    await movePresetTimetableSubjects(currentDay, currentIndex, targetDay, slotMoveStart, slotMoveEnd, namesToMove);
 
     const remaining = editSlot.subjects.filter(s => !targetIds.includes(s.id));
     if (remaining.length === 0) {
@@ -1209,7 +1160,7 @@ export default function Manage() {
       }
     }
 
-    applyMove(targetIds, targetDay, time);
+    void applyMove(targetIds, targetDay, time).catch(() => showToast('Failed to move subject.', 'err'));
   };
 
   const confirmSlotRemove = () => {
@@ -1243,37 +1194,28 @@ export default function Manage() {
     if (editSlot) setEditSlot(prev => prev ? { ...prev, subjects: prev.subjects.filter(s => s.name !== slotRemove?.subject) } : null);
   };
 
-  const confirmWholeSlotRemove = () => {
-    if (!editSlot) return;
+  const confirmWholeSlotRemove = async () => {
+    if (!editSlot || slotRemovalInProgress) return;
+    const slot = presetTimetable[editSlot.day]?.[editSlot.index];
+    if (!slot) return;
+    setSlotRemovalInProgress(true);
     try {
-      const slot = presetTimetable[editSlot.day]?.[editSlot.index];
-      if (slot) {
-        updatePresetTimetableSlot(editSlot.day, editSlot.index, slot.time, [], editSlot.day);
-        for (const s of slot.subjects) {
-          const canonicalId = editSlot.subjects.find(item => item.name === s)?.canonicalId;
-          const subject = subjectMode === 'preloaded'
-            ? userAddedSubjects.find(u => (canonicalId ? u.id === canonicalId : u.name.toLowerCase() === s.toLowerCase()) && !isSGTRecord(u))
-            : customSubjects.find(c => (canonicalId ? c.id === canonicalId : c.name.toLowerCase() === s.toLowerCase()) && !isSGTRecord(c));
-          if (subject) {
-            if (subjectMode === 'preloaded') {
-              const schedules = (subject.schedules || []) as Array<{ day: string; start: string; end: string }>;
-              const filtered = schedules.filter(sch => !(sch.day === DAY_ABBRS[editSlot.day] && sch.start === editSlot.startTime && sch.end === editSlot.endTime));
-              updateUserAddedSubject(subject.id, { schedules: filtered, days: filtered.map(sch => sch.day).join(', ') } as any);
-            } else {
-              const schedules = (subject.schedules || []) as Array<{ day: string; time: string }>;
-              const filtered = schedules.filter(sch => !((sch as any).day === DAY_ABBRS[editSlot.day] && (sch as any).start === editSlot.startTime && (sch as any).end === editSlot.endTime));
-              updateCustomSubject(subject.id, { schedules: filtered, days: filtered.map(sch => sch.day).join(', ') });
-            }
-          }
-        }
-        recordHistory('Removed from Slot', { subject: slot.subjects.join(', '), day: editSlot.day, time: slot.time });
-        showToast('Slot removed.');
-        void notifyManageChange('A schedule slot was removed from your routine.');
-        setAddSuccess(true);
-      }
-    } catch { showToast('Failed to remove slot.', 'err'); }
-    setSlotRemoveAllConfirm(false);
-    closeEditSlot();
+      const removedSubjects = await removePresetTimetableSlot(editSlot.day, editSlot.index);
+      recordHistory('Removed from Slot', { subject: removedSubjects.join(', '), day: editSlot.day, time: slot.time });
+      showToast('Slot removed.');
+      void notifyManageChange('A schedule slot was removed from your routine.');
+      setAddSuccess(true);
+    } catch {
+      showToast('Failed to remove slot.', 'err');
+    } finally {
+      setSlotRemovalInProgress(false);
+      setSlotRemoveAllConfirm(false);
+      // This confirmation sheet is layered over Edit Slot. Let its 270ms
+      // exit animation and accessibility cleanup finish before closing the
+      // underlying sheet, otherwise the nested inert restoration can leave
+      // the PWA shell non-interactive until reload.
+      window.setTimeout(closeEditSlot, 320);
+    }
   };
 
   /* ── Deletes ── */
@@ -2669,7 +2611,7 @@ export default function Manage() {
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => setSlotRemoveAllConfirm(false)} className={cn(btnCancel, 'flex-1')}>Cancel</button>
-              <button type="button" onClick={confirmWholeSlotRemove} className="action-button action-button--danger flex-1">Remove Slot</button>
+              <button type="button" onClick={confirmWholeSlotRemove} disabled={slotRemovalInProgress} className="action-button action-button--danger flex-1 disabled:opacity-50 disabled:pointer-events-none">{slotRemovalInProgress ? 'Removing…' : 'Remove Slot'}</button>
             </div>
           </div>
         </OverlayModal>

@@ -1,12 +1,14 @@
 /* Attendenz guard worker — generated from release.config.json. */
 const VERSION = '__ATTENDENZ_VERSION__';
 const UPDATE_MODE = '__ATTENDENZ_UPDATE_MODE__';
-const SHELL = `attendenz-shell-v${VERSION}-r2`;
+const BUILD_REVISION = '__ATTENDENZ_BUILD_REVISION__';
+const SHELL = `attendenz-shell-v${VERSION}-r2-${BUILD_REVISION}`;
 const DB_NAME = 'AttendenzDatabase';
 const STORE_NAME = 'key_value_store';
 const APPROVED_VERSION_KEY = 'att_pwa_approved_version';
 const EXPLICIT_APPROVAL_KEY = 'att_pwa_explicit_approval_version';
 const ACTIVE_VERSION_KEY = 'att_pwa_active_version';
+const ACTIVE_BUILD_REVISION_KEY = 'att_pwa_active_build_revision';
 let activationApproved = false;
 
 function readStoredValue(key) {
@@ -69,15 +71,29 @@ async function activeCacheName() {
   // page only after that reload has actually happened.
   if (activationApproved) return SHELL;
   const active = await readStoredValue(ACTIVE_VERSION_KEY);
-  if (active === VERSION) return SHELL;
+  const activeBuildRevision = await readStoredValue(ACTIVE_BUILD_REVISION_KEY);
+  if (active === VERSION) {
+    if (activeBuildRevision && activeBuildRevision !== BUILD_REVISION) {
+      const activeBuildCache = `attendenz-shell-v${active}-r2-${activeBuildRevision}`;
+      if (await caches.has(activeBuildCache)) return activeBuildCache;
+    }
+    const legacyActiveCache = `attendenz-shell-v${active}-r2`;
+    if (await caches.has(legacyActiveCache)) return legacyActiveCache;
+    return SHELL;
+  }
   if (active && active !== VERSION) {
-    const activeCache = `attendenz-shell-v${active}-r2`;
+    const activeCache = activeBuildRevision
+      ? `attendenz-shell-v${active}-r2-${activeBuildRevision}`
+      : `attendenz-shell-v${active}-r2`;
     if (await caches.has(activeCache)) return activeCache;
   }
   const names = await caches.keys();
   const candidates = names
-    .filter((name) => name.startsWith('attendenz-shell-v') && name.endsWith('-r2') && name !== SHELL)
-    .sort((a, b) => compareVersions(b.slice(17, -3), a.slice(17, -3)));
+    .filter((name) => name.startsWith('attendenz-shell-v') && name !== SHELL)
+    .sort((a, b) => {
+      const versionOf = (name) => name.match(/^attendenz-shell-v(.+?)-r2(?:-|$)/)?.[1] || '0.0.0';
+      return compareVersions(versionOf(b), versionOf(a));
+    });
   return candidates[0] || SHELL;
 }
 
@@ -121,13 +137,14 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('message', (e) => {
-  if (e.data && e.data.type === 'APPROVE_UPDATE' && e.data.version === VERSION) {
+  if (e.data && e.data.type === 'APPROVE_UPDATE' && e.data.version === VERSION
+    && (!e.data.buildRevision || e.data.buildRevision === BUILD_REVISION)) {
     activationApproved = true;
     e.waitUntil(writeStoredValues([
       [APPROVED_VERSION_KEY, VERSION],
       [EXPLICIT_APPROVAL_KEY, VERSION],
     ]).then(() => {
-      e.ports[0]?.postMessage({ type: 'UPDATE_APPROVED', version: VERSION });
+      e.ports[0]?.postMessage({ type: 'UPDATE_APPROVED', version: VERSION, buildRevision: BUILD_REVISION });
       return self.skipWaiting();
     }));
   }

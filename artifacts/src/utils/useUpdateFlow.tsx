@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createSnapshot, getSnapshots } from '@/utils/snapshotUtils';
 import { ModalSheet } from '@/components/ui/modal-sheet';
-import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
+import { APP_VERSION, BUILD_REVISION, LATEST_VERSION } from '@/lib/appVersion';
 import { storageSetItemChecked, storageRemoveItemChecked, storageCommitChecked } from '@/lib/idb';
 import { notifyUpdateAvailable } from '@/lib/webPush';
 
@@ -22,6 +22,7 @@ export function useUpdateFlow() {
   });
   const [, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
+  const [serverBuildRevision, setServerBuildRevision] = useState<string>(() => localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
   const [serverSummary, setServerSummary] = useState<string>(() => localStorage.getItem('att_pwa_update_summary') || '');
   useEffect(() => {
     const pendingVersion = localStorage.getItem('att_pwa_latest_version');
@@ -29,12 +30,17 @@ export function useUpdateFlow() {
     if (localStorage.getItem('att_pwa_update_ready') === 'true' && pendingVersion) {
       setPwaReady(true);
       setServerVersion(pendingVersion);
+      setServerBuildRevision(localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
       setServerSummary(pendingSummary);
     }
-    const onReady = () => setPwaReady(true);
+    const onReady = () => {
+      setServerBuildRevision(localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
+      setPwaReady(true);
+    };
     const onCleared = () => {
       setPwaReady(false);
       setServerVersion(APP_VERSION);
+      setServerBuildRevision(BUILD_REVISION);
       setServerSummary('');
     };
     window.addEventListener('attendenz:update-ready', onReady);
@@ -44,11 +50,12 @@ export function useUpdateFlow() {
       window.removeEventListener('attendenz:update-cleared', onCleared);
     };
   }, []);
-  const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0;
+  const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0
+    || (serverVersion === installedVersion && serverBuildRevision !== BUILD_REVISION);
 
   useEffect(() => {
-    if (!isUpdateAvailable || compareVersions(serverVersion, installedVersion) <= 0) return;
-    const sentKey = `att_update_available_notified_${serverVersion}`;
+    if (!isUpdateAvailable) return;
+    const sentKey = `att_update_available_notified_${serverVersion}_${serverBuildRevision}`;
     if (localStorage.getItem(sentKey) === 'true') return;
     void notifyUpdateAvailable(serverVersion).then(sent => {
       if (sent) localStorage.setItem(sentKey, 'true');
@@ -119,6 +126,7 @@ export function useUpdateFlow() {
       await Promise.all([
         storageRemoveItemChecked('att_pwa_update_ready'),
         storageRemoveItemChecked('att_pwa_latest_version'),
+        storageRemoveItemChecked('att_pwa_latest_build_revision'),
         storageRemoveItemChecked('att_pwa_update_summary'),
       ]);
     } catch {

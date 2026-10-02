@@ -9,6 +9,8 @@ type ReleaseConfig = {
   version: string;
   releaseType: 'major' | 'minor';
   updateMode: 'manual' | 'automatic';
+  updateProtocol: number;
+  automaticFromVersion: string;
   summary: string;
 };
 
@@ -39,14 +41,24 @@ function readReleaseConfig(): ReleaseConfig {
   if (config.updateMode !== 'manual' && config.updateMode !== 'automatic') {
     throw new Error(`Update mode must be manual or automatic; received ${config.updateMode || 'missing'}.`);
   }
+  if (!Number.isInteger(config.updateProtocol) || config.updateProtocol < 2) {
+    throw new Error(`Update protocol must be an integer of at least 2; received ${config.updateProtocol || 'missing'}.`);
+  }
+  if (!config.automaticFromVersion || !/^\d+\.\d+\.\d+$/.test(config.automaticFromVersion)) {
+    throw new Error(`Automatic update threshold must use three numeric parts; received ${config.automaticFromVersion || 'missing'}.`);
+  }
   if (!config.summary || !config.summary.trim()) {
     throw new Error('Release summary must not be empty.');
   }
   return config as ReleaseConfig;
 }
 
+function getBuildRevision(): string {
+  return process.env.ATTENDENZ_BUILD_REVISION || process.env.CF_PAGES_COMMIT_SHA || process.env.GITHUB_SHA || `local-${Date.now()}`;
+}
+
 function silentBuildRevision(): Plugin {
-  const revision = process.env.ATTENDENZ_BUILD_REVISION || process.env.CF_PAGES_COMMIT_SHA || process.env.GITHUB_SHA || `local-${Date.now()}`;
+  const revision = getBuildRevision();
   return {
     name: 'attendenz-silent-build-revision',
     generateBundle() {
@@ -70,17 +82,19 @@ function generateReleaseArtifacts(): Plugin {
     },
     generateBundle() {
       const release = readReleaseConfig();
+      const buildRevision = getBuildRevision();
       const template = fs.readFileSync(serviceWorkerTemplatePath, 'utf8');
       const serviceWorker = template
         .replaceAll('__ATTENDENZ_VERSION__', release.version)
-        .replaceAll('__ATTENDENZ_UPDATE_MODE__', release.updateMode);
+        .replaceAll('__ATTENDENZ_UPDATE_MODE__', release.updateMode)
+        .replaceAll('__ATTENDENZ_BUILD_REVISION__', buildRevision);
       if (serviceWorker === template) {
         this.error('Service-worker template is missing a release marker.');
       }
       this.emitFile({
         type: 'asset',
         fileName: 'version.json',
-        source: `${JSON.stringify(release, null, 2)}\n`,
+        source: `${JSON.stringify({ ...release, buildRevision }, null, 2)}\n`,
       });
       this.emitFile({
         type: 'asset',
@@ -93,6 +107,9 @@ function generateReleaseArtifacts(): Plugin {
 
 export default defineConfig({
   base: basePath,
+  define: {
+    __ATTENDENZ_BUILD_REVISION__: JSON.stringify(getBuildRevision()),
+  },
   plugins: [
     react(),
     tailwindcss(),
