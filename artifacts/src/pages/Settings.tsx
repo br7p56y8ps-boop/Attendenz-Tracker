@@ -804,8 +804,8 @@ export default function Settings() {
 
       const migrationFlags = [
         'att_mode_separation_done_v1',
-        'att_attendance_id_migration_v2_done_preloaded',
-        'att_attendance_id_migration_v2_done_custom',
+        'att_attendance_key_migration_v5_done_preloaded',
+        'att_attendance_key_migration_v5_done_custom',
       ];
       await Promise.all(migrationFlags.map(flag => storageRemoveItemChecked(flag)));
 
@@ -1474,7 +1474,7 @@ export default function Settings() {
           </div>
       </div>
       {/* All dialogs remain as before */}
-      <ModalSheet open={showUpdatePrompt && isUpdateAvailable} onClose={() => setShowUpdatePrompt(false)} ariaLabel="Update available" labelledBy="settings-update-title" maxWidth="max-w-sm" header={<div className="text-center"><h3 id="settings-update-title" className="text-sm font-bold text-foreground">Update Available</h3><p className="mt-1 text-[10px] text-muted-foreground">Review the available app update.</p></div>} bodyClassName="p-6 space-y-4">
+      <ModalSheet open={showUpdatePrompt && isUpdateAvailable && updatePhase === 'none'} onClose={() => setShowUpdatePrompt(false)} ariaLabel="Update available" labelledBy="settings-update-title" maxWidth="max-w-sm" header={<div className="text-center"><h3 id="settings-update-title" className="text-sm font-bold text-foreground">Update Available</h3><p className="mt-1 text-[10px] text-muted-foreground">Review the available app update.</p></div>} bodyClassName="p-6 space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20"><Download className="w-5 h-5 text-amber-500" /></div>
                 <div className="text-left">

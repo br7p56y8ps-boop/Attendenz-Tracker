@@ -134,7 +134,13 @@ self.addEventListener('message', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  if (activationApproved) e.waitUntil(self.clients.claim());
+  e.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names
+      .filter((name) => name.startsWith('attendenz-shell-v') && name !== SHELL)
+      .map((name) => caches.delete(name)));
+    if (activationApproved) await self.clients.claim();
+  })());
 });
 
 self.addEventListener('push', (e) => {

@@ -419,7 +419,9 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const selWord = (s: string) => s === 'attended' ? 'Attended' : s === 'missed' ? 'Bunked' : 'Holiday';
   const subjectName = isWard ? (subtitle || subject) : subject;
   const displaySubject = subjectName.length > 20 ? shortenSubject(subjectName) : subjectName;
-  const displayTag = isWard && tag ? `Clinical (${tag})` : tag || (isSGT ? 'Small Group' : null);
+  const displayTag = isWard
+    ? (tag === 'Morning' || tag === 'Ward Morning' ? 'Clinical Morning' : tag === 'Evening' || tag === 'Ward Evening' ? 'Clinical Evening' : tag ? `Clinical (${tag})` : null)
+    : (isSGT ? 'SGT' : tag);
   const tagEl = displayTag ? <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">{displayTag}</span> : null;
   const pastStatus = currentSelection === 'attended' ? 'Attended' : currentSelection === 'missed' ? 'Bunked' : currentSelection === 'off' ? 'Holiday' : isFinished ? 'No Planned Class' : 'Not Marked';
   const pastStatusClass = currentSelection === 'attended' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : currentSelection === 'missed' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : currentSelection === 'off' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-muted/30 text-muted-foreground border-border/50';
@@ -462,6 +464,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
         {isVacationOrExamPeriod ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-1">
+              {tagEl && <div className="flex items-center">{tagEl}</div>}
               <h3 className="min-w-0 truncate text-xl font-bold leading-tight" style={{ color: subjectColor }}>{displaySubject}</h3>
               <div className="text-sm leading-tight text-muted-foreground">{time}</div>
               <span className="inline-flex rounded-full border border-warning/35 bg-warning/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-warning">Vacation / Exam Period</span>

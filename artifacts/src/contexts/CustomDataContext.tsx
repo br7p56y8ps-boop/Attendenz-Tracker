@@ -554,6 +554,7 @@ interface CustomDataContextType {
   removeCustomWard: (id: string) => void;
   getCurrentCustomWard: () => CustomWard | null;
   userAddedSubjects: UserAddedSubject[];
+  userAddedSubjectsHydrated: boolean;
   addUserAddedSubject: (
     s: Omit<UserAddedSubject, 'id'> & { schedules?: ScheduleRowInput[] }
   ) => UserAddedSubject;
@@ -599,7 +600,8 @@ interface CustomDataContextType {
   getCustomWardTotalPlanned: (
     startDateStr: string,
     endDateStr: string,
-    vacationPeriods?: Array<{ start: string; end: string }>
+    vacationPeriods?: Array<{ start: string; end: string }>,
+    includePresetHolidays?: boolean
   ) => number;
   countSGTPlannedDays: (
     startDateStr: string,
@@ -666,6 +668,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const [customSubjects, setCustomSubjects] = useState<CustomSubject[]>([]);
   const [customWards, setCustomWards] = useState<CustomWard[]>([]);
   const [userAddedSubjects, setUserAddedSubjects] = useState<UserAddedSubject[]>([]);
+  const [userAddedSubjectsHydrated, setUserAddedSubjectsHydrated] = useState(false);
   const [subjectMode, setSubjectMode] = useState<SubjectMode>('preloaded');
   const [setupDone, setSetupDone] = useState(false);
   const [whatsNewOpen, setWhatsNewOpenState] = useState(false);
@@ -808,6 +811,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       if (wardRenames) setRenamedPresetWards(JSON.parse(wardRenames));
     } catch {
       /* ignore */
+    } finally {
+      setUserAddedSubjectsHydrated(true);
     }
   }, []);
 
@@ -954,8 +959,9 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   function getPresetWardTotalPlannedLocal(wardName: string): number {
     const daysSet = new Set<string>();
+    const originalWardName = Object.entries(renamedPresetWards).find(([, renamed]) => renamed.trim().toLowerCase() === wardName.trim().toLowerCase())?.[0] ?? wardName;
     for (const slot of presetWardSchedule) {
-      if (slot.ward !== wardName) continue;
+      if (slot.ward !== wardName && slot.ward !== originalWardName) continue;
       try {
         const start = new Date(slot.start + 'T12:00:00');
         const end = new Date(slot.end + 'T12:00:00');
@@ -977,7 +983,8 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   function getCustomWardTotalPlannedLocal(
     startDateStr: string,
     endDateStr: string,
-    vacationPeriods?: Array<{ start: string; end: string }>
+    vacationPeriods?: Array<{ start: string; end: string }>,
+    includePresetHolidays = false
   ): number {
     let count = 0;
     try {
@@ -985,7 +992,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       const end = new Date(endDateStr + 'T12:00:00');
       const cur = new Date(start);
       while (cur <= end) {
-        if (!isExcludedClinicalDay(cur, vacationPeriods, false)) count++;
+        if (!isExcludedClinicalDay(cur, vacationPeriods, includePresetHolidays)) count++;
         cur.setDate(cur.getDate() + 1);
       }
     } catch {
@@ -1028,51 +1035,43 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   const saveSubjects = (data: CustomSubject[]) => {
     setCustomSubjects(data);
-    localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(data));
-    storageSetItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(data));
+    void storageSetItemChecked(CUSTOM_SUBJECTS_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveWards = (data: CustomWard[]) => {
     setCustomWards(data);
-    localStorage.setItem(CUSTOM_WARDS_KEY, JSON.stringify(data));
-    storageSetItem(CUSTOM_WARDS_KEY, JSON.stringify(data));
+    void storageSetItemChecked(CUSTOM_WARDS_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveUserAdded = (data: UserAddedSubject[]) => {
     setUserAddedSubjects(data);
-    localStorage.setItem(USER_ADDED_SUBJECTS_KEY, JSON.stringify(data));
-    storageSetItem(USER_ADDED_SUBJECTS_KEY, JSON.stringify(data));
+    void storageSetItemChecked(USER_ADDED_SUBJECTS_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveTimetable = (data: typeof TIMETABLE) => {
     presetTimetableRef.current = data;
     setPresetTimetable(data);
-    localStorage.setItem(PRESET_TIMETABLE_KEY, JSON.stringify(data));
-    storageSetItem(PRESET_TIMETABLE_KEY, JSON.stringify(data));
+    void storageSetItemChecked(PRESET_TIMETABLE_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveWardSchedule = (data: PresetWardEntry[]) => {
     setPresetWardSchedule(data);
-    localStorage.setItem(PRESET_WARD_SCHEDULE_KEY, JSON.stringify(data));
-    storageSetItem(PRESET_WARD_SCHEDULE_KEY, JSON.stringify(data));
+    void storageSetItemChecked(PRESET_WARD_SCHEDULE_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveTotals = (data: Record<string, number>) => {
     setPresetSubjectTotals(data);
-    localStorage.setItem(PRESET_SUBJECT_TOTALS_KEY, JSON.stringify(data));
-    storageSetItem(PRESET_SUBJECT_TOTALS_KEY, JSON.stringify(data));
+    void storageSetItemChecked(PRESET_SUBJECT_TOTALS_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveRenames = (data: Record<string, string>) => {
     setRenamedPresetSubjects(data);
-    localStorage.setItem(PRESET_RENAMES_KEY, JSON.stringify(data));
-    storageSetItem(PRESET_RENAMES_KEY, JSON.stringify(data));
+    void storageSetItemChecked(PRESET_RENAMES_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const saveWardRenames = (data: Record<string, string>) => {
     setRenamedPresetWards(data);
-    localStorage.setItem(PRESET_WARD_RENAMES_KEY, JSON.stringify(data));
-    storageSetItem(PRESET_WARD_RENAMES_KEY, JSON.stringify(data));
+    void storageSetItemChecked(PRESET_WARD_RENAMES_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
   const addCustomSubjects = useStableCallback((items: Array<Omit<CustomSubject, 'id'>>): CustomSubject[] => {
@@ -1717,9 +1716,10 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const getCustomWardTotalPlanned = useStableCallback((
     startDateStr: string,
     endDateStr: string,
-    vacationPeriods?: Array<{ start: string; end: string }>
-  ): number => subjectMode === 'custom'
-    ? getCustomWardTotalPlannedLocal(startDateStr, endDateStr, vacationPeriods)
+    vacationPeriods?: Array<{ start: string; end: string }>,
+    includePresetHolidays = false
+  ): number => (subjectMode === 'custom' || includePresetHolidays)
+    ? getCustomWardTotalPlannedLocal(startDateStr, endDateStr, vacationPeriods, includePresetHolidays)
     : 0);
 
   const countSGTPlannedDays = useStableCallback((
@@ -2185,6 +2185,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     addPresetWardEntry, updatePresetWardEntry, removePresetWardEntry, renamePresetWard,
     updatePresetTimetableSlot, addSubjectToSlot, updatePresetWardSchedule, updatePresetSubjectTotal,
     getSubjectPlannedTotal, getCurrentPresetWard, getPresetWardTotalPlanned, getCustomWardTotalPlanned,
+    userAddedSubjectsHydrated,
     countSGTPlannedDays, getParentOptions, isExistingParent, getAlliedChildCount,
     getCustomAlliedChildren, getUserAddedAlliedChildren, isSubjectNameTaken, isWardNameTaken,
     findSubjectTimeConflicts, findWardDateConflicts, bulkUpdateSubjectHierarchy,
@@ -2193,7 +2194,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     setPresetSubjectRename, getPresetWardDisplayName, subjectRegistry, getSubjectById, getSubjectIdByName,
   }), [
     exposedCustomSubjects, exposedCustomWards, exposedUserAddedSubjects, exposedPresetTimetable,
-    exposedPresetWardSchedule, exposedPresetSubjectTotals, subjectMode, setupDone, whatsNewOpen,
+    exposedPresetWardSchedule, exposedPresetSubjectTotals, subjectMode, setupDone, whatsNewOpen, userAddedSubjectsHydrated,
     subjectRegistry,
   ]);
 

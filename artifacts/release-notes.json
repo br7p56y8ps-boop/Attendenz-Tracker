@@ -1,5 +1,5 @@
 {
-  "1.6.15": {
+  "1.7.0": {
     "upgrades": [
       { "title": "A clearer home screen", "summary": "See attendance, tomorrow's class, alerts, progress, and today's activity at a glance." },
       { "title": "Smoother pop-ups and scrolling", "summary": "Screens open, close, and scroll more consistently, with easier dismiss gestures and clearer actions." },

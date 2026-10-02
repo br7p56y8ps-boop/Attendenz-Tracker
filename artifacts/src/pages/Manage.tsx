@@ -46,6 +46,7 @@ const inlineErrCls =
   'text-[11px] font-semibold text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2';
 const CREATE_NEW = '__create_new__';
 const DAY_AFTER_HOLIDAY_INDEX = 6; // Saturday follows the app-wide Friday holiday boundary.
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const CASCADE_STORAGE_KEYS = [
   'attendance_tracker_subjects_preset', 'attendance_tracker_subjects_custom', 'attendance_tracker_subjects',
@@ -360,7 +361,7 @@ const formatHistoryDetail = (entry: any): string => {
 
 function ClinicalGroupCard({
   name, hasRotation, hasSGT, rotation, sgt,
-  onAddRotation, onAddSGT, onEditRotation, onEditSGT, onDeleteRotation, onDeleteSGT,
+  onAddRotation, onAddSGT, onEditRotation, onEditSGT, onDeleteRotation,
   canDeleteRotation = true,
 }: any) {
   const rotationStart = rotation?.entry?.startDate || rotation?.entry?.start;
@@ -399,7 +400,7 @@ function ClinicalGroupCard({
         {hasSGT ? (
           <div className="flex min-h-14 items-center justify-between gap-2 rounded-b-xl border border-border/40 bg-background/50 p-2.5">
             <p className="min-w-0 flex-1 truncate text-xs font-bold text-foreground">Small Group Teaching</p>
-            <div className="flex shrink-0 items-center gap-1"><button type="button" onClick={onDeleteSGT} className="action-button action-button--danger shrink-0">Delete</button><button type="button" onClick={onEditSGT} className="action-button action-button--edit shrink-0">Edit</button></div>
+            <div className="flex shrink-0 items-center gap-1"><button type="button" onClick={onEditSGT} className="action-button action-button--edit shrink-0">Edit</button></div>
           </div>
         ) : (
           <button type="button" onClick={onAddSGT} className="w-full py-2 text-xs font-medium text-purple-500 hover:underline flex items-center justify-center gap-1"><Plus className="w-3 h-3" /> Add SGT</button>
@@ -423,7 +424,7 @@ function VacationEditor({ vacations, onChange }: {
       {open && (
         <div className="px-3 pb-3 space-y-2">
           {vacations.length === 0 && (
-            <p className="text-[10px] text-muted-foreground">No vacation added — full period counts (Fridays & global holidays auto-excluded).</p>
+            <p className="text-[10px] text-muted-foreground">Excluded from planned class counts for this specific subject or rotation only. Fridays and global holidays are also excluded where applicable.</p>
           )}
           {vacations.map(v => (
             <div key={v.id} className="flex items-center gap-1.5">
@@ -584,11 +585,14 @@ export default function Manage() {
   const allClinicalSubjects = useMemo(() => {
     if (subjectMode === 'preloaded') {
       const presetNames = WARD_SUBJECTS.map(w => w.name);
+      const addedWardNames = presetWardSchedule
+        .filter(entry => entry.ward.trim().toLowerCase() !== 'holiday')
+        .map(entry => entry.ward);
       const presetSgtParents = userAddedSubjects
         .filter(s => isSGTRecord(s))
         .map(s => (s as any).clinicalSubject)
         .filter((name): name is string => !!name);
-      return Array.from(new Set([...presetNames, ...presetSgtParents])).sort();
+      return Array.from(new Set([...presetNames, ...addedWardNames, ...presetSgtParents])).sort();
     }
 
     const customNames = customWards.map(w => w.name);
@@ -597,7 +601,7 @@ export default function Manage() {
       .map(s => (s as any).clinicalSubject)
       .filter((name): name is string => !!name);
     return Array.from(new Set([...customNames, ...customSgtParents])).sort();
-  }, [subjectMode, customWards, userAddedSubjects, customSubjects]);
+  }, [subjectMode, customWards, userAddedSubjects, customSubjects, presetWardSchedule]);
 
   const customAcademicCount = customSubjects.filter(s => !isSGTRecord(s)).length;
   const customClinicalCount = customWards.length + customSubjects.filter(s => isSGTRecord(s)).length;
@@ -753,7 +757,7 @@ export default function Manage() {
   const openAddSlot = () => { setAddSlotSubject(''); setAddSlotStart('09:00 AM'); setAddSlotEnd('10:00 AM'); setAddSlotPlanned(0); setFormError(null); setAddSlotOpen(true); setAddSuccess(false); };
   const openAddFromMore = () => {
     setMoreMenuOpen(false);
-    setReturnToMoreAfterAdd(true);
+    setReturnToMoreAfterAdd(false);
     setFormError(null);
     setAddSuccess(false);
     setMoreOpen(true);
@@ -1850,7 +1854,6 @@ export default function Manage() {
                       onEditRotation={() => { if (group.rotation!.store === 'preset') openEditWardPreset(group.rotation!.index!); else openEditWardCustom(group.rotation!.id!); }}
                       onEditSGT={() => { openEditSubject(getSGTStore(group.sgt), group.sgt!.id); }}
                       onDeleteRotation={() => { if (group.rotation!.store === 'preset') requestDeleteWard('preset', group.rotation!.index!); else requestDeleteWard('custom', group.rotation!.id!); }}
-                      onDeleteSGT={() => { requestDeleteSubject(getSGTStore(group.sgt), group.sgt!.id); }}
                       canDeleteRotation={group.rotation ? group.rotation.store !== 'preset' : false}
                     />
                   );
@@ -1867,7 +1870,7 @@ export default function Manage() {
         {section === 'academic' && (
           <div className="shrink-0 px-0 pt-0">
             <button type="button" disabled={selectedDayIsHoliday} onClick={openAddSlot} className="flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#007AFF] py-2 text-xs font-semibold text-cyan-400 transition-all hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
-              <Plus className="h-3.5 w-3.5" /> Add Slot
+              <Plus className="h-3.5 w-3.5" /> Add Slot to {DAY_NAMES[selDay]}
             </button>
           </div>
         )}
@@ -2046,7 +2049,7 @@ export default function Manage() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned (Auto)</span>
                         <span className="text-xs font-extrabold text-foreground">
                           {subjectMode === 'preloaded'
-                            ? getPresetWardTotalPlanned(wardName)
+                            ? (getPresetWardTotalPlanned(wardName) || getCustomWardTotalPlanned(wardStart, wardEnd, wardVacations.map(v => ({ start: v.start, end: v.end })), true))
                             : getCustomWardTotalPlanned(wardStart, wardEnd, wardVacations.map(v => ({ start: v.start, end: v.end })))}
                         </span>
                       </div>
@@ -2291,7 +2294,7 @@ export default function Manage() {
           open={addSlotOpen}
           onClose={() => { setAddSlotOpen(false); setFormError(null); setAddSuccess(false); }}
           maxW="max-w-sm"
-          header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Add Slot</h3><p className="mt-1 text-[10px] text-muted-foreground">Add a class to the selected academic day.</p></div>}
+          header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Add Slot</h3><p className="mt-1 text-[10px] text-muted-foreground">Add a class to {DAY_NAMES[selDay]}.</p></div>}
           footer={
             <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5 border-2 border-cyan-400/90')}>
               <Plus className="w-3.5 h-3.5" /> Add Slot

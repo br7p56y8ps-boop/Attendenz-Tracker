@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { path: '/account',   label: 'Settings',  description: 'Preferences, backups, and app settings', Icon: Hospital },
 ] as const;
 
-export const Layout = ({ children, headerRight, headerBottom, headerTitle, headerDescription, mainClassName, contentClassName, bottomNavClassName }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode; headerTitle?: React.ReactNode; headerDescription?: React.ReactNode; mainClassName?: string; contentClassName?: string; bottomNavClassName?: string }) => {
+export const Layout = ({ children, headerRight, headerBottom, headerTitle, headerDescription, headerContent, mainClassName, contentClassName, bottomNavClassName }: { children: React.ReactNode; headerRight?: React.ReactNode; headerBottom?: React.ReactNode; headerTitle?: React.ReactNode; headerDescription?: React.ReactNode; headerContent?: React.ReactNode; mainClassName?: string; contentClassName?: string; bottomNavClassName?: string }) => {
   const [location, setLocation] = useLocation();
   const headerRef = useRef<HTMLElement>(null);
   const navTouchStartX = useRef<number | null>(null);
@@ -43,13 +43,13 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
     >
       <header ref={headerRef} className="fixed inset-x-0 top-0 z-50 border-b border-black/20 dark:border-white/20 bg-card rounded-b-[28px] shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
         <div className="max-w-3xl mx-auto w-full px-4 pt-[env(safe-area-inset-top)] py-2">
-          <div className="flex items-center justify-between gap-3 min-h-0">
+          {headerContent ?? <div className="flex items-center justify-between gap-3 min-h-0">
             <div className="min-w-0 space-y-0.5">
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground truncate">{headerTitle ?? currentItem.label}</h1>
               {(headerDescription ?? currentItem.description) && <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">{headerDescription ?? currentItem.description}</p>}
             </div>
             {headerRight}
-          </div>
+          </div>}
           {headerBottom}
         </div>
       </header>
