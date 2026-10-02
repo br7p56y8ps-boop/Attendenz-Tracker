@@ -374,6 +374,7 @@ export default function Settings() {
     const keys = [
       'att_pwa_update_ready',
       'att_pwa_latest_version',
+      'att_pwa_latest_build_revision',
       'att_pwa_update_summary',
       'att_pwa_release_type',
       'att_pwa_update_mode',
@@ -458,6 +459,7 @@ export default function Settings() {
       const cleanup = await Promise.allSettled([
         storageRemoveItemChecked('att_pwa_update_ready'),
         storageRemoveItemChecked('att_pwa_latest_version'),
+        storageRemoveItemChecked('att_pwa_latest_build_revision'),
         storageRemoveItemChecked('att_pwa_update_summary'),
       ]);
       const cleanupFailures = cleanup.filter((result): result is PromiseRejectedResult => result.status === 'rejected');

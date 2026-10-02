@@ -5,10 +5,13 @@ export type ReleaseType = 'major' | 'minor';
 export type UpdateMode = 'manual' | 'automatic';
 
 export const APP_VERSION = releaseConfig.version;
-export const PWA_CACHE_NAME = `attendenz-shell-v${APP_VERSION}-r2`;
+export const BUILD_REVISION = __ATTENDENZ_BUILD_REVISION__;
+export const PWA_CACHE_NAME = `attendenz-shell-v${APP_VERSION}-r2-${BUILD_REVISION}`;
 export const LATEST_VERSION = APP_VERSION;
 export const RELEASE_TYPE: ReleaseType = releaseConfig.releaseType as ReleaseType;
 export const UPDATE_MODE: UpdateMode = releaseConfig.updateMode as UpdateMode;
+export const UPDATE_PROTOCOL = releaseConfig.updateProtocol as number;
+export const AUTOMATIC_FROM_VERSION = releaseConfig.automaticFromVersion as string;
 
 export interface WhatsNewItem {
   title: string;

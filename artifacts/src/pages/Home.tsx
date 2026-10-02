@@ -654,11 +654,13 @@ export default function Home() {
       const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS]
         .find(item => ('id' in item && item.id.trim().toLowerCase() === rawId) || item.name.trim().toLowerCase() === nameKey);
       const presetPlanned = preset && 'total' in preset ? preset.total : undefined;
-      const planned = metric.plannedHint ?? registryItem?.planned ?? (metric.isWard
+      const planned = metric.category === 'Ward'
         ? subjectMode === 'custom' && customWardItem
           ? getCustomWardTotalPlanned(customWardItem.startDate, customWardItem.endDate, customWardItem.vacationPeriods)
           : getPresetWardTotalPlanned(metric.name)
-        : sourceItem?.plannedClasses ?? presetPlanned ?? (preset ? getSubjectPlannedTotal(metric.name) : undefined));
+        : metric.category === 'SGT'
+          ? sourceItem?.plannedClasses ?? metric.plannedHint ?? registryItem?.planned
+          : sourceItem?.plannedClasses ?? metric.plannedHint ?? registryItem?.planned ?? presetPlanned ?? (preset ? getSubjectPlannedTotal(metric.name) : undefined);
       const conducted = metric.attended + metric.missed;
       const remaining = planned === undefined ? 0 : Math.max(0, planned - conducted);
       const current = conducted === 0 ? 0 : (metric.attended / conducted) * 100;
@@ -683,12 +685,19 @@ export default function Home() {
       })();
       return { ...metric, current, maximum, remaining, planned: planned ?? 0, conducted, placementEligible };
     });
-    if (!calculated.some(item => item.conducted > 0)) return [];
-    return calculated
-      .filter(item => item.planned > 0 && item.remaining > 0 && item.placementEligible)
-      .sort((a, b) => a.current - b.current);
+    return calculated.sort((a, b) => a.current - b.current);
   }, [customSubjects, customWards, finishedMap, getCustomWardTotalPlanned, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getSubjectPlannedTotal, preferredPercentage, presetWardSchedule, subjectMode, subjects, subjectRegistry, todayStr, userAddedSubjects, wards]);
-  const subjectAlertMetrics = allPotentialMetrics.filter(item => item.current < preferredPercentage);
+  const isWardOrSGT = (metric: typeof allPotentialMetrics[number]) => metric.category === 'Ward' || metric.category === 'SGT';
+  const isHomeEligibleForNeedAttention = (metric: typeof allPotentialMetrics[number]) => {
+    if (metric.conducted <= 0) return false;
+    return isWardOrSGT(metric) ? metric.placementEligible : metric.remaining > 0;
+  };
+  const isHomeEligibleForMaximumPossible = (metric: typeof allPotentialMetrics[number]) => {
+    if (metric.conducted <= 0 || metric.remaining <= 0) return false;
+    return isWardOrSGT(metric) ? metric.placementEligible : true;
+  };
+  const subjectAlertMetrics = allPotentialMetrics.filter(item => isHomeEligibleForNeedAttention(item) && item.current < preferredPercentage);
+  const maximumPossibleMetrics = allPotentialMetrics.filter(isHomeEligibleForMaximumPossible);
   const statusForEntry = (entry: DayEntry) => {
     if (entry.kind !== 'card' || !entry.card?.sessionId) return undefined;
     const card = entry.card;
@@ -834,13 +843,13 @@ export default function Home() {
           <h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2>
           <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span>
         </div>
-        {allPotentialMetrics.length === 0 ? <div className="mt-3 flex justify-center text-center"><p className="text-[10px] text-muted-foreground">Not enough data yet.</p></div> : (
+        {maximumPossibleMetrics.length === 0 ? <div className="mt-3 flex justify-center text-center"><p className="text-[10px] text-muted-foreground">Not enough data yet.</p></div> : (
           <div className="mt-3">
-            <svg viewBox={`0 0 560 ${allPotentialMetrics.length * 46 + 34}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
-              <line x1="112" x2="112" y1="10" y2={allPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
-              <line x1="112" x2="540" y1={allPotentialMetrics.length * 46 + 24} y2={allPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
-              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={112 + (428 * tick) / 100} y={allPotentialMetrics.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
-              {allPotentialMetrics.map((metric, index) => {
+            <svg viewBox={`0 0 560 ${maximumPossibleMetrics.length * 46 + 34}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
+              <line x1="112" x2="112" y1="10" y2={maximumPossibleMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              <line x1="112" x2="540" y1={maximumPossibleMetrics.length * 46 + 24} y2={maximumPossibleMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={112 + (428 * tick) / 100} y={maximumPossibleMetrics.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
+              {maximumPossibleMetrics.map((metric, index) => {
                 const rowY = 34 + index * 46;
                 const left = 112;
                 const width = 428;

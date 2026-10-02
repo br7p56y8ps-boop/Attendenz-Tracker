@@ -6,7 +6,7 @@ import {
   isCanonicalTimeRange,
   parseRangeToMinutes,
 } from '@/lib/utils';
-import { idbGetAllChecked, INSTALLATION_METADATA_KEYS, storageSetItem, storageRemoveItemChecked, storageSetItemChecked } from '@/lib/idb';
+import { idbGetAllChecked, INSTALLATION_METADATA_KEYS, storageSetItem, storageRemoveItemChecked, storageSetItemChecked, storageCommitChecked } from '@/lib/idb';
 import { snapshotBeforeEdit } from '@/utils/snapshotUtils';
 import { TIMETABLE, WARD_SCHEDULE, CATEGORIES, INTEGRATED_SUBJECTS, WARD_SUBJECTS } from '@/lib/constants';
 import { APP_VERSION } from '@/lib/appVersion';
@@ -583,6 +583,15 @@ interface CustomDataContextType {
     updatedSubjects: string[],
     targetDay: number
   ) => void;
+  removePresetTimetableSlot: (day: number, slotIndex: number) => Promise<string[]>;
+  movePresetTimetableSubjects: (
+    day: number,
+    slotIndex: number,
+    targetDay: number,
+    targetStart: string,
+    targetEnd: string,
+    subjectNames: string[],
+  ) => Promise<void>;
   addSubjectToSlot: (day: number, time: string, name: string) => void;
   updatePresetWardSchedule: (
     index: number,
@@ -959,9 +968,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   function getPresetWardTotalPlannedLocal(wardName: string): number {
     const daysSet = new Set<string>();
-    const originalWardName = Object.entries(renamedPresetWards).find(([, renamed]) => renamed.trim().toLowerCase() === wardName.trim().toLowerCase())?.[0] ?? wardName;
+    const normalizedWardName = wardName.trim().toLowerCase();
+    const originalWardName = Object.entries(renamedPresetWards).find(([, renamed]) => renamed.trim().toLowerCase() === normalizedWardName)?.[0] ?? wardName;
+    const normalizedOriginalWardName = originalWardName.trim().toLowerCase();
     for (const slot of presetWardSchedule) {
-      if (slot.ward !== wardName && slot.ward !== originalWardName) continue;
+      const normalizedSlotWardName = slot.ward.trim().toLowerCase();
+      if (normalizedSlotWardName !== normalizedWardName && normalizedSlotWardName !== normalizedOriginalWardName) continue;
       try {
         const start = new Date(slot.start + 'T12:00:00');
         const end = new Date(slot.end + 'T12:00:00');
@@ -1043,11 +1055,6 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     void storageSetItemChecked(CUSTOM_WARDS_KEY, JSON.stringify(data)).catch(() => undefined);
   };
 
-  const saveUserAdded = (data: UserAddedSubject[]) => {
-    setUserAddedSubjects(data);
-    void storageSetItemChecked(USER_ADDED_SUBJECTS_KEY, JSON.stringify(data)).catch(() => undefined);
-  };
-
   const saveTimetable = (data: typeof TIMETABLE) => {
     presetTimetableRef.current = data;
     setPresetTimetable(data);
@@ -1072,6 +1079,33 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
   const saveWardRenames = (data: Record<string, string>) => {
     setRenamedPresetWards(data);
     void storageSetItemChecked(PRESET_WARD_RENAMES_KEY, JSON.stringify(data)).catch(() => undefined);
+  };
+
+  const commitRoutineState = (patch: {
+    userAddedSubjects?: UserAddedSubject[];
+    customSubjects?: CustomSubject[];
+    presetTimetable?: typeof TIMETABLE;
+    presetSubjectTotals?: Record<string, number>;
+  }): Promise<void> => {
+    const entries: Array<[string, string]> = [];
+    if (patch.userAddedSubjects !== undefined) {
+      setUserAddedSubjects(patch.userAddedSubjects);
+      entries.push([USER_ADDED_SUBJECTS_KEY, JSON.stringify(patch.userAddedSubjects)]);
+    }
+    if (patch.customSubjects !== undefined) {
+      setCustomSubjects(patch.customSubjects);
+      entries.push([CUSTOM_SUBJECTS_KEY, JSON.stringify(patch.customSubjects)]);
+    }
+    if (patch.presetTimetable !== undefined) {
+      presetTimetableRef.current = patch.presetTimetable;
+      setPresetTimetable(patch.presetTimetable);
+      entries.push([PRESET_TIMETABLE_KEY, JSON.stringify(patch.presetTimetable)]);
+    }
+    if (patch.presetSubjectTotals !== undefined) {
+      setPresetSubjectTotals(patch.presetSubjectTotals);
+      entries.push([PRESET_SUBJECT_TOTALS_KEY, JSON.stringify(patch.presetSubjectTotals)]);
+    }
+    return entries.length > 0 ? storageCommitChecked(entries) : Promise.resolve();
   };
 
   const addCustomSubjects = useStableCallback((items: Array<Omit<CustomSubject, 'id'>>): CustomSubject[] => {
@@ -1255,9 +1289,11 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    saveUserAdded(nextUserAdded);
-    saveTimetable(nextTimetable);
-    saveTotals(nextTotals);
+    void commitRoutineState({
+      userAddedSubjects: nextUserAdded,
+      presetTimetable: nextTimetable,
+      presetSubjectTotals: nextTotals,
+    }).catch(() => undefined);
     return created;
   });
 
@@ -1323,44 +1359,45 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       );
     }
 
-    saveUserAdded(nextUserAdded);
-
     const isSGT = isSGTSubjectRecord(merged);
     const wasSGT = isSGTSubjectRecord(existing);
     const isAcademicNow = merged.subjectType !== 'allied-parent' && !isSGT;
     const wasAcademic = existing.subjectType !== 'allied-parent' && !wasSGT;
+    let nextTimetable = presetTimetableRef.current;
+    let nextTotals = { ...presetSubjectTotals };
 
     if (wasAcademic || isAcademicNow) {
-      let tt = presetTimetableRef.current;
-      const totals = { ...presetSubjectTotals };
-
       if (wasAcademic) {
         if (nameChanged || !isAcademicNow) {
-          tt = removeSubjectFromTimetable(tt, existing.name);
-          delete totals[existing.name];
+          nextTimetable = removeSubjectFromTimetable(nextTimetable, existing.name);
+          delete nextTotals[existing.name];
         }
       }
 
       if (isAcademicNow) {
-        tt = syncSubjectSchedules(tt, merged.name, rows);
+        nextTimetable = syncSubjectSchedules(nextTimetable, merged.name, rows);
 
         if (!wasAcademic) {
-          totals[merged.name] = merged.plannedClasses;
+          nextTotals[merged.name] = merged.plannedClasses;
         } else if (nameChanged) {
           const prevTotal = presetSubjectTotals[existing.name] ?? merged.plannedClasses;
           if (normalized.plannedClasses !== undefined) {
-            totals[merged.name] = normalized.plannedClasses;
+            nextTotals[merged.name] = normalized.plannedClasses;
           } else if (prevTotal !== undefined) {
-            totals[merged.name] = prevTotal;
+            nextTotals[merged.name] = prevTotal;
           }
         } else if (normalized.plannedClasses !== undefined) {
-          totals[merged.name] = merged.plannedClasses;
+          nextTotals[merged.name] = merged.plannedClasses;
         }
       }
-
-      saveTimetable(tt);
-      saveTotals(totals);
     }
+
+    void commitRoutineState({
+      userAddedSubjects: nextUserAdded,
+      ...(wasAcademic || isAcademicNow
+        ? { presetTimetable: nextTimetable, presetSubjectTotals: nextTotals }
+        : {}),
+    }).catch(() => undefined);
   });
 
   const removeUserAddedSubject = useStableCallback((id: string) => {
@@ -1379,7 +1416,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const removedEntries = userAddedSubjects.filter(e => toRemove.has(e.id));
-    saveUserAdded(userAddedSubjects.filter(e => !toRemove.has(e.id)));
+    const nextUserAdded = userAddedSubjects.filter(e => !toRemove.has(e.id));
 
     let tt = presetTimetableRef.current;
     const totals = { ...presetSubjectTotals };
@@ -1391,8 +1428,11 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       delete totals[r.name];
     }
 
-    saveTimetable(tt);
-    saveTotals(totals);
+    void commitRoutineState({
+      userAddedSubjects: nextUserAdded,
+      presetTimetable: tt,
+      presetSubjectTotals: totals,
+    }).catch(() => undefined);
   });
 
   const isUserAddedName = useStableCallback((name: string): boolean => {
@@ -1484,6 +1524,101 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     saveTimetable(asTimetable(next));
+  });
+
+  const removePresetTimetableSlot = useStableCallback(async (day: number, slotIndex: number): Promise<string[]> => {
+    if (subjectMode !== 'preloaded') return [];
+    const current = presetTimetableRef.current;
+    const slot = current[day]?.[slotIndex];
+    if (!slot) return [];
+
+    const next: Record<number, MutableSlot[]> = {};
+    for (const key of Object.keys(asMutable(current))) next[Number(key)] = [...asMutable(current)[Number(key)]];
+    next[day] = (next[day] || []).filter((_, index) => index !== slotIndex);
+    for (const key of Object.keys(next)) {
+      next[Number(key)] = next[Number(key)].filter(s => isWardSlotType(s.type) || s.subjects.length > 0);
+      next[Number(key)].sort((a, b) => {
+        const ta = parseRangeToMinutes(a.time)?.start ?? Number.MAX_SAFE_INTEGER;
+        const tb = parseRangeToMinutes(b.time)?.start ?? Number.MAX_SAFE_INTEGER;
+        return ta - tb;
+      });
+    }
+
+    const { start, end } = canonTokens(slot.time);
+    const dayName = DAY_ABBRS[day];
+    const slotSubjects = new Set(slot.subjects.map(name => name.trim().toLowerCase()));
+    const nextUserAdded = userAddedSubjects.map(subject => {
+      if (isSGTSubjectRecord(subject) || !slotSubjects.has(subject.name.trim().toLowerCase())) return subject;
+      const schedules = (subject.schedules || []).filter(schedule =>
+        !(schedule.day === dayName && schedule.start === start && schedule.end === end)
+      );
+      return {
+        ...subject,
+        schedules,
+        days: schedules.map(schedule => schedule.day).join(', '),
+        time: schedules.length ? canonicalTimeRange(schedules[0].start, schedules[0].end) : subject.time,
+      };
+    });
+
+    await commitRoutineState({
+      userAddedSubjects: nextUserAdded,
+      presetTimetable: asTimetable(next),
+    });
+    return [...slot.subjects];
+  });
+
+  const movePresetTimetableSubjects = useStableCallback(async (
+    day: number,
+    slotIndex: number,
+    targetDay: number,
+    targetStart: string,
+    targetEnd: string,
+    subjectNames: string[],
+  ): Promise<void> => {
+    if (subjectMode !== 'preloaded') return;
+    const current = presetTimetableRef.current;
+    const sourceSlot = current[day]?.[slotIndex];
+    if (!sourceSlot || subjectNames.length === 0) return;
+
+    const moving = new Set(subjectNames.map(name => name.toLowerCase()));
+    const sourceSubjects = sourceSlot.subjects.filter(name => !moving.has(name.toLowerCase()));
+    const next: Record<number, MutableSlot[]> = {};
+    for (const key of Object.keys(asMutable(current))) next[Number(key)] = [...asMutable(current)[Number(key)]];
+    next[day] = (next[day] || []).filter((_, index) => index !== slotIndex);
+    if (sourceSubjects.length > 0) {
+      next[day] = [...(next[day] || []), { ...sourceSlot, subjects: sourceSubjects }];
+    }
+    for (const key of Object.keys(next)) {
+      next[Number(key)] = next[Number(key)].filter(s => isWardSlotType(s.type) || s.subjects.length > 0);
+      next[Number(key)].sort((a, b) => {
+        const ta = parseRangeToMinutes(a.time)?.start ?? Number.MAX_SAFE_INTEGER;
+        const tb = parseRangeToMinutes(b.time)?.start ?? Number.MAX_SAFE_INTEGER;
+        return ta - tb;
+      });
+    }
+
+    const targetTime = canonicalTimeRange(targetStart, targetEnd);
+    let nextTimetable = asTimetable(next);
+    for (const name of subjectNames) nextTimetable = insertSubjectSlot(nextTimetable, name, DAY_ABBRS[targetDay], targetTime);
+
+    const oldRange = canonTokens(sourceSlot.time);
+    const nextUserAdded = userAddedSubjects.map(subject => {
+      if (isSGTSubjectRecord(subject) || !moving.has(subject.name.toLowerCase())) return subject;
+      const filtered = (subject.schedules || []).filter(schedule =>
+        !(schedule.day === DAY_ABBRS[day] && schedule.start === oldRange.start && schedule.end === oldRange.end)
+      );
+      const schedules = filtered.some(schedule =>
+        schedule.day === DAY_ABBRS[targetDay] && schedule.start === targetStart && schedule.end === targetEnd
+      ) ? filtered : [...filtered, { day: DAY_ABBRS[targetDay], start: targetStart, end: targetEnd }];
+      return {
+        ...subject,
+        schedules,
+        days: schedules.map(schedule => schedule.day).join(', '),
+        time: schedules.length ? canonicalTimeRange(schedules[0].start, schedules[0].end) : subject.time,
+      };
+    });
+
+    await commitRoutineState({ userAddedSubjects: nextUserAdded, presetTimetable: nextTimetable });
   });
 
   const addSubjectToSlot = useStableCallback((day: number, time: string, name: string) => {
@@ -2141,10 +2276,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    saveUserAdded(nextUA);
-    saveSubjects(nextCS);
-    saveTimetable(tt);
-    saveTotals(totals);
+    void commitRoutineState({
+      userAddedSubjects: nextUA,
+      customSubjects: nextCS,
+      presetTimetable: tt,
+      presetSubjectTotals: totals,
+    }).catch(() => undefined);
 
     return moves.length;
   });
@@ -2183,7 +2320,7 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
     isUserAddedName, presetTimetable: exposedPresetTimetable,
     presetWardSchedule: exposedPresetWardSchedule, presetSubjectTotals: exposedPresetSubjectTotals,
     addPresetWardEntry, updatePresetWardEntry, removePresetWardEntry, renamePresetWard,
-    updatePresetTimetableSlot, addSubjectToSlot, updatePresetWardSchedule, updatePresetSubjectTotal,
+    updatePresetTimetableSlot, removePresetTimetableSlot, movePresetTimetableSubjects, addSubjectToSlot, updatePresetWardSchedule, updatePresetSubjectTotal,
     getSubjectPlannedTotal, getCurrentPresetWard, getPresetWardTotalPlanned, getCustomWardTotalPlanned,
     userAddedSubjectsHydrated,
     countSGTPlannedDays, getParentOptions, isExistingParent, getAlliedChildCount,
