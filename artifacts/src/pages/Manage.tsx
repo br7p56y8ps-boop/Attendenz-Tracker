@@ -1210,7 +1210,11 @@ export default function Manage() {
     } finally {
       setSlotRemovalInProgress(false);
       setSlotRemoveAllConfirm(false);
-      closeEditSlot();
+      // This confirmation sheet is layered over Edit Slot. Let its 270ms
+      // exit animation and accessibility cleanup finish before closing the
+      // underlying sheet, otherwise the nested inert restoration can leave
+      // the PWA shell non-interactive until reload.
+      window.setTimeout(closeEditSlot, 320);
     }
   };
 
