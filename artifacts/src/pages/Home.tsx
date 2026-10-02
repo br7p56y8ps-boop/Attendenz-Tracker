@@ -778,7 +778,7 @@ export default function Home() {
         <section className="glass-card absolute inset-y-0 left-0 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border p-3 text-left" style={{ width: 'calc((100% - 0.75rem) * 0.5454545)' }}>
           <h2 className="shrink-0 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Today at a Glance</h2>
           <div className="relative mt-2 min-h-0 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
-            {glanceEntries.length === 0 ? <p className="py-2 text-xs text-muted-foreground">No remaining classes today.</p> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
+            {glanceEntries.length === 0 ? <div className="flex min-h-full items-center justify-center px-2 text-center"><p className="py-2 text-xs text-muted-foreground">{isTodayDetoxDay ? 'Detox Day — enjoy your rest day!' : 'No remaining classes today.'}</p></div> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
               {glanceEntries.map(entry => {
                 const status = statusForEntry(entry);
                 const completed = isCompletedPlannedEntry(entry, todayStr);
@@ -788,7 +788,7 @@ export default function Home() {
                 const rowMuted = completed ? 'opacity-55' : '';
                 const subject = entry.card?.subject || 'Unknown subject';
                 const kind = getDashboardSubjectKind(subject, entry.card, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
-                return <button type="button" key={entry.id} onClick={() => setShowMarkAttendance(true)} className={cn('relative flex w-full min-w-0 items-center gap-x-2 text-left', rowMuted)}>
+                return <button type="button" key={entry.id} onClick={() => { setSelectedDateStr(todayStr); setShowMarkAttendance(true); }} className={cn('relative flex w-full min-w-0 items-center gap-x-2 text-left', rowMuted)}>
                   <span className={cn('absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card', completed ? 'bg-muted-foreground' : 'bg-primary')} />
                   <span className="flex min-w-0 flex-1 flex-col gap-0">
                     <span className="min-w-0 break-words text-[10px] font-bold leading-3 text-foreground">{subject}</span>
@@ -804,7 +804,7 @@ export default function Home() {
           </div>
         </section>
         <div className="col-start-2 flex flex-col gap-3">
-          <button type="button" onClick={() => setShowMarkAttendance(true)} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry)).length} Classes today` : 'No classes scheduled today.'}</p></button>
+          <button type="button" onClick={() => { setSelectedDateStr(todayStr); setShowMarkAttendance(true); }} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry, todayStr)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry, todayStr)).length} Classes today` : 'No classes scheduled today.'}</p></button>
           <button type="button" onClick={() => { setSelectedDateStr(toDateString(addDays(today, 1))); setShowMarkAttendance(true); }} className="min-h-11 rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><p className="mt-1 truncate text-[10px] text-muted-foreground">{tomorrowPreview}</p></button>
         </div>
       </div>

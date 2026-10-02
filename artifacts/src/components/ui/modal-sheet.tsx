@@ -54,7 +54,9 @@ export function ModalSheet({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.27, ease: 'easeIn' } }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
-            onClick={handleBackdropClick}
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) handleBackdropClick();
+            }}
           />
           <motion.div
             ref={surfaceRef}
