@@ -62,6 +62,18 @@ const CategoryCard = ({
   renderChildren,
 }: CategoryCardProps) => {
   const cardRef = useRef<HTMLDivElement>(null);
+  const collapseAnchorRef = useRef<{ scrollParent: HTMLElement; top: number } | null>(null);
+  const collapseFrameRef = useRef<number | null>(null);
+  const handleToggle = () => {
+    if (isOpen) {
+      const card = cardRef.current;
+      const scrollParent = card?.closest('main');
+      if (card instanceof HTMLElement && scrollParent instanceof HTMLElement) {
+        collapseAnchorRef.current = { scrollParent, top: card.getBoundingClientRect().top };
+      }
+    }
+    onToggle();
+  };
   useEffect(() => {
     if (!isOpen || !cardRef.current) return;
     const frame = window.requestAnimationFrame(() => {
@@ -78,6 +90,28 @@ const CategoryCard = ({
       scrollParent.scrollBy({ top: delta, behavior: 'smooth' });
     });
     return () => window.cancelAnimationFrame(frame);
+  }, [isOpen]);
+  useEffect(() => {
+    if (isOpen || !collapseAnchorRef.current) return;
+    const anchor = collapseAnchorRef.current;
+    const startedAt = performance.now();
+    const keepHeaderAnchored = () => {
+      const card = cardRef.current;
+      if (!card) return;
+      const delta = card.getBoundingClientRect().top - anchor.top;
+      if (Math.abs(delta) > 0.25) anchor.scrollParent.scrollBy({ top: delta, behavior: 'auto' });
+      if (performance.now() - startedAt < 320) {
+        collapseFrameRef.current = window.requestAnimationFrame(keepHeaderAnchored);
+      } else {
+        collapseAnchorRef.current = null;
+        collapseFrameRef.current = null;
+      }
+    };
+    collapseFrameRef.current = window.requestAnimationFrame(keepHeaderAnchored);
+    return () => {
+      if (collapseFrameRef.current !== null) window.cancelAnimationFrame(collapseFrameRef.current);
+      collapseFrameRef.current = null;
+    };
   }, [isOpen]);
   const overallColor = pctColor(summary.pct, preferredPercentage, {
     isFinished: summary.planned > 0 && summary.remainingTotal === 0,
@@ -104,9 +138,9 @@ const CategoryCard = ({
         backgroundColor: isOpen ? 'transparent' : `${overallColor}14`,
         borderColor: isOpen ? 'var(--border)' : `${overallColor}40`,
       }}
-      transition={{ duration: 0.4, ease: 'easeInOut' }}
+      transition={{ duration: 0.25, ease: 'easeInOut' }}
     >
-      <button type="button" onClick={onToggle} className="w-full text-left transition-all active:scale-[0.99] cursor-pointer">
+      <button type="button" onClick={handleToggle} className="w-full text-left transition-all active:scale-[0.99] cursor-pointer">
         <div className="flex items-center gap-4 min-w-0">
           <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
             <span className="text-xs font-extrabold leading-none" style={{ color: overallColor }}>{summary.pct === undefined || isNaN(summary.pct) ? '--' : formatPercentage(summary.pct)}</span>
@@ -127,13 +161,13 @@ const CategoryCard = ({
           </div>
         </div>
       </button>
-      <AnimatePresence initial={false}>
+      <AnimatePresence initial={false} mode="sync">
         {isOpen && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: 'easeInOut' }}
+            transition={{ duration: 0.25, ease: 'easeInOut' }}
             className="overflow-hidden bg-background/40 rounded-xl border border-border/50 p-2 space-y-1.5"
           >
             {renderChildren()}
