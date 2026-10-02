@@ -17,6 +17,11 @@ import { shortenSubject } from '@/components/HomeCard';
 
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+function ordinalDay(day: number): string {
+  const suffix = day % 100 >= 11 && day % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[day % 10] || 'th';
+  return `${day}${suffix}`;
+}
+
 function toDateString(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -206,7 +211,8 @@ export default function Home() {
   const ITEM_WIDTH = 80;
   const selectedIndex = wheelDates.indexOf(selectedDateStr);
   const effectiveIndex = selectedIndex !== -1 ? selectedIndex : wheelDates.indexOf(todayStr);
-  const wheelTranslateX = (containerWidth / 2) - (effectiveIndex * ITEM_WIDTH) - (ITEM_WIDTH / 2) + offset;
+  const wheelSidePadding = Math.max(0, containerWidth / 2 - ITEM_WIDTH / 2);
+  const wheelTranslateX = -(effectiveIndex * ITEM_WIDTH) + offset;
 
   const startMomentum = () => {
     if (momentumId.current) cancelAnimationFrame(momentumId.current);
@@ -720,6 +726,8 @@ export default function Home() {
             className="absolute left-0 top-0 bottom-0 flex w-max items-center"
             style={{
               transform: `translateX(${wheelTranslateX}px)`,
+              paddingLeft: wheelSidePadding,
+              paddingRight: wheelSidePadding,
               transition: isDragging.current ? 'none' : 'transform 0.2s ease-out',
               willChange: 'transform',
             }}
@@ -802,7 +810,7 @@ export default function Home() {
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Recent Activity</h2></div>
         {!hasRecentActivity ? (
-          <p className="mt-4 text-xs text-muted-foreground">{isTodayDetoxDay ? 'Detox Day — no activity is expected today.' : 'No recent activity in the last 48 hours.'}</p>
+          <div className="mt-4 flex justify-center text-center"><p className="text-xs text-muted-foreground">{isTodayDetoxDay ? 'Detox Day — no activity is expected today.' : 'No recent activity in the last 48 hours.'}</p></div>
         ) : (
           <div className="relative mt-3 space-y-3">
             {activityGroups.map((group, groupIndex) => (
@@ -819,13 +827,13 @@ export default function Home() {
         )}
         <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
       </section>
-      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2><div className="mt-3 space-y-2">{subjectAlertMetrics.length === 0 ? <p className="text-xs text-muted-foreground">No subjects need attention right now.</p> : subjectAlertMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div></section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2>{subjectAlertMetrics.length === 0 ? <div className="mt-3 flex justify-center text-center"><p className="text-xs text-muted-foreground">No subjects need attention right now.</p></div> : <div className="mt-3 space-y-2">{subjectAlertMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div>}</section>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2>
           <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span>
         </div>
-        {allPotentialMetrics.length === 0 ? <p className="mt-3 text-[10px] text-muted-foreground">Not enough data yet.</p> : (
+        {allPotentialMetrics.length === 0 ? <div className="mt-3 flex justify-center text-center"><p className="text-[10px] text-muted-foreground">Not enough data yet.</p></div> : (
           <div className="mt-3">
             <svg viewBox={`0 0 560 ${allPotentialMetrics.length * 46 + 34}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
               <line x1="112" x2="112" y1="10" y2={allPotentialMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
@@ -885,8 +893,8 @@ export default function Home() {
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <div className="flex flex-col items-end justify-center leading-tight">
-            <span className="text-[11px] sm:text-xs font-bold text-foreground">{new Date().toLocaleDateString('en-US', { weekday: 'short' })}</span>
-            <span className="text-[11px] sm:text-xs font-medium text-muted-foreground">{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+            <span className="text-[11px] sm:text-xs font-bold text-foreground">{new Date().toLocaleDateString('en-US', { weekday: 'long' })}</span>
+            <span className="text-[11px] sm:text-xs font-medium text-muted-foreground">{ordinalDay(new Date().getDate())} {new Date().toLocaleDateString('en-US', { month: 'long' })}</span>
           </div>
           {showUpdatePill && <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => setUpdateInfoOpen(true)} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-500 text-[10px] font-extrabold uppercase tracking-wide hover:bg-amber-500/25 transition-all cursor-pointer"><ArrowUpCircle className="w-3.5 h-3.5" /><span>Update Available · v{serverVersion}</span></button>
