@@ -200,6 +200,7 @@ export default function Home() {
   useEffect(() => {
     const el = wheelContainerRef.current;
     if (!el) return;
+    setContainerWidth(el.getBoundingClientRect().width);
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setContainerWidth(entry.contentRect.width);
@@ -207,7 +208,7 @@ export default function Home() {
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [showMarkAttendance]);
   const ITEM_WIDTH = 80;
   const selectedIndex = wheelDates.indexOf(selectedDateStr);
   const effectiveIndex = selectedIndex !== -1 ? selectedIndex : wheelDates.indexOf(todayStr);
