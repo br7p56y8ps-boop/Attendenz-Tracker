@@ -206,8 +206,8 @@ export default function Home() {
   const ITEM_WIDTH = 80;
   const selectedIndex = wheelDates.indexOf(selectedDateStr);
   const effectiveIndex = selectedIndex !== -1 ? selectedIndex : wheelDates.indexOf(todayStr);
-  const initialOffset = containerWidth / 2 - (effectiveIndex + 0.5) * ITEM_WIDTH;
-  const wheelTranslateX = initialOffset + offset;
+  const wheelEdgePadding = Math.max(0, containerWidth / 2 - ITEM_WIDTH / 2);
+  const wheelTranslateX = -effectiveIndex * ITEM_WIDTH + offset;
 
   const startMomentum = () => {
     if (momentumId.current) cancelAnimationFrame(momentumId.current);
@@ -722,6 +722,8 @@ export default function Home() {
             className="absolute top-0 bottom-0 flex items-center"
             style={{
               transform: `translateX(${wheelTranslateX}px)`,
+              paddingLeft: wheelEdgePadding,
+              paddingRight: wheelEdgePadding,
               transition: isDragging.current ? 'none' : 'transform 0.2s ease-out',
               willChange: 'transform',
             }}
@@ -748,7 +750,7 @@ export default function Home() {
                     zIndex: isCenter ? 10 : 0,
                     backgroundColor: isCenter ? 'var(--color-primary, #3b82f6)' : 'transparent',
                   }}
-                  onClick={() => setSelectedDateStr(dateStr)}
+                  onClick={() => { setSelectedDateStr(dateStr); setOffset(0); currentOffset.current = 0; }}
                 >
                   <span className={cn('text-sm font-bold', isCenter ? 'text-primary-foreground' : 'text-foreground', !isCenter && 'font-semibold')}>
                     {day} {month}
@@ -766,13 +768,6 @@ export default function Home() {
   );
   const dashboard = (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 flex items-end justify-between gap-3 pb-3">
-        <div>
-          <p className="text-sm font-semibold text-muted-foreground">{timeOfDay},</p>
-          <h1 className="text-2xl font-extrabold tracking-tight text-foreground">{username}</h1>
-        </div>
-        <p className="text-xs font-bold text-muted-foreground">{shortDate}</p>
-      </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-4 pb-4 scroll-fade-viewport scroll-reachability">
       <div className="relative grid grid-cols-[1.2fr_1fr] gap-3">
         <section className="glass-card absolute inset-y-0 left-0 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border p-3 text-left" style={{ width: 'calc((100% - 0.75rem) * 0.5454545)' }}>
@@ -885,8 +880,8 @@ export default function Home() {
     <Layout
       mainClassName="!overflow-hidden"
       contentClassName="h-full min-h-0 flex flex-col"
-      headerTitle={showMarkAttendance ? 'Attendance' : 'Dashboard'}
-      headerDescription={showMarkAttendance ? 'Mark and review classes for the selected date' : 'Your attendance overview and daily class pulse'}
+      headerTitle={showMarkAttendance ? 'Attendance' : `${timeOfDay}, ${username}`}
+      headerDescription={showMarkAttendance ? 'Mark and review classes for the selected date' : shortDate}
       headerRight={showUpdatePill ? (
         <div className="flex items-center gap-1.5 shrink-0">
           <button

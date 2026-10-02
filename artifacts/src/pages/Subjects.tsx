@@ -64,7 +64,19 @@ const CategoryCard = ({
   const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!isOpen || !cardRef.current) return;
-    const frame = window.requestAnimationFrame(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    const frame = window.requestAnimationFrame(() => {
+      const card = cardRef.current;
+      const scrollParent = card?.closest('main');
+      if (!(card instanceof HTMLElement) || !(scrollParent instanceof HTMLElement)) return;
+      const styles = window.getComputedStyle(scrollParent);
+      const headerHeight = Number.parseFloat(styles.getPropertyValue('--app-header-height')) || 0;
+      const stickyLabel = scrollParent.querySelector<HTMLElement>('[data-sticky-section-label="true"]');
+      const labelHeight = stickyLabel?.getBoundingClientRect().height || 32;
+      const scrollRect = scrollParent.getBoundingClientRect();
+      const targetTop = scrollRect.top + headerHeight + labelHeight + 16;
+      const delta = card.getBoundingClientRect().top - targetTop;
+      scrollParent.scrollBy({ top: delta, behavior: 'smooth' });
+    });
     return () => window.cancelAnimationFrame(frame);
   }, [isOpen]);
   const overallColor = pctColor(summary.pct, preferredPercentage, {
@@ -345,7 +357,7 @@ export default function Subjects() {
 
   return (
     <Layout>
-      <div className="space-y-4 pb-8 scroll-reachability">
+      <div className="space-y-4 pb-[calc(var(--app-bottom-nav-height)+1rem)] scroll-reachability">
         {/* Empty state for custom mode with no subjects */}
         {subjectMode === 'custom' && !customHasAnySubjects && (
           <div className="bg-card rounded-2xl p-8 border border-border text-center shadow-sm mt-2">
