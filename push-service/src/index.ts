@@ -112,6 +112,7 @@ type D1PreparedStatement = {
   all<T = unknown>(): Promise<{ results: T[] }>;
   run(): Promise<unknown>;
 };
+type PushDevice = Pick<DeviceRow, 'device_id' | 'subscription_json'>;
 
 const json = (body: unknown, status = 200, origin = DEFAULT_ALLOWED_ORIGIN): Response =>
   new Response(JSON.stringify(body), {
@@ -393,6 +394,21 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
   ];
 
   await env.DB.batch(statements);
+  const releaseVersion = env.RELEASE_VERSION;
+  if (payload.notificationsEnabled && payload.preferences.updateAvailable && releaseVersion && compareVersions(payload.appVersion || 'legacy', releaseVersion) < 0) {
+    try {
+      await deliverIfNew(
+        env,
+        { device_id: payload.deviceId, subscription_json: JSON.stringify(payload.subscription) },
+        `${payload.deviceId}:update-available:${releaseVersion}`,
+        'Update Available',
+        `A new version ${releaseVersion} is ready. Open the app to review and update.`,
+        DEFAULT_ALLOWED_ORIGIN,
+      );
+    } catch (cause) {
+      console.error('Update notification delivery failed', payload.deviceId, cause instanceof Error ? cause.message : 'unknown_error');
+    }
+  }
   return json({ ok: true, expiresAt: expiryIso(), occurrenceCount: payload.occurrences.length }, 200, origin);
 }
 
@@ -506,7 +522,7 @@ function buildNotificationData(title: string, body: string, url: string): { titl
   return { title, body: body.trim(), url };
 }
 
-async function deliverIfNew(env: Env, device: DeviceRow, deliveryKey: string, heading: string, body: string, url: string): Promise<boolean> {
+async function deliverIfNew(env: Env, device: PushDevice, deliveryKey: string, heading: string, body: string, url: string): Promise<boolean> {
   const existing = await env.DB.prepare(
     'SELECT delivery_key FROM deliveries WHERE delivery_key = ?1',
   ).bind(deliveryKey).first<{ delivery_key: string }>();
