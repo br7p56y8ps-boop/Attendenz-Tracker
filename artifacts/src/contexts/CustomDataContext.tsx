@@ -968,9 +968,12 @@ export const CustomDataProvider = ({ children }: { children: ReactNode }) => {
 
   function getPresetWardTotalPlannedLocal(wardName: string): number {
     const daysSet = new Set<string>();
-    const originalWardName = Object.entries(renamedPresetWards).find(([, renamed]) => renamed.trim().toLowerCase() === wardName.trim().toLowerCase())?.[0] ?? wardName;
+    const normalizedWardName = wardName.trim().toLowerCase();
+    const originalWardName = Object.entries(renamedPresetWards).find(([, renamed]) => renamed.trim().toLowerCase() === normalizedWardName)?.[0] ?? wardName;
+    const normalizedOriginalWardName = originalWardName.trim().toLowerCase();
     for (const slot of presetWardSchedule) {
-      if (slot.ward !== wardName && slot.ward !== originalWardName) continue;
+      const normalizedSlotWardName = slot.ward.trim().toLowerCase();
+      if (normalizedSlotWardName !== normalizedWardName && normalizedSlotWardName !== normalizedOriginalWardName) continue;
       try {
         const start = new Date(slot.start + 'T12:00:00');
         const end = new Date(slot.end + 'T12:00:00');
