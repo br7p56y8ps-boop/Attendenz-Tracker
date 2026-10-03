@@ -654,11 +654,13 @@ export default function Home() {
       const preset = [...CATEGORIES.flatMap(category => category.subjects), ...INTEGRATED_SUBJECTS, ...WARD_SUBJECTS]
         .find(item => ('id' in item && item.id.trim().toLowerCase() === rawId) || item.name.trim().toLowerCase() === nameKey);
       const presetPlanned = preset && 'total' in preset ? preset.total : undefined;
-      const planned = metric.plannedHint ?? registryItem?.planned ?? (metric.isWard
+      const planned = metric.category === 'Ward'
         ? subjectMode === 'custom' && customWardItem
           ? getCustomWardTotalPlanned(customWardItem.startDate, customWardItem.endDate, customWardItem.vacationPeriods)
           : getPresetWardTotalPlanned(metric.name)
-        : sourceItem?.plannedClasses ?? presetPlanned ?? (preset ? getSubjectPlannedTotal(metric.name) : undefined));
+        : metric.category === 'SGT'
+          ? sourceItem?.plannedClasses ?? metric.plannedHint ?? registryItem?.planned
+          : sourceItem?.plannedClasses ?? metric.plannedHint ?? registryItem?.planned ?? presetPlanned ?? (preset ? getSubjectPlannedTotal(metric.name) : undefined);
       const conducted = metric.attended + metric.missed;
       const remaining = planned === undefined ? 0 : Math.max(0, planned - conducted);
       const current = conducted === 0 ? 0 : (metric.attended / conducted) * 100;
