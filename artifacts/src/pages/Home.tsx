@@ -6,7 +6,7 @@ import { isSGTSubjectRecord, useCustomData } from '@/contexts/CustomDataContext'
 import { useAttendance, getSGTKey, getAcademicAttendanceKey, getWardAttendanceKey, getCanonicalAttendanceKey } from '@/contexts/AttendanceContext';
 import { useLocation } from 'wouter';
 import { cn, rangeStartMinutes, getPresetAcademicSessionId, getPresetWardSessionId, getCustomSubjectSessionId } from '@/lib/utils';
-import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
+import { APP_VERSION, BUILD_REVISION, LATEST_VERSION } from '@/lib/appVersion';
 import { CATEGORIES, INTEGRATED_SUBJECTS, PRESET_PARENTS, WARD_SUBJECTS } from '@/lib/constants';
 import { ArrowUpCircle, X, MoonStar, ClipboardCheck, Pencil, Plus, Minus, CalendarDays, Percent, Tag } from 'lucide-react';
 import { ModalSheet } from '@/components/ui/modal-sheet';
@@ -136,12 +136,23 @@ export default function Home() {
 
   const [, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
+  const [serverBuildRevision, setServerBuildRevision] = useState<string>(() => localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
   const [serverSummary, setServerSummary] = useState<string>(() => localStorage.getItem('att_pwa_update_summary') || '');
   useEffect(() => {
-    const onReady = () => setPwaReady(true);
+    const syncPendingUpdate = () => {
+      const pendingVersion = localStorage.getItem('att_pwa_latest_version');
+      if (localStorage.getItem('att_pwa_update_ready') !== 'true' || !pendingVersion) return;
+      setPwaReady(true);
+      setServerVersion(pendingVersion);
+      setServerBuildRevision(localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
+      setServerSummary(localStorage.getItem('att_pwa_update_summary') || '');
+    };
+    syncPendingUpdate();
+    const onReady = () => syncPendingUpdate();
     const onCleared = () => {
       setPwaReady(false);
       setServerVersion(APP_VERSION);
+      setServerBuildRevision(BUILD_REVISION);
       setServerSummary('');
     };
     window.addEventListener('attendenz:update-ready', onReady);
@@ -151,7 +162,8 @@ export default function Home() {
       window.removeEventListener('attendenz:update-cleared', onCleared);
     };
   }, []);
-  const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0;
+  const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0
+    || (serverVersion === installedVersion && serverBuildRevision !== BUILD_REVISION);
   const [updateNoticeDismissed, setUpdateNoticeDismissed] = useState<boolean>(() => sessionStorage.getItem('att_update_notice_dismissed') === 'true');
   const [updateInfoOpen, setUpdateInfoOpen] = useState(false);
   const showUpdatePill = isUpdateAvailable && !updateNoticeDismissed;

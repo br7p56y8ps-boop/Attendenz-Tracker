@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
-import { APP_VERSION, BUILD_REVISION, RELEASE_TYPE, UPDATE_PROTOCOL, UPDATE_MODE, type ReleaseType, type UpdateMode } from '@/lib/appVersion';
+import { APP_VERSION, BUILD_REVISION, RELEASE_TYPE, UPDATE_PROTOCOL, type ReleaseType, type UpdateMode } from '@/lib/appVersion';
 import { idbGetAllChecked, storageRemoveItemChecked, storageSetItemChecked } from '@/lib/idb';
 
 const base = import.meta.env.BASE_URL || '/';
@@ -53,8 +53,9 @@ function compareVersions(candidate: string, current: string): number {
 function isVersionNewer(candidate: string, current: string): boolean {
   return compareVersions(candidate, current) > 0;
 }
-function isAutomaticEligible(serverProtocol: unknown, threshold: unknown): boolean {
-  return Number(serverProtocol) >= UPDATE_PROTOCOL
+function isAutomaticEligible(serverMode: UpdateMode, serverProtocol: unknown, threshold: unknown): boolean {
+  return serverMode === 'automatic'
+    && Number(serverProtocol) >= UPDATE_PROTOCOL
     && typeof threshold === 'string'
     && /^\d+\.\d+\.\d+$/.test(threshold)
     && compareVersions(APP_VERSION, threshold) >= 0;
@@ -179,6 +180,7 @@ if ('serviceWorker' in navigator) {
     const controller = new AbortController();
     updateCheckInFlight = controller;
     try {
+      await activeVersionReady;
       const res = await fetch(`${base}version.json?ts=${Date.now()}`, { cache: 'no-store', signal: controller.signal });
       if (!res.ok) return;
       const j = await res.json() as { version?: unknown; buildRevision?: unknown; summary?: unknown; releaseType?: unknown; updateMode?: unknown; updateProtocol?: unknown; automaticFromVersion?: unknown };
@@ -190,9 +192,10 @@ if ('serviceWorker' in navigator) {
           && j.buildRevision !== BUILD_REVISION;
         if (versionComparison > 0 || hasNewBuild) {
           const releaseType: ReleaseType = j.releaseType === 'major' || j.releaseType === 'minor' ? j.releaseType : RELEASE_TYPE;
-          const updateMode: UpdateMode = j.updateMode === 'automatic' || j.updateMode === 'manual' ? j.updateMode : UPDATE_MODE;
+          // Unknown or missing policy is fail-safe manual; auto-activation requires explicit server intent.
+          const updateMode: UpdateMode = j.updateMode === 'automatic' ? 'automatic' : 'manual';
           const buildRevision = typeof j.buildRevision === 'string' && j.buildRevision ? j.buildRevision : j.version;
-          const automaticEligible = isAutomaticEligible(j.updateProtocol, j.automaticFromVersion);
+          const automaticEligible = isAutomaticEligible(updateMode, j.updateProtocol, j.automaticFromVersion);
           if (automaticEligible) {
             await storageSetItemChecked('att_pwa_approved_version', j.version).catch(() => undefined);
             localStorage.setItem(ACTIVATION_PENDING_KEY, j.version);
@@ -258,49 +261,5 @@ if ('serviceWorker' in navigator) {
   return true;
 };
 
-async function enforceManualReleaseGate(): Promise<boolean> {
-  if (UPDATE_MODE !== 'manual') return true;
-  const storedAppVersion = localStorage.getItem('att_app_version');
-  let initialValues: Record<string, string> = {};
-  try {
-    initialValues = await idbGetAllChecked();
-  } catch {
-    return false;
-  }
-  const priorVersion = initialValues[ACTIVE_VERSION_KEY] || storedAppVersion;
-  const approvedVersion = initialValues[APPROVED_VERSION_KEY];
-  await activeVersionReady;
-
-  if (!priorVersion) {
-    const accepted = window.confirm(`Attendenz ${APP_VERSION} is ready. Choose OK to open this release.`);
-    if (!accepted) {
-      document.body.innerHTML = '<main style="font:16px system-ui;padding:24px">This manual release was not approved.</main>';
-      return false;
-    }
-    await storageSetItemChecked(APPROVED_VERSION_KEY, APP_VERSION);
-    return true;
-  }
-  if (priorVersion === APP_VERSION && approvedVersion === APP_VERSION) return true;
-  if (priorVersion === APP_VERSION) return true;
-
-  const accepted = window.confirm(`Attendenz ${APP_VERSION} is ready. Choose OK to update now, or Cancel to keep your current version.`);
-  if (!accepted) {
-    document.body.innerHTML = '<main style="font:16px system-ui;padding:24px">This update was not approved. Reopen the app when you are ready.</main>';
-    return false;
-  }
-
-  localStorage.setItem(ACTIVATION_PENDING_KEY, APP_VERSION);
-  const activated = await activateApprovedServiceWorker(APP_VERSION);
-  if (!activated) {
-    localStorage.removeItem(ACTIVATION_PENDING_KEY);
-    window.alert('The update could not be activated. Your current version will remain in place.');
-    document.body.innerHTML = '<main style="font:16px system-ui;padding:24px">The update could not be activated. Your current version remains in place.</main>';
-    return false;
-  }
-  window.location.reload();
-  return false;
-}
-
-void enforceManualReleaseGate().then((allowed) => {
-  if (allowed) createRoot(document.getElementById('root')!).render(<App />);
-});
+// Render the app first; a pending manual release is presented by the in-app update sheet.
+createRoot(document.getElementById('root')!).render(<App />);

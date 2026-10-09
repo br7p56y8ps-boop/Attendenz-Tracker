@@ -42,8 +42,13 @@ jobs:
         shell: bash
         run: |
           version=$(node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('artifacts/release.config.json','utf8')); if(!/^\\d+\\.\\d+\\.\\d+$/.test(c.version)) process.exit(1); process.stdout.write(c.version)")
+          mode=$(node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('artifacts/release.config.json','utf8')); if(!['manual','automatic'].includes(c.updateMode)) process.exit(1); process.stdout.write(c.updateMode)")
+          build_revision="${ATTENDENZ_BUILD_REVISION:-${CF_PAGES_COMMIT_SHA:-$GITHUB_SHA}}"
+          if [ -z "$build_revision" ]; then echo "Build revision is required" >&2; exit 1; fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Deploying release $version"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "build_revision=$build_revision" >> "$GITHUB_OUTPUT"
+          echo "Deploying $mode release $version ($build_revision)"
 
       - name: Type-check push service
         working-directory: push-service
@@ -53,6 +58,6 @@ jobs:
         working-directory: push-service
         run: npx wrangler d1 migrations apply attendenz-reminders --remote
 
-      - name: Deploy push Worker with release version
+      - name: Deploy push Worker with release metadata
         working-directory: push-service
-        run: npx wrangler deploy --var RELEASE_VERSION:${{ steps.release.outputs.version }}
+        run: npx wrangler deploy --var RELEASE_VERSION:${{ steps.release.outputs.version }} --var RELEASE_MODE:${{ steps.release.outputs.mode }} --var RELEASE_BUILD_REVISION:${{ steps.release.outputs.build_revision }}

@@ -17,7 +17,7 @@ import { readNavBarStyle, saveNavBarStyle, type NavBarStyle } from '@/lib/uiPref
 import { getSoundEnabled, getSoundStyle, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundStyle, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type SoundStyle, type VibrationStyle } from '@/lib/feedback';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
-import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
+import { APP_VERSION, BUILD_REVISION, LATEST_VERSION } from '@/lib/appVersion';
 import { UpdateProgressSlider } from '@/utils/useUpdateFlow';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport } from '@/lib/exportUtils';
@@ -241,11 +241,21 @@ export default function Settings() {
 
   const [, setPwaReady] = useState<boolean>(() => localStorage.getItem('att_pwa_update_ready') === 'true');
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
+  const [serverBuildRevision, setServerBuildRevision] = useState<string>(() => localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
   useEffect(() => {
-    const onReady = () => setPwaReady(true);
+    const syncPendingUpdate = () => {
+      const pendingVersion = localStorage.getItem('att_pwa_latest_version');
+      if (localStorage.getItem('att_pwa_update_ready') !== 'true' || !pendingVersion) return;
+      setPwaReady(true);
+      setServerVersion(pendingVersion);
+      setServerBuildRevision(localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
+    };
+    syncPendingUpdate();
+    const onReady = () => syncPendingUpdate();
     const onCleared = () => {
       setPwaReady(false);
       setServerVersion(APP_VERSION);
+      setServerBuildRevision(BUILD_REVISION);
     };
     window.addEventListener('attendenz:update-ready', onReady);
     window.addEventListener('attendenz:update-cleared', onCleared);
@@ -254,7 +264,8 @@ export default function Settings() {
       window.removeEventListener('attendenz:update-cleared', onCleared);
     };
   }, []);
-  const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0;
+  const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0
+    || (serverVersion === installedVersion && serverBuildRevision !== BUILD_REVISION);
   const [updatePhase, setUpdatePhase] = useState<'none' | 'backing' | 'downloading' | 'installing' | 'completed'>('none');
   const [progressComplete, setProgressComplete] = useState(false);
   useEffect(() => { if (updatePhase === 'none') setProgressComplete(false); }, [updatePhase]);
@@ -1517,7 +1528,7 @@ export default function Settings() {
                   <Download className="w-4 h-4" /><span>Backup & Update</span>
                 </button>
                 <button type="button" onClick={() => handleApplyUpdate(false)} className="action-button action-button--neutral w-full">Update without Backup</button>
-                <button type="button" onClick={() => { localStorage.setItem('att_update_gate_dismissed_version', serverVersion); setShowUpdatePrompt(false); }} className="action-button action-button--cancel w-full">Remind Later</button>
+                <button type="button" onClick={() => { localStorage.setItem('att_update_gate_dismissed_release', `${serverVersion}:${serverBuildRevision}`); setShowUpdatePrompt(false); }} className="action-button action-button--cancel w-full">Remind Later</button>
               </div>
         </ModalSheet>
 

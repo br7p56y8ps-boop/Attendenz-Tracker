@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createSnapshot, getSnapshots } from '@/utils/snapshotUtils';
 import { ModalSheet } from '@/components/ui/modal-sheet';
-import { APP_VERSION, BUILD_REVISION, LATEST_VERSION } from '@/lib/appVersion';
+import { APP_VERSION, BUILD_REVISION, LATEST_VERSION, type UpdateMode } from '@/lib/appVersion';
 import { storageSetItemChecked, storageRemoveItemChecked, storageCommitChecked } from '@/lib/idb';
 import { notifyUpdateAvailable } from '@/lib/webPush';
 
@@ -24,24 +24,25 @@ export function useUpdateFlow() {
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
   const [serverBuildRevision, setServerBuildRevision] = useState<string>(() => localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
   const [serverSummary, setServerSummary] = useState<string>(() => localStorage.getItem('att_pwa_update_summary') || '');
+  const [serverUpdateMode, setServerUpdateMode] = useState<UpdateMode>(() => localStorage.getItem('att_pwa_update_mode') === 'automatic' ? 'automatic' : 'manual');
   useEffect(() => {
-    const pendingVersion = localStorage.getItem('att_pwa_latest_version');
-    const pendingSummary = localStorage.getItem('att_pwa_update_summary') || '';
-    if (localStorage.getItem('att_pwa_update_ready') === 'true' && pendingVersion) {
+    const syncPendingUpdate = () => {
+      const pendingVersion = localStorage.getItem('att_pwa_latest_version');
+      if (localStorage.getItem('att_pwa_update_ready') !== 'true' || !pendingVersion) return;
       setPwaReady(true);
       setServerVersion(pendingVersion);
       setServerBuildRevision(localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
-      setServerSummary(pendingSummary);
-    }
-    const onReady = () => {
-      setServerBuildRevision(localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
-      setPwaReady(true);
+      setServerSummary(localStorage.getItem('att_pwa_update_summary') || '');
+      setServerUpdateMode(localStorage.getItem('att_pwa_update_mode') === 'automatic' ? 'automatic' : 'manual');
     };
+    syncPendingUpdate();
+    const onReady = () => syncPendingUpdate();
     const onCleared = () => {
       setPwaReady(false);
       setServerVersion(APP_VERSION);
       setServerBuildRevision(BUILD_REVISION);
       setServerSummary('');
+      setServerUpdateMode('manual');
     };
     window.addEventListener('attendenz:update-ready', onReady);
     window.addEventListener('attendenz:update-cleared', onCleared);
@@ -54,13 +55,13 @@ export function useUpdateFlow() {
     || (serverVersion === installedVersion && serverBuildRevision !== BUILD_REVISION);
 
   useEffect(() => {
-    if (!isUpdateAvailable) return;
+    if (!isUpdateAvailable || serverUpdateMode !== 'manual') return;
     const sentKey = `att_update_available_notified_${serverVersion}_${serverBuildRevision}`;
     if (localStorage.getItem(sentKey) === 'true') return;
     void notifyUpdateAvailable(serverVersion).then(sent => {
       if (sent) localStorage.setItem(sentKey, 'true');
     });
-  }, [isUpdateAvailable, serverVersion, installedVersion]);
+  }, [isUpdateAvailable, serverVersion, serverBuildRevision, serverUpdateMode, installedVersion]);
 
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   useEffect(() => {
@@ -137,7 +138,7 @@ export function useUpdateFlow() {
     window.location.href = import.meta.env.BASE_URL || '/';
   };
 
-  return { isUpdateAvailable, serverVersion, serverSummary, online, updatePhase, progressComplete, applyUpdate };
+  return { isUpdateAvailable, serverVersion, serverBuildRevision, serverSummary, online, updatePhase, progressComplete, applyUpdate };
 }
 
 export const UpdateProgressSlider = ({ phase, complete = false }: { phase: 'backing' | 'downloading' | 'installing' | 'completed'; complete?: boolean }) => {

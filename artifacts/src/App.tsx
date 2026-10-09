@@ -26,15 +26,15 @@ const NotFound = lazy(() => import('@/pages/not-found'));
 const PageFallback = () => <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Initialising…</div>;
 
 const HAS_SEEN_WELCOME_KEY = 'att_has_seen_welcome_v1';
-const UPDATE_GATE_DISMISSED_VERSION_KEY = 'att_update_gate_dismissed_version';
-
+const UPDATE_GATE_DISMISSED_RELEASE_KEY = 'att_update_gate_dismissed_release';
 function AuthGate() {
   const { isLoggedIn } = useAuth();
-  const { isUpdateAvailable, online, serverVersion, serverSummary, updatePhase, progressComplete, applyUpdate } = useUpdateFlow();
-  const [gateDismissed, setGateDismissed] = useState<boolean>(() => localStorage.getItem(UPDATE_GATE_DISMISSED_VERSION_KEY) === localStorage.getItem('att_pwa_latest_version'));
+  const { isUpdateAvailable, online, serverVersion, serverBuildRevision, serverSummary, updatePhase, progressComplete, applyUpdate } = useUpdateFlow();
+  const releaseKey = `${serverVersion}:${serverBuildRevision}`;
+  const [gateDismissed, setGateDismissed] = useState<boolean>(() => localStorage.getItem(UPDATE_GATE_DISMISSED_RELEASE_KEY) === releaseKey);
   useEffect(() => {
-    setGateDismissed(localStorage.getItem(UPDATE_GATE_DISMISSED_VERSION_KEY) === serverVersion);
-  }, [serverVersion]);
+    setGateDismissed(localStorage.getItem(UPDATE_GATE_DISMISSED_RELEASE_KEY) === releaseKey);
+  }, [releaseKey]);
 
   if (!isLoggedIn) return <Suspense fallback={<PageFallback />}><Login /></Suspense>;
   // Pre-Home gate: block BEFORE Home renders (not an overlay on Home)
@@ -49,7 +49,7 @@ function AuthGate() {
             open={updatePhase === 'none'}
             serverVersion={serverVersion}
             summary={serverSummary}
-            onRemind={() => { localStorage.setItem(UPDATE_GATE_DISMISSED_VERSION_KEY, serverVersion); setGateDismissed(true); }}
+            onRemind={() => { localStorage.setItem(UPDATE_GATE_DISMISSED_RELEASE_KEY, releaseKey); setGateDismissed(true); }}
             onUpdate={(b) => applyUpdate(b)}
           />
           <UpdateOverlay phase={updatePhase} progressComplete={progressComplete} />

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS devices (
   safe_to_miss INTEGER NOT NULL DEFAULT 0,
   unmarked_attendance_today INTEGER NOT NULL DEFAULT 1,
   app_version TEXT NOT NULL DEFAULT 'unknown',
+  app_build_revision TEXT NOT NULL DEFAULT 'legacy',
   update_available INTEGER NOT NULL DEFAULT 0,
   last_sync_at TEXT NOT NULL,
   expires_at TEXT NOT NULL

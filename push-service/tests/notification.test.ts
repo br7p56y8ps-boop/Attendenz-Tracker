@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import { __test } from '../src/index.ts';
 
-const { cleanLabel, isBeforeClassDue, isValidNightlyReminderTime, parseReminderTime, isWithinFiveMinuteWindow, isWithinNightlyWindow, nightlyScheduleDate } = __test;
+const { cleanLabel, isBeforeClassDue, isValidNightlyReminderTime, parseReminderTime, isWithinFiveMinuteWindow, isWithinNightlyWindow, nightlyScheduleDate, compareVersions, isManualUpdateAvailable, sendManualUpdateAvailable } = __test;
+assert.equal(compareVersions('1.7.1', '1.7.2'), -1, 'minor version components must be compared');
+assert.equal(compareVersions('1.7.2', '1.7.1'), 1, 'newer minor versions must be detected');
+
+assert.equal(isManualUpdateAvailable('1.7.1', 'old-revision', '1.7.2', 'manual', 'new-revision'), true, 'manual version upgrade should notify');
+assert.equal(isManualUpdateAvailable('1.7.2', 'old-revision', '1.7.2', 'manual', 'new-revision'), true, 'manual same-version build should notify');
+assert.equal(isManualUpdateAvailable('1.7.2', 'new-revision', '1.7.2', 'manual', 'new-revision'), false, 'current build should not notify');
+assert.equal(isManualUpdateAvailable('1.7.2', 'old-revision', '1.7.2', 'manual', undefined), false, 'same-version update requires a known release build revision');
+assert.equal(isManualUpdateAvailable('1.7.2', 'old-revision', '1.7.2', 'automatic', 'new-revision'), false, 'automatic releases must not send update-available pushes');
+assert.equal(isManualUpdateAvailable('1.7.3', 'newer-revision', '1.7.2', 'manual', 'new-revision'), false, 'newer installed versions must not notify');
+assert.equal(isManualUpdateAvailable('legacy', 'legacy', '1.7.2', 'manual', 'new-revision'), true, 'legacy installed versions should count as pending for a manual release');
 
 assert.equal(isValidNightlyReminderTime('22:30'), true);
 assert.equal(isValidNightlyReminderTime('23:59'), true);
@@ -104,6 +114,25 @@ try {
   assert.equal(pushCount, 2, 'changing the nightly time must not send a second reminder for the same night');
   await processDevice({ DB: db, VAPID_SUBJECT: 'https://benz-attendance-tracker.pages.dev', VAPID_SERVER_PUBLIC_KEY: base64Url(vapidPublic), VAPID_SERVER_PRIVATE_KEY: vapidJwk.d! }, device, Date.parse('2026-09-07T08:00:00Z'));
   assert.equal(pushCount, 2, 'nightly batch should not send after the 4 AM cutoff');
+
+  const updateEnv = {
+    DB: db,
+    VAPID_SUBJECT: 'https://benz-attendance-tracker.pages.dev',
+    VAPID_SERVER_PUBLIC_KEY: base64Url(vapidPublic),
+    VAPID_SERVER_PRIVATE_KEY: vapidJwk.d!,
+    RELEASE_VERSION: '1.7.2',
+    RELEASE_MODE: 'manual',
+    RELEASE_BUILD_REVISION: 'new-revision',
+  };
+  const updateDevice = { device_id: device.device_id, subscription_json: device.subscription_json };
+  await sendManualUpdateAvailable(updateEnv, updateDevice, '1.7.1', 'old-revision', true);
+  assert.equal(pushCount, 3, 'a subscribed device behind a manual version should receive a remote push');
+  await sendManualUpdateAvailable(updateEnv, updateDevice, '1.7.1', 'old-revision', true);
+  assert.equal(pushCount, 3, 'a device should receive at most one push for the same release');
+  await sendManualUpdateAvailable({ ...updateEnv, RELEASE_MODE: 'automatic' }, { ...updateDevice, device_id: 'device-auto-test-123456' }, '1.7.1', 'old-revision', true);
+  assert.equal(pushCount, 3, 'automatic releases must not send remote update pushes');
+  await sendManualUpdateAvailable(updateEnv, { ...updateDevice, device_id: 'device-same-build-test-123456' }, '1.7.2', 'old-revision', true);
+  assert.equal(pushCount, 4, 'a subscribed device behind a same-version manual build should receive a remote push');
 } finally {
   globalThis.fetch = originalFetch;
 }

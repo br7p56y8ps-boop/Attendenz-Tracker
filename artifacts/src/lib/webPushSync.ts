@@ -26,7 +26,7 @@ import {
   type DirectPushSubscription,
   type NotificationPreferences,
 } from '@/lib/webPush';
-import { APP_VERSION } from '@/lib/appVersion';
+import { APP_VERSION, BUILD_REVISION } from '@/lib/appVersion';
 import {
   parseRangeToMinutes,
   getPresetAcademicSessionId,
@@ -122,6 +122,7 @@ type ReminderOccurrence = {
 type ReminderSyncPayload = {
   version: 3;
   appVersion: string;
+  appBuildRevision: string;
   deviceId: string;
   deviceToken: string;
   subscription: DirectPushSubscription;
@@ -690,6 +691,7 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
       const payload: ReminderSyncPayload = {
         version: 3,
         appVersion: APP_VERSION,
+        appBuildRevision: BUILD_REVISION,
         deviceId: getDeviceId(),
         deviceToken: getDeviceToken(),
         subscription,

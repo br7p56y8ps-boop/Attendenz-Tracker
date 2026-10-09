@@ -15,13 +15,28 @@ const DOCUMENTED_PUSH_ENDPOINTS = [
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
 function compareVersions(left: string, right: string): number {
-  const parse = (value: string) => value.split(/[.+-]/)[0].split('.').map(part => Number.parseInt(part, 10) || 0);
+  const parse = (value: string) => value.split(/[+-]/, 1)[0].split('.').map(part => Number.parseInt(part, 10) || 0);
   const a = parse(left);
   const b = parse(right);
   for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
     if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) - (b[i] || 0);
   }
   return 0;
+}
+
+function isManualUpdateAvailable(
+  installedVersion: string,
+  installedBuildRevision: string,
+  releaseVersion: string | undefined,
+  releaseMode: string | undefined,
+  releaseBuildRevision: string | undefined,
+): boolean {
+  if (releaseMode !== 'manual' || !releaseVersion) return false;
+  const versionComparison = compareVersions(installedVersion || 'legacy', releaseVersion);
+  if (versionComparison < 0) return true;
+  return versionComparison === 0
+    && Boolean(releaseBuildRevision)
+    && installedBuildRevision !== releaseBuildRevision;
 }
 // Cloudflare Worker isolates do not share memory; durable cross-isolate limiting
 // would require an external store. Expired buckets are pruned on each request.
@@ -34,6 +49,8 @@ export interface Env {
   VAPID_SERVER_PRIVATE_KEY: string;
   ALLOWED_ORIGIN?: string;
   RELEASE_VERSION?: string;
+  RELEASE_MODE?: string;
+  RELEASE_BUILD_REVISION?: string;
 }
 
 export interface A1Preferences {
@@ -67,6 +84,7 @@ export interface ReminderOccurrence {
 export interface A1ReminderPayload {
   version: 3;
   appVersion?: string;
+  appBuildRevision?: string;
   deviceId: string;
   deviceToken: string;
   subscription: WebPushSubscription;
@@ -96,6 +114,7 @@ type DeviceRow = {
   safe_to_miss: number;
   unmarked_attendance_today: number;
   app_version: string;
+  app_build_revision: string;
   update_available: number;
 };
 
@@ -235,6 +254,7 @@ function validatePayload(payload: unknown): payload is A1ReminderPayload {
   return (
     item.version === 3 &&
     (item.appVersion === undefined || (typeof item.appVersion === 'string' && item.appVersion.length > 0 && item.appVersion.length <= 32)) &&
+    (item.appBuildRevision === undefined || (typeof item.appBuildRevision === 'string' && item.appBuildRevision.length > 0 && item.appBuildRevision.length <= 200)) &&
     isValidId(item.deviceId, 16, 96) &&
     isValidId(item.deviceToken, 32, 160) &&
     isValidSubscription(item.subscription) &&
@@ -325,8 +345,8 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       midnight_need_attention, final_class_today, first_class_today,
       pre_class_need_attention, all_scheduled_digest,
       lead_minutes, nightly_reminder_time, need_attention_subjects, safe_to_miss, unmarked_attendance_today,
-      app_version, update_available, last_sync_at, expires_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+      app_version, app_build_revision, update_available, last_sync_at, expires_at
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
     ON CONFLICT(device_id) DO UPDATE SET
       token_hash = excluded.token_hash,
       subscription_json = excluded.subscription_json,
@@ -343,6 +363,7 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       safe_to_miss = excluded.safe_to_miss,
       unmarked_attendance_today = excluded.unmarked_attendance_today,
       app_version = excluded.app_version,
+      app_build_revision = excluded.app_build_revision,
       update_available = excluded.update_available,
       last_sync_at = excluded.last_sync_at,
       expires_at = excluded.expires_at`,
@@ -363,6 +384,7 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
     boolInt(payload.preferences.safeToMiss),
     boolInt(payload.preferences.unmarkedAttendanceToday),
     payload.appVersion || 'legacy',
+    payload.appBuildRevision || 'legacy',
     boolInt(payload.preferences.updateAvailable === true),
     now,
     expiryIso(),
@@ -394,20 +416,16 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
   ];
 
   await env.DB.batch(statements);
-  const releaseVersion = env.RELEASE_VERSION;
-  if (payload.notificationsEnabled && payload.preferences.updateAvailable && releaseVersion && compareVersions(payload.appVersion || 'legacy', releaseVersion) < 0) {
-    try {
-      await deliverIfNew(
-        env,
-        { device_id: payload.deviceId, subscription_json: JSON.stringify(payload.subscription) },
-        `${payload.deviceId}:update-available:${releaseVersion}`,
-        'Update Available',
-        `A new version ${releaseVersion} is ready. Open the app to review and update.`,
-        DEFAULT_ALLOWED_ORIGIN,
-      );
-    } catch (cause) {
-      console.error('Update notification delivery failed', payload.deviceId, cause instanceof Error ? cause.message : 'unknown_error');
-    }
+  try {
+    await sendManualUpdateAvailable(
+      env,
+      { device_id: payload.deviceId, subscription_json: JSON.stringify(payload.subscription) },
+      payload.appVersion || 'legacy',
+      payload.appBuildRevision || 'legacy',
+      payload.notificationsEnabled && payload.preferences.updateAvailable === true,
+    );
+  } catch (cause) {
+    console.error('Update notification delivery failed', payload.deviceId, cause instanceof Error ? cause.message : 'unknown_error');
   }
   return json({ ok: true, expiresAt: expiryIso(), occurrenceCount: payload.occurrences.length }, 200, origin);
 }
@@ -537,6 +555,30 @@ async function deliverIfNew(env: Env, device: PushDevice, deliveryKey: string, h
   return true;
 }
 
+async function sendManualUpdateAvailable(
+  env: Env,
+  device: PushDevice,
+  installedVersion: string,
+  installedBuildRevision: string,
+  enabled: boolean,
+): Promise<boolean> {
+  const releaseVersion = env.RELEASE_VERSION;
+  if (!enabled || !isManualUpdateAvailable(installedVersion, installedBuildRevision, releaseVersion, env.RELEASE_MODE, env.RELEASE_BUILD_REVISION)) return false;
+  const versionComparison = compareVersions(installedVersion || 'legacy', releaseVersion!);
+  const releaseIdentity = `${releaseVersion}:${env.RELEASE_BUILD_REVISION || releaseVersion}`;
+  const body = versionComparison === 0
+    ? `A new build of version ${releaseVersion} is ready. Open the app to review and update.`
+    : `A new version ${releaseVersion} is ready. Open the app to review and update.`;
+  return deliverIfNew(
+    env,
+    device,
+    `${device.device_id}:update-available:${releaseIdentity}`,
+    'Update Available',
+    body,
+    DEFAULT_ALLOWED_ORIGIN,
+  );
+}
+
 function listNames(rows: OccurrenceRow[], limit = 6): string {
   const names = [...new Set(rows.map(row => cleanLabel(row.subjectLabel, row.category)))];
   const visible = names.slice(0, limit);
@@ -646,15 +688,16 @@ async function runScheduled(env: Env, scheduledAt: number): Promise<void> {
     `SELECT device_id, subscription_json, timezone, notifications_enabled,
             midnight_need_attention, final_class_today, first_class_today,
       pre_class_need_attention, all_scheduled_digest, lead_minutes, nightly_reminder_time,
-      need_attention_subjects, safe_to_miss, unmarked_attendance_today,
-      app_version, update_available
+            need_attention_subjects, safe_to_miss, unmarked_attendance_today,
+            app_version, app_build_revision, update_available
       FROM devices WHERE notifications_enabled = 1 AND expires_at > ?1`,
   ).bind(new Date(scheduledAt).toISOString()).all<DeviceRow>();
   for (const device of devices.results || []) {
     try {
-      const releaseVersion = env.RELEASE_VERSION;
-      if (device.update_available && releaseVersion && compareVersions(device.app_version, releaseVersion) < 0) {
-        await deliverIfNew(env, device, `${device.device_id}:update-available:${releaseVersion}`, 'Update Available', `A new version ${releaseVersion} is ready. Open the app to review and update.`, DEFAULT_ALLOWED_ORIGIN);
+      try {
+        await sendManualUpdateAvailable(env, device, device.app_version, device.app_build_revision, Boolean(device.update_available));
+      } catch (cause) {
+        console.error('Update notification delivery failed', device.device_id, cause instanceof Error ? cause.message : 'unknown_error');
       }
       await processDevice(env, device, scheduledAt);
     } catch (cause) {
@@ -700,4 +743,7 @@ export const __test = {
   nightlyScheduleDate,
   processDevice,
   buildNotificationData,
+  compareVersions,
+  isManualUpdateAvailable,
+  sendManualUpdateAvailable,
 };

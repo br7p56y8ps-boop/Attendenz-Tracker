@@ -8,20 +8,17 @@ The current configuration is:
 
 ```json
 {
-  "version": "1.7.1",
+  "version": "1.7.2",
   "releaseType": "minor",
-  "updateMode": "automatic",
+  "updateMode": "manual",
   "updateProtocol": 2,
-  "automaticFromVersion": "1.7.1"
+  "automaticFromVersion": "1.7.2"
 }
 ```
 
-This means:
+For clients running this corrected checker, `updateMode: "manual"` always takes precedence: a release remains pending until the user selects Update, regardless of the automatic threshold. Only a release whose server metadata explicitly says `updateMode: "automatic"` may use protocol-based auto-activation. Missing or unrecognized modes are treated as manual.
 
-- Existing **protocol-2 clients running v1.7.1** may automatically receive a newer same-version build when its Git build revision changes.
-- Clients older than **v1.7.1** do not use the same-version automatic revision path.
-- A higher-version release still follows the compatibility behavior implemented by that client; do not assume every old client can use the new protocol.
-- `updateMode` is also retained for legacy clients. Treat it as a release-policy setting, not merely a label.
+The first build containing this correction is a one-time compatibility exception: already-deployed v1.7.2 clients run an older checker that ignores `updateMode`, so with the threshold at v1.7.2 they may automatically install that first same-version build. Once that build is installed, subsequent manual releases use the in-app update sheet.
 
 ## Files involved
 
@@ -32,6 +29,8 @@ This means:
 | `artifacts/src/main.tsx` | Compares server metadata and performs manual or automatic activation |
 | `artifacts/src/lib/appVersion.ts` | Exposes version, build revision, and protocol constants |
 | `artifacts/sw.template.js` | Revision-specific cache and service-worker approval logic |
+| `push-service/src/index.ts` | Sends remote Update Available pushes only for subscribed devices with a pending manual release |
+| `push-service/migrations/0009_device_build_revision.sql` | Stores the installed device build so same-version release revisions can be detected |
 | `artifacts/src/attendenz-build-revision.d.ts` | TypeScript declaration for the build-time revision constant; required and must remain |
 
 ## Meaning of the release fields
@@ -50,13 +49,21 @@ This is the client capability level. Keep it at `2` for ordinary releases using 
 
 ### `automaticFromVersion`
 
-This is the minimum installed version allowed to use the protocol-aware automatic path. For example:
+Choose this value deliberately for **every release**. It is the minimum installed version allowed to use the protocol-aware automatic path when the release mode is explicitly `automatic`. It does not turn a manual release into an automatic one for clients with the corrected checker. It remains important for older clients that may use the threshold without honoring the mode.
+
+- For an ordinary manual version bump, set it to the new release version (for example, `1.8.0` for a manual `1.8.0` release) to keep earlier clients out of the legacy automatic path.
+- For a same-version automatic fix, keep/set it to the first compatible installed-version cohort that should receive that automatic build (for example, v1.7.1 clients for a protocol-2 v1.7.1 revision). It need not increase for every same-version build if the same cohort is intended.
+- For an emergency manual release, a higher threshold such as `99.0.0` can exclude all current clients from legacy automatic behavior.
+
+For example:
 
 ```json
 "automaticFromVersion": "1.7.1"
 ```
 
-A client is eligible only when it supports the required protocol, its installed version is at least this threshold, and the server reports either a newer version or a different build revision.
+A client may auto-activate only when the server explicitly selects automatic mode, the client supports the required protocol, its installed version meets this threshold, and the server reports a newer version or a different build revision. In manual mode, updated clients record the release as pending and wait for the user’s choice.
+
+Remote **Update Available** push notifications follow the same manual-release policy. The push Worker receives the configured release mode/version/build revision at deploy time and sends at most one push per subscribed device and release identity when the device is behind by version or (for a same-version manual release) build revision. The device must have system notifications enabled and the Update Available notification preference enabled. Automatic releases do not send Update Available pushes.
 
 ## Release scenarios
 
@@ -73,7 +80,7 @@ A client is eligible only when it supports the required protocol, its installed 
 }
 ```
 
-Older users update through the normal manual flow. Set the threshold to the first compatible cohort so older clients do not silently use the same-version automatic path.
+Older users update through the normal manual flow. Set the threshold to the new release version so older clients do not silently use the automatic path. Updated clients enforce manual mode directly; the threshold additionally protects older clients that rely on it.
 
 ### Same-version fix for existing v1.7.1 users
 
@@ -114,9 +121,9 @@ A same-version fix is safe only when the deployed build receives a different rev
 ## Pre-merge checklist
 
 1. Confirm `version` is correct.
-2. Confirm `updateMode` is intentional.
+2. Confirm `updateMode` is intentional; automatic activation requires the server mode to be explicitly `automatic`.
 3. Confirm `updateProtocol` matches the code.
-4. Confirm `automaticFromVersion` does not include older clients accidentally.
+4. Choose `automaticFromVersion` for this release’s intended cohort and confirm older clients are not included accidentally.
 5. Confirm a same-version build will have a different Git revision.
 6. Run root typecheck and production build.
 7. Run push-service typecheck and tests when push-service or release metadata changes.
