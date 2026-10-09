@@ -1,9 +1,10 @@
 import React from 'react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import { Heart, Stethoscope, Syringe, Calendar, Hospital } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { NAV_BAR_STYLE_CHANGED_EVENT } from '@/lib/uiPreferences';
 
 const NAV_ITEMS = [
   { path: '/',          label: 'Home',      description: 'Classes and attendance by date', Icon: Heart },
@@ -18,6 +19,8 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
   const headerRef = useRef<HTMLElement>(null);
   const navTouchStartX = useRef<number | null>(null);
   const [headerHeight, setHeaderHeight] = useState(72);
+  const [navHidden, setNavHidden] = useState(false);
+  const previousScrollPositions = useRef(new WeakMap<object, number>());
 
   useLayoutEffect(() => {
     const header = headerRef.current;
@@ -27,6 +30,37 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
     const observer = new ResizeObserver(updateHeaderHeight);
     observer.observe(header);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const isFloating = () => document.documentElement.dataset.navBarStyle === 'floating';
+    const updateVisibility = (scrollDelta: number) => {
+      if (!isFloating()) {
+        setNavHidden(false);
+        return;
+      }
+      if (scrollDelta > 8) setNavHidden(true);
+      else if (scrollDelta < -8) setNavHidden(false);
+    };
+    const onScroll = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || typeof target.scrollTop !== 'number') return;
+      const currentTop = target.scrollTop;
+      const previousTop = previousScrollPositions.current.get(target) ?? currentTop;
+      previousScrollPositions.current.set(target, currentTop);
+      if (currentTop <= 2) {
+        setNavHidden(false);
+        return;
+      }
+      updateVisibility(currentTop - previousTop);
+    };
+    const onNavStyleChanged = () => { if (!isFloating()) setNavHidden(false); };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener(NAV_BAR_STYLE_CHANGED_EVENT, onNavStyleChanged);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener(NAV_BAR_STYLE_CHANGED_EVENT, onNavStyleChanged);
+    };
   }, []);
 
   const currentItem = NAV_ITEMS.find((item) => item.path === location) || NAV_ITEMS[0];
@@ -54,19 +88,20 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
         </div>
       </header>
 
-      <main className={cn('flex-1 min-h-0 max-w-3xl mx-auto w-full px-4 overflow-y-auto', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom))' }}>
+      <main className={cn('flex-1 min-h-0 max-w-3xl mx-auto w-full px-4 overflow-y-auto', mainClassName)} style={{ paddingTop: 'calc(var(--app-header-height) + 0.5rem)', paddingBottom: 'calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom) + var(--app-bottom-nav-reserve, 0px))' }}>
         <div key={location} className={contentClassName}>
           {children}
         </div>
       </main>
 
       <motion.div
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+        animate={{ y: navHidden ? '120%' : 0, opacity: navHidden ? 0 : 1 }}
+        transition={{ y: { type: 'tween', duration: 0.34, ease: 'easeInOut' }, opacity: { duration: 0.2, ease: 'easeOut' } }}
+        style={{ pointerEvents: navHidden ? 'none' : 'auto', willChange: 'transform, opacity' }}
         className={cn(
           'fixed bottom-0 left-0 right-0 md:left-0 md:right-0 md:w-full',
           'bottom-nav-surface bg-card/90 backdrop-blur-xl overflow-hidden border-x-0 border-b-0 border-t border-black/20 dark:border-white/20 rounded-t-[28px] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] px-3 shadow-none z-40',
-          'transition-all duration-300', bottomNavClassName
+          bottomNavClassName
         )}
       >
         <nav aria-label="Primary navigation" className="flex justify-around items-center h-14" onTouchStart={e => { navTouchStartX.current = e.changedTouches[0]?.clientX ?? null; }} onTouchEnd={e => { const start = navTouchStartX.current; navTouchStartX.current = null; const end = e.changedTouches[0]?.clientX; if (start !== null && end !== undefined && Math.abs(end - start) >= 48) changeBySwipe(end < start ? -1 : 1); }}>

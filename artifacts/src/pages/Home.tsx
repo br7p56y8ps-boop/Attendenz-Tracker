@@ -473,13 +473,14 @@ export default function Home() {
       window.removeEventListener(DASHBOARD_ACTIVITY_UPDATED_EVENT, onActivityUpdated);
     };
   }, [todayStr]);
-  const visibleActivities = activityExpanded ? dashboardActivities : dashboardActivities.slice(0, 4);
   const yesterdayStr = toDateString(addDays(today, -1));
-  const activityGroups = [
-    { label: 'Today', items: visibleActivities.filter(item => toDateString(new Date(item.timestamp)) === todayStr) },
-    { label: 'Yesterday', items: visibleActivities.filter(item => toDateString(new Date(item.timestamp)) === yesterdayStr) },
+  const allActivityGroups = [
+    { label: 'Today', items: dashboardActivities.filter(item => toDateString(new Date(item.timestamp)) === todayStr) },
+    { label: 'Yesterday', items: dashboardActivities.filter(item => toDateString(new Date(item.timestamp)) === yesterdayStr) },
   ];
-  const hasRecentActivity = activityGroups.some(group => group.items.length > 0);
+  const activityGroups = allActivityGroups.map(group => ({ ...group, items: activityExpanded ? group.items : group.items.slice(0, 5) }));
+  const hasRecentActivity = allActivityGroups.some(group => group.items.length > 0);
+  const hasMoreRecentActivity = allActivityGroups.some(group => group.items.length > 5);
   const isTodayDetoxDay = subjectMode === 'preloaded' && today.getDay() === 5;
 
   const dashboardClassEntries = todayDayEntries.filter(entry => entry.kind === 'card');
@@ -826,7 +827,7 @@ export default function Home() {
             {activityGroups.map((group, groupIndex) => (
               <div key={group.label} className={cn(groupIndex > 0 && 'border-t border-border/60 pt-3')}>
                 <h3 className="mb-2 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">{group.label}</h3>
-                {group.items.length === 0 ? <p className="text-xs text-muted-foreground">{group.label === 'Today' ? 'No activity for today yet.' : 'No activity was recorded yesterday.'}</p> : (
+                {group.items.length === 0 ? <p className="flex justify-center text-center text-xs text-muted-foreground">{group.label === 'Today' ? 'No activity for today yet.' : 'No activity was recorded yesterday.'}</p> : (
                   <div className="relative space-y-2 before:absolute before:bottom-2 before:left-[4.5rem] before:top-2 before:w-px before:bg-border">
                     {group.items.map(item => { const Icon = item.kind === 'attendance' ? ClipboardCheck : item.kind === 'missed' ? Minus : item.kind === 'slot' ? Plus : item.kind === 'vacation' ? CalendarDays : item.kind === 'percentage' ? Percent : item.kind === 'edit' ? Pencil : Tag; const color = item.kind === 'attendance' ? 'bg-emerald-500 text-white' : item.kind === 'missed' ? 'bg-rose-500 text-white' : item.kind === 'vacation' ? 'bg-amber-500 text-white' : item.kind === 'edit' || item.kind === 'slot' || item.kind === 'percentage' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'; return <div key={item.id} className="relative grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] items-center gap-2.5 py-0.5 text-xs"><time className="w-[3.25rem] text-right text-[8px] font-semibold tracking-tight text-muted-foreground">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span className={cn('relative z-10 flex h-5 w-5 items-center justify-center rounded-full', color)}><Icon className="h-2.5 w-2.5" /></span><span className="min-w-0 font-semibold text-foreground">{renderActivityText(item.text.replace(/\(Small Group Teaching\)/g, '(SGT)'))}</span></div>; })}
                   </div>
@@ -835,9 +836,9 @@ export default function Home() {
             ))}
           </div>
         )}
-        <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>
+        {hasMoreRecentActivity && <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>}
       </section>
-      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2>{subjectAlertMetrics.length === 0 ? <div className="mt-3 flex justify-center text-center"><p className="text-xs text-muted-foreground">No subjects need attention right now.</p></div> : <div className="mt-3 space-y-2">{subjectAlertMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}% ({metric.attended}/{metric.attended + metric.missed})</span></button>)}</div>}</section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2>{subjectAlertMetrics.length === 0 ? <div className="mt-3 flex justify-center text-center"><p className="text-xs text-muted-foreground">No subjects need attention right now.</p></div> : <div className="mt-3 space-y-2">{subjectAlertMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}%</span></button>)}</div>}</section>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2>
@@ -1023,7 +1024,7 @@ export default function Home() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="fixed bottom-[calc(var(--app-bottom-nav-height)+env(safe-area-inset-bottom)+0.5rem)] left-1/2 -translate-x-1/2 z-50"
+              className="home-back-to-today fixed left-1/2 -translate-x-1/2 z-50"
             >
               <button
                 onClick={() => setSelectedDateStr(todayStr)}

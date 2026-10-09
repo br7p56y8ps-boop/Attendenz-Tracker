@@ -1,4 +1,4 @@
-import { Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Download, ChevronRight, Send, FileText, Database, FileSpreadsheet, Info, Upload, Vibrate, Volume2, Bell } from 'lucide-react';
+import { Trash2, Sparkles, AlertCircle, Camera as SnapshotIcon, RefreshCw, Download, Send, FileText, Database, FileSpreadsheet, Info, Upload, Vibrate, Volume2, Bell, Type, Palette, PanelBottom } from 'lucide-react';
 import { createSnapshot, getSnapshots, restoreSnapshot, clearLocalCache, autoSnapshotOnLoad, exportDataAsJSON, importDataFromJSON, Snapshot, shareDataAsJSON } from '../utils/snapshotUtils';
 import { assertBackupSize, validateBackupPayload, MAX_BACKUP_BYTES } from '../utils/dataTransferSecurity';
 import React, { useRef, useState, useEffect } from 'react';
@@ -12,8 +12,9 @@ import { getActiveCurriculumName } from '@/lib/curriculumStore';
 import { idbGet, idbSet, storageCommitChecked, storageSetItem, storageSetItemChecked, storageRemoveItemChecked, flushStorageWrites, PENDING_DELETE_ALL_KEY } from '@/lib/idb';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, formatPercentage } from '@/lib/utils';
-import { applyThemePreference, readThemePreference, type ThemePreference } from '@/lib/theme';
-import { getSoundEnabled, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type VibrationStyle } from '@/lib/feedback';
+import { ACCENT_THEME_KEY, FONT_KEY, applyAccentTheme, applyFontPreference, applyThemePreference, readAccentTheme, readFontPreference, readThemePreference, type AccentTheme, type FontPreference, type ThemePreference } from '@/lib/theme';
+import { readNavBarStyle, saveNavBarStyle, type NavBarStyle } from '@/lib/uiPreferences';
+import { getSoundEnabled, getSoundStyle, getSoundVolume, getVibrationEnabled, getVibrationStyle, isVibrationSupported, setSoundEnabled, setSoundStyle, setSoundVolume, setVibrationEnabled, setVibrationStyle, triggerConfirmationFeedback, testConfirmationFeedback, type SoundStyle, type VibrationStyle } from '@/lib/feedback';
 import { ModalSheet } from '@/components/ui/modal-sheet';
 import { lockScroll, unlockScroll } from '@/lib/scrollLock';
 import { APP_VERSION, LATEST_VERSION } from '@/lib/appVersion';
@@ -39,7 +40,6 @@ import neutralStudentProfile from '@/assets/images/neutral_student_profile_17842
 
 const SNAPSHOTS_KEY = 'attendenz_snapshots_v1';
 const ORPHANED_RECORDS_KEY = 'attendance_tracker_orphaned_records';
-
 function SettingToggle({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (checked: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}
@@ -55,7 +55,6 @@ function SettingRow({ icon, title, description, onClick, tone = 'primary' }: { i
     <button type="button" onClick={onClick} className="w-full flex items-center justify-between gap-3 text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
       <span className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border', toneClass)}>{icon}</span>
       <span className="min-w-0 flex-1"><span className="block font-semibold text-xs text-foreground">{title}</span>{description && <span className="block text-[10px] text-muted-foreground mt-0.5">{description}</span>}</span>
-      <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
     </button>
   );
 }
@@ -98,8 +97,6 @@ function NotificationGroupCard({
   description,
   expanded,
   onExpand,
-  enabled,
-  onMasterChange,
   children,
   disabled,
   leadMinutes,
@@ -113,8 +110,6 @@ function NotificationGroupCard({
   description: string;
   expanded: boolean;
   onExpand: () => void;
-  enabled: boolean;
-  onMasterChange: (enabled: boolean) => void;
   children: NotificationChild[];
   disabled: boolean;
   leadMinutes?: NotificationLeadMinutes;
@@ -125,34 +120,33 @@ function NotificationGroupCard({
   onChildChange: (key: NotificationChildKey, enabled: boolean) => void;
 }) {
   return (
-    <section className={cn('rounded-2xl border transition-colors', disabled ? 'border-border/40 bg-muted/10 opacity-60' : enabled ? 'border-primary/25 bg-primary/[0.03]' : 'border-border/60 bg-muted/10')}>
+    <section className={cn('rounded-2xl border transition-colors', disabled ? 'border-border/40 bg-muted/10 opacity-60' : 'border-primary/25 bg-primary/[0.03]')}>
       <div className="flex items-center gap-2.5 p-3">
         <button type="button" onClick={onExpand} className="min-w-0 flex-1 text-left cursor-pointer" aria-expanded={expanded}>
           <span className="block text-xs font-bold text-foreground">{title}</span>
           <span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">{description}</span>
         </button>
-        <SettingToggle checked={enabled} onChange={onMasterChange} label={`${title} master switch`} disabled={disabled} />
       </div>
       {expanded && (
         <div className="border-t border-border/40 px-3 pb-3 pt-2 space-y-2">
           {children.map(child => (
-            <div key={child.key} className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', (!enabled || disabled) && 'opacity-50')}>
+            <div key={child.key} className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', disabled && 'opacity-50')}>
               <span className="min-w-0"><span className="block text-[11px] font-semibold text-foreground">{child.title}</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">{child.description}</span></span>
-              <SettingToggle checked={getChildChecked(child.key)} onChange={value => onChildChange(child.key, value)} label={child.title} disabled={disabled || !enabled} />
+              <SettingToggle checked={getChildChecked(child.key)} onChange={value => onChildChange(child.key, value)} label={child.title} disabled={disabled} />
             </div>
           ))}
           {leadMinutes !== undefined && onLeadMinutesChange && (
-            <label className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', (!enabled || disabled) && 'opacity-50')}>
+            <label className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', disabled && 'opacity-50')}>
               <span><span className="block text-[11px] font-semibold text-foreground">Warning Reminder Timing</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Choose how early before a Class a lead-time reminder can arrive.</span></span>
-              <select value={leadMinutes} onChange={event => onLeadMinutesChange(Number(event.target.value) as NotificationLeadMinutes)} disabled={!enabled || disabled} className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground">
+              <select value={leadMinutes} onChange={event => onLeadMinutesChange(Number(event.target.value) as NotificationLeadMinutes)} disabled={disabled} className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground">
                 <option value={15}>15 Minutes</option><option value={30}>30 Minutes</option><option value={60}>60 Minutes</option>
               </select>
             </label>
           )}
           {nightlyReminderTime !== undefined && onNightlyReminderTimeChange && (
-            <label className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', (!enabled || disabled) && 'opacity-50')}>
+            <label className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', disabled && 'opacity-50')}>
               <span><span className="block text-[11px] font-semibold text-foreground">Nightly Risk Reminder</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Choose a time from 10:30 PM–2:00 AM. A time after midnight targets today’s schedule. This is separate from before-class warnings.</span></span>
-              <input type="time" min="00:00" max="23:59" value={nightlyReminderTime} onChange={event => onNightlyReminderTimeChange(event.target.value)} disabled={!enabled || disabled} aria-label="Nightly Risk Reminder time" className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" />
+              <input type="time" min="00:00" max="23:59" value={nightlyReminderTime} onChange={event => onNightlyReminderTimeChange(event.target.value)} disabled={disabled} aria-label="Nightly Risk Reminder time" className="shrink-0 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground" />
             </label>
           )}
         </div>
@@ -323,13 +317,9 @@ export default function Settings() {
     const child = [...ATTENDANCE_REMINDER_CHILDREN, ...DAILY_SCHEDULE_CHILDREN, ...ACTIVITY_CHILDREN, ...UPDATE_CHILDREN].find(item => item.key === key);
     notifySuccess(`${child?.title || 'Notification'} ${enabled ? 'enabled' : 'disabled'}`);
   };
-  const setNotificationGroupEnabled = (group: 'attendance' | 'dailySchedule' | 'activity' | 'updates', enabled: boolean) => {
-    const key = `${group}GroupEnabled` as keyof NotificationPreferences;
-    updateNotificationPreference(key, enabled as NotificationPreferences[typeof key]);
-    const title = group === 'attendance' ? 'Attendance & Risk Reminders' : group === 'dailySchedule' ? 'Daily Schedule Reminders' : group === 'activity' ? 'Activity & Data Changes' : 'App Updates';
-    notifySuccess(`${title} ${enabled ? 'enabled' : 'disabled'}`);
+  const toggleNotificationGroup = (group: 'attendance' | 'dailySchedule' | 'activity' | 'updates') => {
+    setExpandedNotificationGroups(prev => ({ attendance: false, dailySchedule: false, activity: false, updates: false, [group]: !prev[group] }));
   };
-
   const enableSystemNotifications = async () => {
     if (notificationBusy) return;
     setNotificationBusy(true);
@@ -761,7 +751,8 @@ export default function Settings() {
     } finally { setBusy(null); }
   };
 
-  const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'snapshot' | 'export' | 'dataProtection' | 'identity' | 'feedback' | 'notifications' | 'theme' | null>(null);
+  const [activeSettingModal, setActiveSettingModal] = useState<'preferredPc' | 'curriculum' | 'snapshot' | 'export' | 'dataProtection' | 'identity' | 'feedback' | 'notifications' | 'theme' | 'font' | 'navBarStyle' | null>(null);
+  const closeSettingsModal = () => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); setSnapshotMsg(''); setExportMsg(''); };
   const [transferImportData, setTransferImportData] = useState<any>(null);
   const transferFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -892,15 +883,20 @@ export default function Settings() {
   };
 
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference());
+  const [accentTheme, setAccentTheme] = useState<AccentTheme>(() => readAccentTheme());
+  const [fontPreference, setFontPreference] = useState<FontPreference>(() => readFontPreference());
+  const [navBarStyle, setNavBarStyleState] = useState<NavBarStyle>(() => readNavBarStyle());
   const [vibrationEnabled, setVibrationEnabledState] = useState(() => getVibrationEnabled());
   const [vibrationStyle, setVibrationStyleState] = useState<VibrationStyle>(() => getVibrationStyle());
   const [soundEnabled, setSoundEnabledState] = useState(() => getSoundEnabled());
+  const [soundStyle, setSoundStyleState] = useState<SoundStyle>(() => getSoundStyle());
   const [soundVolume, setSoundVolumeState] = useState(() => getSoundVolume());
   const vibrationSupported = isVibrationSupported();
   const [showVibrationInfo, setShowVibrationInfo] = useState(false);
   const updateVibrationEnabled = (enabled: boolean) => { if (!vibrationSupported) return; setVibrationEnabledState(enabled); setVibrationEnabled(enabled); };
   const updateVibrationStyle = (style: VibrationStyle) => { setVibrationStyleState(style); setVibrationStyle(style); };
   const updateSoundEnabled = (enabled: boolean) => { setSoundEnabledState(enabled); setSoundEnabled(enabled); };
+  const updateSoundStyle = (style: SoundStyle) => { setSoundStyleState(style); setSoundStyle(style); };
   const updateSoundVolume = (volume: number) => { setSoundVolumeState(volume); setSoundVolume(volume); };
 
   const detectGender = (name: string): 'male' | 'female' | 'neutral' => {
@@ -952,57 +948,46 @@ export default function Settings() {
   return (
     <Layout>
       <div className="max-w-xl mx-auto space-y-2 pb-6 scroll-reachability">
-        {/* 1. Active Account */}
-        <div className="contents">
-          <StickySectionLabel label="Active Account" stackIndex={0} zClass="z-30" />
-          <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden">
-            <button type="button" onClick={() => setActiveSettingModal('identity')} className="w-full flex items-center justify-between gap-3 text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
-              <span className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border border-primary/30 bg-primary/10"><img src={profileImage || getDefaultAvatar()} alt="Profile" className="w-full h-full object-cover" /></span>
-              <span className="min-w-0 flex-1"><span className="block font-extrabold text-sm text-foreground truncate">{username}</span><span className="block text-[10px] text-muted-foreground mt-0.5 truncate">{getActiveCurriculumName()}</span></span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            </button>
-          </div>
+        <section className="settings-profile-hero">
+          <div className="settings-profile-kicker"><span>STUDENT ACCOUNT</span></div>
+          <button type="button" onClick={() => setActiveSettingModal('identity')} className="settings-profile-action">
+            <span className="settings-profile-avatar"><img src={profileImage || getDefaultAvatar()} alt="Profile" className="h-full w-full object-cover" /></span>
+            <span className="settings-profile-copy"><small>ACTIVE CURRICULUM</small><strong>{username}</strong></span>
+          </button>
+          <div className="settings-profile-metrics"><span><small>CURRICULUM</small><strong>{getActiveCurriculumName()}</strong></span><span><small>ATTENDANCE TARGET</small><strong>{preferredPercentage}%</strong></span></div>
+        </section>
+        <div className="settings-shortcuts">
+          <button type="button" onClick={() => setActiveSettingModal('preferredPc')}><span className="settings-shortcut-icon">%</span><span><small>ATTENDANCE</small><strong>Target</strong></span></button>
+          <button type="button" onClick={() => setActiveSettingModal('notifications')}><span className="settings-shortcut-icon"><Bell className="h-4 w-4" /></span><span><small>ALERTS</small><strong>Notifications</strong></span></button>
+          <button type="button" onClick={() => setActiveSettingModal('export')}><span className="settings-shortcut-icon"><Upload className="h-4 w-4" /></span><span><small>DATA</small><strong>Export Data</strong></span></button>
         </div>
 
-        {/* 2. Preference & Statistic */}
+        {/* 2. Storage & Data */}
         <div className="contents">
-          <StickySectionLabel label="Preference" stackIndex={1} zClass="z-30" />
-          <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
-            <button type="button" onClick={() => setActiveSettingModal('preferredPc')} className="w-full flex items-center justify-between text-left p-3.5 sm:p-4 hover:bg-muted/30 transition-all cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="w-8.5 h-8.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20"><span className="font-bold text-xs">%</span></div>
-                <div>
-                  <p className="font-semibold text-xs text-foreground">Curriculum Percentage</p>
-                  <p className="text-[10px] text-muted-foreground">Target attendance threshold ({preferredPercentage}%)</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {/* 3. Storage & Data */}
-        <div className="contents">
-          <StickySectionLabel label="Storage & Data" stackIndex={2} zClass="z-30" />
+          <StickySectionLabel label="Storage & Data" stackIndex={1} zClass="z-30" />
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden divide-y divide-border/40">
             <SettingRow icon={<Database className="w-4 h-4" />} title="Backup / Transfer" description="Backup, restore, or transfer your complete app data." tone="blue" onClick={() => setBackupTransferOpen(true)} />
             <SettingRow icon={<SnapshotIcon className="w-4 h-4" />} title="Snapshots & Storage" description="Manage local state backups & cache" tone="primary" onClick={() => setActiveSettingModal('snapshot')} />
-            <SettingRow icon={<FileText className="w-4 h-4" />} title="Export Attendance Data" description="Export records in PDF, Excel, or CSV formats" tone="amber" onClick={() => setActiveSettingModal('export')} />
             <SettingRow icon={<Database className="w-4 h-4" />} title="Data Protection & Storage" description={runtimeStorageInfo.techTitle} tone="emerald" onClick={() => setActiveSettingModal('dataProtection')} />
           </div>
         </div>
 
-        {/* 4. App Settings */}
+        {/* 3. App Settings */}
         <div className="contents">
-          <StickySectionLabel label="App Settings" stackIndex={3} zClass="z-30" />
+          <StickySectionLabel label="App Settings" stackIndex={2} zClass="z-30" />
           <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden">
             <div className="divide-y divide-border/40">
               <SettingRow icon={<Vibrate className="w-4 h-4" />} title="Feedback & Sounds" description="Choose how Attendenz responds after you save or mark attendance" tone="violet" onClick={() => setActiveSettingModal('feedback')} />
-              <SettingRow icon={<Bell className="w-4 h-4" />} title="System Notifications" description={systemNotificationsEnabled ? 'On for this device' : 'Off · Tap to Configure'} tone="blue" onClick={() => setActiveSettingModal('notifications')} />
-              <SettingRow icon={<Info className="w-4 h-4" />} title="Theme" description={`${themePreference === 'system' ? 'System' : themePreference === 'dark' ? 'Dark' : 'Light'} appearance preference`} tone="primary" onClick={() => setActiveSettingModal('theme')} />
+              <SettingRow icon={<Type className="w-4 h-4" />} title="Fonts" description="Choose and apply a readable app font" tone="violet" onClick={() => setActiveSettingModal('font')} />
+              <SettingRow icon={<Palette className="w-4 h-4" />} title="Theme & Appearance" description="Choose light/dark mode and an accent color" tone="primary" onClick={() => setActiveSettingModal('theme')} />
+              <SettingRow icon={<PanelBottom className="w-4 h-4" />} title="Nav Bar Style" description="Choose a fixed or floating navigation bar" tone="primary" onClick={() => setActiveSettingModal('navBarStyle')} />
             </div>
+          </div>
+        </div>
+        {/* 4. App Info */}
+        <div className="contents">
+          <StickySectionLabel label="App Info" stackIndex={3} zClass="z-30" />
+          <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl shadow-sm overflow-hidden">
             <div className="p-4 sm:p-5 space-y-4 bg-gradient-to-br from-primary/5 via-card to-card">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border border-primary/30 bg-primary/10 shadow-sm"><img src={`${import.meta.env.BASE_URL || '/'}Logo.jpeg`} alt="Attendenz Logo" className="w-full h-full object-cover" /></div>
@@ -1150,10 +1135,10 @@ export default function Settings() {
                   )}
         </ModalSheet>
 
-          <ModalSheet open={Boolean(activeSettingModal)} onClose={() => { setActiveSettingModal(null); setPendingPct(null); setShowDeleteDataDialog(false); }} ariaLabel="Settings dialog" labelledBy="settings-modal-title" maxWidth="max-w-2xl"
-            header={<div className="text-center"><h3 id="settings-modal-title" className="break-words text-sm font-bold text-foreground sm:text-base">{activeSettingModal === 'preferredPc' && 'Curriculum Percentage'}{activeSettingModal === 'snapshot' && 'Snapshots & Storage'}{activeSettingModal === 'export' && 'Export Attendance Data'}{activeSettingModal === 'dataProtection' && 'Data Protection & Storage'}{activeSettingModal === 'identity' && 'Identity Card'}{activeSettingModal === 'feedback' && 'Feedback & Sounds'}{activeSettingModal === 'notifications' && 'System Notifications'}{activeSettingModal === 'theme' && 'Theme'}</h3><p className="mt-1 text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{activeSettingModal === 'preferredPc' && 'Target attendance threshold percentage'}{activeSettingModal === 'snapshot' && 'Manage local state backups and cache'}{activeSettingModal === 'export' && 'Export records in PDF, Excel, or CSV formats'}{activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}{activeSettingModal === 'identity' && 'Profile, display name, and active curriculum'}{activeSettingModal === 'feedback' && 'Choose what you hear after a confirmation'}{activeSettingModal === 'notifications' && 'Choose reminders, routine updates, and app alerts'}{activeSettingModal === 'theme' && 'Choose how Attendenz follows your device'}</p></div>}
+          <ModalSheet open={Boolean(activeSettingModal)} onClose={closeSettingsModal} ariaLabel="Settings dialog" labelledBy="settings-modal-title" maxWidth="max-w-2xl"
+            header={<div className="text-center"><h3 id="settings-modal-title" className="break-words text-sm font-bold text-foreground sm:text-base">{activeSettingModal === 'preferredPc' && 'Curriculum Percentage'}{activeSettingModal === 'snapshot' && 'Snapshots & Storage'}{activeSettingModal === 'export' && 'Export Attendance Data'}{activeSettingModal === 'dataProtection' && 'Data Protection & Storage'}{activeSettingModal === 'identity' && 'Identity Card'}{activeSettingModal === 'feedback' && 'Feedback & Sounds'}{activeSettingModal === 'notifications' && 'System Notifications'}{activeSettingModal === 'theme' && 'Theme & Appearance'}{activeSettingModal === 'font' && 'Fonts'}{activeSettingModal === 'navBarStyle' && 'Nav Bar Style'}</h3><p className="mt-1 text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{activeSettingModal === 'preferredPc' && 'Target attendance threshold percentage'}{activeSettingModal === 'snapshot' && 'Manage local state backups and cache'}{activeSettingModal === 'export' && 'Export records in PDF, Excel, or CSV formats'}{activeSettingModal === 'dataProtection' && runtimeStorageInfo.techTitle}{activeSettingModal === 'identity' && 'Profile, display name, and active curriculum'}{activeSettingModal === 'feedback' && 'Choose what you hear after a confirmation'}{activeSettingModal === 'notifications' && 'Choose reminders, routine updates, and app alerts'}{activeSettingModal === 'theme' && 'Choose the interface theme and accent appearance'}{activeSettingModal === 'font' && 'Choose a readable font for the app'}{activeSettingModal === 'navBarStyle' && 'Choose how the primary navigation sits and responds to scrolling'}</p></div>}
             bodyClassName="p-4 sm:p-6 space-y-4 text-left"
-            footer={activeSettingModal === 'preferredPc' && pendingPct === null ? <button type="button" onClick={() => setActiveSettingModal(null)} className="action-button action-button--save">Save &amp; Close</button> : undefined}>
+            footer={activeSettingModal === 'preferredPc' && pendingPct === null ? <button type="button" onClick={closeSettingsModal} className="action-button action-button--save">Save &amp; Close</button> : undefined}>
                   <div className="pt-1 flex-1 min-h-0 overflow-y-auto">
                     {activeSettingModal === 'identity' && (
                       <div className="space-y-4">
@@ -1188,6 +1173,7 @@ export default function Settings() {
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-3.5">
                           <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 min-w-0"><Volume2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-xs font-bold text-foreground">Confirmation Sound</span></div><SettingToggle checked={soundEnabled} onChange={updateSoundEnabled} label="Confirmation Sound" /></div>
                           <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">Short sound after saving or marking attendance. Phone silent mode and volume still apply.</p>
+                          <label className="mt-3 flex items-center justify-between gap-3 text-xs font-semibold text-foreground"><span className="text-muted-foreground">Sound style</span><select value={soundStyle} onChange={e => updateSoundStyle(e.target.value as SoundStyle)} disabled={!soundEnabled} className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground disabled:opacity-50"><option value="soft">Soft</option><option value="bright">Bright</option><option value="low">Deep</option></select></label>
                           <label className="mt-3 flex items-center gap-3 text-xs font-semibold text-foreground"><span className="shrink-0 text-muted-foreground">Volume</span><input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={e => updateSoundVolume(Number(e.target.value))} disabled={!soundEnabled} className="compact-range flex-1" style={{ '--range-progress': `${soundVolume * 100}%` } as React.CSSProperties} aria-label="Confirmation sound volume" /><output className="w-10 text-right text-xs font-bold text-blue-500">{Math.round(soundVolume * 100)}%</output></label>
                         </div>
                         <button type="button" onClick={testConfirmationFeedback} className="action-button action-button--update w-full">Test Feedback</button>
@@ -1201,12 +1187,10 @@ export default function Settings() {
                             <SettingToggle checked={systemNotificationsEnabled && notificationPermission === 'granted'} onChange={updateSystemNotificationsEnabled} label="System Notifications" disabled={notificationBusy} />
                           </div>
                           {notificationPermission === 'denied' && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">Notifications are blocked on this device. Re-enable them in device settings, then return here.</p>}
-                          {notificationPermission === 'unsupported' && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are not available on this device or browser.</p>}
                           {notificationPermission === 'insecure' && <p className="text-[10px] leading-relaxed text-muted-foreground">Notifications are available only from the secure Attendenz app.</p>}
                           {notificationPermission === 'default' && <p className="text-[10px] leading-relaxed text-muted-foreground">Allow Notifications to use the reminder choices below.</p>}
                           {notificationPermission !== 'granted' && notificationPermission !== 'denied' && notificationPermission !== 'unsupported' && notificationPermission !== 'insecure' && <button type="button" onClick={enableSystemNotifications} disabled={notificationBusy} className="action-button action-button--update action-button--compact w-full disabled:opacity-50">{notificationBusy ? 'Setting Up…' : 'Allow Notifications'}</button>}
                           {notificationPermission === 'granted' && !systemNotificationsEnabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Permission is allowed, but System Notifications are off. Turn on the switch to use reminders.</p>}
-                          {notificationPermission === 'granted' && systemNotificationsEnabled && reminderServiceConfigured && <p className="text-[10px] font-bold text-emerald-500">On for this device</p>}
                           {!reminderServiceConfigured && <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">The reminder service is not configured for this app build, so reminder choices are disabled.</p>}
                           {reminderServiceConfigured && notificationControlsDisabled && <p className="text-[10px] leading-relaxed text-muted-foreground">Reminder choices are disabled until Notifications are supported, allowed, and turned on for this device.</p>}
                           {systemNotificationsEnabled && notificationPermission === 'granted' && (
@@ -1218,17 +1202,59 @@ export default function Settings() {
                             </>
                           )}
                         </div>
-                        <NotificationGroupCard title="Attendance & Risk Reminders" description="Nightly, before-class, and unmarked-attendance alerts." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, attendance: !prev.attendance }))} enabled={notificationPreferences.attendanceGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('attendance', value)} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} nightlyReminderTime={notificationPreferences.nightlyReminderTime} onNightlyReminderTimeChange={value => updateNotificationPreference('nightlyReminderTime', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
-                        <NotificationGroupCard title="Daily Schedule Reminders" description="Upcoming schedule reminders." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, dailySchedule: !prev.dailySchedule }))} enabled={notificationPreferences.dailyScheduleGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('dailySchedule', value)} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
-                        <NotificationGroupCard title="Activity & Data Changes" description="Local confirmations for routine and data changes." expanded={Boolean(expandedNotificationGroups.activity)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, activity: !prev.activity }))} enabled={notificationPreferences.activityGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('activity', value)} children={ACTIVITY_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
-                        <NotificationGroupCard title="App Updates" description="Local update notices and confirmations." expanded={Boolean(expandedNotificationGroups.updates)} onExpand={() => setExpandedNotificationGroups(prev => ({ ...prev, updates: !prev.updates }))} enabled={notificationPreferences.updatesGroupEnabled} onMasterChange={value => setNotificationGroupEnabled('updates', value)} children={UPDATE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
+                        <NotificationGroupCard title="Attendance & Risk Reminders" description="Nightly, before-class, and unmarked-attendance alerts." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => toggleNotificationGroup('attendance')} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} nightlyReminderTime={notificationPreferences.nightlyReminderTime} onNightlyReminderTimeChange={value => updateNotificationPreference('nightlyReminderTime', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
+                        <NotificationGroupCard title="Daily Schedule Reminders" description="Upcoming schedule reminders." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => toggleNotificationGroup('dailySchedule')} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
+                        <NotificationGroupCard title="Activity & Data Changes" description="Local confirmations for routine and data changes." expanded={Boolean(expandedNotificationGroups.activity)} onExpand={() => toggleNotificationGroup('activity')} children={ACTIVITY_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
+                        <NotificationGroupCard title="App Updates" description="Local update notices and confirmations." expanded={Boolean(expandedNotificationGroups.updates)} onExpand={() => toggleNotificationGroup('updates')} children={UPDATE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
                       </div>
                     )}
 
 
                     {activeSettingModal === 'theme' && (
-                      <div className="space-y-2">
-                        {(['system', 'light', 'dark'] as ThemePreference[]).map(option => <button key={option} type="button" onClick={() => { setThemePreference(option); localStorage.setItem('theme', option); applyThemePreference(option); }} className={cn('w-full flex items-center justify-between rounded-xl border p-3 text-left transition-colors', themePreference === option ? 'border-primary bg-primary/10' : 'border-border/60 bg-muted/20 hover:bg-muted/40')}><span><span className="block text-xs font-bold text-foreground">{option === 'system' ? 'System' : option === 'light' ? 'Light' : 'Dark'}</span><span className="block text-[10px] text-muted-foreground mt-0.5">{option === 'system' ? 'Follow iPhone appearance' : `Always use ${option} appearance`}</span></span><span className={cn('text-[10px] font-extrabold uppercase', themePreference === option ? 'text-primary' : 'text-muted-foreground')}>{themePreference === option ? 'Selected' : 'Choose'}</span></button>)}
+                      <div className="space-y-4">
+                        <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Theme</p>{(['system', 'light', 'dark'] as ThemePreference[]).map(option => <button key={option} type="button" onClick={() => { setThemePreference(option); localStorage.setItem('theme', option); applyThemePreference(option); }} className={cn('w-full flex items-center justify-between rounded-xl border p-3 text-left transition-colors', themePreference === option ? 'border-primary bg-primary/10' : 'border-border/60 bg-muted/20 hover:bg-muted/40')}><span><span className="block text-xs font-bold text-foreground">{option === 'system' ? 'System' : option === 'light' ? 'Light' : 'Dark'}</span><span className="block text-[10px] text-muted-foreground mt-0.5">{option === 'system' ? 'Follow iPhone appearance' : `Always use ${option} appearance`}</span></span><span className={cn('text-[10px] font-extrabold uppercase', themePreference === option ? 'text-primary' : 'text-muted-foreground')}>{themePreference === option ? 'Selected' : 'Choose'}</span></button>)}</div>
+                        <div className="grid grid-cols-2 gap-2 border-t border-border/50 pt-3">
+                          <p className="col-span-2 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Appearance</p>
+                          {(['default', 'green', 'orange', 'red'] as AccentTheme[]).map(option => (
+                            <button key={option} type="button" onClick={() => { setAccentTheme(option); localStorage.setItem(ACCENT_THEME_KEY, option); applyAccentTheme(option); }} className={cn('flex min-h-16 w-full flex-col items-center justify-center rounded-xl border p-2 text-center transition-colors', option === 'default' ? (accentTheme === option ? 'border-primary bg-primary/10' : 'border-border/60 bg-muted/20 hover:bg-muted/40') : option === 'green' ? 'border-green-500/40 bg-green-500/5 text-green-700 hover:bg-green-500/10 dark:text-green-300' : option === 'orange' ? 'border-orange-500/40 bg-orange-500/5 text-orange-700 hover:bg-orange-500/10 dark:text-orange-300' : 'border-red-500/40 bg-red-500/5 text-red-700 hover:bg-red-500/10 dark:text-red-300', accentTheme === option && 'ring-2 ring-primary/40')}>
+                              <span className="block text-xs font-bold text-foreground">{option === 'default' ? 'Default Appearance' : `${option[0].toUpperCase()}${option.slice(1)} Appearance`}</span>
+                              <span className={cn('text-[10px] font-extrabold uppercase', accentTheme === option ? 'text-primary' : 'text-muted-foreground')}>{accentTheme === option ? 'Selected' : 'Choose'}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {activeSettingModal === 'navBarStyle' && (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {(['fixed', 'floating'] as NavBarStyle[]).map(option => (
+                          <button
+                            key={option}
+                            type="button"
+                            aria-pressed={navBarStyle === option}
+                            onClick={() => { setNavBarStyleState(option); saveNavBarStyle(option); }}
+                            className={cn('rounded-2xl border p-3 text-left transition-colors', navBarStyle === option ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border/60 bg-muted/10 hover:bg-muted/30')}
+                          >
+                            <div className={`nav-style-preview nav-style-preview--${option}`} aria-hidden="true">
+                              <span className="nav-style-preview__page-line" />
+                              <span className="nav-style-preview__page-line nav-style-preview__page-line--short" />
+                              <span className="nav-style-preview__bar"><i /><i /><i /><i /><i /></span>
+                            </div>
+                            <span className="mt-2 flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-foreground">{option === 'fixed' ? 'Fixed (Default)' : 'Floating'}</span>
+                              <span className="text-[9px] font-extrabold uppercase text-primary">{navBarStyle === option ? 'Selected' : 'Choose'}</span>
+                            </span>
+                            <span className="mt-0.5 block text-[10px] leading-relaxed text-muted-foreground">{option === 'fixed' ? 'Keep the navigation attached to the bottom edge.' : 'Use a rounded inset bar; it hides while scrolling down and returns when you scroll up.'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {activeSettingModal === 'font' && (
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {(['system', 'lora', 'playfair', 'robotoMono', 'sourceCode', 'nunito', 'comfortaa', 'caveat', 'oswald', 'spaceGrotesk'] as FontPreference[]).map(option => {
+                          const labels: Record<FontPreference, string> = { system: 'Attendenz Font (Default)', sf: 'SF Pro / iOS', inter: 'Inter', manrope: 'Manrope', nunito: 'Nunito', dmSans: 'DM Sans', jakarta: 'Plus Jakarta Sans', outfit: 'Outfit', lora: 'Lora Serif', spaceGrotesk: 'Space Grotesk', robotoMono: 'Roboto Mono', caveat: 'Caveat Handwritten', oswald: 'Oswald Condensed', playfair: 'Playfair Display', sourceCode: 'Source Code Pro', comfortaa: 'Comfortaa Rounded' };
+                          const families: Record<FontPreference, string> = { system: 'inherit', sf: '-apple-system, BlinkMacSystemFont, sans-serif', inter: 'Inter', manrope: 'Manrope', nunito: 'Nunito', dmSans: 'DM Sans', jakarta: 'Plus Jakarta Sans', outfit: 'Outfit', lora: 'Lora', spaceGrotesk: 'Space Grotesk', robotoMono: 'Roboto Mono', caveat: 'Caveat', oswald: 'Oswald', playfair: 'Playfair Display', sourceCode: 'Source Code Pro', comfortaa: 'Comfortaa' };
+                          return <button key={option} type="button" onClick={() => { setFontPreference(option); localStorage.setItem(FONT_KEY, option); applyFontPreference(option); }} className={cn('flex min-h-16 w-full flex-col items-center justify-center rounded-xl border p-2 text-center transition-colors', fontPreference === option ? 'border-primary bg-primary/10' : 'border-border/60 bg-muted/20 hover:bg-muted/40')}><span className="block text-sm font-bold text-foreground" style={{ fontFamily: families[option] }}>{labels[option]}</span><span className="mt-0.5 block text-[10px] text-muted-foreground">{fontPreference === option ? 'Selected' : 'Choose this font'}</span></button>;
+                        })}
                       </div>
                     )}
                     {activeSettingModal === 'preferredPc' && (
@@ -1457,6 +1483,7 @@ export default function Settings() {
         </ModalSheet>
 
           <ModalSheet open={Boolean(notificationRecovery)} onClose={() => setNotificationRecovery(null)} ariaLabel="Notification recovery" maxWidth="max-w-sm" header={notificationRecovery ? <div className="text-center"><h3 className="text-sm font-bold text-foreground">{notificationRecovery.title}</h3><p className="mt-1 text-[10px] text-muted-foreground">Review notification recovery options.</p></div> : undefined} bodyClassName="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3" zIndexClassName="z-[170]">
+                  {notificationRecovery && <p className="text-xs leading-relaxed text-muted-foreground text-center">{notificationRecovery.message}</p>}
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setNotificationRecovery(null)} className="action-button action-button--cancel flex-1 min-h-10">Close</button>
                     {notificationRecovery?.action && <button type="button" onClick={() => { const action = notificationRecovery?.action; setNotificationRecovery(null); if (action === 'enable') void enableSystemNotifications(); }} className="action-button action-button--update flex-1 min-h-10">{notificationRecovery?.action === 'settings' ? 'I’ll Check Settings' : 'Try Again'}</button>}

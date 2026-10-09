@@ -51,9 +51,9 @@ export function setSoundEnabled(enabled: boolean): void {
 }
 
 export function getSoundVolume(): number {
-  if (typeof window === 'undefined') return 0.5;
+  if (typeof window === 'undefined') return 0.7;
   const value = Number(window.localStorage.getItem(SOUND_VOLUME_KEY));
-  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.5;
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.7;
 }
 
 export function setSoundVolume(volume: number): void {
@@ -78,16 +78,18 @@ function playConfirmationTone(kind: FeedbackKind): void {
     const context = new AudioContextCtor();
     const oscillator = context.createOscillator();
     const gain = context.createGain();
-    oscillator.type = kind === 'danger' ? 'square' : 'sine';
-    oscillator.frequency.value = 620 + (kind === 'success' ? 80 : kind === 'danger' ? -80 : 0);
+    const style = getSoundStyle();
+    oscillator.type = style === 'bright' ? 'triangle' : style === 'low' ? 'sawtooth' : kind === 'danger' ? 'square' : 'sine';
+    const styleOffset = style === 'bright' ? 150 : style === 'low' ? -170 : 0;
+    oscillator.frequency.value = 620 + styleOffset + (kind === 'success' ? 80 : kind === 'danger' ? -80 : 0);
     gain.gain.setValueAtTime(0.0001, context.currentTime);
     const volume = getSoundVolume();
-    gain.gain.exponentialRampToValueAtTime(0.0001 + (0.24 * volume), context.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.0001 + (0.34 * volume), context.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + (style === 'low' ? 0.22 : 0.17));
     oscillator.connect(gain);
     gain.connect(context.destination);
     oscillator.start();
-    oscillator.stop(context.currentTime + 0.16);
+    oscillator.stop(context.currentTime + (style === 'low' ? 0.23 : 0.18));
     oscillator.addEventListener('ended', () => void context.close());
   } catch {
     // Feedback is best-effort and must never affect the confirmed action.

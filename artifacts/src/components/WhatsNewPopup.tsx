@@ -30,14 +30,15 @@ interface ReleaseSectionProps {
   items: WhatsNewItem[];
   titleClass: string;
   accentClass: string;
+  existingTitles?: Set<string>;
 }
 
-function ReleaseSection({ title, icon, items, titleClass, accentClass }: ReleaseSectionProps) {
+function ReleaseSection({ title, icon, items, titleClass, accentClass, existingTitles }: ReleaseSectionProps) {
   if (items.length === 0) return null;
 
   return (
     <section className="space-y-2.5">
-      <h3 className={`flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider ${titleClass}`}>
+      <h3 className="flex items-center justify-center gap-1.5 text-center text-[10px] font-extrabold uppercase tracking-wider text-cyan-500">
         {icon}
         <span>{title}</span>
       </h3>
@@ -46,7 +47,7 @@ function ReleaseSection({ title, icon, items, titleClass, accentClass }: Release
           <ReleaseItem
             key={item.title}
             item={item}
-            titleClass={titleClass}
+            titleClass={existingTitles?.has(item.title) ? "text-black dark:text-white" : titleClass}
             accentClass={accentClass}
           />
         ))}
@@ -119,15 +120,22 @@ export function WhatsNewPopup() {
           title="Upgrades / New Features"
           icon={<Zap className="h-3.5 w-3.5 shrink-0" />}
           items={notes.upgrades}
-          titleClass="text-emerald-500"
-          accentClass="text-muted-foreground"
+          titleClass="text-green-500"
+          accentClass="text-gray-500"
         />
         <ReleaseSection
           title="Fixes & Refinements"
           icon={<Wrench className="h-3.5 w-3.5 shrink-0" />}
           items={notes.fixes}
-          titleClass="text-amber-500"
-          accentClass="text-muted-foreground"
+          titleClass="text-yellow-500"
+          accentClass="text-gray-500"
+          existingTitles={new Set([
+            "Section labels",
+            "A more reliable Manage tab",
+            "A tidier attendance dashboard",
+            "More accurate activity entries",
+            "Safer data and reminders",
+          ])}
         />
       </div>
     </ModalSheet>

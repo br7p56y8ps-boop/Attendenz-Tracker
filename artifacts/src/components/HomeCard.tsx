@@ -348,16 +348,16 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     if (isFinished) return <span className={cn('font-bold', getPercentageColor(percentage))}>{getFinishedMessage()}</span>;
     if (total === 0) return <span>No Classes conducted yet</span>;
     if (percentage < preferredPercentage) {
-      if (remainingClasses !== undefined && needToAttend > remainingClasses) {
-        const maxPct = Math.round(((attended + remainingClasses) / (total + remainingClasses)) * 100);
-        return (
-          <span className="font-semibold text-rose-500 text-[11px]">
-            Attendance advised unless contraindicated!!{' '}
-            <span className="whitespace-nowrap">Max. Possible (if Attended): {maxPct}%</span>
-          </span>
-        );
+      const targetAttendanceCount = totalPlannedClasses === undefined
+        ? undefined
+        : Math.ceil(totalPlannedClasses * (preferredPercentage / 100));
+      const maximumAchievableAttendance = attended + (remainingClasses ?? 0);
+      const recoveryIsImpossible = targetAttendanceCount !== undefined
+        && maximumAchievableAttendance < targetAttendanceCount;
+      if (recoveryIsImpossible) {
+        return <span className="font-semibold text-rose-500 text-[11px]">Attendance advised unless contraindicated!!</span>;
       }
-      return <span className="text-rose-500 font-semibold text-[11px]">Must ATTEND this Class!!</span>;
+      return <span className="font-semibold text-rose-500 text-[11px]">DO NOT bunk this Class!!</span>;
     }
     if (canMissCount > 0) return <span className="text-emerald-500 font-semibold text-[11px]">On track, CAN bunk this Class!!</span>;
     return <span className="text-rose-500 font-semibold text-[11px]">At target limit, DO NOT bunk this Class!!</span>;

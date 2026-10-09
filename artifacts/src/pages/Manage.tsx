@@ -547,7 +547,6 @@ export default function Manage() {
   const [expandedEditItemId, setExpandedEditItemId] = useState<string | null>(null);
   const [draftPlanned, setDraftPlanned] = useState<number | null>(null);
   const [moveCompleted, setMoveCompleted] = useState(false);
-  const [addSuccess, setAddSuccess] = useState(false);
 
   const isAllied = subjectType === 'allied';
   const resolvedParent = parentChoice === CREATE_NEW ? newParentName.trim() : parentChoice.trim();
@@ -679,6 +678,7 @@ export default function Manage() {
     setEditDataOpen(false);
     setExpandedEditItemId(null);
     setDraftPlanned(null);
+    setNote(null);
     setReturnToMoreAfterEditData(false);
     if (shouldReturnToMore) setMoreMenuOpen(true);
   };
@@ -699,26 +699,10 @@ export default function Manage() {
       setSgtClinicalSubject(''); setSgtName(''); setSgtStartDate(''); setSgtEndDate('');
       setSgtRows([newRow([])]); setSgtVacations([]);
       setFormError(null);
-      setAddSuccess(false);
+
     }
   }, [moreOpen]);
 
-  useEffect(() => {
-    if (addSuccess) {
-      const t = window.setTimeout(() => {
-        const shouldReturnToMore = returnToMoreAfterAdd;
-        setMoreOpen(false);
-        setAddSlotOpen(false);
-        setAddSuccess(false);
-        setEditSlot(null);
-        setMoveCompleted(false);
-        setReturnToMoreAfterAdd(false);
-        if (shouldReturnToMore) setMoreMenuOpen(true);
-      }, 2000);
-      return () => window.clearTimeout(t);
-    }
-    return undefined;
-  }, [addSuccess, returnToMoreAfterAdd]);
 
   const clearHistoryEntry = (entry: any) => {
     setHistoryEntries(prev => {
@@ -755,19 +739,20 @@ export default function Manage() {
     });
   };
 
-  const openAddSlot = () => { setAddSlotSubject(''); setAddSlotStart('09:00 AM'); setAddSlotEnd('10:00 AM'); setAddSlotPlanned(0); setFormError(null); setAddSlotOpen(true); setAddSuccess(false); };
+  const openAddSlot = () => { setAddSlotSubject(''); setAddSlotStart('09:00 AM'); setAddSlotEnd('10:00 AM'); setAddSlotPlanned(0); setFormError(null); setAddSlotOpen(true); };
   const openAddFromMore = () => {
     setMoreMenuOpen(false);
     setReturnToMoreAfterAdd(false);
     setFormError(null);
-    setAddSuccess(false);
+
     setMoreOpen(true);
   };
   const closeAddModal = () => {
     const shouldReturnToMore = returnToMoreAfterAdd;
     setMoreOpen(false);
     setFormError(null);
-    setAddSuccess(false);
+    setNote(null);
+
     setReturnToMoreAfterAdd(false);
     if (shouldReturnToMore) setMoreMenuOpen(true);
   };
@@ -828,7 +813,7 @@ export default function Manage() {
     }
     showToast('Slot added.');
     void notifyManageChange(`${addSlotSubject} was added to your routine.`);
-    setAddSuccess(true);
+
   };
 
   const addSubjectRow = () => { if (subjectRows.length >= 7) { setFormError('Maximum 7 day & time rows.'); return; } setSubjectRows(prev => [...prev, newRow(prev.map(r => r.day))]); };
@@ -902,7 +887,7 @@ export default function Manage() {
       setFormError(null); showToast(items.length > 1 ? `${items.length} items added.` : 'Added successfully.');
       void notifyManageChange(items.length > 1 ? 'Your routine was updated successfully.' : `${items[0]?.name || 'Subject'} was added to your routine.`);
       setConflictSheet(null);
-      setAddSuccess(true);
+
     } catch { showToast('Failed to save — please try again.', 'err'); setFormError('Failed to save.'); }
   };
 
@@ -979,7 +964,7 @@ export default function Manage() {
       setWardName(''); setWardStart(''); setWardEnd(''); setWardVacations([]);
       setFormError(null); showToast('Rotation added.');
       void notifyManageChange(`${name} was added to your rotation schedule.`);
-      setAddSuccess(true);
+
     } catch { showToast('Failed to save rotation — please try again.', 'err'); setFormError('Failed to save rotation.'); }
   };
 
@@ -1058,7 +1043,7 @@ export default function Manage() {
         setSgtClinicalSubject(''); setSgtName(''); setSgtStartDate(''); setSgtEndDate(''); setSgtRows([newRow([])]); setSgtVacations([]);
         setFormError(null); showToast(`SGT added with ${pc} planned classes.`);
         void notifyManageChange(`${finalSgtName} was added to your routine.`);
-        setAddSuccess(true);
+
       };
 
       if (timeOverlaps.length > 0) {
@@ -1092,10 +1077,10 @@ export default function Manage() {
     });
     setEditSlot({ day, index, startTime: start, endTime: end, targetDay: day, subjects, multiSelectMode: subjects.length > 1 });
     setSelectedSubjects([]); setSlotMoveTargetDay(day); setSlotMoveStart(start); setSlotMoveEnd(end);
-    setSlotConflict(null); setEditError(null); setShowMoveForm(false); setMoveCompleted(false); setAddSuccess(false); setSlotRemoveAllConfirm(false);
+    setSlotConflict(null); setEditError(null); setShowMoveForm(false); setMoveCompleted(false); setSlotRemoveAllConfirm(false);
   };
 
-  const closeEditSlot = () => { setEditSlot(null); setSelectedSubjects([]); setSlotRemove(null); setSlotRemoveConfirm(false); setSlotRemoveAllConfirm(false); setSlotConflict(null); setEditError(null); setShowMoveForm(false); setMoveCompleted(false); };
+  const closeEditSlot = () => { setEditSlot(null); setSelectedSubjects([]); setSlotRemove(null); setSlotRemoveConfirm(false); setSlotRemoveAllConfirm(false); setSlotConflict(null); setEditError(null); setShowMoveForm(false); setMoveCompleted(false); setNote(null); };
   const toggleSubjectSelection = (id: string) => setSelectedSubjects(prev => { const n = prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]; setShowMoveForm(n.length > 0); return n; });
   const selectAllSubjects = () => { if (!editSlot) return; if (selectedSubjects.length === editSlot.subjects.length) { setSelectedSubjects([]); setShowMoveForm(false); } else { setSelectedSubjects(editSlot.subjects.map(s => s.id)); setShowMoveForm(true); } };
 
@@ -1116,13 +1101,13 @@ export default function Manage() {
       setMoveCompleted(true);
       showToast(`Moved ${namesToMove.length} subject(s).`);
       void notifyManageChange(`${namesToMove.join(', ')} was moved in your routine.`);
-      setAddSuccess(true);
+
     } else {
       setEditSlot(prev => prev ? { ...prev, subjects: remaining.map(s => ({ ...s, id: genId('sel') })), targetDay } : null);
       setSelectedSubjects([]); setShowMoveForm(false); setSlotConflict(null);
       showToast(`Moved ${namesToMove.length} subject(s).`);
       void notifyManageChange(`${namesToMove.join(', ')} was moved in your routine.`);
-      setAddSuccess(true);
+
     }
     recordHistory('Moved Subjects', { names: namesToMove, fromDay: currentDay, fromTime: sourceSlot.time, toDay: targetDay, toTime: time });
   };
@@ -1204,17 +1189,12 @@ export default function Manage() {
       recordHistory('Removed from Slot', { subject: removedSubjects.join(', '), day: editSlot.day, time: slot.time });
       showToast('Slot removed.');
       void notifyManageChange('A schedule slot was removed from your routine.');
-      setAddSuccess(true);
+
     } catch {
       showToast('Failed to remove slot.', 'err');
     } finally {
       setSlotRemovalInProgress(false);
       setSlotRemoveAllConfirm(false);
-      // This confirmation sheet is layered over Edit Slot. Let its 270ms
-      // exit animation and accessibility cleanup finish before closing the
-      // underlying sheet, otherwise the nested inert restoration can leave
-      // the PWA shell non-interactive until reload.
-      window.setTimeout(closeEditSlot, 320);
     }
   };
 
@@ -2234,7 +2214,7 @@ export default function Manage() {
         {/* Add Slot Modal */}
         <OverlayModal
           open={addSlotOpen}
-          onClose={() => { setAddSlotOpen(false); setFormError(null); setAddSuccess(false); }}
+          onClose={() => { setAddSlotOpen(false); setFormError(null); setNote(null); }}
           maxW="max-w-sm"
           header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Add Slot</h3><p className="mt-1 text-[10px] text-muted-foreground">Add a class to {DAY_NAMES[selDay]}.</p></div>}
           footer={
@@ -2344,7 +2324,7 @@ export default function Manage() {
         {/* Edit Subject Modal */}
         <OverlayModal
           open={!!editSubject}
-          onClose={() => { setEditSubject(null); setEditError(null); }}
+          onClose={() => { setEditSubject(null); setEditError(null); setNote(null); }}
           maxW="max-w-lg"
           header={
             <>
@@ -2421,7 +2401,7 @@ export default function Manage() {
         {/* Edit Ward Modal */}
         <OverlayModal
           open={!!editWard}
-          onClose={() => { setEditWard(null); setEditError(null); }}
+          onClose={() => { setEditWard(null); setEditError(null); setNote(null); }}
           maxW="max-w-lg"
           header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Edit Rotation</h3><p className="mt-1 text-[10px] text-muted-foreground">Change dates, session times, or vacations. Rename is disabled.</p></div>}
           footer={
@@ -2581,7 +2561,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Slot Remove Confirm Modal */}
-        <OverlayModal open={slotRemoveConfirm} onClose={() => { setSlotRemoveConfirm(false); setSlotRemove(null); }} header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Remove from Slot?</h3><p className="mt-1 text-[10px] text-muted-foreground">Confirm removing this subject from its scheduled slot.</p></div>}>
+        <OverlayModal open={slotRemoveConfirm} onClose={() => { setSlotRemoveConfirm(false); setSlotRemove(null); setNote(null); }} header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Remove from Slot?</h3><p className="mt-1 text-[10px] text-muted-foreground">Confirm removing this subject from its scheduled slot.</p></div>}>
           {slotRemove && (
             <div className="p-4 sm:p-5 space-y-3">
               <div className="flex items-start gap-3">
@@ -2600,7 +2580,7 @@ export default function Manage() {
         </OverlayModal>
 
         {/* Whole Slot Remove Confirm Modal */}
-        <OverlayModal open={slotRemoveAllConfirm} onClose={() => setSlotRemoveAllConfirm(false)} header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Remove This Slot?</h3><p className="mt-1 text-[10px] text-muted-foreground">All subjects in this time slot will be removed.</p></div>}>
+        <OverlayModal open={slotRemoveAllConfirm} onClose={() => { setSlotRemoveAllConfirm(false); setNote(null); }} header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Remove This Slot?</h3><p className="mt-1 text-[10px] text-muted-foreground">All subjects in this time slot will be removed.</p></div>}>
           <div className="p-4 sm:p-5 space-y-3">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0"><Trash2 className="w-5 h-5 text-rose-500" /></div>

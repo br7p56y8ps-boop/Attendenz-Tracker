@@ -1,7 +1,7 @@
 {
-  "version": "1.7.1",
+  "version": "1.7.2",
   "releaseType": "minor",
-  "updateMode": "automatic",
+  "updateMode": "manual",
   "updateProtocol": 2,
   "automaticFromVersion": "1.7.1",
   "summary": "Safer manual updates with staged backup, download, installation, and recovery progress."

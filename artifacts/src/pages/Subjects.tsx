@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { SubjectCard } from '@/components/SubjectCard';
 import { StickySectionLabel } from '@/components/StickySectionLabel';
@@ -129,7 +129,7 @@ const CategoryCard = ({
       ref={cardRef}
       style={cardStyle}
       className={cn(
-        'border rounded-2xl shadow-sm transition-all overflow-hidden p-4 sm:p-5 space-y-3.5',
+        'subject-category-card border rounded-2xl shadow-sm transition-all overflow-hidden p-4 sm:p-5 space-y-3.5',
         cardBgColor,
         isOpen ? 'border-border/90 ring-1 ring-border/40 shadow-md' : 'hover:shadow-md'
       )}
@@ -141,24 +141,25 @@ const CategoryCard = ({
       transition={{ duration: 0.25, ease: 'easeInOut' }}
     >
       <button type="button" onClick={handleToggle} className="w-full text-left transition-all active:scale-[0.99] cursor-pointer">
-        <div className="flex items-center gap-4 min-w-0">
-          <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-background/40 px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_5px_rgba(0,0,0,0.18)]">
-            <span className="text-xs font-extrabold leading-none" style={{ color: overallColor }}>{summary.pct === undefined || isNaN(summary.pct) ? '--' : formatPercentage(summary.pct)}</span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg sm:text-xl font-bold text-foreground truncate">{title}</h2>
+        <div className="subject-category-toggle">
+          <div className="subject-category-copy">
+            <div className="subject-category-title">
+              <h2>{title}</h2>
               {badge}
             </div>
-            {subtitle && <p className="text-xs text-primary font-semibold mt-0.5">{subtitle}</p>}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1.5 font-medium">
-              <span>Attended: <strong className="text-foreground font-semibold">{summary.att}</strong></span>
-              <span className="opacity-40">·</span>
-              <span>Missed: <strong className="text-foreground font-semibold">{summary.mis}</strong></span>
-              <span className="opacity-40">·</span>
-              <span>Planned: <strong className="text-foreground font-semibold">{summary.planned}</strong></span>
-            </div>
+            {subtitle && <span className="subject-category-subtitle">{subtitle}</span>}
+            <span className="subject-category-stats"><span>{summary.att} attended</span><i /><span>{summary.mis} missed</span></span>
           </div>
+          <span className="subject-progress-ring" style={{ background: `conic-gradient(${overallColor} ${Math.min(100, Math.max(0, summary.pct || 0))}%, color-mix(in srgb, var(--border) 75%, transparent) 0)` }}>
+            <span>
+              <strong style={{ color: overallColor }}>{summary.pct === undefined || isNaN(summary.pct) ? '--' : formatPercentage(summary.pct)}</strong>
+              <small>RECORDED</small>
+            </span>
+          </span>
+        </div>
+        <div className="subject-category-progress">
+          <span><i style={{ width: `${Math.min(100, summary.planned > 0 ? (summary.conducted / summary.planned) * 100 : 0)}%`, background: overallColor }} /></span>
+          <div><small>{summary.conducted}/{summary.planned} classes recorded</small><small>{summary.remainingTotal} remaining</small></div>
         </div>
       </button>
       <AnimatePresence initial={false} mode="sync">
@@ -168,7 +169,7 @@ const CategoryCard = ({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.25, ease: 'easeInOut' }}
-            className="overflow-hidden bg-background/40 rounded-xl border border-border/50 p-2 space-y-1.5"
+            className="subject-category-details overflow-hidden bg-background/40 rounded-xl border border-border/50 p-2 space-y-1.5"
           >
             {renderChildren()}
           </motion.div>
@@ -192,6 +193,7 @@ export default function Subjects() {
     getPresetWardTotalPlanned,
     getCustomWardTotalPlanned,
     getSubjectIdByName,
+    subjectRegistry,
   } = useCustomData();
   const [, setLocation] = useLocation();
   const today = new Date();
@@ -296,6 +298,22 @@ export default function Subjects() {
     return { att, mis, planned, pct, conducted, remainingTotal, maxPossiblePct, childDetails, urgentList, attentionList };
   };
 
+  const progressReport = useMemo(() => {
+    let attended = 0;
+    let missed = 0;
+    let planned = 0;
+    subjectRegistry.forEach(ref => {
+      const isWard = ref.kind === 'preset-ward' || ref.kind === 'ward-rotation';
+      const key = isWard ? getWardAttendanceKey(ref.id) : ref.kind === 'sgt' ? getSGTKey(ref.id) : getAcademicAttendanceKey(ref.id);
+      const record = isWard ? wards[key] : subjects[key];
+      attended += record?.attended || 0;
+      missed += record?.missed || 0;
+      planned += ref.planned || 0;
+    });
+    const conducted = attended + missed;
+    return { attended, missed, planned, conducted, remaining: Math.max(0, planned - conducted), percentage: conducted > 0 ? (attended / conducted) * 100 : 0 };
+  }, [subjectRegistry, subjects, wards]);
+
   /* ──────────────────────────────────────────────────────────────────────────
      PRELOADED MODE — SGT records are pulled OUT of academic groups entirely.
      ────────────────────────────────────────────────────────────────────────── */
@@ -392,6 +410,22 @@ export default function Subjects() {
   return (
     <Layout>
       <div className="space-y-4 pb-[calc(var(--app-bottom-nav-height)+1rem)] scroll-reachability">
+        <section className="subjects-report">
+          <div className="subjects-report-heading">
+            <div>
+              <h2>Progress report</h2>
+            </div>
+          </div>
+          <div className="subjects-report-score">
+            <strong style={{ color: pctColor(progressReport.percentage, preferredPercentage, { hasPlannedClasses: progressReport.planned > 0 }) }}>{formatPercentage(progressReport.percentage)}</strong>
+            <span>current attendance</span>
+          </div>
+          <div className="subjects-report-track"><i style={{ width: `${Math.min(100, Math.max(0, progressReport.percentage))}%` }} /></div>
+          <div className="subjects-report-footer">
+            <span><b>{progressReport.attended}</b> attended <i /> <b>{progressReport.missed}</b> missed</span>
+            <span>Target <b>{preferredPercentage}%</b></span>
+          </div>
+        </section>
         {/* Empty state for custom mode with no subjects */}
         {subjectMode === 'custom' && !customHasAnySubjects && (
           <div className="bg-card rounded-2xl p-8 border border-border text-center shadow-sm mt-2">

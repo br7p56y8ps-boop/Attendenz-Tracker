@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
-import { applyThemePreference, readThemePreference } from '@/lib/theme';
+import { applyAccentTheme, applyFontPreference, applyThemePreference, readAccentTheme, readFontPreference, readThemePreference } from '@/lib/theme';
+import { applyNavBarStyle, readNavBarStyle } from '@/lib/uiPreferences';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
@@ -165,7 +166,12 @@ export default function App() {
       .then(() => { ensureCurriculumMigration(); if (alive) setStorageReady(true); })
       .catch((error) => { if (alive) setStorageInitError(error instanceof Error ? error.message : 'Storage could not be initialized.'); });
 
-    const applyCurrentTheme = () => applyThemePreference(readThemePreference());
+    const applyCurrentTheme = () => {
+      applyThemePreference(readThemePreference());
+      applyAccentTheme(readAccentTheme());
+      applyFontPreference(readFontPreference());
+      applyNavBarStyle(readNavBarStyle());
+    };
     applyCurrentTheme();
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const onSystemThemeChange = () => {
