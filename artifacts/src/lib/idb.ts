@@ -276,11 +276,10 @@ export async function initStorageAndMigrate(): Promise<void> {
         }
       }
 
-      for (const [k, v] of Object.entries(localData)) {
-        await idbSet(k, v);
-      }
-
-      await idbSet('att_idb_migrated_v1', 'true');
+      await idbSetMany([
+        ...Object.entries(localData),
+        ['att_idb_migrated_v1', 'true'],
+      ]);
     }
 
     const allIdbData = await idbGetAll();
@@ -291,7 +290,7 @@ export async function initStorageAndMigrate(): Promise<void> {
     }
 
     if (typeof window !== 'undefined' && navigator.storage && navigator.storage.persist) {
-      await navigator.storage.persist();
+      void navigator.storage.persist().catch(() => undefined);
     }
   } catch (err) {
     notifyStorageError(err, 'initialization');

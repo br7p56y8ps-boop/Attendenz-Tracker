@@ -47,7 +47,7 @@ export function ModalSheet({
   return createPortal(
     <AnimatePresence initial={false}>
       {open && (
-        <div className={cn('fixed inset-0 flex items-end justify-center p-3 sm:p-4', zIndexClassName)} style={style}>
+        <div className={cn('fixed inset-0 flex items-end justify-center px-3 pt-3 pb-0 sm:px-4 sm:pt-4', zIndexClassName)} style={style}>
           <motion.div
             className={cn('modal-sheet-backdrop absolute inset-0 bg-black/60', backdropClassName)}
             initial={{ opacity: 0 }}
@@ -84,7 +84,7 @@ export function ModalSheet({
               layout: { duration: 0.22, ease: 'easeInOut' },
             }}
             className={cn(
-              'relative flex w-full min-h-[140px] max-h-[80dvh] flex-col overflow-hidden rounded-3xl border border-border bg-card',
+              'relative flex w-full min-h-[140px] max-h-[80dvh] flex-col overflow-hidden rounded-t-3xl rounded-b-none border border-border bg-card',
               maxWidth,
               className,
             )}

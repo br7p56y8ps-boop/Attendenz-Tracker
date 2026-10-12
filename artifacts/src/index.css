@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Comfortaa:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Lora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Nunito:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
@@ -51,19 +50,19 @@ body {
 
 /* Light Theme (Default) */
 :root {
-  --background: #f4f7fa;
-  --foreground: #17212b;
+  --background: #f1f5f8;
+  --foreground: #101923;
   
   --card: #ffffff;
   --card-foreground: #17212b;
   
-  --border: #d7e0e8;
+  --border: #b7c4d0;
   
-  --primary: #007AFF;
+  --primary: #0067c5;
   --primary-foreground: #ffffff;
   
-  --muted: #edf2f6;
-  --muted-foreground: #465d73;
+  --muted: #e6edf3;
+  --muted-foreground: #354b60;
   
   --destructive: #bd3039;
   --destructive-foreground: #ffffff;
@@ -74,19 +73,19 @@ body {
 
 /* Dark Theme */
 .dark {
-  --background: #0a0a0a;
-  --foreground: #f7f9fc;
+  --background: #000000;
+  --foreground: #ffffff;
   
-  --card: #151515;
-  --card-foreground: #f5f5f5;
+  --card: #121212;
+  --card-foreground: #ffffff;
   
-  --border: #3a424e;
+  --border: #424242;
   
-  --primary: #007AFF;
+  --primary: #4da3ff;
   --primary-foreground: #ffffff;
   
-  --muted: #1d1d1d;
-  --muted-foreground: #b2bdca;
+  --muted: #1c1c1c;
+  --muted-foreground: #c5cfda;
   
   --destructive: #fb7d86;
   --destructive-foreground: #1a0809;
@@ -94,9 +93,9 @@ body {
   --success: #63d59d;
   --warning: #f0b95b;
 }
-[data-accent-theme='green'] { --primary: #16803c; --primary-foreground: #ffffff; --success: #16803c; --warning: #a16207; }
-[data-accent-theme='orange'] { --primary: #ea580c; --primary-foreground: #ffffff; --success: #0f8d60; --warning: #ad6500; }
-[data-accent-theme='red'] { --primary: #c53030; --primary-foreground: #ffffff; --success: #0f8d60; --warning: #ad6500; }
+[data-accent-theme='green'] { --primary: #146c35; --primary-foreground: #ffffff; --success: #08734b; --warning: #8a4b00; }
+[data-accent-theme='orange'] { --primary: #b83b09; --primary-foreground: #ffffff; --success: #08734b; --warning: #8a4b00; }
+[data-accent-theme='red'] { --primary: #a91e2c; --primary-foreground: #ffffff; --success: #08734b; --warning: #8a4b00;}
 :root[data-font-preference='system'] { --font-sans: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif; }
 :root[data-font-preference='sf'] { --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Avenir Next", sans-serif; }
 :root[data-font-preference='inter'] { --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -358,6 +357,7 @@ body {
 
 .modal-sheet-footer {
   padding: 0.65rem 0.75rem;
+  padding-bottom: calc(0.65rem + env(safe-area-inset-bottom, 0px));
 }
 
 .modal-sheet-footer > * {
@@ -786,17 +786,17 @@ input[type="time"] {
 
 /* Dark surfaces: distinct edges and restrained depth without pseudo-elements. */
 .dark {
-  --border: #424c5a;
+  --border: #424242;
 }
 .dark .glass-panel,
 .dark .glass-card,
 .dark .modal-sheet-content {
-  border-color: #424c5a;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(148, 163, 184, 0.06);
+  border-color: #424242;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 .dark .percentage-3d-container {
-  border-color: #4d5968;
-  background: linear-gradient(145deg, rgba(40, 48, 58, 0.92), rgba(18, 22, 28, 0.96));
+  border-color: #424242;
+  background: linear-gradient(145deg, rgba(42, 42, 42, 0.92), rgba(18, 18, 18, 0.96));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 4px rgba(0, 0, 0, 0.28), 0 4px 9px rgba(0, 0, 0, 0.3);
   transform: translateY(-1px);
 }
@@ -850,6 +850,7 @@ h1, h2, h3, h4, h5, h6, .bottom-nav-surface button, .app-shell > header h1 { fon
 .home-page-content { padding-top: 5.25rem; }
 .home-back-to-today { bottom: calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom) + 0.85rem + var(--app-nav-float-gap, 0px)); }
 .modal-sheet-content, [role="dialog"] {
+  border-bottom-color: transparent !important;
   background:
     radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--primary) 7%, transparent), transparent 38%),
     radial-gradient(circle at 88% 90%, color-mix(in srgb, var(--foreground) 6%, transparent), transparent 42%),

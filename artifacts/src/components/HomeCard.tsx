@@ -227,6 +227,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
   const todayStr = getCurrentDateStr();
   const tomorrowDate = addDays(new Date(todayStr + 'T12:00:00'), 1);
   const daysFromToday = Math.round((new Date(activeDateStr + 'T12:00:00').getTime() - new Date(todayStr + 'T12:00:00').getTime()) / 86400000);
+  const showVacationPeriodPercentage = effectiveMode !== 'future' || daysFromToday <= 1;
 
   const isScheduledOn = useCallback((d: Date): boolean => {
     const ds = toStr(d); const abbr = DAY_ABBRS[d.getDay()]; const dow = d.getDay();
@@ -469,7 +470,7 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
               <div className="text-sm leading-tight text-muted-foreground">{time}</div>
               <span className="inline-flex rounded-full border border-warning/35 bg-warning/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-warning">Vacation / Exam Period</span>
             </div>
-            <div className={cn('shrink-0 rounded-full border px-3 py-1 text-sm font-bold', total === 0 ? 'border-border/50 bg-muted/30 text-muted-foreground' : percentage >= preferredPercentage ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500' : 'border-rose-500/30 bg-rose-500/10 text-rose-500')}>{total === 0 ? '--' : formatPercentage(percentage)}</div>
+            {showVacationPeriodPercentage && <div className={cn('shrink-0 rounded-full border px-3 py-1 text-sm font-bold', total === 0 ? 'border-border/50 bg-muted/30 text-muted-foreground' : percentage >= preferredPercentage ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500' : 'border-rose-500/30 bg-rose-500/10 text-rose-500')}>{total === 0 ? '--' : formatPercentage(percentage)}</div>}
           </div>
         ) : effectiveMode === 'past' ? (
           <div className="flex items-center justify-between gap-3">

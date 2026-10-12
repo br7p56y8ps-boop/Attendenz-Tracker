@@ -74,18 +74,12 @@ interface ActivityItem extends DashboardActivityItem { kind: ActivityKind; }
 function getDashboardSubjectKind(
   subject: string,
   card: { isWard?: boolean; isSGT?: boolean; isIntegrated?: boolean } | undefined,
-  subjectMode: 'preloaded' | 'custom',
-  userAddedSubjects: Array<{ name: string; subjectType: string; parentName?: string; category?: string }>,
-  customSubjects: Array<{ name: string; subjectType: string; parentName?: string; category?: string }>,
   subjectRegistry: Array<{ name: string; id: string; kind: string; domain?: string }>,
 ): string {
   if (card?.isSGT) return 'SGT';
   if (card?.isWard) return 'Ward';
   if (card?.isIntegrated) return 'Integrated';
   const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-  const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-  const stored = source.find(item => normalize(item.name) === normalize(subject));
-  if (stored && isSGTSubjectRecord(stored)) return 'SGT';
   const registry = subjectRegistry.find(item => normalize(item.name) === normalize(subject) || normalize(item.id) === normalize(subject));
   if (registry?.kind === 'integrated') return 'Integrated';
   if (registry?.kind === 'sgt') return 'SGT';
@@ -500,7 +494,7 @@ export default function Home() {
   const tomorrowDateStr = toDateString(tomorrowDate);
   const tomorrowDay = tomorrowDate.getDay();
   const tomorrowEntries = useMemo(() => {
-    const entries: Array<{ subject?: string; time: string; holiday?: string; isWard?: boolean; isSGT?: boolean; isIntegrated?: boolean }> = [];
+    const entries: Array<{ subject?: string; time: string; holiday?: string; isWard?: boolean; isSGT?: boolean; sgtId?: string; isIntegrated?: boolean }> = [];
     if (subjectMode === 'preloaded') {
       if (tomorrowDay === 5) return [{ time: '', holiday: 'Detox Day' }];
       (presetTimetable[tomorrowDay] || []).forEach((slot: any) => {
@@ -513,7 +507,7 @@ export default function Home() {
       userAddedSubjects.forEach(subject => {
         if (subject.subjectType !== 'allied' || subject.parentName !== 'Small Group Teaching') return;
         const scheduleForDay = (subject.schedules || []).find((scheduleItem: any) => scheduleItem.day === DAY_ABBRS[tomorrowDay]);
-        if (scheduleForDay) entries.push({ subject: subject.name, time: `${scheduleForDay.start}–${scheduleForDay.end}`, isSGT: true });
+        if (scheduleForDay) entries.push({ subject: subject.name, time: `${scheduleForDay.start}–${scheduleForDay.end}`, isSGT: true, sgtId: subject.id });
       });
     } else {
       customWards.forEach(ward => {
@@ -521,13 +515,19 @@ export default function Home() {
       });
       customSubjects.forEach(subject => {
         const schedules = (subject.schedules || []).filter((scheduleItem: any) => scheduleItem.day === DAY_ABBRS[tomorrowDay]);
-        schedules.forEach((scheduleItem: any) => entries.push({ subject: subject.name, time: scheduleItem.time || `${scheduleItem.start}–${scheduleItem.end}`, isSGT: isSGTSubjectRecord(subject) }));
+        schedules.forEach((scheduleItem: any) => {
+          const isSGT = isSGTSubjectRecord(subject);
+          entries.push({ subject: subject.name, time: scheduleItem.time || `${scheduleItem.start}–${scheduleItem.end}`, isSGT, ...(isSGT ? { sgtId: subject.id } : {}) });
+        });
       });
     }
     const remaining = entries.filter(entry => {
       if (!entry.subject) return true;
       const source = subjectMode === 'preloaded' ? userAddedSubjects : customSubjects;
-      const sgt = source.find(item => item.name === entry.subject && isSGTSubjectRecord(item));
+      const sgt = entry.isSGT && entry.sgtId
+        ? source.find(item => item.id === entry.sgtId && isSGTSubjectRecord(item))
+        : undefined;
+      if (entry.isSGT && !sgt) return false;
       const ward = subjectMode === 'custom'
         ? customWards.find(item => item.name.toLowerCase() === entry.subject!.toLowerCase())
         : getCurrentPresetWard(tomorrowDate)?.ward.toLowerCase() === entry.subject!.toLowerCase() ? getCurrentPresetWard(tomorrowDate) : undefined;
@@ -559,7 +559,7 @@ export default function Home() {
   }, [customSubjects, customWards, finishedMap, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getCustomWardTotalPlanned, getPresetWardTotalPlanned, presetTimetable, subjectMode, subjects, tomorrowDate, tomorrowDateStr, tomorrowDay, userAddedSubjects, wards]);
   const tomorrowSubject = tomorrowEntries[0]?.subject;
   const tomorrowIsWard = Boolean(tomorrowEntries[0]?.isWard);
-  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard, isSGT: tomorrowEntries[0]?.isSGT, isIntegrated: tomorrowEntries[0]?.isIntegrated }, subjectMode, userAddedSubjects, customSubjects, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
+  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard, isSGT: tomorrowEntries[0]?.isSGT, isIntegrated: tomorrowEntries[0]?.isIntegrated }, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
   const isEntryVacation = (entry: DayEntry, dateStr = selectedDateStr) => {
     const card = entry.card;
     if (!card) return false;
@@ -809,7 +809,7 @@ export default function Home() {
                 const color = vacation ? 'text-amber-500' : completed ? 'text-muted-foreground' : status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
                 const rowMuted = completed ? 'opacity-55' : '';
                 const subject = entry.card?.subject || 'Unknown subject';
-                const kind = getDashboardSubjectKind(subject, entry.card, subjectMode, userAddedSubjects, customSubjects, subjectRegistry);
+                const kind = getDashboardSubjectKind(subject, entry.card, subjectRegistry);
                 return <button type="button" key={entry.id} onClick={() => { setSelectedDateStr(todayStr); setShowMarkAttendance(true); }} className={cn('relative flex w-full min-w-0 items-center gap-x-2 text-left', rowMuted)}>
                   <span className={cn('absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card', completed ? 'bg-muted-foreground' : 'bg-primary')} />
                   <span className="flex min-w-0 flex-1 flex-col gap-0">

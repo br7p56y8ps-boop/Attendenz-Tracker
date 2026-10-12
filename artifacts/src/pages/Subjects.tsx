@@ -413,14 +413,14 @@ export default function Subjects() {
         <section className="subjects-report">
           <div className="subjects-report-heading">
             <div>
-              <h2>Progress report</h2>
+              <h2>Progress Overall</h2>
             </div>
           </div>
           <div className="subjects-report-score">
             <strong style={{ color: pctColor(progressReport.percentage, preferredPercentage, { hasPlannedClasses: progressReport.planned > 0 }) }}>{formatPercentage(progressReport.percentage)}</strong>
             <span>current attendance</span>
           </div>
-          <div className="subjects-report-track"><i style={{ width: `${Math.min(100, Math.max(0, progressReport.percentage))}%` }} /></div>
+          <div className="subjects-report-track"><i style={{ width: `${Math.min(100, Math.max(0, progressReport.percentage))}%`, backgroundColor: pctColor(progressReport.percentage, preferredPercentage, { isFinished: progressReport.planned > 0 && progressReport.conducted >= progressReport.planned, hasPlannedClasses: progressReport.planned > 0 }) }} /></div>
           <div className="subjects-report-footer">
             <span><b>{progressReport.attended}</b> attended <i /> <b>{progressReport.missed}</b> missed</span>
             <span>Target <b>{preferredPercentage}%</b></span>
