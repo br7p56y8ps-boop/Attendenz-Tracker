@@ -1,8 +1,8 @@
 {
-  "version": "1.7.2",
+  "version": "1.7.3",
   "releaseType": "minor",
   "updateMode": "manual",
   "updateProtocol": 2,
-  "automaticFromVersion": "1.7.2",
-  "summary": "Safer manual updates with staged backup, download, installation, and recovery progress."
+  "automaticFromVersion": "1.7.3",
+  "summary": "A clearer, more reliable Attendenz experience with refined everyday behavior, easier-to-read visuals, and safer offline availability."
 }

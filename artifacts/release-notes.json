@@ -94,5 +94,19 @@
         "summary": "Delete and restore actions are safer, failures are easier to notice, and finished SGT subjects no longer send reminders."
       }
     ]
+  },
+  "1.7.3": {
+    "upgrades": [
+      {
+        "title": "Clearer progress and readability",
+        "summary": "Progress views respond more clearly to attendance levels, with improved contrast and simpler theme-mode guidance."
+      }
+    ],
+    "fixes": [
+      {
+        "title": "A more dependable everyday experience",
+        "summary": "Scheduling, offline availability, and modal presentation have been refined for more consistent use across devices."
+      }
+    ]
   }
 }
