@@ -1,3 +1,4 @@
+@import './fonts.css';
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
@@ -178,8 +179,13 @@ body {
   transform: scale(0.98);
 }
 .action-button:focus-visible {
-  outline: 2px solid color-mix(in srgb, currentColor 45%, transparent);
-  outline-offset: 2px;
+  outline: none;
+  border-color: currentColor;
+}
+.whats-new-modal-sheet {
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-bottom-color: transparent !important;
 }
 .action-button:disabled {
   cursor: not-allowed;

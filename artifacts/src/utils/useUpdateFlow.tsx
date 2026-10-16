@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createSnapshot, getSnapshots } from '@/utils/snapshotUtils';
 import { ModalSheet } from '@/components/ui/modal-sheet';
-import { APP_VERSION, BUILD_REVISION, LATEST_VERSION, type UpdateMode } from '@/lib/appVersion';
+import { APP_VERSION, BUILD_REVISION, LATEST_VERSION } from '@/lib/appVersion';
 import { storageSetItemChecked, storageRemoveItemChecked, storageCommitChecked } from '@/lib/idb';
-import { notifyUpdateAvailable } from '@/lib/webPush';
 
 function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
@@ -24,7 +23,6 @@ export function useUpdateFlow() {
   const [serverVersion, setServerVersion] = useState<string>(() => localStorage.getItem('att_pwa_latest_version') || LATEST_VERSION);
   const [serverBuildRevision, setServerBuildRevision] = useState<string>(() => localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
   const [serverSummary, setServerSummary] = useState<string>(() => localStorage.getItem('att_pwa_update_summary') || '');
-  const [serverUpdateMode, setServerUpdateMode] = useState<UpdateMode>(() => localStorage.getItem('att_pwa_update_mode') === 'automatic' ? 'automatic' : 'manual');
   useEffect(() => {
     const syncPendingUpdate = () => {
       const pendingVersion = localStorage.getItem('att_pwa_latest_version');
@@ -33,7 +31,6 @@ export function useUpdateFlow() {
       setServerVersion(pendingVersion);
       setServerBuildRevision(localStorage.getItem('att_pwa_latest_build_revision') || BUILD_REVISION);
       setServerSummary(localStorage.getItem('att_pwa_update_summary') || '');
-      setServerUpdateMode(localStorage.getItem('att_pwa_update_mode') === 'automatic' ? 'automatic' : 'manual');
     };
     syncPendingUpdate();
     const onReady = () => syncPendingUpdate();
@@ -42,7 +39,6 @@ export function useUpdateFlow() {
       setServerVersion(APP_VERSION);
       setServerBuildRevision(BUILD_REVISION);
       setServerSummary('');
-      setServerUpdateMode('manual');
     };
     window.addEventListener('attendenz:update-ready', onReady);
     window.addEventListener('attendenz:update-cleared', onCleared);
@@ -53,15 +49,6 @@ export function useUpdateFlow() {
   }, []);
   const isUpdateAvailable = compareVersions(serverVersion, installedVersion) > 0
     || (serverVersion === installedVersion && serverBuildRevision !== BUILD_REVISION);
-
-  useEffect(() => {
-    if (!isUpdateAvailable || serverUpdateMode !== 'manual') return;
-    const sentKey = `att_update_available_notified_${serverVersion}_${serverBuildRevision}`;
-    if (localStorage.getItem(sentKey) === 'true') return;
-    void notifyUpdateAvailable(serverVersion).then(sent => {
-      if (sent) localStorage.setItem(sentKey, 'true');
-    });
-  }, [isUpdateAvailable, serverVersion, serverBuildRevision, serverUpdateMode, installedVersion]);
 
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   useEffect(() => {

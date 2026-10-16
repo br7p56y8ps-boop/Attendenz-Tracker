@@ -333,10 +333,6 @@ export function notifyManageChange(body: string): Promise<boolean> {
   return showNotificationIfEnabled('manageChanges', 'Routine Updated', body, 'attendenz-manage-change');
 }
 
-export function notifyUpdateAvailable(version: string): Promise<boolean> {
-  return showNotificationIfEnabled('updateAvailable', 'Update Available', `An update for version ${version} is ready. Open the app to review and update.`, `attendenz-update-available-${version}`);
-}
-
 export function notifyUpdateCompleted(version: string): Promise<boolean> {
   return showNotificationIfEnabled('updateCompleted', 'Update Complete', `The app is now updated to version ${version}.`, `attendenz-update-completed-${version}`);
 }

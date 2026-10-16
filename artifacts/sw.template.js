@@ -119,8 +119,31 @@ self.addEventListener('install', (e) => {
         throw error;
       }
     }
+    const stylesheetUrls = Array.from(assets).filter((url) => /\.css$/i.test(new URL(url).pathname));
+    const cachedStylesheets = new Set();
+    await Promise.all(stylesheetUrls.map(async (url) => {
+      try {
+        const stylesheet = await fetch(url, { cache: 'no-store' });
+        if (!stylesheet.ok || stylesheet.status !== 200) throw new Error(`Precache stylesheet request failed: ${url} (${stylesheet.status})`);
+        const cssText = await stylesheet.clone().text();
+        await cache.put(url, stylesheet);
+        cachedStylesheets.add(url);
+        for (const match of cssText.matchAll(/url\(\s*["']?([^"')]+?)["']?\s*\)/gi)) {
+          try {
+            const resource = new URL(match[1].trim(), url);
+            if (resource.origin === self.location.origin && /\.(?:woff2?|ttf|otf)$/i.test(resource.pathname)) assets.add(resource.href);
+          } catch (error) {
+            console.error('Precache stylesheet asset URL is invalid.', match[1], error);
+            throw error;
+          }
+        }
+      } catch (error) {
+        console.error('Precache stylesheet failed.', url, error);
+        throw error;
+      }
+    }));
     await Promise.all(Array.from(assets).map(async (url) => {
-      if (url === indexUrl) return;
+      if (url === indexUrl || cachedStylesheets.has(url)) return;
       try {
         const asset = await fetch(url, { cache: 'no-store' });
         if (!asset.ok || asset.status !== 200) throw new Error(`Precache asset request failed: ${url} (${asset.status})`);
