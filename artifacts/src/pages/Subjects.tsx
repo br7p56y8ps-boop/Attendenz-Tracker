@@ -365,12 +365,9 @@ export default function Subjects() {
   }, [progressFilterActive, progressReport, subjectRegistry, activeProgressGroups, subjects, wards]);
   const toggleProgressGroup = (key: string) => {
     setSelectedProgressGroups(current => {
-      if (current === null) {
-        if (key === 'academic') return [...academicProgressKeys];
-        if (key === 'clinical') return ['clinical'];
-        return [key];
-      }
-      const next = new Set(current);
+      // The null state means every group is checked; initialize from that full
+      // selection so tapping a checkbox unchecks it rather than isolating it.
+      const next = new Set(current ?? progressGroupKeys);
       const groupKeys = key === 'academic' ? academicProgressKeys : [key];
       const shouldSelect = groupKeys.some(group => !next.has(group));
       groupKeys.forEach(group => shouldSelect ? next.add(group) : next.delete(group));
