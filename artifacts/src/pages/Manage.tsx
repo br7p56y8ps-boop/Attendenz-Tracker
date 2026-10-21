@@ -2218,7 +2218,7 @@ export default function Manage() {
           maxW="max-w-sm"
           header={<div className="text-center"><h3 className="text-sm font-bold text-foreground">Add Slot</h3><p className="mt-1 text-[10px] text-muted-foreground">Add a class to {DAY_NAMES[selDay]}.</p></div>}
           footer={
-            <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5 border-2 border-cyan-400/90')}>
+            <button type="button" onClick={saveAddSlot} className={cn(btnPrimary, 'w-full flex items-center justify-center gap-1.5')}>
               <Plus className="w-3.5 h-3.5" /> Add Slot
             </button>
           }

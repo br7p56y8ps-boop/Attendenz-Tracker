@@ -8,11 +8,11 @@ The current configuration is:
 
 ```json
 {
-  "version": "1.7.3",
+  "version": "1.7.4",
   "releaseType": "minor",
   "updateMode": "manual",
   "updateProtocol": 2,
-  "automaticFromVersion": "1.7.3"
+  "automaticFromVersion": "1.7.4"
 }
 ```
 
@@ -125,9 +125,10 @@ A same-version fix is safe only when the deployed build receives a different rev
 3. Confirm `updateProtocol` matches the code.
 4. Choose `automaticFromVersion` for this release’s intended cohort and confirm older clients are not included accidentally.
 5. Confirm a same-version build will have a different Git revision.
-6. Run root typecheck and production build.
-7. Run push-service typecheck and tests when push-service or release metadata changes.
-8. Inspect generated `dist/public/version.json` and `dist/public/sw.js`.
-9. Confirm no unrelated release notes, migrations, or generated artifacts were changed.
+6. For remote Update Available pushes, set the direct push worker’s `RELEASE_VERSION`, `RELEASE_MODE`, and `RELEASE_BUILD_REVISION` to the deployed release values. The app must not send a local Update Available notification.
+7. Run root typecheck and production build.
+8. Run push-service typecheck and tests when push-service or release metadata changes.
+9. Inspect generated `dist/public/version.json` and `dist/public/sw.js`.
+10. Confirm no unrelated release notes, migrations, or generated artifacts were changed.
 
 **Safety rule:** changing `updateMode` or `automaticFromVersion` changes who may update without explicit approval. Treat both fields as release-policy controls.

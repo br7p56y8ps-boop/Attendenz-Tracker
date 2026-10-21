@@ -1,3 +1,4 @@
+@import './fonts.css';
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
@@ -178,8 +179,13 @@ body {
   transform: scale(0.98);
 }
 .action-button:focus-visible {
-  outline: 2px solid color-mix(in srgb, currentColor 45%, transparent);
-  outline-offset: 2px;
+  outline: none;
+  border-color: currentColor;
+}
+.whats-new-modal-sheet {
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-bottom-color: transparent !important;
 }
 .action-button:disabled {
   cursor: not-allowed;
@@ -557,6 +563,13 @@ input[type="time"] {
 .subjects-report-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .6rem; }
 .subjects-report-heading h2 { margin: 0; font-size: 1.1rem; font-weight: 850; letter-spacing: -.035em; }
 .subjects-report-heading button { flex: 0 0 auto; padding: .45rem .55rem; border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border)); border-radius: .7rem; color: var(--primary); background: var(--card); font-size: .56rem; font-weight: 850; letter-spacing: .06em; cursor: pointer; }
+.subjects-progress-filter { display: flex; flex-direction: column; gap: .25rem; margin-top: .6rem; padding: .5rem; border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border)); border-radius: .8rem; background: color-mix(in srgb, var(--card) 88%, var(--primary)); }
+.subjects-progress-filter__option, .subjects-progress-filter__reset { display: flex; width: 100%; min-height: 2rem; align-items: center; gap: .5rem; padding: .3rem .45rem; border: 0; border-radius: .5rem; color: var(--foreground); background: transparent; text-align: left; font-size: .68rem; font-weight: 650; cursor: pointer; }
+.subjects-progress-filter__option[aria-checked='true'], .subjects-progress-filter__option[aria-checked='mixed'] { color: var(--primary); }
+.subjects-progress-filter__option:hover, .subjects-progress-filter__reset:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.subjects-progress-filter__reset { color: var(--primary); font-weight: 800; }
+.subjects-progress-filter__group { display: flex; flex-direction: column; }
+.subjects-progress-filter__subgroups { margin-left: .8rem; padding-left: .45rem; border-left: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border)); }
 .subjects-report-score { display: flex; align-items: baseline; gap: .5rem; margin-top: .55rem; }
 .subjects-report-score strong { font-size: 2.4rem; line-height: .95; letter-spacing: -.07em; font-weight: 850; }
 .subjects-report-score span { color: var(--muted-foreground); font-size: .7rem; font-weight: 650; }

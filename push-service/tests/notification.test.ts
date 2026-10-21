@@ -120,7 +120,7 @@ try {
     VAPID_SUBJECT: 'https://benz-attendance-tracker.pages.dev',
     VAPID_SERVER_PUBLIC_KEY: base64Url(vapidPublic),
     VAPID_SERVER_PRIVATE_KEY: vapidJwk.d!,
-    RELEASE_VERSION: '1.7.2',
+    RELEASE_VERSION: '1.7.4',
     RELEASE_MODE: 'manual',
     RELEASE_BUILD_REVISION: 'new-revision',
   };
@@ -131,7 +131,7 @@ try {
   assert.equal(pushCount, 3, 'a device should receive at most one push for the same release');
   await sendManualUpdateAvailable({ ...updateEnv, RELEASE_MODE: 'automatic' }, { ...updateDevice, device_id: 'device-auto-test-123456' }, '1.7.1', 'old-revision', true);
   assert.equal(pushCount, 3, 'automatic releases must not send remote update pushes');
-  await sendManualUpdateAvailable(updateEnv, { ...updateDevice, device_id: 'device-same-build-test-123456' }, '1.7.2', 'old-revision', true);
+  await sendManualUpdateAvailable(updateEnv, { ...updateDevice, device_id: 'device-same-build-test-123456' }, '1.7.4', 'old-revision', true);
   assert.equal(pushCount, 4, 'a subscribed device behind a same-version manual build should receive a remote push');
 } finally {
   globalThis.fetch = originalFetch;

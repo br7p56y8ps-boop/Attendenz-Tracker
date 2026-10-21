@@ -111,6 +111,7 @@ export function WhatsNewPopup() {
       labelledBy="whats-new-title"
       maxWidth="max-w-sm"
       zIndexClassName="z-[9999]"
+      className="whats-new-modal-sheet"
       header={header}
       footer={footer}
       bodyClassName="max-h-[min(78dvh,42rem)] px-4 py-3 pb-5 text-left [scrollbar-width:thin]"

@@ -152,5 +152,67 @@
         "summary": "Delete and restore actions are safer, failures are easier to notice, and finished SGT subjects no longer send reminders."
       }
     ]
+  },
+  "1.7.4": {
+    "upgrades": [
+      {
+        "title": "App Font",
+        "summary": "Personalise from a variety of stylish fonts to make the app feel truly yours. Your selection is saved automatically."
+      },
+      {
+        "title": "Theme and Appearance",
+        "summary": "Pick an accent color that suits your style, with Red, Orange, and Green appearance choices alongside the default."
+      },
+      {
+        "title": "Subjects tab",
+        "summary": "Track your progress with a compact report and easy-to-read category rings that show exactly where you stand."
+      },
+      {
+        "title": "Sounds and feedback",
+        "summary": "Enjoy more distinct confirmation tones and improved volume for clear, satisfying feedback."
+      },
+      {
+        "title": "Nav Bar Style",
+        "summary": "Choose a fixed or floating navigation bar. The floating bar tucks neatly above the bottom edge, hides as you scroll down, and returns as you scroll up—your preference stays saved."
+      },
+      {
+        "title": "Clearer progress and readability",
+        "summary": "Progress views respond more clearly to attendance levels, with improved contrast and simpler theme-mode guidance."
+      }
+    ],
+    "fixes": [
+      {
+        "title": "More reliable updates and offline use",
+        "summary": "Update alerts, selected fonts, action controls, and sheets now behave more consistently across online and offline use."
+      },
+      {
+        "title": "A more dependable everyday experience",
+        "summary": "Scheduling, offline availability, and modal presentation have been refined for more consistent use across devices."
+      },
+      {
+        "title": "Confirmation messages",
+        "summary": "Saving, editing, or removing items now shows a clear message that disappears when you close the window, so you're never left with outdated information."
+      },
+      {
+        "title": "Section labels",
+        "summary": "Section labels now pin neatly below the app bar while you scroll through Settings, Subjects, and Timetable."
+      },
+      {
+        "title": "A more reliable Manage tab",
+        "summary": "Manage windows scroll correctly, borders stay complete, Add Slot is easier to find, and Edit Slot is clearer."
+      },
+      {
+        "title": "A tidier attendance dashboard",
+        "summary": "Home scrolling, Detox Day, Overall Attendance, and the Max Percentage chart now fit together more cleanly."
+      },
+      {
+        "title": "More accurate activity entries",
+        "summary": "Attendance actions no longer create duplicates, stay in order, and keep undo and redo behavior intact."
+      },
+      {
+        "title": "Safer data and reminders",
+        "summary": "Delete and restore actions are safer, failures are easier to notice, and finished SGT subjects no longer send reminders."
+      }
+    ]
   }
 }

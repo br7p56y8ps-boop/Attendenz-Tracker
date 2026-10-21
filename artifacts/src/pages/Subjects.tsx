@@ -204,6 +204,8 @@ export default function Subjects() {
     : (presetWardObj ? presetWardObj.ward : null);
   const isWardHoliday = activeWard === 'Holiday';
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
+  const [progressFilterOpen, setProgressFilterOpen] = useState(false);
+  const [selectedProgressGroups, setSelectedProgressGroups] = useState<string[] | null>(null);
   const toggleCategory = (catName: string) => {
     setOpenCategories(prev => ({ ...prev, [catName]: !prev[catName] }));
   };
@@ -314,6 +316,73 @@ export default function Subjects() {
     return { attended, missed, planned, conducted, remaining: Math.max(0, planned - conducted), percentage: conducted > 0 ? (attended / conducted) * 100 : 0 };
   }, [subjectRegistry, subjects, wards]);
 
+  const progressGroupKeys: string[] = ['medicine', 'surgery', 'obgyn', 'other', 'clinical'];
+  const academicProgressKeys: string[] = progressGroupKeys.slice(0, 4);
+  const getProgressGroup = (ref: (typeof subjectRegistry)[number]): string => {
+    if (ref.domain === 'clinical') return 'clinical';
+    const parent = norm(ref.parentName);
+    if (parent === norm(CATEGORIES[0].name)) return 'medicine';
+    if (parent === norm(CATEGORIES[1].name)) return 'surgery';
+    if (parent === norm(CATEGORIES[2].name)) return 'obgyn';
+    return 'other';
+  };
+  const activeProgressGroups = selectedProgressGroups === null ? progressGroupKeys : selectedProgressGroups;
+  const allProgressGroupsSelected = progressGroupKeys.every(key => activeProgressGroups.includes(key));
+  const progressFilterActive = selectedProgressGroups !== null && !allProgressGroupsSelected;
+  const progressView = useMemo(() => {
+    if (!progressFilterActive) {
+      return {
+        attended: progressReport.attended,
+        missed: progressReport.missed,
+        planned: progressReport.planned,
+        conducted: progressReport.conducted,
+        percentage: progressReport.percentage,
+        predictedMaximum: progressReport.planned > 0
+          ? ((progressReport.attended + Math.max(0, progressReport.planned - progressReport.conducted)) / progressReport.planned) * 100
+          : 100,
+      };
+    }
+    let attended = 0;
+    let missed = 0;
+    let planned = 0;
+    subjectRegistry.filter(ref => activeProgressGroups.includes(getProgressGroup(ref))).forEach(ref => {
+      const isWard = ref.kind === 'preset-ward' || ref.kind === 'ward-rotation';
+      const key = isWard ? getWardAttendanceKey(ref.id) : ref.kind === 'sgt' ? getSGTKey(ref.id) : getAcademicAttendanceKey(ref.id);
+      const record = isWard ? wards[key] : subjects[key];
+      attended += record?.attended || 0;
+      missed += record?.missed || 0;
+      planned += ref.planned || 0;
+    });
+    const conducted = attended + missed;
+    return {
+      attended,
+      missed,
+      planned,
+      conducted,
+      percentage: conducted > 0 ? (attended / conducted) * 100 : 0,
+      predictedMaximum: planned > 0 ? ((attended + Math.max(0, planned - conducted)) / planned) * 100 : 100,
+    };
+  }, [progressFilterActive, progressReport, subjectRegistry, activeProgressGroups, subjects, wards]);
+  const toggleProgressGroup = (key: string) => {
+    setSelectedProgressGroups(current => {
+      if (current === null) {
+        if (key === 'academic') return [...academicProgressKeys];
+        if (key === 'clinical') return ['clinical'];
+        return [key];
+      }
+      const next = new Set(current);
+      const groupKeys = key === 'academic' ? academicProgressKeys : [key];
+      const shouldSelect = groupKeys.some(group => !next.has(group));
+      groupKeys.forEach(group => shouldSelect ? next.add(group) : next.delete(group));
+      return next.size === 0 || progressGroupKeys.every(group => next.has(group)) ? null : [...next];
+    });
+  };
+  const progressGroupSelected = (key: string): boolean => key === 'academic'
+    ? academicProgressKeys.every(group => activeProgressGroups.includes(group))
+    : activeProgressGroups.includes(key);
+  const academicPartiallySelected = academicProgressKeys.some(group => activeProgressGroups.includes(group))
+    && !academicProgressKeys.every(group => activeProgressGroups.includes(group));
+
   /* ──────────────────────────────────────────────────────────────────────────
      PRELOADED MODE — SGT records are pulled OUT of academic groups entirely.
      ────────────────────────────────────────────────────────────────────────── */
@@ -415,15 +484,35 @@ export default function Subjects() {
             <div>
               <h2>Progress Overall</h2>
             </div>
+            <button type="button" onClick={() => setProgressFilterOpen(open => !open)} aria-expanded={progressFilterOpen} aria-controls="subjects-progress-filter">
+              {progressFilterActive ? 'Filtered view' : 'All subjects'}
+            </button>
           </div>
+          {progressFilterOpen && <div id="subjects-progress-filter" className="subjects-progress-filter" aria-label="Filter progress by subject group">
+            <button type="button" className="subjects-progress-filter__reset" onClick={() => setSelectedProgressGroups(null)} aria-pressed={!progressFilterActive}>All subjects</button>
+            <div className="subjects-progress-filter__group">
+              <button type="button" className="subjects-progress-filter__option" onClick={() => toggleProgressGroup('academic')} aria-checked={academicPartiallySelected ? 'mixed' : progressGroupSelected('academic')} role="checkbox"><span aria-hidden="true">{academicPartiallySelected ? '◩' : progressGroupSelected('academic') ? '☑' : '□'}</span> Academic</button>
+              <div className="subjects-progress-filter__subgroups">
+                {[
+                  ['medicine', 'Medicine & Allied'],
+                  ['surgery', 'Surgery & Allied'],
+                  ['obgyn', 'Obstetrics & Gynaecology'],
+                  ['other', 'Others'],
+                ].map(([key, label]) => <button key={key} type="button" className="subjects-progress-filter__option" onClick={() => toggleProgressGroup(key)} aria-checked={activeProgressGroups.includes(key)} role="checkbox"><span aria-hidden="true">{activeProgressGroups.includes(key) ? '☑' : '□'}</span> {label}</button>)}
+              </div>
+            </div>
+            <button type="button" className="subjects-progress-filter__option" onClick={() => toggleProgressGroup('clinical')} aria-checked={progressGroupSelected('clinical')} role="checkbox"><span aria-hidden="true">{progressGroupSelected('clinical') ? '☑' : '□'}</span> Clinical (Ward & SGT)</button>
+          </div>}
           <div className="subjects-report-score">
-            <strong style={{ color: pctColor(progressReport.percentage, preferredPercentage, { hasPlannedClasses: progressReport.planned > 0 }) }}>{formatPercentage(progressReport.percentage)}</strong>
-            <span>current attendance</span>
+            <strong style={{ color: pctColor(progressView.percentage, preferredPercentage, { hasPlannedClasses: progressView.planned > 0 }) }}>{formatPercentage(progressView.percentage)}</strong>
+            <span>{progressFilterActive ? 'current attendance · selected groups' : 'current attendance'}</span>
           </div>
-          <div className="subjects-report-track"><i style={{ width: `${Math.min(100, Math.max(0, progressReport.percentage))}%`, backgroundColor: pctColor(progressReport.percentage, preferredPercentage, { isFinished: progressReport.planned > 0 && progressReport.conducted >= progressReport.planned, hasPlannedClasses: progressReport.planned > 0 }) }} /></div>
+          <div className="subjects-report-track"><i style={{ width: `${Math.min(100, Math.max(0, progressView.percentage))}%`, backgroundColor: pctColor(progressView.percentage, preferredPercentage, { isFinished: progressView.planned > 0 && progressView.conducted >= progressView.planned, hasPlannedClasses: progressView.planned > 0 }) }} /></div>
           <div className="subjects-report-footer">
-            <span><b>{progressReport.attended}</b> attended <i /> <b>{progressReport.missed}</b> missed</span>
-            <span>Target <b>{preferredPercentage}%</b></span>
+            <span><b>{progressView.attended}</b> attended <i /> <b>{progressView.missed}</b> missed</span>
+            {progressFilterActive
+              ? <span>Predicted max <b>{formatPercentage(progressView.predictedMaximum)}</b></span>
+              : <span>Target <b>{preferredPercentage}%</b></span>}
           </div>
         </section>
         {/* Empty state for custom mode with no subjects */}
