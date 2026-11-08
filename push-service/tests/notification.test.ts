@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { __test } from '../src/index.ts';
 
-const { cleanLabel, isBeforeClassDue, isValidNightlyReminderTime, parseReminderTime, isWithinFiveMinuteWindow, isWithinNightlyWindow, nightlyScheduleDate, compareVersions, isManualUpdateAvailable, sendManualUpdateAvailable } = __test;
+const { cleanLabel, isBeforeClassDue, isValidNightlyReminderTime, parseReminderTime, isWithinFiveMinuteWindow, isWithinNightlyWindow, nightlyScheduleDate, compareVersions, isManualUpdateAvailable, sendManualUpdateAvailable, isValidBlockPlacementReminder } = __test;
 assert.equal(compareVersions('1.7.1', '1.7.2'), -1, 'minor version components must be compared');
 assert.equal(compareVersions('1.7.2', '1.7.1'), 1, 'newer minor versions must be detected');
 
@@ -12,6 +12,8 @@ assert.equal(isManualUpdateAvailable('1.7.2', 'old-revision', '1.7.2', 'manual',
 assert.equal(isManualUpdateAvailable('1.7.2', 'old-revision', '1.7.2', 'automatic', 'new-revision'), false, 'automatic releases must not send update-available pushes');
 assert.equal(isManualUpdateAvailable('1.7.3', 'newer-revision', '1.7.2', 'manual', 'new-revision'), false, 'newer installed versions must not notify');
 assert.equal(isManualUpdateAvailable('legacy', 'legacy', '1.7.2', 'manual', 'new-revision'), true, 'legacy installed versions should count as pending for a manual release');
+assert.equal(isValidBlockPlacementReminder({ id: 'placement-1', departmentName: 'Dermatology', endDate: '2026-09-08', reminderDate: '2026-09-07' }), true, 'placement reminder must be exactly one day before the placement ends');
+assert.equal(isValidBlockPlacementReminder({ id: 'placement-1', departmentName: 'Dermatology', endDate: '2026-09-08', reminderDate: '2026-09-06' }), false, 'placement reminder dates must not be arbitrarily earlier');
 
 assert.equal(isValidNightlyReminderTime('22:30'), true);
 assert.equal(isValidNightlyReminderTime('23:59'), true);
@@ -120,7 +122,7 @@ try {
     VAPID_SUBJECT: 'https://benz-attendance-tracker.pages.dev',
     VAPID_SERVER_PUBLIC_KEY: base64Url(vapidPublic),
     VAPID_SERVER_PRIVATE_KEY: vapidJwk.d!,
-    RELEASE_VERSION: '1.7.4',
+    RELEASE_VERSION: '1.7.5',
     RELEASE_MODE: 'manual',
     RELEASE_BUILD_REVISION: 'new-revision',
   };
@@ -131,8 +133,14 @@ try {
   assert.equal(pushCount, 3, 'a device should receive at most one push for the same release');
   await sendManualUpdateAvailable({ ...updateEnv, RELEASE_MODE: 'automatic' }, { ...updateDevice, device_id: 'device-auto-test-123456' }, '1.7.1', 'old-revision', true);
   assert.equal(pushCount, 3, 'automatic releases must not send remote update pushes');
-  await sendManualUpdateAvailable(updateEnv, { ...updateDevice, device_id: 'device-same-build-test-123456' }, '1.7.4', 'old-revision', true);
+  await sendManualUpdateAvailable(updateEnv, { ...updateDevice, device_id: 'device-same-build-test-123456' }, '1.7.5', 'old-revision', true);
   assert.equal(pushCount, 4, 'a subscribed device behind a same-version manual build should receive a remote push');
+
+  const blockDevice = { ...device, device_id: 'device-block-test-123456', first_class_today: 0, block_placement_reminder_enabled: 1, block_reminder_id: 'placement-1', block_reminder_date: '2026-09-07', block_reminder_end_date: '2026-09-08', block_reminder_label: 'Dermatology' };
+  await processDevice(updateEnv, blockDevice, Date.parse('2026-09-07T12:00:00Z'));
+  assert.equal(pushCount, 5, 'the one-day-before Block placement notice should be sent remotely');
+  await processDevice(updateEnv, blockDevice, Date.parse('2026-09-07T12:01:00Z'));
+  assert.equal(pushCount, 5, 'the same Block placement notice should not be sent more than once per device/date');
 } finally {
   globalThis.fetch = originalFetch;
 }

@@ -27,6 +27,7 @@ import {
   type NotificationPreferences,
 } from '@/lib/webPush';
 import { APP_VERSION, BUILD_REVISION } from '@/lib/appVersion';
+import { useBlockPosting, getNextBlockPlacementReminder } from '@/contexts/BlockPostingContext';
 import {
   parseRangeToMinutes,
   getPresetAcademicSessionId,
@@ -128,7 +129,8 @@ type ReminderSyncPayload = {
   subscription: DirectPushSubscription;
   timezone: string;
   notificationsEnabled: boolean;
-  preferences: Pick<NotificationPreferences, 'needAttentionSummary' | 'needAttentionSubjects' | 'safeToMiss' | 'lastPlannedClassToday' | 'firstClassOfDay' | 'beforeClassWarnings' | 'allScheduledClasses' | 'unmarkedAttendanceToday' | 'updateAvailable' | 'leadMinutes' | 'nightlyReminderTime'>;
+  preferences: Pick<NotificationPreferences, 'needAttentionSummary' | 'needAttentionSubjects' | 'safeToMiss' | 'lastPlannedClassToday' | 'firstClassOfDay' | 'beforeClassWarnings' | 'allScheduledClasses' | 'unmarkedAttendanceToday' | 'updateAvailable' | 'blockPlacementReminder' | 'leadMinutes' | 'nightlyReminderTime'>;
+  blockPlacementReminder?: { id: string; departmentName: string; endDate: string; reminderDate: string } | null;
   occurrences: ReminderOccurrence[];
 };
 
@@ -656,11 +658,12 @@ export async function deleteRemoteDevice(): Promise<boolean> {
 export function ReminderSyncProvider({ children }: { children: ReactNode }) {
   const custom = useCustomData();
   const attendance = useAttendance();
+  const blockPosting = useBlockPosting();
 
   useEffect(() => {
     let alive = true;
     const sync = async () => {
-      if (!alive || !custom.setupDone || !SERVICE_URL || !VAPID_PUBLIC_KEY) {
+      if (!alive || !custom.setupDone || !blockPosting.hydrated || !SERVICE_URL || !VAPID_PUBLIC_KEY) {
         if (custom.setupDone && (!SERVICE_URL || !VAPID_PUBLIC_KEY)) setReminderSyncStatus({ state: 'not-configured' });
         return;
       }
@@ -688,6 +691,8 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
         }
       }
       const preferences = getNotificationPreferences();
+      const localToday = localDateString(new Date());
+      const nextPlacementReminder = preferences.blockPlacementReminder ? getNextBlockPlacementReminder(blockPosting.config, localToday) : null;
       const payload: ReminderSyncPayload = {
         version: 3,
         appVersion: APP_VERSION,
@@ -707,9 +712,11 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
           allScheduledClasses: preferences.allScheduledClasses && preferences.dailyScheduleGroupEnabled,
           unmarkedAttendanceToday: preferences.unmarkedAttendanceToday && preferences.attendanceGroupEnabled,
           updateAvailable: preferences.updateAvailable && preferences.updatesGroupEnabled,
+          blockPlacementReminder: preferences.blockPlacementReminder,
           leadMinutes: preferences.leadMinutes,
           nightlyReminderTime: preferences.nightlyReminderTime,
         },
+        blockPlacementReminder: nextPlacementReminder && nextPlacementReminder.reminderDate >= localToday ? nextPlacementReminder : null,
         occurrences: buildOccurrences({
           subjectMode: custom.subjectMode,
           customSubjects: custom.customSubjects,
@@ -753,6 +760,9 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
     custom.subjectMode,
     custom.subjectRegistry,
     custom.userAddedSubjects,
+    blockPosting.config,
+    blockPosting.attendance,
+    blockPosting.hydrated,
   ]);
 
   return children;

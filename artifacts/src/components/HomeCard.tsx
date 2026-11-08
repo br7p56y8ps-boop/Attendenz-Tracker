@@ -543,3 +543,78 @@ export const HomeCard = ({ subject, time, isWard = false, subtitle, tag, session
     </div>
   );
 };
+
+export interface BlockAttendanceCardProps {
+  department: string;
+  sessionLabel: string;
+  time: string;
+  dateStr: string;
+  value?: 'attended' | 'missed' | 'off';
+  currentPercentage: number;
+  preferredPercentage: number;
+  disabled?: boolean;
+  onChange: (value: 'attended' | 'missed' | 'off' | null) => void;
+}
+
+/** Block Posting's independent mark card, styled and confirmed like HomeCard. */
+export const BlockAttendanceCard = ({ department, sessionLabel, time, dateStr, value, currentPercentage, preferredPercentage, disabled = false, onChange }: BlockAttendanceCardProps) => {
+  const [pendingSelection, setPendingSelection] = useState<'off' | 'missed' | 'attended' | null>(null);
+  const [ecgPhase, setEcgPhase] = useState<'off' | 'missed' | 'attended' | null>(null);
+  const [undoPending, setUndoPending] = useState(false);
+  const [animationCount, setAnimationCount] = useState(0);
+  const timerRef = useRef<number | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setPendingSelection(null);
+    setEcgPhase(null);
+    setUndoPending(false);
+  }, [dateStr]);
+  useEffect(() => () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); }, []);
+  useEffect(() => {
+    if (!pendingSelection && !undoPending) return;
+    const onDown = (event: PointerEvent) => {
+      if (cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        setPendingSelection(null);
+        setUndoPending(false);
+      }
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [pendingSelection, undoPending]);
+
+  const tint = value === 'attended' ? 'bg-emerald-500/10' : value === 'missed' ? 'bg-rose-500/10' : value === 'off' ? 'bg-amber-500/10' : '';
+  const border = value === 'attended' ? 'border-emerald-500/60' : value === 'missed' ? 'border-rose-500/60' : value === 'off' ? 'border-amber-500/60' : 'border-card-border';
+  const statusColor = value === 'attended' ? 'text-emerald-500' : value === 'missed' ? 'text-rose-500' : 'text-amber-500';
+  const statusLabel = value === 'attended' ? 'Attended' : value === 'missed' ? 'Bunked' : 'Holiday';
+  const actionBottom = disabled ? (
+    <ThreeDContainer className="h-11 w-full items-center justify-center text-[11px] font-extrabold text-muted-foreground">Future placement · not markable yet</ThreeDContainer>
+  ) : ecgPhase ? (
+    <div className={cn('relative flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-xl border', ecgPhase === 'attended' ? 'bg-emerald-500/25 border-emerald-500/60 text-emerald-500' : ecgPhase === 'missed' ? 'bg-rose-500/25 border-rose-500/60 text-rose-500' : 'bg-amber-500/25 border-amber-500/60 text-amber-500')}>
+      <svg className="absolute inset-0 h-full w-full opacity-40" preserveAspectRatio="none" viewBox="0 0 100 40"><motion.path d="M 0 20 L 10 20 L 12 14 L 15 26 L 18 4 L 21 36 L 24 20 L 40 20 L 42 14 L 45 26 L 48 4 L 51 36 L 54 20 L 70 20 L 72 14 L 75 26 L 78 4 L 81 36 L 84 20 L 100 20" fill="none" stroke={pctColor(currentPercentage, preferredPercentage)} strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.2, ease: 'easeInOut' }} /></svg>
+      <CheckCircle2 className="relative z-10 h-4 w-4" /><span className="relative z-10 text-xs font-extrabold capitalize">{ecgPhase === 'off' ? 'Holiday' : ecgPhase === 'missed' ? 'Missed' : 'Attended'}</span>
+    </div>
+  ) : value ? (
+    <div className="flex h-12 items-center justify-center rounded-xl border border-border/70 bg-background/40 text-xs font-extrabold">
+      {undoPending ? <button type="button" onClick={() => { setUndoPending(false); onChange(null); }} className="animate-pulse text-rose-500">Confirm Undo?</button> : <button type="button" onClick={() => setUndoPending(true)} className={statusColor}>{statusLabel} <span className="text-[10px] text-muted-foreground">· tap to undo</span></button>}
+    </div>
+  ) : (
+    <div className="flex gap-2">{(['attended', 'missed', 'off'] as const).map(status => pendingSelection === status ? (
+      <button key={status} type="button" onClick={() => { setPendingSelection(null); setEcgPhase(status); setAnimationCount(count => count + 1); onChange(status); triggerConfirmationFeedback(status === 'off' ? 'info' : status === 'missed' ? 'danger' : 'success'); if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = window.setTimeout(() => { setEcgPhase(null); timerRef.current = null; }, 1500); }} className={cn('attendance-confirm-button h-11 flex-1 rounded-2xl text-xs font-extrabold sm:text-sm', `attendance-confirm-button--${status}`)}>Confirm</button>
+    ) : <button key={status} type="button" onClick={() => setPendingSelection(status)} className={cn('attendance-option-button h-11 flex-1 rounded-2xl border bg-background/70 text-xs font-extrabold text-muted-foreground transition-all sm:text-sm', status === 'attended' && 'hover:bg-emerald-500/10 hover:text-emerald-600', status === 'missed' && 'hover:bg-rose-500/10 hover:text-rose-600', status === 'off' && 'hover:bg-amber-500/10 hover:text-amber-600')}>{status === 'off' ? 'Holiday' : status === 'attended' ? 'Attended' : 'Missed'}</button>)}</div>
+  );
+
+  return <motion.article ref={cardRef} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }} className={cn('relative mb-3 overflow-hidden rounded-2xl border bg-card', border)}>
+    <div className={cn('p-5', tint)}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <span className="mb-1 inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">Block</span>
+          <h3 className="truncate text-xl font-bold leading-tight text-foreground">{department}</h3>
+          <p className="text-sm leading-tight text-muted-foreground">{sessionLabel} · {time}</p>
+        </div>
+        <ThreeDContainer className="h-14 w-24 shrink-0 items-center justify-center"><span className={cn('text-lg font-bold', currentPercentage >= preferredPercentage ? 'text-success' : 'text-destructive')}>{Math.round(currentPercentage)}%</span></ThreeDContainer>
+      </div>
+      <AnimatePresence initial={false}><motion.div key={`${value || 'unmarked'}-${animationCount}-${disabled}`} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: 'easeInOut' }} className="mt-3 overflow-hidden">{actionBottom}</motion.div></AnimatePresence>
+    </div>
+  </motion.article>;
+};

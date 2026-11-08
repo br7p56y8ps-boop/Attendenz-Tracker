@@ -21,6 +21,7 @@ import { APP_VERSION, BUILD_REVISION, LATEST_VERSION } from '@/lib/appVersion';
 import { UpdateProgressSlider } from '@/utils/useUpdateFlow';
 import { CATEGORIES, WARD_SUBJECTS, INTEGRATED_SUBJECTS } from '@/lib/constants';
 import { generatePDFReport, generateExcelReport, generateCSVReport } from '@/lib/exportUtils';
+import { BLOCK_POSTING_DEPARTMENTS, blockAttendanceKey, getBlockPlannedSessions, useBlockPosting } from '@/contexts/BlockPostingContext';
 import { deleteRemoteDevice, getReminderRegistrationDiagnostics, getReminderSyncStatus, REMINDER_SYNC_STATUS_CHANGED_EVENT, type ReminderSyncStatus } from '@/lib/webPushSync';
 import {
   disableDirectPush,
@@ -98,6 +99,7 @@ function NotificationGroupCard({
   expanded,
   onExpand,
   children,
+  extraContent,
   disabled,
   leadMinutes,
   onLeadMinutesChange,
@@ -111,6 +113,7 @@ function NotificationGroupCard({
   expanded: boolean;
   onExpand: () => void;
   children: NotificationChild[];
+  extraContent?: React.ReactNode;
   disabled: boolean;
   leadMinutes?: NotificationLeadMinutes;
   onLeadMinutesChange?: (value: NotificationLeadMinutes) => void;
@@ -135,6 +138,7 @@ function NotificationGroupCard({
               <SettingToggle checked={getChildChecked(child.key)} onChange={value => onChildChange(child.key, value)} label={child.title} disabled={disabled} />
             </div>
           ))}
+          {extraContent}
           {leadMinutes !== undefined && onLeadMinutesChange && (
             <label className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', disabled && 'opacity-50')}>
               <span><span className="block text-[11px] font-semibold text-foreground">Warning Reminder Timing</span><span className="block text-[10px] leading-relaxed text-muted-foreground mt-0.5">Choose how early before a Class a lead-time reminder can arrive.</span></span>
@@ -175,6 +179,7 @@ function compareVersions(a: string, b: string): number {
 export default function Settings() {
   const { username, updateUsername, profileImage, updateProfileImage, isPersistentStorage, requestPersistentStorage } = useAuth();
   const [, setLocation] = useLocation();
+  const blockPosting = useBlockPosting();
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(username);
   const [identityKeyboardInset, setIdentityKeyboardInset] = useState(0);
@@ -713,12 +718,10 @@ export default function Settings() {
       filteredItems = aggregateRangeItems(exportStartDate, exportEndDate);
       const fmtNice = (iso: string) => { const d = new Date(iso + 'T12:00:00'); const day = d.getDate(); const suf = day % 10 === 1 && day !== 11 ? 'st' : day % 10 === 2 && day !== 12 ? 'nd' : day % 10 === 3 && day !== 13 ? 'rd' : 'th'; return `${day}${suf} ${d.toLocaleString('en-US', { month: 'short' })} '${String(d.getFullYear()).slice(2)}`; };
       filterTitle = `${fmtNice(exportStartDate)} – ${fmtNice(exportEndDate)}`;
-      if (filteredItems.length === 0) { setExportMsg('No attendance records inside the selected date range — nothing to export yet. Mark some classes first!'); return; }
     } else if (exportScope === 'semester') {
       const r = semesterRange(exportSemester);
       filteredItems = aggregateRangeItems(r.s, r.e);
       filterTitle = `Semester – ${exportSemester}`;
-      if (filteredItems.length === 0) { setExportMsg('No attendance records inside the selected period — nothing to export yet. Mark some classes first!'); return; }
     }
 
     const reportItems = filteredItems.map(item => {
@@ -739,6 +742,43 @@ export default function Settings() {
     const overallAttended = reportItems.reduce((acc, c) => acc + c.attended, 0);
     const overallTotal = reportItems.reduce((acc, c) => acc + c.total, 0);
     const overallPct = overallTotal > 0 ? (overallAttended / overallTotal) * 100 : 0;
+    const semesterDates = exportScope === 'semester' ? semesterRange(exportSemester) : null;
+    const blockDateRange: { start: string; end: string } | null = exportScope === 'custom'
+      ? { start: exportStartDate, end: exportEndDate }
+      : semesterDates ? { start: semesterDates.s, end: semesterDates.e } : null;
+    const blockStats = new Map<string, { attended: number; missed: number; planned: number }>();
+    if (exportScope !== 'subject') blockPosting.config.placements.forEach(placement => {
+      const sessions = getBlockPlannedSessions(placement, subjectMode).filter(session => !blockDateRange || (session.date >= blockDateRange.start && session.date <= blockDateRange.end));
+      const stats = blockStats.get(placement.departmentId) || { attended: 0, missed: 0, planned: 0 };
+      sessions.forEach(session => {
+        const mark = blockPosting.attendance[blockAttendanceKey(placement.id, session.date, session.kind)];
+        if (mark?.status === 'off') return;
+        stats.planned += 1;
+        if (mark?.status === 'attended') stats.attended += 1;
+        else if (mark?.status === 'missed') stats.missed += 1;
+      });
+      blockStats.set(placement.departmentId, stats);
+    });
+    const blockReportItems = Array.from(blockStats.entries()).filter(([, stats]) => stats.planned > 0 || stats.attended + stats.missed > 0).map(([departmentId, stats]) => {
+        const departmentName = BLOCK_POSTING_DEPARTMENTS.find(item => item.id === departmentId)?.name || 'Department';
+        const total = stats.attended + stats.missed;
+        const target = preferredPercentage || 75;
+        const pct = total > 0 ? (stats.attended / total) * 100 : 0;
+        const needed = target < 100 ? Math.max(0, Math.ceil((target * total - 100 * stats.attended) / (100 - target))) : Math.max(0, total - stats.attended);
+        return {
+          name: departmentName,
+          category: 'Block Posting',
+          attended: stats.attended,
+          total,
+          plannedTotal: stats.planned,
+          pct,
+          neededForTarget: total > 0 && pct >= target ? 'Target Achieved' : `${needed} needed`,
+        };
+      });
+    if (filteredItems.length === 0 && blockReportItems.length === 0) {
+      setExportMsg(exportScope === 'custom' ? 'No attendance records inside the selected date range — nothing to export yet.' : 'No attendance records inside the selected period — nothing to export yet.');
+      return;
+    }
     const reportOptions = {
       studentName: username || 'Medical Student',
       profileImage: profileImage || getDefaultAvatar(),
@@ -746,6 +786,7 @@ export default function Settings() {
       targetPct: preferredPercentage || 75,
       filterTitle,
       items: reportItems,
+      blockItems: blockReportItems,
       overallAttended,
       overallTotal,
       overallPct
@@ -1214,7 +1255,7 @@ export default function Settings() {
                           )}
                         </div>
                         <NotificationGroupCard title="Attendance & Risk Reminders" description="Nightly, before-class, and unmarked-attendance alerts." expanded={Boolean(expandedNotificationGroups.attendance)} onExpand={() => toggleNotificationGroup('attendance')} children={ATTENDANCE_REMINDER_CHILDREN} disabled={notificationControlsDisabled} leadMinutes={notificationPreferences.leadMinutes} onLeadMinutesChange={value => updateNotificationPreference('leadMinutes', value)} nightlyReminderTime={notificationPreferences.nightlyReminderTime} onNightlyReminderTimeChange={value => updateNotificationPreference('nightlyReminderTime', value)} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
-                        <NotificationGroupCard title="Daily Schedule Reminders" description="Upcoming schedule reminders." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => toggleNotificationGroup('dailySchedule')} children={DAILY_SCHEDULE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
+                        <NotificationGroupCard title="Daily Schedule Reminders" description="Upcoming schedule reminders." expanded={Boolean(expandedNotificationGroups.dailySchedule)} onExpand={() => toggleNotificationGroup('dailySchedule')} children={DAILY_SCHEDULE_CHILDREN} extraContent={<div className={cn('flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/50 p-2.5', notificationControlsDisabled && 'opacity-50')}><span className="min-w-0"><span className="block text-[11px] font-semibold text-foreground">Block Posting placement reminder</span><span className="mt-0.5 block text-[10px] leading-relaxed text-muted-foreground">Remote push one day before a placement ends when no later department has been scheduled.</span></span><SettingToggle checked={notificationPreferences.blockPlacementReminder} onChange={value => updateNotificationPreference('blockPlacementReminder', value)} label="Block Posting placement reminder" disabled={notificationControlsDisabled} /></div>} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
                         <NotificationGroupCard title="Activity & Data Changes" description="Local confirmations for routine and data changes." expanded={Boolean(expandedNotificationGroups.activity)} onExpand={() => toggleNotificationGroup('activity')} children={ACTIVITY_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
                         <NotificationGroupCard title="App Updates" description="Local update notices and confirmations." expanded={Boolean(expandedNotificationGroups.updates)} onExpand={() => toggleNotificationGroup('updates')} children={UPDATE_CHILDREN} disabled={notificationControlsDisabled} getChildChecked={key => Boolean(notificationPreferences[key])} onChildChange={(key, value) => updateNotificationToggle(key, value)} />
                       </div>

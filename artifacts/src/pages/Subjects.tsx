@@ -9,7 +9,7 @@ import type { CustomSubject, UserAddedSubject } from '@/contexts/CustomDataConte
 import { motion, AnimatePresence } from 'framer-motion';
 import { pctColor, cn, formatPercentage } from '@/lib/utils';
 import { useLocation } from 'wouter';
-import { ClipboardList, GraduationCap, Stethoscope } from 'lucide-react';
+import { Check, ClipboardList, GraduationCap, Stethoscope } from 'lucide-react';
 
 const SectionHeading = ({ icon, label }: { icon?: React.ReactNode; label: string }) => (
   <StickySectionLabel icon={icon} label={label} />
@@ -316,15 +316,43 @@ export default function Subjects() {
     return { attended, missed, planned, conducted, remaining: Math.max(0, planned - conducted), percentage: conducted > 0 ? (attended / conducted) * 100 : 0 };
   }, [subjectRegistry, subjects, wards]);
 
-  const progressGroupKeys: string[] = ['medicine', 'surgery', 'obgyn', 'other', 'clinical'];
-  const academicProgressKeys: string[] = progressGroupKeys.slice(0, 4);
+  const progressGroupOptions = [
+    { key: 'medicine', label: 'Medicine & Allied', section: 'academic' },
+    { key: 'surgery', label: 'Surgery & Allied', section: 'academic' },
+    { key: 'obgyn', label: 'Obstetrics & Gynaecology', section: 'academic' },
+    { key: 'integrated', label: 'Integrated Teaching', section: 'academic' },
+    ...(() => {
+      const dynamicGroups = new Map<string, { names: string[]; parentName: string }>();
+      subjectRegistry.filter(ref => ref.domain === 'academic' && (ref.kind === 'user-added' || ref.kind === 'custom')).forEach(ref => {
+        const parentName = String(ref.parentName || '').trim();
+        const normalizedParent = norm(parentName);
+        if ([norm(CATEGORIES[0].name), norm(CATEGORIES[1].name), norm(CATEGORIES[2].name)].includes(normalizedParent)) return;
+        const groupKey = normalizedParent && !['academic', 'custom', 'user added'].includes(normalizedParent) ? `added-parent:${normalizedParent}` : `added-subject:${ref.id}`;
+        const group = dynamicGroups.get(groupKey) || { names: [], parentName: normalizedParent && !['academic', 'custom', 'user added'].includes(normalizedParent) ? parentName : '' };
+        if (!group.names.includes(ref.name)) group.names.push(ref.name);
+        dynamicGroups.set(groupKey, group);
+      });
+      return Array.from(dynamicGroups.entries()).map(([key, group]) => ({ key, label: `${group.names.join(', ')}${group.parentName ? ` · ${group.parentName}` : ''}`, section: 'academic' }));
+    })(),
+    { key: 'ward', label: 'Ward', section: 'clinical' },
+    { key: 'sgt', label: 'Small Group Teaching (SGT)', section: 'clinical' },
+  ];
+  const progressGroupKeys = progressGroupOptions.map(option => option.key);
+  const academicProgressKeys = progressGroupOptions.filter(option => option.section === 'academic').map(option => option.key);
+  const clinicalProgressKeys = progressGroupOptions.filter(option => option.section === 'clinical').map(option => option.key);
+  const integratedSubjectNames = new Set(INTEGRATED_SUBJECTS.map(subject => norm(subject.name)));
   const getProgressGroup = (ref: (typeof subjectRegistry)[number]): string => {
-    if (ref.domain === 'clinical') return 'clinical';
+    if (ref.domain === 'clinical') return ref.kind === 'sgt' ? 'sgt' : 'ward';
+    if (ref.kind === 'integrated' || integratedSubjectNames.has(norm(ref.name))) return 'integrated';
     const parent = norm(ref.parentName);
     if (parent === norm(CATEGORIES[0].name)) return 'medicine';
     if (parent === norm(CATEGORIES[1].name)) return 'surgery';
     if (parent === norm(CATEGORIES[2].name)) return 'obgyn';
-    return 'other';
+    if (ref.kind === 'user-added' || ref.kind === 'custom') {
+      if (parent && !['academic', 'custom', 'user added'].includes(parent)) return `added-parent:${parent}`;
+      return `added-subject:${ref.id}`;
+    }
+    return 'medicine';
   };
   const activeProgressGroups = selectedProgressGroups === null ? progressGroupKeys : selectedProgressGroups;
   const allProgressGroupsSelected = progressGroupKeys.every(key => activeProgressGroups.includes(key));
@@ -368,7 +396,7 @@ export default function Subjects() {
       // The null state means every group is checked; initialize from that full
       // selection so tapping a checkbox unchecks it rather than isolating it.
       const next = new Set(current ?? progressGroupKeys);
-      const groupKeys = key === 'academic' ? academicProgressKeys : [key];
+      const groupKeys = key === 'academic' ? academicProgressKeys : key === 'clinical' ? clinicalProgressKeys : [key];
       const shouldSelect = groupKeys.some(group => !next.has(group));
       groupKeys.forEach(group => shouldSelect ? next.add(group) : next.delete(group));
       return next.size === 0 || progressGroupKeys.every(group => next.has(group)) ? null : [...next];
@@ -376,9 +404,13 @@ export default function Subjects() {
   };
   const progressGroupSelected = (key: string): boolean => key === 'academic'
     ? academicProgressKeys.every(group => activeProgressGroups.includes(group))
-    : activeProgressGroups.includes(key);
+    : key === 'clinical'
+      ? clinicalProgressKeys.every(group => activeProgressGroups.includes(group))
+      : activeProgressGroups.includes(key);
   const academicPartiallySelected = academicProgressKeys.some(group => activeProgressGroups.includes(group))
     && !academicProgressKeys.every(group => activeProgressGroups.includes(group));
+  const clinicalPartiallySelected = clinicalProgressKeys.some(group => activeProgressGroups.includes(group))
+    && !clinicalProgressKeys.every(group => activeProgressGroups.includes(group));
 
   /* ──────────────────────────────────────────────────────────────────────────
      PRELOADED MODE — SGT records are pulled OUT of academic groups entirely.
@@ -486,19 +518,22 @@ export default function Subjects() {
             </button>
           </div>
           {progressFilterOpen && <div id="subjects-progress-filter" className="subjects-progress-filter" aria-label="Filter progress by subject group">
-            <button type="button" className="subjects-progress-filter__reset" onClick={() => setSelectedProgressGroups(null)} aria-pressed={!progressFilterActive}>All subjects</button>
-            <div className="subjects-progress-filter__group">
-              <button type="button" className="subjects-progress-filter__option" onClick={() => toggleProgressGroup('academic')} aria-checked={academicPartiallySelected ? 'mixed' : progressGroupSelected('academic')} role="checkbox"><span aria-hidden="true">{academicPartiallySelected ? '◩' : progressGroupSelected('academic') ? '☑' : '□'}</span> Academic</button>
-              <div className="subjects-progress-filter__subgroups">
-                {[
-                  ['medicine', 'Medicine & Allied'],
-                  ['surgery', 'Surgery & Allied'],
-                  ['obgyn', 'Obstetrics & Gynaecology'],
-                  ['other', 'Others'],
-                ].map(([key, label]) => <button key={key} type="button" className="subjects-progress-filter__option" onClick={() => toggleProgressGroup(key)} aria-checked={activeProgressGroups.includes(key)} role="checkbox"><span aria-hidden="true">{activeProgressGroups.includes(key) ? '☑' : '□'}</span> {label}</button>)}
-              </div>
-            </div>
-            <button type="button" className="subjects-progress-filter__option" onClick={() => toggleProgressGroup('clinical')} aria-checked={progressGroupSelected('clinical')} role="checkbox"><span aria-hidden="true">{progressGroupSelected('clinical') ? '☑' : '□'}</span> Clinical (Ward & SGT)</button>
+            <button type="button" className={`subjects-progress-filter__reset${!progressFilterActive ? ' is-selected' : ''}`} onClick={() => setSelectedProgressGroups(null)} aria-pressed={!progressFilterActive}><Check aria-hidden="true" className="h-3.5 w-3.5" />All subjects</button>
+            {(['academic', 'clinical'] as const).map(section => {
+              const sectionKeys = section === 'academic' ? academicProgressKeys : clinicalProgressKeys;
+              const selected = progressGroupSelected(section);
+              const partial = section === 'academic' ? academicPartiallySelected : clinicalPartiallySelected;
+              const options = progressGroupOptions.filter(option => option.section === section);
+              return <section key={section} className="subjects-progress-filter__group">
+                <button type="button" className="subjects-progress-filter__section" onClick={() => toggleProgressGroup(section)} aria-checked={partial ? 'mixed' : selected} role="checkbox"><span className="subjects-progress-filter__check" aria-hidden="true">{selected ? <Check className="h-3.5 w-3.5" /> : partial ? <span className="h-0.5 w-3 bg-current" /> : null}</span><span>{section === 'academic' ? 'Academic' : 'Clinical'}</span><span className="ml-auto text-[9px] font-bold uppercase tracking-wide opacity-75">{sectionKeys.filter(key => activeProgressGroups.includes(key)).length}/{sectionKeys.length}</span></button>
+                <div className="subjects-progress-filter__options">
+                  {options.map(option => {
+                    const checked = activeProgressGroups.includes(option.key);
+                    return <button key={option.key} type="button" className={`subjects-progress-filter__option${checked ? ' is-selected' : ''}`} onClick={() => toggleProgressGroup(option.key)} aria-checked={checked} role="checkbox"><span className="subjects-progress-filter__check" aria-hidden="true">{checked && <Check className="h-3 w-3" />}</span>{option.label}</button>;
+                  })}
+                </div>
+              </section>;
+            })}
           </div>}
           <div className="subjects-report-score">
             <strong style={{ color: pctColor(progressView.percentage, preferredPercentage, { hasPlannedClasses: progressView.planned > 0 }) }}>{formatPercentage(progressView.percentage)}</strong>

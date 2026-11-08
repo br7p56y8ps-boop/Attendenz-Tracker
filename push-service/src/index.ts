@@ -63,6 +63,7 @@ export interface A1Preferences {
   allScheduledClasses: boolean;
   unmarkedAttendanceToday: boolean;
   updateAvailable?: boolean;
+  blockPlacementReminder?: boolean;
   leadMinutes: 15 | 30 | 60;
   nightlyReminderTime: string;
 }
@@ -91,6 +92,7 @@ export interface A1ReminderPayload {
   timezone: string;
   notificationsEnabled: boolean;
   preferences: A1Preferences;
+  blockPlacementReminder?: { id: string; departmentName: string; endDate: string; reminderDate: string } | null;
   occurrences: ReminderOccurrence[];
 }
 
@@ -116,6 +118,11 @@ type DeviceRow = {
   app_version: string;
   app_build_revision: string;
   update_available: number;
+  block_placement_reminder_enabled?: number;
+  block_reminder_id?: string | null;
+  block_reminder_date?: string | null;
+  block_reminder_end_date?: string | null;
+  block_reminder_label?: string | null;
 };
 
 type OccurrenceRow = ReminderOccurrence & { device_id: string };
@@ -211,6 +218,16 @@ function isValidOccurrence(value: unknown): value is ReminderOccurrence {
   );
 }
 
+function isValidBlockPlacementReminder(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!value || typeof value !== 'object') return false;
+  const reminder = value as Record<string, unknown>;
+  if (!isValidId(reminder.id, 1, 120) || typeof reminder.departmentName !== 'string' || !reminder.departmentName.trim() || reminder.departmentName.length > 120 || !isValidDate(reminder.endDate) || !isValidDate(reminder.reminderDate)) return false;
+  const previousDay = new Date(`${reminder.endDate}T00:00:00Z`);
+  previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+  return previousDay.toISOString().slice(0, 10) === reminder.reminderDate;
+}
+
 function isDocumentedPushEndpoint(endpoint: string): boolean {
   try {
     const url = new URL(endpoint);
@@ -243,6 +260,7 @@ function isValidPreferences(value: unknown): value is A1Preferences {
     typeof prefs.allScheduledClasses === 'boolean' &&
     typeof prefs.unmarkedAttendanceToday === 'boolean' &&
     (prefs.updateAvailable === undefined || typeof prefs.updateAvailable === 'boolean') &&
+    (prefs.blockPlacementReminder === undefined || typeof prefs.blockPlacementReminder === 'boolean') &&
     (prefs.leadMinutes === 15 || prefs.leadMinutes === 30 || prefs.leadMinutes === 60) &&
     isValidNightlyReminderTime(prefs.nightlyReminderTime)
   );
@@ -261,6 +279,7 @@ function validatePayload(payload: unknown): payload is A1ReminderPayload {
     isValidTimezone(item.timezone) &&
     typeof item.notificationsEnabled === 'boolean' &&
     isValidPreferences(item.preferences) &&
+    isValidBlockPlacementReminder(item.blockPlacementReminder) &&
     Array.isArray(item.occurrences) &&
     item.occurrences.length <= MAX_OCCURRENCES &&
     item.occurrences.every(isValidOccurrence)
@@ -345,8 +364,9 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       midnight_need_attention, final_class_today, first_class_today,
       pre_class_need_attention, all_scheduled_digest,
       lead_minutes, nightly_reminder_time, need_attention_subjects, safe_to_miss, unmarked_attendance_today,
-      app_version, app_build_revision, update_available, last_sync_at, expires_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+      app_version, app_build_revision, update_available, block_placement_reminder_enabled,
+      block_reminder_id, block_reminder_date, block_reminder_end_date, block_reminder_label, last_sync_at, expires_at
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)
     ON CONFLICT(device_id) DO UPDATE SET
       token_hash = excluded.token_hash,
       subscription_json = excluded.subscription_json,
@@ -365,6 +385,11 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
       app_version = excluded.app_version,
       app_build_revision = excluded.app_build_revision,
       update_available = excluded.update_available,
+      block_placement_reminder_enabled = excluded.block_placement_reminder_enabled,
+      block_reminder_id = excluded.block_reminder_id,
+      block_reminder_date = excluded.block_reminder_date,
+      block_reminder_end_date = excluded.block_reminder_end_date,
+      block_reminder_label = excluded.block_reminder_label,
       last_sync_at = excluded.last_sync_at,
       expires_at = excluded.expires_at`,
     ).bind(
@@ -386,6 +411,11 @@ async function syncDevice(request: Request, env: Env): Promise<Response> {
     payload.appVersion || 'legacy',
     payload.appBuildRevision || 'legacy',
     boolInt(payload.preferences.updateAvailable === true),
+    boolInt(payload.preferences.blockPlacementReminder === true),
+    payload.blockPlacementReminder?.id || null,
+    payload.blockPlacementReminder?.reminderDate || null,
+    payload.blockPlacementReminder?.endDate || null,
+    payload.blockPlacementReminder?.departmentName || null,
     now,
     expiryIso(),
   );
@@ -610,6 +640,10 @@ function leadReminderDetails(item: OccurrenceRow): { title: string; description:
 
 async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): Promise<void> {
   const clock = localClock(scheduledAt, device.timezone);
+  if (device.notifications_enabled && device.block_placement_reminder_enabled && device.block_reminder_id && device.block_reminder_date === clock.date && device.block_reminder_label) {
+    const endDate = device.block_reminder_end_date ? new Date(`${device.block_reminder_end_date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'tomorrow';
+    await deliverIfNew(env, device, `${device.device_id}:block-placement:${device.block_reminder_id}:${device.block_reminder_date}`, 'Block Placement Ends Tomorrow', `${device.block_reminder_label} placement ends tomorrow (${endDate}). Open the Block Posting Logbook to add the next department placement.`, `${DEFAULT_ALLOWED_ORIGIN}/block-posting`);
+  }
   const nightlyReminderMinute = parseReminderTime(device.nightly_reminder_time || '23:30');
   const currentMinute = clock.hour * 60 + clock.minute;
   const nightlyWindow = isWithinNightlyWindow(currentMinute, nightlyReminderMinute);
@@ -689,7 +723,9 @@ async function runScheduled(env: Env, scheduledAt: number): Promise<void> {
             midnight_need_attention, final_class_today, first_class_today,
       pre_class_need_attention, all_scheduled_digest, lead_minutes, nightly_reminder_time,
             need_attention_subjects, safe_to_miss, unmarked_attendance_today,
-            app_version, app_build_revision, update_available
+            app_version, app_build_revision, update_available,
+            block_placement_reminder_enabled, block_reminder_id, block_reminder_date,
+            block_reminder_end_date, block_reminder_label
       FROM devices WHERE notifications_enabled = 1 AND expires_at > ?1`,
   ).bind(new Date(scheduledAt).toISOString()).all<DeviceRow>();
   for (const device of devices.results || []) {
@@ -732,6 +768,7 @@ export default {
 export const __test = {
   localClock,
   validatePayload,
+  isValidBlockPlacementReminder,
   isValidTimezone,
   isValidNightlyReminderTime,
   isBeforeClassDue,

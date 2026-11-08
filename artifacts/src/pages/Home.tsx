@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { idbGet } from '@/lib/idb';
 import { DASHBOARD_ACTIVITY_UPDATED_EVENT, mergeDashboardActivities, type DashboardActivityItem } from '@/lib/activity';
 import { shortenSubject } from '@/components/HomeCard';
+import { useBlockPosting, BLOCK_POSTING_DEPARTMENTS, blockAttendanceKey, calculateBlockProgress, getNextBlockPlacementReminder, getRosterRulesForDate, placementIsActive } from '@/contexts/BlockPostingContext';
 
 const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -116,6 +117,8 @@ export default function Home() {
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
   const { customSubjects, customWards, userAddedSubjects, subjectMode, presetTimetable, presetWardSchedule, subjectRegistry, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getPresetSubjectDisplayName, getPresetWardDisplayName, getPresetWardTotalPlanned, getCustomWardTotalPlanned } = useCustomData();
   const { homeSelections, finishedMap, subjects, wards, preferredPercentage } = useAttendance();
+  const blockPosting = useBlockPosting();
+  const { config: blockConfig, attendance: blockAttendance } = blockPosting;
   const [, setLocation] = useLocation();
   const { username } = useAuth();
   const [showMarkAttendance, setShowMarkAttendance] = useState(false);
@@ -559,7 +562,6 @@ export default function Home() {
   }, [customSubjects, customWards, finishedMap, getCurrentPresetWard, getSubjectIdByName, getSubjectPlannedTotal, getCustomWardTotalPlanned, getPresetWardTotalPlanned, presetTimetable, subjectMode, subjects, tomorrowDate, tomorrowDateStr, tomorrowDay, userAddedSubjects, wards]);
   const tomorrowSubject = tomorrowEntries[0]?.subject;
   const tomorrowIsWard = Boolean(tomorrowEntries[0]?.isWard);
-  const tomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard, isSGT: tomorrowEntries[0]?.isSGT, isIntegrated: tomorrowEntries[0]?.isIntegrated }, subjectRegistry)})` : 'No classes scheduled for tomorrow.';
   const isEntryVacation = (entry: DayEntry, dateStr = selectedDateStr) => {
     const card = entry.card;
     if (!card) return false;
@@ -578,6 +580,25 @@ export default function Home() {
       const completedOrder = Number(isCompletedPlannedEntry(a, todayStr)) - Number(isCompletedPlannedEntry(b, todayStr));
       return completedOrder || ((rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
     });
+  const blockEntriesForDate = (dateStr: string) => blockConfig.placements.flatMap(placement => {
+    if (!placementIsActive(placement, dateStr)) return [];
+    const weekday = new Date(`${dateStr}T12:00:00`).getDay();
+    const postingScheduled = subjectMode === 'custom' || weekday !== 5;
+    const department = BLOCK_POSTING_DEPARTMENTS.find(item => item.id === placement.departmentId)?.name || 'Department';
+    const entries: Array<{ placementId: string; department: string; kind: 'posting' | 'roster-duty'; status?: string; time: string }> = [];
+    if (postingScheduled) entries.push({ placementId: placement.id, department, kind: 'posting', status: blockAttendance[blockAttendanceKey(placement.id, dateStr, 'posting')]?.status, time: 'Daily posting' });
+    getRosterRulesForDate(placement, dateStr).forEach(rule => entries.push({ placementId: placement.id, department, kind: 'roster-duty', status: blockAttendance[blockAttendanceKey(placement.id, dateStr, 'roster-duty')]?.status, time: `${rule.startTime}–${rule.endTime}` }));
+    return entries;
+  });
+  const blockTodayEntries = blockEntriesForDate(todayStr);
+  const blockTomorrowEntries = blockEntriesForDate(tomorrowDateStr);
+  const standardTomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard, isSGT: tomorrowEntries[0]?.isSGT, isIntegrated: tomorrowEntries[0]?.isIntegrated }, subjectRegistry)})` : '';
+  const blockTomorrowDepartments = [...new Set(blockTomorrowEntries.map(item => item.department))];
+  const hasTomorrowPreview = Boolean(standardTomorrowPreview || blockTomorrowDepartments.length);
+  const blockProgressMetrics = calculateBlockProgress(blockConfig, blockAttendance, subjectMode);
+  const blockNeedAttention = blockProgressMetrics.filter(item => item.conducted > 0 && item.currentPercentage < preferredPercentage);
+  const blockMaximumPossible = blockProgressMetrics.filter(item => item.conducted > 0 && item.remaining > 0);
+  const blockPlacementReminder = getNextBlockPlacementReminder(blockConfig, todayStr);
   const resolveSubjectAlert = (storageKey: string) => {
     const registryRef = subjectRegistry.find(ref => getCanonicalAttendanceKey(ref).toLowerCase() === storageKey.trim().toLowerCase());
     if (!registryRef) {
@@ -711,6 +732,10 @@ export default function Home() {
   };
   const subjectAlertMetrics = allPotentialMetrics.filter(item => isHomeEligibleForNeedAttention(item) && item.current < preferredPercentage);
   const maximumPossibleMetrics = allPotentialMetrics.filter(isHomeEligibleForMaximumPossible);
+  const maximumChartRows = [
+    ...maximumPossibleMetrics.map(metric => ({ key: `subject-${metric.category}-${metric.name}`, name: shortenSubject(metric.name), category: metric.category, current: metric.current, maximum: metric.maximum, isBlock: false })),
+    ...blockMaximumPossible.map(metric => ({ key: `block-${metric.departmentId}`, name: metric.departmentName, category: 'Block', current: metric.currentPercentage, maximum: metric.predictedMaximum, isBlock: true })),
+  ].sort((a, b) => a.current - b.current);
   const statusForEntry = (entry: DayEntry) => {
     if (entry.kind !== 'card' || !entry.card?.sessionId) return undefined;
     const card = entry.card;
@@ -800,7 +825,7 @@ export default function Home() {
         <section className="glass-card absolute inset-y-0 left-0 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border p-3 text-left" style={{ width: 'calc((100% - 0.75rem) * 0.5454545)' }}>
           <h2 className="shrink-0 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Today at a Glance</h2>
           <div className="relative mt-2 min-h-0 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
-            {glanceEntries.length === 0 ? <div className="flex min-h-full items-center justify-center px-2 text-center"><p className="py-2 text-xs text-muted-foreground">{isTodayDetoxDay ? 'Detox Day — enjoy your rest day!' : 'No remaining classes today.'}</p></div> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
+            {glanceEntries.length === 0 && blockTodayEntries.length === 0 ? <div className="flex min-h-full items-center justify-center px-2 text-center"><p className="py-2 text-xs text-muted-foreground">{isTodayDetoxDay ? 'Detox Day — enjoy your rest day!' : 'No remaining classes today.'}</p></div> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
               {glanceEntries.map(entry => {
                 const status = statusForEntry(entry);
                 const completed = isCompletedPlannedEntry(entry, todayStr);
@@ -822,14 +847,28 @@ export default function Home() {
                   </span>
                 </button>;
               })}
+              {blockTodayEntries.map(entry => {
+                const statusLabel = entry.status === 'attended' ? 'Attended' : entry.status === 'missed' ? 'Missed' : entry.status === 'off' ? 'Off' : 'Not Marked Yet';
+                const statusColor = entry.status === 'attended' ? 'text-emerald-500' : entry.status === 'missed' ? 'text-rose-500' : entry.status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
+                return <button type="button" key={`${entry.placementId}-${entry.kind}`} onClick={() => setLocation('/block-posting')} className="relative flex w-full min-w-0 items-center gap-x-2 text-left">
+                  <span className="absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card bg-primary" />
+                  <span className="flex min-w-0 flex-1 flex-col"><span className="flex items-center gap-1 min-w-0"><span className="rounded bg-primary/10 px-1 text-[7px] font-black uppercase text-primary">Block</span><span className="truncate text-[10px] font-bold leading-3 text-foreground">{entry.department}</span></span><span className="text-[8px] font-semibold leading-3 text-muted-foreground">{entry.kind === 'roster-duty' ? 'Roster Duty' : 'Department posting'}</span></span>
+                  <span className="flex shrink-0 flex-col items-end text-right"><span className="text-[8px] text-muted-foreground">{entry.time}</span><span className={cn('text-[8px] font-extrabold', statusColor)}>{statusLabel}</span></span>
+                </button>;
+              })}
             </div>}
           </div>
         </section>
         <div className="col-start-2 flex flex-col gap-3">
-          <button type="button" onClick={() => { setSelectedDateStr(todayStr); setShowMarkAttendance(true); }} className="min-h-11 rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry, todayStr)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry, todayStr)).length} Classes today` : 'No classes scheduled today.'}</p></button>
-          <button type="button" onClick={() => { setSelectedDateStr(toDateString(addDays(today, 1))); setShowMarkAttendance(true); }} className="min-h-11 rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><p className="mt-1 truncate text-[10px] text-muted-foreground">{tomorrowPreview}</p></button>
+          <button type="button" onClick={() => { setSelectedDateStr(todayStr); setShowMarkAttendance(true); }} className="h-24 min-h-0 flex-none overflow-hidden rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 shrink-0 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] leading-snug text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry, todayStr)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry, todayStr)).length} Classes today` : 'No classes scheduled today.'}</p></button>
+          <button type="button" onClick={() => { if (tomorrowEntries.length === 0 && blockTomorrowEntries.length > 0) { setLocation('/block-posting'); return; } setSelectedDateStr(toDateString(addDays(today, 1))); setShowMarkAttendance(true); }} className="h-28 min-h-0 flex-none overflow-hidden rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 shrink-0 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><div className="mt-1 min-w-0 space-y-0.5 text-[9px] leading-snug text-muted-foreground">{standardTomorrowPreview && <span className="block whitespace-normal break-words">{standardTomorrowPreview}</span>}{blockTomorrowDepartments.length > 0 && <span className="block whitespace-normal break-words"><span className="inline-block whitespace-nowrap">Block Posting:&nbsp;{shortenSubject(blockTomorrowDepartments[0])}</span>{blockTomorrowDepartments.length > 1 && <span> · +{blockTomorrowDepartments.length - 1} more</span>}</span>}{!hasTomorrowPreview && <span className="block whitespace-normal break-words">No classes or Block placements scheduled for tomorrow.</span>}</div></button>
         </div>
       </div>
+      <button type="button" onClick={() => setLocation('/block-posting')} className="glass-card flex w-full items-center gap-3 rounded-2xl border border-primary/35 bg-card p-4 text-left transition-transform active:scale-[0.99]">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-primary/25 bg-primary/10 text-primary"><ClipboardCheck className="h-6 w-6" /></span>
+        <span className="min-w-0 flex-1"><strong className="block text-sm font-extrabold text-foreground">Block Posting Logbook</strong><span className="mt-1 block text-[10px] leading-relaxed text-muted-foreground">Separate department rotations and attendance, with optional roster-duty tracking.</span>{blockPlacementReminder?.reminderDate === todayStr && <span className="mt-2 block rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-2 text-[10px] font-bold leading-relaxed text-amber-800 dark:text-amber-200">Reminder: {blockPlacementReminder.departmentName} ends tomorrow. Add the next placement in Logbook Settings.</span>}</span>
+        <span className="shrink-0 rounded-xl bg-primary px-3 py-2 text-[10px] font-extrabold text-primary-foreground">Open</span>
+      </button>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Recent Activity</h2></div>
         {!hasRecentActivity ? (
@@ -850,19 +889,19 @@ export default function Home() {
         )}
         {hasMoreRecentActivity && <button type="button" onClick={() => setActivityExpanded(value => !value)} className="mt-4 w-full text-left text-xs font-bold text-primary">{activityExpanded ? 'Collapse activity ↑' : 'View all activity →'}</button>}
       </section>
-      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2>{subjectAlertMetrics.length === 0 ? <div className="mt-3 flex justify-center text-center"><p className="text-xs text-muted-foreground">No subjects need attention right now.</p></div> : <div className="mt-3 space-y-2">{subjectAlertMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}%</span></button>)}</div>}</section>
+      <section className="glass-card rounded-2xl border border-border p-4"><h2 className="text-sm font-extrabold">Subject Alerts</h2>{subjectAlertMetrics.length === 0 && blockNeedAttention.length === 0 ? <div className="mt-3 flex justify-center text-center"><p className="text-xs text-muted-foreground">No subjects or Block departments need attention right now.</p></div> : <div className="mt-3 space-y-2">{subjectAlertMetrics.map(metric => <button type="button" key={`${metric.category}-${metric.name}`} onClick={() => setLocation('/subjects')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{shortenSubject(metric.name)} <span className="text-[9px] font-bold text-muted-foreground">({metric.category || 'Lecture'})</span></span><span className="text-xs font-bold text-muted-foreground">{Math.round(metric.current)}%</span></button>)}{blockNeedAttention.map(metric => <button type="button" key={`block-${metric.departmentId}`} onClick={() => setLocation('/block-posting')} className="flex w-full items-center gap-2 text-left"><span className="h-2 w-2 rounded-full bg-rose-500" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{metric.departmentName} <span className="rounded bg-primary/10 px-1 py-0.5 text-[8px] font-black uppercase text-primary">Block</span></span><span className="text-xs font-bold text-rose-500">{Math.round(metric.currentPercentage)}%</span></button>)}</div>}</section>
       <section className="glass-card rounded-2xl border border-border p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-extrabold">Maximum Percentage Possible</h2>
           <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-extrabold text-emerald-500">If attended</span>
         </div>
-        {maximumPossibleMetrics.length === 0 ? <div className="mt-3 flex justify-center text-center"><p className="text-[10px] text-muted-foreground">Not enough data yet.</p></div> : (
+        {maximumChartRows.length === 0 ? <div className="mt-3 flex justify-center text-center"><p className="text-[10px] text-muted-foreground">No qualifying subjects or Block departments have enough attendance data yet.</p></div> : (
           <div className="mt-3">
-            <svg viewBox={`0 0 560 ${maximumPossibleMetrics.length * 46 + 34}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
-              <line x1="112" x2="112" y1="10" y2={maximumPossibleMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
-              <line x1="112" x2="540" y1={maximumPossibleMetrics.length * 46 + 24} y2={maximumPossibleMetrics.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
-              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={112 + (428 * tick) / 100} y={maximumPossibleMetrics.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
-              {maximumPossibleMetrics.map((metric, index) => {
+            <svg viewBox={`0 0 560 ${maximumChartRows.length * 46 + 34}`} className="h-auto max-h-[22rem] w-full" role="img" aria-label="Per-subject attendance ECG waveforms">
+              <line x1="112" x2="112" y1="10" y2={maximumChartRows.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              <line x1="112" x2="540" y1={maximumChartRows.length * 46 + 24} y2={maximumChartRows.length * 46 + 24} stroke="currentColor" strokeOpacity=".45" />
+              {[0, 20, 40, 60, 80, 100].map(tick => <text key={tick} x={112 + (428 * tick) / 100} y={maximumChartRows.length * 46 + 34} textAnchor={tick === 0 ? 'start' : tick === 100 ? 'end' : 'middle'} fontSize="8" fill="currentColor" opacity=".7">{tick === 0 ? '0' : `${tick}%`}</text>)}
+              {maximumChartRows.map((metric, index) => {
                 const rowY = 34 + index * 46;
                 const left = 112;
                 const width = 428;
@@ -875,8 +914,8 @@ export default function Home() {
                 const currentColor = '#94a3b8';
                 const maxColor = metric.maximum >= preferredPercentage ? '#34d399' : '#ef4444';
                 const waveform = `M ${currentX.toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.12).toFixed(1)} ${baseline.toFixed(1)}, ${(currentX + extension * 0.16).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.24).toFixed(1)} ${(baseline - 5).toFixed(1)} C ${(currentX + extension * 0.3).toFixed(1)} ${(baseline - 5).toFixed(1)}, ${(currentX + extension * 0.34).toFixed(1)} ${(baseline + 5).toFixed(1)}, ${(currentX + extension * 0.38).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.42).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(peakX - extension * 0.05).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${peakX.toFixed(1)} ${(baseline - 26).toFixed(1)} C ${(peakX + extension * 0.04).toFixed(1)} ${(baseline - 8).toFixed(1)}, ${(currentX + extension * 0.56).toFixed(1)} ${(baseline + 10).toFixed(1)}, ${(currentX + extension * 0.62).toFixed(1)} ${baseline.toFixed(1)} C ${(currentX + extension * 0.7).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX - extension * 0.04).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${tX.toFixed(1)} ${(baseline - 9).toFixed(1)} C ${(tX + extension * 0.08).toFixed(1)} ${(baseline - 9).toFixed(1)}, ${(tX + extension * 0.14).toFixed(1)} ${(baseline - 3).toFixed(1)}, ${maxX.toFixed(1)} ${baseline.toFixed(1)}`;
-                const nameLines = wrapDashboardSvgLabel(shortenSubject(metric.name), 18);
-                return <g key={`${metric.category}-${metric.name}`}>
+                const nameLines = wrapDashboardSvgLabel(metric.name, 18);
+                return <g key={metric.key} role="link" tabIndex={0} className="cursor-pointer" onClick={() => setLocation(metric.isBlock ? '/block-posting' : '/subjects')} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setLocation(metric.isBlock ? '/block-posting' : '/subjects'); } }} aria-label={`${metric.name}, current ${Math.round(metric.current)}%, maximum possible ${Math.round(metric.maximum)}%`}>
                   <text x="2" y={rowY - 4} fontSize="9" fontWeight="700" fill="currentColor">
                     {nameLines.map((line, lineIndex) => <tspan key={lineIndex} x="2" dy={lineIndex === 0 ? 0 : 10}>{line}</tspan>)}
                     <tspan x="2" dy="10" fontSize="8" fontWeight="600" fill="currentColor" opacity=".75">({metric.category})</tspan>

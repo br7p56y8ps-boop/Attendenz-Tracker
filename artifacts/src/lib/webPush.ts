@@ -20,6 +20,7 @@ export interface NotificationPreferences {
   allScheduledClasses: boolean;
   manageChanges: boolean;
   updateAvailable: boolean;
+  blockPlacementReminder: boolean;
   updateCompleted: boolean;
   dataTransfer: boolean;
   unmarkedAttendanceToday: boolean;
@@ -63,6 +64,7 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   allScheduledClasses: false,
   manageChanges: true,
   updateAvailable: true,
+  blockPlacementReminder: true,
   updateCompleted: true,
   dataTransfer: true,
   unmarkedAttendanceToday: false,
@@ -142,6 +144,7 @@ export function getNotificationPreferences(): NotificationPreferences {
       allScheduledClasses,
       manageChanges,
       updateAvailable: parsed.updateAvailable !== false,
+      blockPlacementReminder: parsed.blockPlacementReminder !== false,
       updateCompleted: parsed.updateCompleted !== false,
       dataTransfer: parsed.dataTransfer === true,
       unmarkedAttendanceToday: parsed.unmarkedAttendanceToday ?? DEFAULT_PREFERENCES.unmarkedAttendanceToday,

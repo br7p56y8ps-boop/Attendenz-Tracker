@@ -3,6 +3,7 @@ import { applyAccentTheme, applyFontPreference, applyThemePreference, readAccent
 import { applyNavBarStyle, readNavBarStyle } from '@/lib/uiPreferences';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AttendanceProvider } from '@/contexts/AttendanceContext';
+import { BlockPostingProvider } from '@/contexts/BlockPostingContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CustomDataProvider } from '@/contexts/CustomDataContext';
 import { useCustomData } from '@/contexts/CustomDataContext';
@@ -20,6 +21,7 @@ const Subjects = lazy(() => import('@/pages/Subjects'));
 const Manage = lazy(() => import('@/pages/Manage'));
 const Timetable = lazy(() => import('@/pages/Timetable'));
 const Settings = lazy(() => import('@/pages/Settings'));
+const BlockPosting = lazy(() => import('@/pages/BlockPosting'));
 const Login = lazy(() => import('@/pages/Login'));
 const NotFound = lazy(() => import('@/pages/not-found'));
 
@@ -62,6 +64,7 @@ function AuthGate() {
             <Route path="/add-new" component={Manage} />
             <Route path="/calendar" component={Timetable} />
             <Route path="/account" component={Settings} />
+            <Route path="/block-posting" component={BlockPosting} />
             <Route component={NotFound} />
           </Switch>
         </Suspense>
@@ -190,13 +193,15 @@ export default function App() {
     <>
       <AuthProvider>
       <CustomDataProvider>
-        <AttendanceProvider>
-          <ReminderSyncProvider>
-            <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
-              <MainAppFlow />
-            </WouterRouter>
-          </ReminderSyncProvider>
-        </AttendanceProvider>
+        <BlockPostingProvider>
+          <AttendanceProvider>
+            <ReminderSyncProvider>
+              <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
+                <MainAppFlow />
+              </WouterRouter>
+            </ReminderSyncProvider>
+          </AttendanceProvider>
+        </BlockPostingProvider>
       </CustomDataProvider>
       </AuthProvider>
     </>

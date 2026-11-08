@@ -64,7 +64,7 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
   }, []);
 
   const currentItem = NAV_ITEMS.find((item) => item.path === location) || NAV_ITEMS[0];
-  const currentNavIndex = NAV_ITEMS.findIndex((item) => item.path === location);
+  const currentNavIndex = location === '/block-posting' ? 0 : NAV_ITEMS.findIndex((item) => item.path === location);
   const changeBySwipe = (direction: number) => {
     const nextIndex = Math.max(0, Math.min(NAV_ITEMS.length - 1, currentNavIndex + direction));
     if (nextIndex !== currentNavIndex) setLocation(NAV_ITEMS[nextIndex].path);
@@ -106,7 +106,7 @@ export const Layout = ({ children, headerRight, headerBottom, headerTitle, heade
       >
         <nav aria-label="Primary navigation" className="flex justify-around items-center h-14" onTouchStart={e => { navTouchStartX.current = e.changedTouches[0]?.clientX ?? null; }} onTouchEnd={e => { const start = navTouchStartX.current; navTouchStartX.current = null; const end = e.changedTouches[0]?.clientX; if (start !== null && end !== undefined && Math.abs(end - start) >= 48) changeBySwipe(end < start ? -1 : 1); }}>
           {NAV_ITEMS.map(({ path, label, Icon }) => {
-            const active = location === path;
+            const active = location === path || (path === '/' && location === '/block-posting');
             return (
               <button type="button" key={path} onClick={() => setLocation(path)} className={cn(
                 'relative flex h-full flex-1 flex-col items-center justify-center transition-colors duration-200 active:scale-95',

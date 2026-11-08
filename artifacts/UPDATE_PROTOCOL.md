@@ -8,11 +8,11 @@ The current configuration is:
 
 ```json
 {
-  "version": "1.7.4",
+  "version": "1.7.5",
   "releaseType": "minor",
   "updateMode": "manual",
   "updateProtocol": 2,
-  "automaticFromVersion": "1.7.4"
+  "automaticFromVersion": "1.7.5"
 }
 ```
 

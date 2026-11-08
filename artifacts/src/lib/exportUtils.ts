@@ -20,6 +20,7 @@ export interface ExportReportOptions {
   targetPct: number;
   filterTitle: string;
   items: AttendanceReportItem[];
+  blockItems?: AttendanceReportItem[];
   overallAttended: number;
   overallTotal: number;
   overallPct: number;
@@ -278,6 +279,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
     targetPct,
     filterTitle,
     items: rawItems,
+    blockItems = [],
   } = options;
 
   const exportItems = rawItems.filter(item => item.name.trim().replace(/\s+\((ward|sgt)\)$/i, '').toLowerCase() !== 'holiday');
@@ -292,6 +294,9 @@ export async function generatePDFReport(options: ExportReportOptions) {
   const clinicalAttended = clinicalItems.reduce((sum, item) => sum + item.attended, 0);
   const clinicalTotal = clinicalItems.reduce((sum, item) => sum + item.total, 0);
   const clinicalPct = clinicalTotal > 0 ? (clinicalAttended / clinicalTotal) * 100 : 0;
+  const blockAttended = blockItems.reduce((sum, item) => sum + item.attended, 0);
+  const blockTotal = blockItems.reduce((sum, item) => sum + item.total, 0);
+  const blockPct = blockTotal > 0 ? (blockAttended / blockTotal) * 100 : 0;
   const overallAttended = academicAttended + clinicalAttended;
   const overallTotal = academicTotal + clinicalTotal;
   const overallPct = overallTotal > 0 ? (overallAttended / overallTotal) * 100 : 0;
@@ -446,7 +451,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
   doc.setDrawColor(...border);
   doc.setLineWidth(0.2);
   doc.line(infoTextX, infoY + 20.5, metaRight, infoY + 20.5);
-  const recordType = clinicalItems.length > 0 ? 'Academic + Clinical' : 'Academic';
+  const recordType = [academicItems.length > 0 ? 'Academic' : '', clinicalItems.length > 0 ? 'Clinical' : '', blockItems.length > 0 ? 'Block Posting (separate)' : ''].filter(Boolean).join(' + ');
   const fields: Array<[string, string]> = [
     ['Programme', routineMode],
     ['Report Scope', filterTitle],
@@ -473,11 +478,12 @@ export async function generatePDFReport(options: ExportReportOptions) {
   y += infoH + 8;
 
   const statusLabel = (item: AttendanceReportItem) => getReportStatus(item, targetPct);
-  const drawSection = (title: string, sectionItems: AttendanceReportItem[], clinical: boolean): void => {
+  const drawSection = (title: string, sectionItems: AttendanceReportItem[], kind: 'academic' | 'clinical' | 'block'): void => {
     if (sectionItems.length === 0) return;
-    const sectionAccent = clinical ? [30, 64, 175] as const : [4, 120, 87] as const;
+    const clinical = kind === 'clinical';
+    const sectionAccent = clinical ? [30, 64, 175] as const : kind === 'block' ? [180, 83, 9] as const : [4, 120, 87] as const;
     const sectionTitle = clinical ? 'Clinical Rotations and Small Group Teaching' : title;
-    const itemColumn = clinical ? 'Rotation / SGT' : 'Subject';
+    const itemColumn = clinical ? 'Rotation / SGT' : kind === 'block' ? 'Department' : 'Subject';
     const cols = [
       { label: itemColumn, width: 53 },
       { label: 'Conducted', width: 20 },
@@ -564,8 +570,9 @@ export async function generatePDFReport(options: ExportReportOptions) {
     y += 8;
   };
 
-  drawSection('Academic Subjects', academicItems, false);
-  drawSection('Clinical Rotations and Small Group Teaching', clinicalDisplayItems, true);
+  drawSection('Academic Subjects', academicItems, 'academic');
+  drawSection('Clinical Rotations and Small Group Teaching', clinicalDisplayItems, 'clinical');
+  drawSection('Block Posting Departments (separate attendance)', blockItems, 'block');
 
   if (y > pageHeight - 93) y = addPageWithHeader();
   const overallReportItem: AttendanceReportItem = {
@@ -577,7 +584,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
     neededForTarget: '',
   };
   const overallStatus = getReportStatus(overallReportItem, targetPct);
-  const summaryH = clinicalItems.length > 0 ? 55 : 43;
+  const summaryH = (clinicalItems.length > 0 ? 55 : 43) + (blockItems.length > 0 ? 8 : 0);
   doc.setFillColor(239, 246, 255);
   doc.setDrawColor(147, 197, 253);
   doc.roundedRect(margin, y, contentWidth, summaryH, 3, 3, 'FD');
@@ -599,6 +606,7 @@ export async function generatePDFReport(options: ExportReportOptions) {
     ['Academic', `${academicAttended}/${academicTotal || 0}`, `${academicPct.toFixed(1)}%`],
   ];
   if (clinicalItems.length > 0) summaryRows.push(['Clinical and SGT', `${clinicalAttended}/${clinicalTotal || 0}`, `${clinicalPct.toFixed(1)}%`]);
+  if (blockItems.length > 0) summaryRows.push(['Block Posting (separate)', `${blockAttended}/${blockTotal || 0}`, `${blockPct.toFixed(1)}%`]);
   summaryRows.push(['Overall status', overallStatus.label, overallStatus.guidance || '']);
   let summaryY = y + 28;
   summaryRows.forEach(([label, value, note]) => {
@@ -670,6 +678,7 @@ export async function generateExcelReport(options: ExportReportOptions) {
     routineMode,
     filterTitle,
     items,
+    blockItems = [],
     overallAttended,
     overallTotal,
     overallPct,
@@ -688,6 +697,9 @@ export async function generateExcelReport(options: ExportReportOptions) {
   const clinicalOverallAttended = clinicalItems.reduce((acc, curr) => acc + curr.attended, 0);
   const clinicalOverallTotal = clinicalItems.reduce((acc, curr) => acc + curr.total, 0);
   const clinicalOverallPct = clinicalOverallTotal > 0 ? (clinicalOverallAttended / clinicalOverallTotal) * 100 : 0;
+  const blockOverallAttended = blockItems.reduce((acc, curr) => acc + curr.attended, 0);
+  const blockOverallTotal = blockItems.reduce((acc, curr) => acc + curr.total, 0);
+  const blockOverallPct = blockOverallTotal > 0 ? (blockOverallAttended / blockOverallTotal) * 100 : 0;
 
   const workbook = XLSX.utils.book_new();
 
@@ -743,6 +755,20 @@ export async function generateExcelReport(options: ExportReportOptions) {
     XLSX.utils.book_append_sheet(workbook, ws, 'Clinical Rotations');
   }
 
+  if (blockItems.length > 0) {
+    const blockAttended = blockItems.reduce((sum, item) => sum + item.attended, 0);
+    const blockTotal = blockItems.reduce((sum, item) => sum + item.total, 0);
+    const rows = blockItems.map(item => {
+      const row = getExportRow(item, targetPct);
+      return { Department: item.name, 'Class Conducted': getConductedDisplay(row), Present: row.present, 'Attendance Status': row.status, 'Recommended Action': row.guidance, 'Current %': row.percentage };
+    });
+    rows.push({ Department: 'BLOCK POSTING SUMMARY (SEPARATE)', 'Class Conducted': blockTotal, Present: blockAttended, 'Attendance Status': blockTotal > 0 ? 'Separate from Academic / Clinical totals' : 'No attendance marked yet', 'Recommended Action': 'Block department attendance is calculated independently.', 'Current %': blockTotal > 0 ? Number(((blockAttended / blockTotal) * 100).toFixed(1)) : 0 });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    applyExcelStatusStyles(XLSX, ws, 3, rows.length);
+    ws['!cols'] = [{ wch: 32 }, { wch: 18 }, { wch: 15 }, { wch: 22 }, { wch: 42 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(workbook, ws, 'Block Posting');
+  }
+
   const combinedAttended = overallAttended;
   const combinedTotal = overallTotal;
   const combinedPct = combinedTotal === 0 ? 0 : (combinedAttended / combinedTotal) * 100;
@@ -754,6 +780,7 @@ export async function generateExcelReport(options: ExportReportOptions) {
     { Property: 'Overall Percentage', Value: `${combinedPct.toFixed(1)}%` },
     { Property: 'Academic Overall Percentage', Value: `${overallPct.toFixed(1)}%` },
     { Property: 'Clinical Overall Percentage', Value: `${clinicalOverallPct.toFixed(1)}%` },
+    { Property: 'Block Posting Overall Percentage (separate)', Value: `${blockOverallPct.toFixed(1)}%` },
     { Property: 'Academic Remarks', Value: overallPct >= targetPct ? 'Target Achieved' : 'Action Needed' },
     { Property: 'Clinical Remarks', Value: clinicalOverallPct >= targetPct ? 'Target Achieved' : 'Action Needed' },
     { Property: 'Generated Date', Value: new Date().toLocaleString() },
@@ -765,7 +792,7 @@ export async function generateExcelReport(options: ExportReportOptions) {
 }
 
 export function generateCSVReport(options: ExportReportOptions) {
-  const { items, overallAttended, overallTotal } = options;
+  const { items, blockItems = [], overallAttended, overallTotal } = options;
 
   const { academic: academicItems, clinical: clinicalItems } = reportItemsByKind(items);
   const displayClinicalItems = clinicalItems.map(item => ({
@@ -805,6 +832,25 @@ export function generateCSVReport(options: ExportReportOptions) {
       row.percentage === '' ? '' : Number(row.percentage).toFixed(1),
     ]);
   });
+
+  blockItems.forEach(item => {
+    const row = getExportRow(item, options.targetPct);
+    rows.push([
+      'Block Posting (separate)',
+      `"${item.name.replace(/"/g, '""')}"`,
+      getConductedDisplay(row),
+      row.present,
+      `"${row.status}"`,
+      `"${row.guidance}"`,
+      row.percentage === '' ? '' : Number(row.percentage).toFixed(1),
+    ]);
+  });
+
+  if (blockItems.length > 0) {
+    const blockAttended = blockItems.reduce((sum, item) => sum + item.attended, 0);
+    const blockTotal = blockItems.reduce((sum, item) => sum + item.total, 0);
+    rows.push(['BLOCK SUMMARY (SEPARATE)', '"Block Posting"', blockTotal, blockAttended, '"Independent total"', '"Not included in Academic / Clinical combined total"', blockTotal > 0 ? ((blockAttended / blockTotal) * 100).toFixed(1) : '0.0']);
+  }
 
   rows.push([
     'SUMMARY',
