@@ -4,7 +4,7 @@ const MAX_BODY_BYTES = 128 * 1024;
 const MAX_OCCURRENCES = 500;
 const DEVICE_TTL_DAYS = 45;
 const DEFAULT_ALLOWED_ORIGIN = 'https://benz-attendance-tracker.pages.dev';
-const CATEGORY_VALUES = new Set(['academic', 'clinical', 'sgt', 'ward']);
+const CATEGORY_VALUES = new Set(['academic', 'clinical', 'sgt', 'ward', 'block']);
 // Keep this list synchronized with artifacts/src/lib/webPush.ts.
 const DOCUMENTED_PUSH_ENDPOINTS = [
   'https://fcm.googleapis.com/',
@@ -74,7 +74,7 @@ export interface ReminderOccurrence {
   startMinute: number;
   endMinute: number;
   subjectLabel: string;
-  category: 'academic' | 'clinical' | 'sgt' | 'ward';
+  category: 'academic' | 'clinical' | 'sgt' | 'ward' | 'block';
   needsAttention: boolean;
   attentionLevel: 'mustAttend' | 'needAttention' | 'safeToMiss' | 'onTrack' | 'neutral';
   attendanceMarked: boolean;
@@ -501,16 +501,18 @@ function localClock(timestamp: number, timezone: string): { date: string; hour: 
 
 function cleanLabel(value: string, category: OccurrenceRow['category']): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
-  const suffixMatch = normalized.match(/\s+\((Lecture\/Integrated|Lecture|Integrated|Clinical|SGT)\)$/i);
+  const suffixMatch = normalized.match(/\s+\((Lecture\/Integrated|Lecture|Integrated|Clinical|SGT|Block)\)$/i);
   const base = (suffixMatch ? normalized.slice(0, suffixMatch.index) : normalized).trim().slice(0, 120);
   const existingKind = suffixMatch?.[1].toLowerCase();
-  const kind = category === 'sgt'
-    ? 'SGT'
-    : category === 'clinical' || category === 'ward'
-      ? 'Clinical'
-      : existingKind === 'integrated'
-        ? 'Integrated'
-        : 'Lecture';
+  const kind = category === 'block'
+    ? 'Block'
+    : category === 'sgt'
+      ? 'SGT'
+      : category === 'clinical' || category === 'ward'
+        ? 'Clinical'
+        : existingKind === 'integrated'
+          ? 'Integrated'
+          : 'Lecture';
   return `${base} (${kind})`;
 }
 
@@ -668,9 +670,10 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
     const future = nightlyOccurrences.filter(item => item.localDate === nightlyDate && item.status === 'unmarked' && (nightlyDate !== clock.date || item.startMinute > currentMinute));
     const mustAttend = device.midnight_need_attention ? future.filter(item => item.attentionLevel === 'mustAttend') : [];
     const needAttention = device.need_attention_subjects ? future.filter(item => item.attentionLevel === 'needAttention') : [];
-    const finalClasses = device.final_class_today ? future.filter(item => item.isFinalForSubject) : [];
-    const first = device.first_class_today && future.length > 0 ? future[0] : null;
-    const digest = device.all_scheduled_digest && future.length > 0 ? future : [];
+    const timedFuture = future.filter(item => item.category !== 'block');
+    const finalClasses = device.final_class_today ? timedFuture.filter(item => item.isFinalForSubject) : [];
+    const first = device.first_class_today && timedFuture.length > 0 ? timedFuture[0] : null;
+    const digest = device.all_scheduled_digest && timedFuture.length > 0 ? timedFuture : [];
 
     const safeToMiss = device.safe_to_miss ? future.filter(item => item.attentionLevel === 'safeToMiss') : [];
     if (mustAttend.length > 0 || needAttention.length > 0 || safeToMiss.length > 0) {
@@ -698,7 +701,7 @@ async function processDevice(env: Env, device: DeviceRow, scheduledAt: number): 
   }
 
   if (device.pre_class_need_attention) {
-    const due = occurrences.filter(item => isBeforeClassDue(currentMinute, item.startMinute, device.lead_minutes) && item.status === 'unmarked');
+    const due = occurrences.filter(item => item.category !== 'block' && isBeforeClassDue(currentMinute, item.startMinute, device.lead_minutes) && item.status === 'unmarked');
     const dueMust = due.filter(item => item.attentionLevel === 'mustAttend');
     const dueNeed = device.need_attention_subjects ? due.filter(item => item.attentionLevel === 'needAttention') : [];
     const dueSafe = device.safe_to_miss ? due.filter(item => item.attentionLevel === 'safeToMiss') : [];
@@ -769,6 +772,7 @@ export const __test = {
   localClock,
   validatePayload,
   isValidBlockPlacementReminder,
+  isValidOccurrence,
   isValidTimezone,
   isValidNightlyReminderTime,
   isBeforeClassDue,

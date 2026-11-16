@@ -1,8 +1,8 @@
 {
-  "version": "1.7.5",
+  "version": "1.7.6",
   "releaseType": "minor",
   "updateMode": "manual",
   "updateProtocol": 2,
-  "automaticFromVersion": "1.7.5",
-  "summary": "Home-based Block Posting logbook with date-specific department tracking, optional placement roster duty, separate progress/reporting, and more accurate progress filters."
+  "automaticFromVersion": "1.7.6",
+  "summary": "Block risk reminders, Subject-style future attendance advisors, Logbook date wheel and polish, and unified chronological dashboard ordering."
 }

@@ -575,6 +575,23 @@ export default function Home() {
     }
     return false;
   };
+  const statusForEntry = (entry: DayEntry) => {
+    if (entry.kind !== 'card' || !entry.card?.sessionId) return undefined;
+    const card = entry.card;
+    const attendanceKey = card.isSGT && card.sgtId
+      ? getSGTKey(card.sgtId)
+      : (() => {
+          const resolved = getSubjectIdByName(
+            card.isWard ? (card.subtitle || card.subject) : card.subject,
+            card.isWard ? 'clinical' : 'academic'
+          );
+          return resolved
+            ? (card.isWard ? getWardAttendanceKey(resolved) : getAcademicAttendanceKey(resolved))
+            : null;
+        })();
+    if (!attendanceKey) return undefined;
+    return homeSelections[`${todayStr}-${attendanceKey}-${card.sessionId}`];
+  };
   const glanceEntries = dashboardClassEntries
     .sort((a, b) => {
       const completedOrder = Number(isCompletedPlannedEntry(a, todayStr)) - Number(isCompletedPlannedEntry(b, todayStr));
@@ -591,6 +608,10 @@ export default function Home() {
     return entries;
   });
   const blockTodayEntries = blockEntriesForDate(todayStr);
+  const glanceTimeline = [
+    ...glanceEntries.map(entry => { const status = statusForEntry(entry); return { type: 'academic' as const, entry, completed: Boolean(status) || isCompletedPlannedEntry(entry, todayStr), time: entry.time }; }),
+    ...blockTodayEntries.map(entry => ({ type: 'block' as const, entry, completed: Boolean(entry.status), time: entry.time })),
+  ].sort((a, b) => Number(a.completed) - Number(b.completed) || (rangeStartMinutes(a.time) ?? 1440) - (rangeStartMinutes(b.time) ?? 1440));
   const blockTomorrowEntries = blockEntriesForDate(tomorrowDateStr);
   const standardTomorrowPreview = tomorrowEntries[0]?.holiday ? tomorrowEntries[0].holiday : tomorrowSubject ? `First: ${shortenSubject(tomorrowSubject)} (${getDashboardSubjectKind(tomorrowSubject, { isWard: tomorrowIsWard, isSGT: tomorrowEntries[0]?.isSGT, isIntegrated: tomorrowEntries[0]?.isIntegrated }, subjectRegistry)})` : '';
   const blockTomorrowDepartments = [...new Set(blockTomorrowEntries.map(item => item.department))];
@@ -736,23 +757,7 @@ export default function Home() {
     ...maximumPossibleMetrics.map(metric => ({ key: `subject-${metric.category}-${metric.name}`, name: shortenSubject(metric.name), category: metric.category, current: metric.current, maximum: metric.maximum, isBlock: false })),
     ...blockMaximumPossible.map(metric => ({ key: `block-${metric.departmentId}`, name: metric.departmentName, category: 'Block', current: metric.currentPercentage, maximum: metric.predictedMaximum, isBlock: true })),
   ].sort((a, b) => a.current - b.current);
-  const statusForEntry = (entry: DayEntry) => {
-    if (entry.kind !== 'card' || !entry.card?.sessionId) return undefined;
-    const card = entry.card;
-    const attendanceKey = card.isSGT && card.sgtId
-      ? getSGTKey(card.sgtId)
-      : (() => {
-          const resolved = getSubjectIdByName(
-            card.isWard ? (card.subtitle || card.subject) : card.subject,
-            card.isWard ? 'clinical' : 'academic'
-          );
-          return resolved
-            ? (card.isWard ? getWardAttendanceKey(resolved) : getAcademicAttendanceKey(resolved))
-            : null;
-        })();
-    if (!attendanceKey) return undefined;
-    return homeSelections[`${todayStr}-${attendanceKey}-${card.sessionId}`];
-  };
+
   const timeOfDay = new Date().getHours() < 12 ? 'Good Morning' : new Date().getHours() < 18 ? 'Good Afternoon' : 'Good Evening';
 
   const dateWheel = (
@@ -826,34 +831,30 @@ export default function Home() {
           <h2 className="shrink-0 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Today at a Glance</h2>
           <div className="relative mt-2 min-h-0 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
             {glanceEntries.length === 0 && blockTodayEntries.length === 0 ? <div className="flex min-h-full items-center justify-center px-2 text-center"><p className="py-2 text-xs text-muted-foreground">{isTodayDetoxDay ? 'Detox Day — enjoy your rest day!' : 'No remaining classes today.'}</p></div> : <div className="relative space-y-2 pl-4 before:absolute before:bottom-2 before:left-2 before:top-2 before:w-px before:bg-border">
-              {glanceEntries.map(entry => {
+              {glanceTimeline.map(row => {
+                if (row.type === 'block') {
+                  const entry = row.entry;
+                  const completed = row.completed;
+                  const statusLabel = entry.status === 'attended' ? 'Attended' : entry.status === 'missed' ? 'Bunked' : entry.status === 'off' ? 'Off' : 'Not Marked Yet';
+                  const statusColor = completed ? entry.status === 'attended' ? 'text-emerald-500' : entry.status === 'missed' ? 'text-rose-500' : 'text-amber-500' : 'text-muted-foreground';
+                  return <button type="button" key={`block-${entry.placementId}-${entry.kind}`} onClick={() => setLocation('/block-posting')} className={cn('relative flex w-full min-w-0 items-center gap-x-2 text-left', completed && 'opacity-55')}>
+                    <span className={cn('absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card', completed ? 'bg-muted-foreground' : 'bg-primary')} />
+                    <span className="flex min-w-0 flex-1 flex-col"><span className="flex min-w-0 items-center gap-1"><span className="shrink-0 rounded bg-primary/10 px-1 text-[7px] font-black uppercase text-primary">Block</span><span className="break-words text-[10px] font-bold leading-3 text-foreground">{entry.department}</span></span><span className="text-[8px] font-semibold leading-3 text-muted-foreground">{entry.kind === 'roster-duty' ? 'Roster Duty' : 'Department posting'}</span></span>
+                    <span className="flex shrink-0 flex-col items-end text-right"><span className="text-[8px] text-muted-foreground">{entry.time}</span><span className={cn('text-[8px] font-extrabold', statusColor)}>{statusLabel}</span></span>
+                  </button>;
+                }
+                const entry = row.entry;
                 const status = statusForEntry(entry);
-                const completed = isCompletedPlannedEntry(entry, todayStr);
+                const completed = row.completed;
                 const vacation = isEntryVacation(entry, todayStr);
-                const label = vacation ? 'Vacation / Exam Period' : completed ? 'Completed' : status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : 'Not Marked Yet';
-                const color = vacation ? 'text-amber-500' : completed ? 'text-muted-foreground' : status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
-                const rowMuted = completed ? 'opacity-55' : '';
+                const label = vacation ? 'Vacation / Exam Period' : status === 'attended' ? 'Attended' : status === 'missed' ? 'Bunked' : status === 'off' ? 'Off' : completed ? 'Completed' : 'Not Marked Yet';
+                const color = vacation ? 'text-amber-500' : status === 'attended' ? 'text-emerald-500' : status === 'missed' ? 'text-rose-500' : status === 'off' ? 'text-amber-500' : completed ? 'text-muted-foreground' : 'text-muted-foreground';
                 const subject = entry.card?.subject || 'Unknown subject';
                 const kind = getDashboardSubjectKind(subject, entry.card, subjectRegistry);
-                return <button type="button" key={entry.id} onClick={() => { setSelectedDateStr(todayStr); setShowMarkAttendance(true); }} className={cn('relative flex w-full min-w-0 items-center gap-x-2 text-left', rowMuted)}>
+                return <button type="button" key={`academic-${entry.id}`} onClick={() => { setSelectedDateStr(todayStr); setShowMarkAttendance(true); }} className={cn('relative flex w-full min-w-0 items-center gap-x-2 text-left', completed && 'opacity-55')}>
                   <span className={cn('absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card', completed ? 'bg-muted-foreground' : 'bg-primary')} />
-                  <span className="flex min-w-0 flex-1 flex-col gap-0">
-                    <span className="min-w-0 break-words text-[10px] font-bold leading-3 text-foreground">{subject}</span>
-                    <span className="min-w-0 text-[8px] font-semibold leading-3 text-muted-foreground">({kind})</span>
-                  </span>
-                  <span className="flex shrink-0 flex-col items-end gap-0 text-right">
-                    <span className="min-w-0 text-[8px] text-muted-foreground">{entry.time}</span>
-                    <span className={cn('min-w-0 text-[8px] font-extrabold', color)}>{label}</span>
-                  </span>
-                </button>;
-              })}
-              {blockTodayEntries.map(entry => {
-                const statusLabel = entry.status === 'attended' ? 'Attended' : entry.status === 'missed' ? 'Missed' : entry.status === 'off' ? 'Off' : 'Not Marked Yet';
-                const statusColor = entry.status === 'attended' ? 'text-emerald-500' : entry.status === 'missed' ? 'text-rose-500' : entry.status === 'off' ? 'text-amber-500' : 'text-muted-foreground';
-                return <button type="button" key={`${entry.placementId}-${entry.kind}`} onClick={() => setLocation('/block-posting')} className="relative flex w-full min-w-0 items-center gap-x-2 text-left">
-                  <span className="absolute -left-[0.6875rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full border-2 border-card bg-primary" />
-                  <span className="flex min-w-0 flex-1 flex-col"><span className="flex items-center gap-1 min-w-0"><span className="rounded bg-primary/10 px-1 text-[7px] font-black uppercase text-primary">Block</span><span className="truncate text-[10px] font-bold leading-3 text-foreground">{entry.department}</span></span><span className="text-[8px] font-semibold leading-3 text-muted-foreground">{entry.kind === 'roster-duty' ? 'Roster Duty' : 'Department posting'}</span></span>
-                  <span className="flex shrink-0 flex-col items-end text-right"><span className="text-[8px] text-muted-foreground">{entry.time}</span><span className={cn('text-[8px] font-extrabold', statusColor)}>{statusLabel}</span></span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0"><span className="min-w-0 break-words text-[10px] font-bold leading-3 text-foreground">{subject}</span><span className="min-w-0 text-[8px] font-semibold leading-3 text-muted-foreground">({kind})</span></span>
+                  <span className="flex shrink-0 flex-col items-end gap-0 text-right"><span className="min-w-0 text-[8px] text-muted-foreground">{entry.time}</span><span className={cn('min-w-0 text-[8px] font-extrabold', color)}>{label}</span></span>
                 </button>;
               })}
             </div>}
@@ -861,7 +862,7 @@ export default function Home() {
         </section>
         <div className="col-start-2 flex flex-col gap-3">
           <button type="button" onClick={() => { setSelectedDateStr(todayStr); setShowMarkAttendance(true); }} className="h-24 min-h-0 flex-none overflow-hidden rounded-2xl border border-primary/30 bg-primary/10 p-3 text-left transition-transform active:scale-[0.98]"><ClipboardCheck className="h-5 w-5 shrink-0 text-primary" /><p className="mt-2 text-sm font-extrabold text-foreground">Mark Attendance</p><p className="mt-1 text-[11px] leading-snug text-muted-foreground">{dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry, todayStr)).length > 0 ? `${dashboardClassEntries.filter(entry => !isCompletedPlannedEntry(entry, todayStr)).length} Classes today` : 'No classes scheduled today.'}</p></button>
-          <button type="button" onClick={() => { if (tomorrowEntries.length === 0 && blockTomorrowEntries.length > 0) { setLocation('/block-posting'); return; } setSelectedDateStr(toDateString(addDays(today, 1))); setShowMarkAttendance(true); }} className="h-28 min-h-0 flex-none overflow-hidden rounded-2xl border border-border bg-card p-3 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 shrink-0 text-muted-foreground" /><p className="mt-2 text-xs font-extrabold text-foreground">Tomorrow Class</p><div className="mt-1 min-w-0 space-y-0.5 text-[9px] leading-snug text-muted-foreground">{standardTomorrowPreview && <span className="block whitespace-normal break-words">{standardTomorrowPreview}</span>}{blockTomorrowDepartments.length > 0 && <span className="block whitespace-normal break-words"><span className="inline-block whitespace-nowrap">Block Posting:&nbsp;{shortenSubject(blockTomorrowDepartments[0])}</span>{blockTomorrowDepartments.length > 1 && <span> · +{blockTomorrowDepartments.length - 1} more</span>}</span>}{!hasTomorrowPreview && <span className="block whitespace-normal break-words">No classes or Block placements scheduled for tomorrow.</span>}</div></button>
+          <button type="button" onClick={() => { if (tomorrowEntries.length === 0 && blockTomorrowEntries.length > 0) { setLocation('/block-posting'); return; } setSelectedDateStr(toDateString(addDays(today, 1))); setShowMarkAttendance(true); }} className="h-24 min-h-0 flex-none overflow-hidden rounded-2xl border border-border bg-card p-2 text-left transition-transform active:scale-[0.98]"><MoonStar className="h-4 w-4 shrink-0 text-muted-foreground" /><p className="mt-1 text-xs font-extrabold text-foreground">Tomorrow Class</p><div className="mt-1 max-h-9 min-w-0 space-y-0.5 overflow-y-auto overscroll-contain text-[9px] leading-snug text-muted-foreground [scrollbar-width:none]">{standardTomorrowPreview && <span className="block whitespace-normal break-words">{standardTomorrowPreview}</span>}{blockTomorrowDepartments.length > 0 && <span className="block whitespace-normal break-words"><span className="inline-block whitespace-nowrap">Block Posting:&nbsp;{shortenSubject(blockTomorrowDepartments[0])}</span>{blockTomorrowDepartments.length > 1 && <span> · +{blockTomorrowDepartments.length - 1} more</span>}</span>}{!hasTomorrowPreview && <span className="block whitespace-normal break-words">No classes or Block placements scheduled for tomorrow.</span>}</div></button>
         </div>
       </div>
       <button type="button" onClick={() => setLocation('/block-posting')} className="glass-card flex w-full items-center gap-3 rounded-2xl border border-primary/35 bg-card p-4 text-left transition-transform active:scale-[0.99]">

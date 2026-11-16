@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { __test } from '../src/index.ts';
 
-const { cleanLabel, isBeforeClassDue, isValidNightlyReminderTime, parseReminderTime, isWithinFiveMinuteWindow, isWithinNightlyWindow, nightlyScheduleDate, compareVersions, isManualUpdateAvailable, sendManualUpdateAvailable, isValidBlockPlacementReminder } = __test;
+const { cleanLabel, isBeforeClassDue, isValidNightlyReminderTime, parseReminderTime, isWithinFiveMinuteWindow, isWithinNightlyWindow, nightlyScheduleDate, compareVersions, isManualUpdateAvailable, sendManualUpdateAvailable, isValidBlockPlacementReminder, isValidOccurrence } = __test;
 assert.equal(compareVersions('1.7.1', '1.7.2'), -1, 'minor version components must be compared');
 assert.equal(compareVersions('1.7.2', '1.7.1'), 1, 'newer minor versions must be detected');
 
@@ -12,6 +12,8 @@ assert.equal(isManualUpdateAvailable('1.7.2', 'old-revision', '1.7.2', 'manual',
 assert.equal(isManualUpdateAvailable('1.7.2', 'old-revision', '1.7.2', 'automatic', 'new-revision'), false, 'automatic releases must not send update-available pushes');
 assert.equal(isManualUpdateAvailable('1.7.3', 'newer-revision', '1.7.2', 'manual', 'new-revision'), false, 'newer installed versions must not notify');
 assert.equal(isManualUpdateAvailable('legacy', 'legacy', '1.7.2', 'manual', 'new-revision'), true, 'legacy installed versions should count as pending for a manual release');
+assert.equal(isValidOccurrence({ id: 'block-placement-1', localDate: '2026-11-16', startMinute: 0, endMinute: 1440, subjectLabel: 'Medicine (Block)', category: 'block', needsAttention: true, attentionLevel: 'mustAttend', attendanceMarked: false, status: 'unmarked', isFinalForSubject: false }), true, 'Block posting sessions must be accepted in the remote risk-reminder occurrence scope');
+assert.equal(cleanLabel('Medicine · Roster Duty (Block)', 'block'), 'Medicine · Roster Duty (Block)', 'Block notification labels should preserve department and roster-duty identity');
 assert.equal(isValidBlockPlacementReminder({ id: 'placement-1', departmentName: 'Dermatology', endDate: '2026-09-08', reminderDate: '2026-09-07' }), true, 'placement reminder must be exactly one day before the placement ends');
 assert.equal(isValidBlockPlacementReminder({ id: 'placement-1', departmentName: 'Dermatology', endDate: '2026-09-08', reminderDate: '2026-09-06' }), false, 'placement reminder dates must not be arbitrarily earlier');
 

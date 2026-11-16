@@ -27,7 +27,7 @@ import {
   type NotificationPreferences,
 } from '@/lib/webPush';
 import { APP_VERSION, BUILD_REVISION } from '@/lib/appVersion';
-import { useBlockPosting, getNextBlockPlacementReminder } from '@/contexts/BlockPostingContext';
+import { useBlockPosting, getNextBlockPlacementReminder, getBlockPlannedSessions, blockAttendanceKey, calculateBlockProgress, BLOCK_POSTING_DEPARTMENTS, type BlockPostingConfig, type BlockPostingAttendance } from '@/contexts/BlockPostingContext';
 import {
   parseRangeToMinutes,
   getPresetAcademicSessionId,
@@ -38,7 +38,7 @@ import {
 
 const { serviceUrl: SERVICE_URL, vapidPublicKey: VAPID_PUBLIC_KEY } = getPushServiceConfig();
 const HORIZON_DAYS = 21;
-const MAX_OCCURRENCES = 250;
+const MAX_OCCURRENCES = 500;
 const SYNC_STATUS_KEY = 'att_a1_reminder_sync_status_v1';
 export const REMINDER_SYNC_STATUS_CHANGED_EVENT = 'attendenz:reminder-sync-status-changed';
 
@@ -101,7 +101,7 @@ function maybeShowMissedNightlyReminder(payload: ReminderSyncPayload, occurrence
   void import('sonner').then(({ toast }) => toast.info(summary));
 }
 
-type ReminderCategory = 'academic' | 'clinical' | 'sgt' | 'ward';
+type ReminderCategory = 'academic' | 'clinical' | 'sgt' | 'ward' | 'block';
 
 export type ReminderAttentionLevel = 'mustAttend' | 'needAttention' | 'safeToMiss' | 'onTrack' | 'neutral';
 export type ReminderAttendanceStatus = 'unmarked' | 'attended' | 'missed' | 'off' | 'completed';
@@ -294,6 +294,7 @@ function subjectAttentionForReference(
 function reminderKindLabel(reference: ReturnType<typeof useCustomData>['subjectRegistry'][number] | undefined, category: ReminderCategory): string {
   if (reference?.kind === 'integrated') return 'Integrated';
   if (reference?.kind === 'sgt' || category === 'sgt') return 'SGT';
+  if (category === 'block') return 'Block';
   if (reference?.domain === 'clinical' || category === 'clinical' || category === 'ward') return 'Clinical';
   return 'Lecture';
 }
@@ -406,6 +407,8 @@ function buildOccurrences(input: {
   getCustomWardTotalPlanned: (startDate: string, endDate: string, vacationPeriods?: Array<{ start: string; end: string }>) => number;
   getPresetSubjectDisplayName: (name: string) => string;
   getPresetWardDisplayName: (name: string) => string;
+  blockConfig: BlockPostingConfig;
+  blockAttendance: Record<string, BlockPostingAttendance>;
 }): ReminderOccurrence[] {
   const occurrences: ReminderOccurrence[] = [];
   const seen = new Set<string>();
@@ -418,6 +421,36 @@ function buildOccurrences(input: {
   };
 
   const today = new Date();
+  const blockProgress = new Map(calculateBlockProgress(input.blockConfig, input.blockAttendance, input.subjectMode).map(item => [item.departmentId, item]));
+  const departmentNames = new Map(BLOCK_POSTING_DEPARTMENTS.map(item => [item.id, item.name]));
+  const horizonEnd = new Date(today);
+  horizonEnd.setDate(horizonEnd.getDate() + HORIZON_DAYS - 1);
+  const todayKey = localDateString(today);
+  const horizonEndKey = localDateString(horizonEnd);
+  for (const placement of input.blockConfig.placements) {
+    const progress = blockProgress.get(placement.departmentId);
+    const departmentName = departmentNames.get(placement.departmentId) || 'Department';
+    for (const session of getBlockPlannedSessions(placement, input.subjectMode)) {
+      if (session.date < todayKey || session.date > horizonEndKey) continue;
+      const mark = input.blockAttendance[blockAttendanceKey(placement.id, session.date, session.kind)];
+      const status: ReminderAttendanceStatus = mark?.status === 'attended' ? 'attended' : mark?.status === 'missed' ? 'missed' : mark?.status === 'off' ? 'off' : 'unmarked';
+      const level = attentionFor(progress ? { attended: progress.attended, missed: progress.missed } : undefined, false, progress?.planned || 0, input.preferredPercentage);
+      add({
+        id: safeOccurrenceId('block', placement.id, session.date, session.kind),
+        localDate: session.date,
+        startMinute: 0,
+        endMinute: 1440,
+        subjectLabel: `${departmentName}${session.kind === 'roster-duty' ? ' · Roster Duty' : ''} (Block)`,
+        category: 'block',
+        needsAttention: level === 'mustAttend' || level === 'needAttention',
+        attentionLevel: level,
+        attendanceMarked: status !== 'unmarked',
+        status,
+        isFinalForSubject: false,
+      });
+    }
+  }
+
   for (let offset = 0; offset < HORIZON_DAYS; offset += 1) {
     const date = new Date(today);
     date.setHours(0, 0, 0, 0);
@@ -735,6 +768,8 @@ export function ReminderSyncProvider({ children }: { children: ReactNode }) {
           getCustomWardTotalPlanned: custom.getCustomWardTotalPlanned,
           getPresetSubjectDisplayName: custom.getPresetSubjectDisplayName,
           getPresetWardDisplayName: custom.getPresetWardDisplayName,
+          blockConfig: blockPosting.config,
+          blockAttendance: blockPosting.attendance,
         }),
       };
       await syncReminderState(payload);
